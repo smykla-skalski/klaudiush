@@ -152,11 +152,20 @@ func run(_ *cobra.Command, _ []string) error {
 func registerValidators(registry *validator.Registry, log logger.Logger) {
 	// Git validators
 	registry.Register(
-		gitvalidators.NewAddValidator(log),
+		gitvalidators.NewAddValidator(log, nil), // nil uses RealGitRunner
 		validator.And(
 			validator.EventTypeIs(hook.PreToolUse),
 			validator.ToolTypeIs(hook.Bash),
 			validator.CommandContains("git add"),
+		),
+	)
+
+	registry.Register(
+		gitvalidators.NewCommitValidator(log, nil), // nil uses RealGitRunner
+		validator.And(
+			validator.EventTypeIs(hook.PreToolUse),
+			validator.ToolTypeIs(hook.Bash),
+			validator.CommandContains("git commit"),
 		),
 	)
 }

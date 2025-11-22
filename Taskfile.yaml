@@ -11,9 +11,28 @@ tasks:
       - task --list
 
   build:
-    desc: Build the binary
+    desc: Build the binary (without signoff validation)
     cmds:
       - go build -o bin/{{.BINARY_NAME}} ./cmd/claude-hooks
+    sources:
+      - '**/*.go'
+    generates:
+      - bin/{{.BINARY_NAME}}
+
+  build:prod:
+    desc: Build the binary with signoff validation (uses git config for signoff)
+    vars:
+      GIT_NAME:
+        sh: git config user.name
+      GIT_EMAIL:
+        sh: git config user.email
+      SIGNOFF: '{{.GIT_NAME}} <{{.GIT_EMAIL}}>'
+    cmds:
+      - |
+        go build \
+          -ldflags="-X 'github.com/smykla-labs/claude-hooks/internal/validators/git.ExpectedSignoff={{.SIGNOFF}}'" \
+          -o bin/{{.BINARY_NAME}} \
+          ./cmd/claude-hooks
     sources:
       - '**/*.go'
     generates:

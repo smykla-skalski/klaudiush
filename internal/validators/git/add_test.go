@@ -1,8 +1,6 @@
 package git_test
 
 import (
-	"testing"
-
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -11,20 +9,17 @@ import (
 	"github.com/smykla-labs/claude-hooks/pkg/logger"
 )
 
-func TestGitAddValidator(t *testing.T) {
-	RegisterFailHandler(Fail)
-	RunSpecs(t, "GitAddValidator Suite")
-}
-
 var _ = Describe("GitAddValidator", func() {
 	var (
-		val *git.AddValidator
-		log logger.Logger
+		val     *git.AddValidator
+		log     logger.Logger
+		mockGit *git.MockGitRunner
 	)
 
 	BeforeEach(func() {
 		log = logger.NewNoOpLogger()
-		val = git.NewAddValidator(log)
+		mockGit = git.NewMockGitRunner()
+		val = git.NewAddValidator(log, mockGit)
 	})
 
 	Describe("Name", func() {

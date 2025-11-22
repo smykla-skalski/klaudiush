@@ -2,9 +2,7 @@
 package git
 
 import (
-	"context"
 	"fmt"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -22,12 +20,17 @@ const (
 // AddValidator validates git add commands to block tmp/ files from being staged
 type AddValidator struct {
 	validator.BaseValidator
+	gitRunner GitRunner
 }
 
 // NewAddValidator creates a new GitAddValidator instance
-func NewAddValidator(log logger.Logger) *AddValidator {
+func NewAddValidator(log logger.Logger, gitRunner GitRunner) *AddValidator {
+	if gitRunner == nil {
+		gitRunner = NewRealGitRunner()
+	}
 	return &AddValidator{
 		BaseValidator: *validator.NewBaseValidator("validate-git-add", log),
+		gitRunner:     gitRunner,
 	}
 }
 
@@ -36,10 +39,15 @@ func (v *AddValidator) Validate(ctx *hook.Context) *validator.Result {
 	log := v.Logger()
 	log.Debug("Running git add validation")
 
-	// Get git root
-	gitRoot, err := v.getGitRoot()
+	// Check if in git repository
+	if !v.gitRunner.IsInRepo() {
+		log.Debug("Not in a git repository, skipping validation")
+		return validator.Pass()
+	}
+
+	gitRoot, err := v.gitRunner.GetRepoRoot()
 	if err != nil {
-		log.Debug("Not in a git repository, skipping validation", "error", err)
+		log.Debug("Failed to get git root", "error", err)
 		return validator.Pass()
 	}
 
@@ -93,20 +101,6 @@ func (v *AddValidator) Validate(ctx *hook.Context) *validator.Result {
 
 	log.Debug("Git add validation passed")
 	return validator.Pass()
-}
-
-// getGitRoot returns the git repository root directory
-func (v *AddValidator) getGitRoot() (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), gitCommandTimeout)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, "git", "rev-parse", "--show-toplevel")
-	output, err := cmd.Output()
-	if err != nil {
-		return "", err
-	}
-
-	return strings.TrimSpace(string(output)), nil
 }
 
 // extractFilePaths extracts file paths from git add arguments, excluding flags
