@@ -4,6 +4,7 @@ package dispatcher
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/smykla-labs/claude-hooks/internal/validator"
 	"github.com/smykla-labs/claude-hooks/pkg/hook"
@@ -79,7 +80,7 @@ func (d *Dispatcher) Dispatch(ctx *hook.Context) []*ValidationError {
 		"count", len(validators),
 	)
 
-	var validationErrors []*ValidationError
+	validationErrors := make([]*ValidationError, 0, len(validators))
 
 	for _, v := range validators {
 		d.logger.Debug("running validator",
@@ -131,58 +132,57 @@ func ShouldBlock(errors []*ValidationError) bool {
 	return false
 }
 
+// categorizeErrors separates validation errors into blocking errors and warnings.
+func categorizeErrors(errors []*ValidationError) (blocking, warnings []*ValidationError) {
+	blockingErrors := make([]*ValidationError, 0)
+	warningErrors := make([]*ValidationError, 0)
+
+	for _, err := range errors {
+		if err.ShouldBlock {
+			blockingErrors = append(blockingErrors, err)
+		} else {
+			warningErrors = append(warningErrors, err)
+		}
+	}
+
+	return blockingErrors, warningErrors
+}
+
+// formatErrorList formats a list of errors with a header.
+func formatErrorList(header string, errors []*ValidationError) string {
+	if len(errors) == 0 {
+		return ""
+	}
+
+	var builder strings.Builder
+	builder.WriteString(header)
+	builder.WriteString("\n\n")
+
+	for _, err := range errors {
+		builder.WriteString(fmt.Sprintf("  %s\n", err.Message))
+
+		if len(err.Details) > 0 {
+			for k, v := range err.Details {
+				builder.WriteString(fmt.Sprintf("    %s: %s\n", k, v))
+			}
+		}
+
+		builder.WriteString("\n")
+	}
+
+	return builder.String()
+}
+
 // FormatErrors formats validation errors for display.
 func FormatErrors(errors []*ValidationError) string {
 	if len(errors) == 0 {
 		return ""
 	}
 
-	var result string
+	blockingErrors, warnings := categorizeErrors(errors)
 
-	blockingErrors := make([]*ValidationError, 0)
-	warnings := make([]*ValidationError, 0)
-
-	for _, err := range errors {
-		if err.ShouldBlock {
-			blockingErrors = append(blockingErrors, err)
-		} else {
-			warnings = append(warnings, err)
-		}
-	}
-
-	// Format blocking errors
-	if len(blockingErrors) > 0 {
-		result += "❌ Validation Failed:\n\n"
-
-		for _, err := range blockingErrors {
-			result += fmt.Sprintf("  %s\n", err.Message)
-
-			if len(err.Details) > 0 {
-				for k, v := range err.Details {
-					result += fmt.Sprintf("    %s: %s\n", k, v)
-				}
-			}
-
-			result += "\n"
-		}
-	}
-
-	// Format warnings
-	if len(warnings) > 0 {
-		result += "⚠️  Warnings:\n\n"
-
-		for _, err := range warnings {
-			result += fmt.Sprintf("  %s\n", err.Message)
-
-			if len(err.Details) > 0 {
-				for k, v := range err.Details {
-					result += fmt.Sprintf("    %s: %s\n", k, v)
-				}
-			}
-
-			result += "\n"
-		}
-	}
+	result := formatErrorList("❌ Validation Failed:", blockingErrors)
+	result += formatErrorList("⚠️  Warnings:", warnings)
 
 	return result
 }

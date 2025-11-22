@@ -1,8 +1,6 @@
 package validator
 
 import (
-	"fmt"
-
 	"github.com/smykla-labs/claude-hooks/pkg/hook"
 	"github.com/smykla-labs/claude-hooks/pkg/logger"
 )
@@ -146,7 +144,7 @@ func (v *BaseValidator) LogValidation(ctx *hook.Context, result *Result) {
 		return
 	}
 
-	logMsg := fmt.Sprintf("validation %s", result.String())
+	logMsg := "validation " + result.String()
 	kvs := []any{
 		"validator", v.name,
 		"tool", ctx.ToolName,

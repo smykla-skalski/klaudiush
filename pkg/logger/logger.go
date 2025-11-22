@@ -36,6 +36,9 @@ const (
 
 	// LevelError represents error-level logging.
 	LevelError Level = "ERROR"
+
+	// LogFilePermissions defines the file permissions for log files (owner read/write only).
+	LogFilePermissions = 0o600
 )
 
 // FileLogger implements Logger interface with file and stderr output.
@@ -50,7 +53,7 @@ type FileLogger struct {
 // NewFileLogger creates a new FileLogger that writes to both file and stderr.
 func NewFileLogger(filePath string, debugMode, traceMode bool) (*FileLogger, error) {
 	//nolint:gosec // File path is controlled and within user home directory
-	file, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	file, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, LogFilePermissions)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open log file: %w", err)
 	}

@@ -22,6 +22,9 @@ const (
 
 	// ExitCodeBlock indicates the operation should be blocked.
 	ExitCodeBlock = 2
+
+	// CommandDisplayLength is the maximum length of command to display in logs.
+	CommandDisplayLength = 50
 )
 
 var (
@@ -102,7 +105,7 @@ func run(_ *cobra.Command, _ []string) error {
 
 	log.Info("context parsed",
 		"tool", ctx.ToolName,
-		"command", truncate(ctx.GetCommand(), 50),
+		"command", truncate(ctx.GetCommand(), CommandDisplayLength),
 		"file", filepath.Base(ctx.GetFilePath()),
 	)
 
