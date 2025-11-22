@@ -51,34 +51,113 @@ func ParseGitCommand(cmd Command) (*GitCommand, error) {
 	}
 
 	// Parse remaining arguments
-	for i := 1; i < len(cmd.Args); i++ {
+	i := 1
+	for i < len(cmd.Args) {
 		arg := cmd.Args[i]
 
-		// Check if it's a flag
-		if strings.HasPrefix(arg, "-") {
-			gitCmd.Flags = append(gitCmd.Flags, arg)
-
-			// Check if this flag takes a value
-			if takesValue, exists := flagsWithValues[arg]; exists && takesValue {
-				// This flag takes a value, consume next arg
-				if i+1 < len(cmd.Args) {
-					gitCmd.FlagMap[arg] = cmd.Args[i+1]
-					i++ // Skip next arg
-				}
-			}
-		} else {
+		if !strings.HasPrefix(arg, "-") {
+			// Positional argument
 			gitCmd.Args = append(gitCmd.Args, arg)
+			i++
+			continue
+		}
+
+		// It's a flag - determine how to parse it
+		if strings.HasPrefix(arg, "--") {
+			// Long flag: --message, --signoff, etc.
+			i = parseLongFlag(arg, cmd.Args, i, gitCmd)
+		} else if len(arg) == 2 { //nolint:mnd // Trivial check for single short flag format
+			// Single short flag: -m, -s, etc.
+			i = parseShortFlag(arg, cmd.Args, i, gitCmd)
+		} else {
+			// Combined short flags: -sS, -sSm, etc.
+			i = parseCombinedFlags(arg, cmd.Args, i, gitCmd)
 		}
 	}
 
 	return gitCmd, nil
 }
 
+const (
+	skipFlagOnly     = 1
+	skipFlagAndValue = 2
+)
+
+// addFlag adds a flag to the GitCommand and optionally captures its value
+func addFlag(flag string, args []string, idx int, gitCmd *GitCommand) int {
+	gitCmd.Flags = append(gitCmd.Flags, flag)
+
+	// Check if this flag takes a value
+	if takesValue, exists := flagsWithValues[flag]; exists && takesValue {
+		if idx+1 < len(args) {
+			gitCmd.FlagMap[flag] = args[idx+1]
+			return skipFlagAndValue
+		}
+	}
+
+	return skipFlagOnly
+}
+
+// parseLongFlag handles long flags like --message, --signoff
+func parseLongFlag(flag string, args []string, idx int, gitCmd *GitCommand) int {
+	return idx + addFlag(flag, args, idx, gitCmd)
+}
+
+// parseShortFlag handles single short flags like -m, -s
+func parseShortFlag(flag string, args []string, idx int, gitCmd *GitCommand) int {
+	return idx + addFlag(flag, args, idx, gitCmd)
+}
+
+// parseCombinedFlags handles combined short flags like -sS, -sSm "message"
+func parseCombinedFlags(combined string, args []string, idx int, gitCmd *GitCommand) int {
+	flags := combined[1:] // Remove leading '-'
+
+	for j, flagChar := range flags {
+		flag := "-" + string(flagChar)
+		gitCmd.Flags = append(gitCmd.Flags, flag)
+
+		// Check if this flag takes a value
+		takesValue, exists := flagsWithValues[flag]
+		if !exists || !takesValue {
+			continue
+		}
+
+		// This flag takes a value
+		if j == len(flags)-1 {
+			// Last flag: consume next arg if available
+			if idx+1 < len(args) {
+				gitCmd.FlagMap[flag] = args[idx+1]
+				return idx + skipFlagAndValue
+			}
+		} else {
+			// Not last flag: rest of string is the inline value
+			gitCmd.FlagMap[flag] = flags[j+1:]
+			return idx + skipFlagOnly
+		}
+	}
+
+	return idx + skipFlagOnly
+}
+
 // HasFlag checks if the git command has a specific flag.
+// For short flags (single dash, single letter), it also checks combined flags.
+// For example, HasFlag("-s") will match both "-s" and "-sS".
 func (g *GitCommand) HasFlag(flag string) bool {
 	for _, f := range g.Flags {
 		if f == flag {
 			return true
+		}
+
+		// Check for combined short flags (e.g., -sS contains -s and -S)
+		if len(flag) == 2 && flag[0] == '-' && len(f) > 2 && f[0] == '-' && f[1] != '-' {
+			// flag is a short flag like "-s", f is like "-sS" or "-abc"
+			// Check if flag letter appears in f
+			flagLetter := flag[1]
+			for i := 1; i < len(f); i++ {
+				if f[i] == flagLetter {
+					return true
+				}
+			}
 		}
 	}
 
