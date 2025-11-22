@@ -67,6 +67,42 @@ var _ = Describe("GitCommand", func() {
 				Expect(err).NotTo(HaveOccurred())
 				Expect(gitCmd.ExtractCommitMessage()).To(Equal("fix: bug fix"))
 			})
+
+			It("extracts heredoc from command substitution in commit message", func() {
+				cmdStr := `git commit -sS -m "$(cat <<'EOF'
+feat(validators): add new validator
+
+This is a multi-line commit message
+from a heredoc.
+EOF
+)"`
+				result, err := p.Parse(cmdStr)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result.GitOperations).To(HaveLen(1))
+
+				gitCmd, err := parser.ParseGitCommand(result.GitOperations[0])
+				Expect(err).NotTo(HaveOccurred())
+				Expect(gitCmd.ExtractCommitMessage()).To(ContainSubstring("feat(validators): add new validator"))
+				Expect(gitCmd.ExtractCommitMessage()).To(ContainSubstring("This is a multi-line commit message"))
+				Expect(gitCmd.ExtractCommitMessage()).To(ContainSubstring("from a heredoc."))
+			})
+
+			It("extracts heredoc without quotes in delimiter", func() {
+				cmdStr := `git commit -sS -m "$(cat <<EOF
+fix: quick fix
+
+Body text here
+EOF
+)"`
+				result, err := p.Parse(cmdStr)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result.GitOperations).To(HaveLen(1))
+
+				gitCmd, err := parser.ParseGitCommand(result.GitOperations[0])
+				Expect(err).NotTo(HaveOccurred())
+				Expect(gitCmd.ExtractCommitMessage()).To(ContainSubstring("fix: quick fix"))
+				Expect(gitCmd.ExtractCommitMessage()).To(ContainSubstring("Body text here"))
+			})
 		})
 
 		Context("with git push command", func() {

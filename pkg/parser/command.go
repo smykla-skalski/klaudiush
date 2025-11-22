@@ -90,14 +90,52 @@ func wordToString(word *syntax.Word) string {
 			result.WriteString(p.Value)
 		case *syntax.DblQuoted:
 			for _, dqPart := range p.Parts {
-				if lit, ok := dqPart.(*syntax.Lit); ok {
-					result.WriteString(lit.Value)
+				switch dqp := dqPart.(type) {
+				case *syntax.Lit:
+					result.WriteString(dqp.Value)
+				case *syntax.CmdSubst:
+					// Handle command substitution (e.g., "$(cat <<'EOF' ... EOF)")
+					if heredoc := extractHeredocFromCmdSubst(dqp); heredoc != "" {
+						result.WriteString(heredoc)
+					}
 				}
+			}
+		case *syntax.CmdSubst:
+			// Handle unquoted command substitution
+			if heredoc := extractHeredocFromCmdSubst(p); heredoc != "" {
+				result.WriteString(heredoc)
 			}
 		}
 	}
 
 	return result.String()
+}
+
+// extractHeredocFromCmdSubst extracts heredoc content from command substitution.
+// It looks for patterns like "$(cat <<'EOF' ... EOF)" or "$(cat <<EOF ... EOF)".
+func extractHeredocFromCmdSubst(cmdSubst *syntax.CmdSubst) string {
+	if cmdSubst == nil || len(cmdSubst.Stmts) == 0 {
+		return ""
+	}
+
+	// Walk through statements looking for heredoc redirections
+	for _, stmt := range cmdSubst.Stmts {
+		if stmt.Redirs == nil {
+			continue
+		}
+
+		for _, redir := range stmt.Redirs {
+			// Check if this is a heredoc redirection
+			if redir.Op == syntax.Hdoc || redir.Op == syntax.DashHdoc {
+				// Extract heredoc content from Hdoc field
+				if redir.Hdoc != nil {
+					return wordToString(redir.Hdoc)
+				}
+			}
+		}
+	}
+
+	return ""
 }
 
 // wordsToStrings converts a slice of syntax.Word to string slice.
