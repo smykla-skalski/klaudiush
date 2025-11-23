@@ -207,7 +207,8 @@ func shouldWarnAboutHeaderSpacing(line string) bool {
 func getListIndent(line string) int {
 	re := regexp.MustCompile(`^([[:space:]]*)([-*+]|[0-9]+\.)[[:space:]]`)
 	matches := re.FindStringSubmatch(line)
-	if len(matches) < 3 {
+	const minRequiredMatches = 3 // Full match + 2 capture groups
+	if len(matches) < minRequiredMatches {
 		return 0
 	}
 

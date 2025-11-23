@@ -55,6 +55,30 @@ func (v *CommitValidator) validateMessage(message string) *validator.Result {
 	// Split message into lines
 	lines := strings.Split(message, "\n")
 
+	// Validate title
+	title, titleErrors := v.validateTitle(lines)
+	errors = append(errors, titleErrors...)
+	if title == "" {
+		return validator.Fail("Commit message is empty")
+	}
+
+	// Validate body and additional checks
+	bodyErrors := v.validateBodyAndChecks(lines, message)
+	errors = append(errors, bodyErrors...)
+
+	// Report errors if any
+	if len(errors) > 0 {
+		return v.buildErrorResult(errors, message)
+	}
+
+	log.Debug("Commit message validation passed")
+	return validator.Pass()
+}
+
+// validateTitle extracts and validates the commit title
+func (v *CommitValidator) validateTitle(lines []string) (string, []string) {
+	errors := make([]string, 0)
+
 	// Get title (first non-empty line)
 	title := ""
 	for _, line := range lines {
@@ -65,7 +89,7 @@ func (v *CommitValidator) validateMessage(message string) *validator.Result {
 	}
 
 	if title == "" {
-		return validator.Fail("Commit message is empty")
+		return "", errors
 	}
 
 	// Check title length
@@ -84,63 +108,87 @@ func (v *CommitValidator) validateMessage(message string) *validator.Result {
 	infraErrors := v.checkInfraScopeMisuse(title)
 	errors = append(errors, infraErrors...)
 
+	return title, errors
+}
+
+// validateBodyAndChecks validates body lines, markdown, PR references, and signoff
+func (v *CommitValidator) validateBodyAndChecks(lines []string, message string) []string {
+	errors := make([]string, 0)
+
 	// Validate body lines
 	bodyErrors := v.validateBodyLines(lines)
 	errors = append(errors, bodyErrors...)
 
 	// Validate markdown formatting in body
 	if len(lines) > 1 {
-		// Extract body (skip title and empty line after title)
-		bodyStartIdx := 1
-		if bodyStartIdx < len(lines) && strings.TrimSpace(lines[bodyStartIdx]) == "" {
-			bodyStartIdx++
-		}
-		if bodyStartIdx < len(lines) {
-			body := strings.Join(lines[bodyStartIdx:], "\n")
-			markdownResult := validators.AnalyzeMarkdown(body)
-			errors = append(errors, markdownResult.Warnings...)
-		}
+		markdownErrors := v.validateMarkdownInBody(lines)
+		errors = append(errors, markdownErrors...)
 	}
 
 	// Check for PR references
 	prErrors := v.checkPRReferences(message)
 	errors = append(errors, prErrors...)
 
-	// Check Signed-off-by trailer if present (only if ExpectedSignoff is set)
+	// Check Signed-off-by trailer
 	if ExpectedSignoff != "" && strings.Contains(message, "Signed-off-by:") {
-		signoffLine := ""
-		for _, line := range lines {
-			if strings.HasPrefix(strings.TrimSpace(line), "Signed-off-by:") {
-				signoffLine = strings.TrimSpace(line)
-				break
-			}
-		}
+		signoffErrors := v.validateSignoff(lines)
+		errors = append(errors, signoffErrors...)
+	}
 
-		expectedSignoffLine := "Signed-off-by: " + ExpectedSignoff
-		if signoffLine != expectedSignoffLine {
-			errors = append(errors, "❌ Wrong signoff identity")
-			errors = append(errors, "   Found: "+signoffLine)
-			errors = append(errors, "   Expected: "+expectedSignoffLine)
+	return errors
+}
+
+// validateMarkdownInBody validates markdown formatting in the commit body
+func (v *CommitValidator) validateMarkdownInBody(lines []string) []string {
+	// Extract body (skip title and empty line after title)
+	bodyStartIdx := 1
+	if bodyStartIdx < len(lines) && strings.TrimSpace(lines[bodyStartIdx]) == "" {
+		bodyStartIdx++
+	}
+	if bodyStartIdx >= len(lines) {
+		return nil
+	}
+
+	body := strings.Join(lines[bodyStartIdx:], "\n")
+	markdownResult := validators.AnalyzeMarkdown(body)
+	return markdownResult.Warnings
+}
+
+// validateSignoff checks the Signed-off-by trailer
+func (v *CommitValidator) validateSignoff(lines []string) []string {
+	errors := make([]string, 0)
+	signoffLine := ""
+
+	for _, line := range lines {
+		if strings.HasPrefix(strings.TrimSpace(line), "Signed-off-by:") {
+			signoffLine = strings.TrimSpace(line)
+			break
 		}
 	}
 
-	// Report errors
-	if len(errors) > 0 {
-		var details strings.Builder
-		for _, err := range errors {
-			details.WriteString(err)
-			details.WriteString("\n")
-		}
-		details.WriteString("\n📝 Commit message:\n")
-		details.WriteString("---\n")
-		details.WriteString(message)
-		details.WriteString("\n---")
-
-		return validator.Fail("Commit message validation failed").AddDetail("errors", details.String())
+	expectedSignoffLine := "Signed-off-by: " + ExpectedSignoff
+	if signoffLine != expectedSignoffLine {
+		errors = append(errors, "❌ Wrong signoff identity")
+		errors = append(errors, "   Found: "+signoffLine)
+		errors = append(errors, "   Expected: "+expectedSignoffLine)
 	}
 
-	log.Debug("Commit message validation passed")
-	return validator.Pass()
+	return errors
+}
+
+// buildErrorResult constructs the error result with details
+func (v *CommitValidator) buildErrorResult(errors []string, message string) *validator.Result {
+	var details strings.Builder
+	for _, err := range errors {
+		details.WriteString(err)
+		details.WriteString("\n")
+	}
+	details.WriteString("\n📝 Commit message:\n")
+	details.WriteString("---\n")
+	details.WriteString(message)
+	details.WriteString("\n---")
+
+	return validator.Fail("Commit message validation failed").AddDetail("errors", details.String())
 }
 
 // validateBodyLines validates the body lines of the commit message
