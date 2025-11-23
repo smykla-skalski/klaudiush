@@ -71,6 +71,42 @@ task verify
 4. **Registry** (`internal/validator/registry.go`): Matches validators to context using predicates
 5. **Validators**: Execute validation logic, return `Result` (Pass/Fail/Warn)
 
+### Execution Abstractions
+
+**Command Execution Package** (`internal/exec/`):
+
+Provides unified abstractions for external command execution, eliminating code duplication across validators.
+
+- **CommandRunner**: Executes commands with timeout/context management
+  - `Run(ctx, name, args...)`: Execute command and return result
+  - `RunWithStdin(ctx, stdin, name, args...)`: Execute with stdin input
+  - Returns `CommandResult` with stdout, stderr, exit code
+  - Automatic `ExitError` handling with `errors.As`
+
+- **ToolChecker**: Checks tool availability in PATH
+  - `IsAvailable(tool)`: Check if single tool exists
+  - `FindTool(tools...)`: Find first available tool from list
+  - Used for tool detection (e.g., `tofu` vs `terraform`)
+
+- **TempFileManager**: Manages temporary file lifecycle
+  - `Create(pattern, content)`: Create temp file with content
+  - `Cleanup(path)`: Remove temp file
+  - Uses system temp directory (`os.TempDir()`)
+
+**Benefits**:
+
+- ~134 lines of boilerplate eliminated across validators
+- Consistent error handling with `errors.As`
+- Single source of truth for command execution
+- Better testability with mockable interfaces
+- Prevents nil pointer dereferences
+
+**Migrated Validators**:
+
+- ✅ `git_runner.go` (8 methods) - eliminated ~60 lines
+- ✅ `shellscript.go` - eliminated ~30 lines
+- ✅ `terraform.go` - eliminated ~44 lines
+
 ### Hook Context
 
 The `hook.Context` struct (`pkg/hook/context.go`) represents tool invocations:
@@ -142,12 +178,14 @@ registry.Register(
 **File Validators** (`internal/validators/file/`):
 
 - **MarkdownValidator**: Validates Markdown format conventions
+- **ShellScriptValidator**: Validates shell scripts with shellcheck (uses `internal/exec`)
+- **TerraformValidator**: Validates Terraform/OpenTofu formatting and linting (uses `internal/exec`)
 
 ### Git Operations
 
 **GitRunner Interface** (`internal/validators/git/git_runner.go`):
 
-- Abstracts git commands for testing
+- Abstracts git commands for testing (uses `internal/exec` for execution)
 - `RealGitRunner`: Executes actual git commands
 - `MockGitRunner`: For testing validators
 - Operations: staged files, modified files, untracked files, remote validation
@@ -165,7 +203,26 @@ All validators log to `~/.claude/hooks/dispatcher.log`:
 - **Framework**: Ginkgo/Gomega
 - **Mocks**: `git_runner_mock.go` for git operations
 - **Test files**: `*_test.go`, `*_suite_test.go` for Ginkgo suites
-- Run single test: `go test -v ./pkg/parser -run TestBashParser`
+- **Coverage**: 336 tests across all packages
+- Run single test: `mise exec -- go test -v ./pkg/parser -run TestBashParser`
+
+## Development Environment
+
+**Tool Version Management**:
+
+- Uses [mise](https://mise.jdx.dev/) for consistent tool versions
+- Go 1.25.4 (latest stable as of 2025-11-23)
+- golangci-lint 2.6.2 (latest version)
+- Run `mise install` to install pinned versions
+- See `SETUP.md` for detailed setup instructions
+
+**Linting**:
+
+- Comprehensive linter configuration in `.golangci.yml`
+- Nil safety checks: nilnesserr, govet (nilness), staticcheck
+- Completeness checks: exhaustive, gochecksumtype
+- Code quality: gocognit, goconst, cyclop, dupl
+- All linters pass with 0 issues
 
 ## Build-time Configuration
 
