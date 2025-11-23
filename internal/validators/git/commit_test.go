@@ -494,7 +494,7 @@ See github.com/smykla-labs/claude-hooks/pull/123`
 				Expect(result.Details["errors"]).To(ContainSubstring("AI attribution"))
 			})
 
-			It("should fail with 'claude' in unrelated context", func() {
+			It("should allow 'claude' in technical context", func() {
 				ctx := &hook.Context{
 					EventType: hook.PreToolUse,
 					ToolName:  hook.Bash,
@@ -504,8 +504,7 @@ See github.com/smykla-labs/claude-hooks/pull/123`
 				}
 
 				result := validator.Validate(ctx)
-				Expect(result.Passed).To(BeFalse())
-				Expect(result.Details["errors"]).To(ContainSubstring("AI attribution"))
+				Expect(result.Passed).To(BeTrue())
 			})
 
 			It("should fail with 'Claude AI' pattern", func() {

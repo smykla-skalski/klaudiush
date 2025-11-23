@@ -3,6 +3,7 @@ package file
 
 import (
 	"errors"
+	"os"
 	"strings"
 
 	"github.com/smykla-labs/claude-hooks/internal/validator"
@@ -12,7 +13,6 @@ import (
 )
 
 var (
-	errCannotValidateEdit    = errors.New("cannot validate Edit operations in PreToolUse")
 	errFileValidationNotImpl = errors.New("file-based validation not implemented")
 	errNoContent             = errors.New("no content found")
 )
@@ -58,16 +58,44 @@ func (v *MarkdownValidator) Validate(ctx *hook.Context) *validator.Result {
 }
 
 // getContent extracts markdown content from context
+//
+//nolint:dupl // Same pattern used across validators, extraction would add complexity
 func (v *MarkdownValidator) getContent(ctx *hook.Context) (string, error) {
+	log := v.Logger()
+
 	// Try to get content from tool input (Write operation)
 	if ctx.ToolInput.Content != "" {
 		return ctx.ToolInput.Content, nil
 	}
 
-	// For Edit operations in PreToolUse, we can't easily get final content
-	// Skip validation
+	// For Edit operations in PreToolUse, read file and apply edit
 	if ctx.EventType == hook.PreToolUse && ctx.ToolName == hook.Edit {
-		return "", errCannotValidateEdit
+		filePath := ctx.GetFilePath()
+		if filePath == "" {
+			return "", errNoContent
+		}
+
+		// Read original file content
+		//nolint:gosec // filePath is from Claude Code tool context, not user input
+		originalContent, err := os.ReadFile(filePath)
+		if err != nil {
+			log.Debug("failed to read file for edit validation", "file", filePath, "error", err)
+			return "", err
+		}
+
+		// Apply the edit (replace old_string with new_string)
+		oldStr := ctx.ToolInput.OldString
+		newStr := ctx.ToolInput.NewString
+
+		if oldStr == "" {
+			log.Debug("no old_string in edit operation, cannot validate")
+			return "", errNoContent
+		}
+
+		// Replace first occurrence (Edit tool replaces first match)
+		editedContent := strings.Replace(string(originalContent), oldStr, newStr, 1)
+
+		return editedContent, nil
 	}
 
 	// Try to get from file path (Edit or PostToolUse)
