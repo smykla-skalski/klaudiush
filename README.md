@@ -91,29 +91,21 @@ task install     # Install to ~/.claude/hooks/
 ### Testing
 
 ```bash
-task test              # Run all tests (307 specs)
+task test              # Run all tests (439 specs)
 task test:unit         # Unit tests only
 task test:integration  # Integration tests only
+task test:staged       # Test packages with staged files
 ```
 
 ### Code Quality
 
 ```bash
 task check        # Lint and auto-fix
-task lint         # Lint only (65 linters enabled)
+task lint         # Lint only (67 linters enabled)
 task lint:fix     # Lint with auto-fix
 task lint:staged  # Lint only modified and staged files
 task fmt          # Format code
 task verify       # Run fmt + lint + test
-```
-
-### Testing
-
-```bash
-task test              # Run all tests (307 specs)
-task test:unit         # Unit tests only
-task test:integration  # Integration tests only
-task test:staged       # Test packages with staged files
 ```
 
 ### Git Hooks
@@ -172,32 +164,64 @@ claude-hooks/
 │   │   ├── bash.go                  # Bash parser (mvdan.cc/sh)
 │   │   ├── git.go                   # Git command parser
 │   │   ├── command.go               # Command extraction
-│   │   └── files.go                 # File write detection
+│   │   ├── files.go                 # File write detection
+│   │   ├── ast_walker.go            # AST traversal utilities
+│   │   └── path_validator.go       # Path validation helpers
 │   └── logger/
 │       └── logger.go                # Structured logging
 ├── internal/
 │   ├── dispatcher/
 │   │   └── dispatcher.go            # Validation orchestration
+│   ├── parser/
+│   │   └── json.go                  # JSON input parser
 │   ├── validator/
 │   │   ├── validator.go             # Validator interface
-│   │   ├── registry.go              # Predicate-based registry
-│   │   └── chain.go                 # Validator composition
-│   ├── validators/
-│   │   ├── git/                     # Git validators
-│   │   │   ├── add.go               # git add validation
-│   │   │   ├── commit.go            # git commit validation
-│   │   │   ├── push.go              # git push validation
-│   │   │   ├── branch.go            # git branch validation
-│   │   │   └── pr.go                # GitHub PR validation
-│   │   ├── file/                    # File validators
-│   │   │   ├── markdown.go          # Markdown format validation
-│   │   │   ├── shellscript.go       # Shell script validation
-│   │   │   ├── terraform.go         # Terraform validation
-│   │   │   └── workflow.go          # GitHub workflow validation
-│   │   └── notification/
-│   │       └── bell.go              # Notification bell handler
-│   └── parser/
-│       └── json.go                  # JSON input parser
+│   │   └── registry.go              # Predicate-based registry
+│   ├── exec/                        # Command execution abstractions
+│   │   ├── command.go               # CommandRunner
+│   │   ├── tempfile.go              # TempFileManager
+│   │   └── tool.go                  # ToolChecker
+│   ├── git/                         # Git SDK implementation
+│   │   ├── repository.go            # Repository interface, SDKRepository
+│   │   ├── adapter.go               # RepositoryAdapter
+│   │   ├── runner.go                # Runner interface
+│   │   └── errors.go                # Git-specific errors
+│   ├── github/                      # GitHub API client
+│   │   ├── client.go                # GitHub API client
+│   │   └── cache.go                 # Response cache
+│   ├── linters/                     # Linter abstractions
+│   │   ├── shellcheck.go            # ShellChecker
+│   │   ├── terraform.go             # TerraformFormatter
+│   │   ├── tflint.go                # TfLinter
+│   │   ├── actionlint.go            # ActionLinter
+│   │   ├── markdownlint.go          # MarkdownLinter
+│   │   └── result.go                # LintResult types
+│   ├── templates/                   # Error message templates
+│   │   ├── git.go                   # Git error messages
+│   │   ├── file.go                  # File error messages
+│   │   └── templates.go             # Template utilities
+│   └── validators/
+│       ├── git/                     # Git validators
+│       │   ├── add.go               # git add validation
+│       │   ├── commit.go            # git commit validation
+│       │   ├── commit_message.go    # Commit message format
+│       │   ├── push.go              # git push validation
+│       │   ├── branch.go            # git branch validation
+│       │   ├── no_verify.go         # --no-verify flag detection
+│       │   ├── pr.go                # GitHub PR validation
+│       │   ├── pr_title.go          # PR title validation
+│       │   ├── pr_body.go           # PR body validation
+│       │   ├── pr_markdown.go       # PR Markdown validation
+│       │   └── git_runner.go        # Git runner factory
+│       ├── file/                    # File validators
+│       │   ├── markdown.go          # Markdown format validation
+│       │   ├── fragment.go          # Markdown fragment validation
+│       │   ├── shellscript.go       # Shell script validation
+│       │   ├── terraform.go         # Terraform validation
+│       │   └── workflow.go          # GitHub workflow validation
+│       ├── notification/
+│       │   └── bell.go              # Notification bell handler
+│       └── markdown_utils.go        # Shared Markdown utilities
 ├── Taskfile.yaml                    # Task definitions
 └── .golangci.yml                    # Linter configuration
 ```
@@ -628,7 +652,7 @@ This Go implementation replaces the previous Bash-based validator system. Key di
 - Advanced command parsing (chains, pipes, subshells)
 - File write detection across all operations
 - Better error messages with actionable guidance
-- Comprehensive test coverage (307 specs)
+- Comprehensive test coverage (439 specs)
 - Faster execution and cold start
 
 **Feature Parity**:
