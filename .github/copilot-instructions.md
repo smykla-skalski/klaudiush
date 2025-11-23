@@ -210,17 +210,25 @@ Additional paragraphs separated by blank lines.
 ### Rules
 
 1. **Title Line (max 50 chars)**:
+
    - Format: `type(scope): description`
    - Scope is **required** (not optional)
    - Use lowercase for description
    - No period at the end
 
 2. **Body (max 72 chars per line)**:
+
    - Wrap all lines at 72 characters
    - Separate paragraphs with blank lines
    - Explain what and why, not how
 
-3. **Valid Types**:
+3. **Markdown Lists**:
+
+   - Add empty line before first list item (ordered/unordered)
+   - This applies to commits, PR descriptions, all markdown
+
+4. **Valid Types**:
+
    - `feat`: New feature
    - `fix`: Bug fix
    - `docs`: Documentation only
@@ -232,12 +240,14 @@ Additional paragraphs separated by blank lines.
    - `build`: Build system changes
    - `perf`: Performance improvements
 
-4. **Scope Examples**:
+5. **Scope Examples**:
+
    - `validators`, `parser`, `git`, `templates`
    - `commit`, `pr`, `branch`, `add`, `push`
    - `copilot`, `docs`, `ci`, `test`
 
-5. **Sign-off Required**:
+6. **Sign-off Required**:
+
    - All commits must be signed with `-sS` flags
    - Use: `git commit -sS -m "message"`
 
