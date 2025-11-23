@@ -35,12 +35,12 @@ func NewPushValidator(log logger.Logger, gitRunner GitRunner) *PushValidator {
 }
 
 // Name returns the validator name
-func (v *PushValidator) Name() string {
+func (*PushValidator) Name() string {
 	return "validate-git-push"
 }
 
 // Validate validates git push commands
-func (v *PushValidator) Validate(ctx context.Context, hookCtx *hook.Context) *validator.Result {
+func (v *PushValidator) Validate(_ context.Context, hookCtx *hook.Context) *validator.Result {
 	log := v.Logger()
 
 	command := hookCtx.GetCommand()
@@ -155,7 +155,7 @@ func (v *PushValidator) validateRemoteExists(remote string) *validator.Result {
 }
 
 // formatRemoteNotFoundError formats the error message for a missing remote
-func (v *PushValidator) formatRemoteNotFoundError(remote string, remotes map[string]string) string {
+func (*PushValidator) formatRemoteNotFoundError(remote string, remotes map[string]string) string {
 	names := make([]string, 0, len(remotes))
 	for name := range remotes {
 		names = append(names, name)
@@ -206,7 +206,7 @@ func (v *PushValidator) validateProjectSpecificRules(projectType, remote string)
 }
 
 // validateKongOrgPush validates Kong organization push rules
-func (v *PushValidator) validateKongOrgPush(remote string) *validator.Result {
+func (*PushValidator) validateKongOrgPush(remote string) *validator.Result {
 	if remote == "origin" {
 		message := templates.MustExecute(templates.PushKongOrgTemplate, nil)
 		return validator.Fail(message)
@@ -216,7 +216,7 @@ func (v *PushValidator) validateKongOrgPush(remote string) *validator.Result {
 }
 
 // validateKumaPush validates kumahq/kuma push rules
-func (v *PushValidator) validateKumaPush(remote string) *validator.Result {
+func (*PushValidator) validateKumaPush(remote string) *validator.Result {
 	if remote == "upstream" {
 		message := templates.MustExecute(templates.PushKumaWarningTemplate, nil)
 

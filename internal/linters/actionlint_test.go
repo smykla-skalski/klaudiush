@@ -44,7 +44,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4`
 
-				mockRunner.runFunc = func(ctx context.Context, name string, args ...string) execpkg.CommandResult {
+				mockRunner.runFunc = func(_ context.Context, name string, args ...string) execpkg.CommandResult {
 					Expect(name).To(Equal("actionlint"))
 					Expect(args).To(ContainElement("-no-color"))
 
@@ -68,7 +68,7 @@ jobs:
 				actionlintOutput := `.github/workflows/test.yml:10:9: property "run-on" is not defined in object type {runs-on: string} [syntax-check]
 .github/workflows/test.yml:12:15: undefined variable "secrets.INVALID" [expression]`
 
-				mockRunner.runFunc = func(ctx context.Context, name string, args ...string) execpkg.CommandResult {
+				mockRunner.runFunc = func(_ context.Context, _ string, _ ...string) execpkg.CommandResult {
 					return execpkg.CommandResult{
 						Stdout:   actionlintOutput,
 						Stderr:   "",
@@ -88,7 +88,7 @@ jobs:
 			It("should include stderr when stdout is empty", func() {
 				stderrOutput := "actionlint: error parsing workflow file"
 
-				mockRunner.runFunc = func(ctx context.Context, name string, args ...string) execpkg.CommandResult {
+				mockRunner.runFunc = func(_ context.Context, _ string, _ ...string) execpkg.CommandResult {
 					return execpkg.CommandResult{
 						Stdout:   "",
 						Stderr:   stderrOutput,

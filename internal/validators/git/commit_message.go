@@ -170,7 +170,7 @@ func (v *CommitValidator) validateBodyAndChecks(lines []string, message string) 
 }
 
 // validateMarkdownInBody validates markdown formatting in the commit body
-func (v *CommitValidator) validateMarkdownInBody(lines []string) []string {
+func (*CommitValidator) validateMarkdownInBody(lines []string) []string {
 	// Extract body (skip title and empty line after title)
 	bodyStartIdx := 1
 	if bodyStartIdx < len(lines) && strings.TrimSpace(lines[bodyStartIdx]) == "" {
@@ -188,7 +188,7 @@ func (v *CommitValidator) validateMarkdownInBody(lines []string) []string {
 }
 
 // validateSignoff checks the Signed-off-by trailer
-func (v *CommitValidator) validateSignoff(lines []string) []string {
+func (*CommitValidator) validateSignoff(lines []string) []string {
 	errors := make([]string, 0)
 	signoffLine := ""
 
@@ -210,7 +210,7 @@ func (v *CommitValidator) validateSignoff(lines []string) []string {
 }
 
 // buildErrorResult constructs the error result with details
-func (v *CommitValidator) buildErrorResult(errors []string, message string) *validator.Result {
+func (*CommitValidator) buildErrorResult(errors []string, message string) *validator.Result {
 	var details strings.Builder
 	for _, err := range errors {
 		details.WriteString(err)
@@ -275,7 +275,7 @@ func (v *CommitValidator) validateBodyLines(lines []string) []string {
 }
 
 // formatListItemError formats error messages for list items missing empty line before
-func (v *CommitValidator) formatListItemError(line string, lineNum int) []string {
+func (*CommitValidator) formatListItemError(line string, lineNum int) []string {
 	truncated := truncateLine(line)
 
 	return []string{
@@ -286,7 +286,7 @@ func (v *CommitValidator) formatListItemError(line string, lineNum int) []string
 }
 
 // formatLineLengthError formats error messages for lines exceeding length limit
-func (v *CommitValidator) formatLineLengthError(line string, lineNum, lineLen int) []string {
+func (*CommitValidator) formatLineLengthError(line string, lineNum, lineLen int) []string {
 	truncated := truncateLine(line)
 
 	return []string{
@@ -310,7 +310,7 @@ func truncateLine(line string) string {
 }
 
 // checkInfraScopeMisuse checks for feat/fix misuse with infrastructure scopes
-func (v *CommitValidator) checkInfraScopeMisuse(title string) []string {
+func (*CommitValidator) checkInfraScopeMisuse(title string) []string {
 	if !infraScopeMisuseRegex.MatchString(title) {
 		return nil
 	}
@@ -338,7 +338,7 @@ func (v *CommitValidator) checkInfraScopeMisuse(title string) []string {
 }
 
 // checkPRReferences checks for PR references in the message
-func (v *CommitValidator) checkPRReferences(message string) []string {
+func (*CommitValidator) checkPRReferences(message string) []string {
 	if !prReferenceRegex.MatchString(message) {
 		return nil
 	}
@@ -364,7 +364,7 @@ func (v *CommitValidator) checkPRReferences(message string) []string {
 }
 
 // containsClaudeAIAttribution checks for AI attribution patterns while allowing legitimate tool references
-func (v *CommitValidator) containsClaudeAIAttribution(message string) bool {
+func (*CommitValidator) containsClaudeAIAttribution(message string) bool {
 	lower := strings.ToLower(message)
 
 	// Explicit AI attribution patterns to block

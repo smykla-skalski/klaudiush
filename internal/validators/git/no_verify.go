@@ -23,7 +23,7 @@ func NewNoVerifyValidator(log logger.Logger) *NoVerifyValidator {
 }
 
 // Validate checks if git commit command contains --no-verify flag
-func (v *NoVerifyValidator) Validate(ctx context.Context, hookCtx *hook.Context) *validator.Result {
+func (v *NoVerifyValidator) Validate(_ context.Context, hookCtx *hook.Context) *validator.Result {
 	log := v.Logger()
 	log.Debug("Running no-verify validation")
 

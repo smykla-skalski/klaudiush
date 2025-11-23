@@ -148,7 +148,7 @@ func (v *WorkflowValidator) Validate(ctx context.Context, hookCtx *hook.Context)
 }
 
 // isWorkflowFile checks if the file path is a GitHub Actions workflow
-func (v *WorkflowValidator) isWorkflowFile(path string) bool {
+func (*WorkflowValidator) isWorkflowFile(path string) bool {
 	// Match .github/workflows/*.yml or .github/workflows/*.yaml
 	if !strings.Contains(path, ".github/workflows/") {
 		return false
@@ -215,7 +215,7 @@ func (v *WorkflowValidator) getContent(ctx *hook.Context) (string, error) {
 }
 
 // parseWorkflow parses workflow content and extracts all action uses
-func (v *WorkflowValidator) parseWorkflow(content string) []actionUse {
+func (*WorkflowValidator) parseWorkflow(content string) []actionUse {
 	var actions []actionUse
 
 	scanner := bufio.NewScanner(strings.NewReader(content))
@@ -340,7 +340,7 @@ func (v *WorkflowValidator) validateTagAction(action actionUse) ([]string, []str
 }
 
 // extractVersionComment extracts version comment from inline or previous line
-func (v *WorkflowValidator) extractVersionComment(action actionUse) string {
+func (*WorkflowValidator) extractVersionComment(action actionUse) string {
 	// Check inline comment first
 	if matches := versionCommentRegex.FindStringSubmatch(action.InlineComment); len(matches) > 1 {
 		return matches[1]
@@ -355,7 +355,7 @@ func (v *WorkflowValidator) extractVersionComment(action actionUse) string {
 }
 
 // hasExplanationComment checks if action has an explanation comment
-func (v *WorkflowValidator) hasExplanationComment(action actionUse) bool {
+func (*WorkflowValidator) hasExplanationComment(action actionUse) bool {
 	// Check previous line for comment
 	if yamlCommentRegex.MatchString(action.PreviousLine) {
 		// It's a comment, but is it a version comment?
@@ -433,7 +433,7 @@ func (v *WorkflowValidator) getLatestVersion(ctx context.Context, actionName str
 }
 
 // isVersionLatest checks if current version is >= latest version
-func (v *WorkflowValidator) isVersionLatest(current, latest string) bool {
+func (*WorkflowValidator) isVersionLatest(current, latest string) bool {
 	// Normalize versions (strip leading 'v')
 	current = strings.TrimPrefix(current, "v")
 	latest = strings.TrimPrefix(latest, "v")
@@ -470,7 +470,7 @@ func (v *WorkflowValidator) runActionlint(
 }
 
 // parseActionlintOutput parses actionlint output into individual warnings
-func (v *WorkflowValidator) parseActionlintOutput(output string) []string {
+func (*WorkflowValidator) parseActionlintOutput(output string) []string {
 	lines := strings.Split(output, "\n")
 	warnings := make([]string, 0, len(lines))
 

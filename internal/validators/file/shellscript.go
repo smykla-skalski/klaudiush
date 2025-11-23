@@ -154,7 +154,7 @@ func (v *ShellScriptValidator) getEditContent(
 }
 
 // isFishScript checks if the script is a Fish shell script.
-func (v *ShellScriptValidator) isFishScript(filePath, content string) bool {
+func (*ShellScriptValidator) isFishScript(filePath, content string) bool {
 	// Check file extension
 	if filepath.Ext(filePath) == ".fish" {
 		return true
@@ -171,7 +171,7 @@ func (v *ShellScriptValidator) isFishScript(filePath, content string) bool {
 }
 
 // formatShellCheckOutput formats shellcheck output for display.
-func (v *ShellScriptValidator) formatShellCheckOutput(output string) string {
+func (*ShellScriptValidator) formatShellCheckOutput(output string) string {
 	// Clean up the output - remove empty lines
 	lines := strings.Split(output, "\n")
 

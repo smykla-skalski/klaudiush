@@ -170,16 +170,23 @@ linters:
       severity: warning
       rules:
         # Critical rules
-        - name: blank-imports
-        - name: context-keys-type
-        - name: time-equal
-        - name: time-naming
-        - name: error-return
-        - name: error-strings
-        - name: error-naming
-        - name: if-return
-        - name: increment-decrement
-        - name: var-declaration
+        - name: blank-imports        # forbid unused/blank imports
+        - name: context-keys-type    # require custom type for context keys
+        - name: time-equal           # use time.Time.Equal instead of ==
+        - name: time-naming          # time vars/functions follow time naming
+        - name: error-return         # error should be last return value
+        - name: error-strings        # error strings lowercased/no punctuation
+        - name: error-naming         # error vars/types follow Err*/*Error
+        - name: if-return            # avoid else after return; early exits
+        - name: increment-decrement  # prefer += 1 instead of ++/--
+        - name: var-declaration      # prefer short var declarations where apt
+        - name: unused-parameter     # unused params must be named _
+        - name: unreachable-code     # detect dead code after returns/panics
+        - name: unused-receiver      # remove receivers that aren’t used
+        - name: early-return         # flatten nested conditionals
+        - name: modifies-parameter   # avoid mutating function parameters
+        - name: confusing-naming     # flag names differing only by case/number
+        - name: duplicated-imports   # prevent duplicate imports
 
         # Disabled (too noisy or stylistic)
         - name: package-comments
@@ -192,8 +199,6 @@ linters:
           disabled: true
         - name: context-as-argument
           disabled: true
-
-    gocritic:
 
     nakedret:
       max-func-lines: 30

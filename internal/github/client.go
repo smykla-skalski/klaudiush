@@ -205,7 +205,7 @@ func (c *SDKClient) GetTags(ctx context.Context, owner, repo string) ([]*Tag, er
 }
 
 // handleError converts GitHub API errors to our error types
-func (c *SDKClient) handleError(resp *github.Response, err error) error {
+func (*SDKClient) handleError(resp *github.Response, err error) error {
 	if resp == nil {
 		return err
 	}

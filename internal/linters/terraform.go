@@ -67,7 +67,7 @@ func (t *RealTerraformFormatter) CheckFormat(ctx context.Context, content string
 }
 
 // parseDiffOutput parses terraform fmt diff output into findings
-func (t *RealTerraformFormatter) parseDiffOutput(output string) []LintFinding {
+func (*RealTerraformFormatter) parseDiffOutput(output string) []LintFinding {
 	if output == "" {
 		return []LintFinding{}
 	}

@@ -33,7 +33,7 @@ func NewMarkdownLinter(runner execpkg.CommandRunner) *RealMarkdownLinter {
 
 // Lint validates Markdown content using custom rules only
 // Note: markdownlint CLI integration is disabled for backward compatibility
-func (m *RealMarkdownLinter) Lint(ctx context.Context, content string) *LintResult {
+func (*RealMarkdownLinter) Lint(_ context.Context, content string) *LintResult {
 	// Run custom markdown analysis
 	analysisResult := validators.AnalyzeMarkdown(content)
 

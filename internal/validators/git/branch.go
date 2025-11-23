@@ -56,7 +56,7 @@ var (
 )
 
 // Validate validates git branch names.
-func (v *BranchValidator) Validate(ctx context.Context, hookCtx *hook.Context) *validator.Result {
+func (v *BranchValidator) Validate(_ context.Context, hookCtx *hook.Context) *validator.Result {
 	log := v.Logger()
 	log.Debug("validating git branch command")
 
@@ -138,7 +138,7 @@ func (v *BranchValidator) validateBranch(gitCmd *parser.GitCommand) *validator.R
 }
 
 // createSpaceError creates an error for branch names with spaces.
-func (v *BranchValidator) createSpaceError() *validator.Result {
+func (*BranchValidator) createSpaceError() *validator.Result {
 	message := templates.MustExecute(templates.BranchSpaceErrorTemplate, nil)
 	return validator.Fail(message)
 }
@@ -158,7 +158,7 @@ func (v *BranchValidator) extractBranchName(gitCmd *parser.GitCommand) (string, 
 }
 
 // extractCheckoutBranchName extracts the branch name from git checkout -b.
-func (v *BranchValidator) extractCheckoutBranchName(gitCmd *parser.GitCommand) (string, bool) {
+func (*BranchValidator) extractCheckoutBranchName(gitCmd *parser.GitCommand) (string, bool) {
 	// For 'git checkout -b <branch>', the branch name is after -b.
 	for i, flag := range gitCmd.Flags {
 		if flag == "-b" && i+1 < len(gitCmd.Flags) {
@@ -183,7 +183,7 @@ func (v *BranchValidator) extractCheckoutBranchName(gitCmd *parser.GitCommand) (
 }
 
 // extractBranchCommandName extracts the branch name from git branch.
-func (v *BranchValidator) extractBranchCommandName(gitCmd *parser.GitCommand) (string, bool) {
+func (*BranchValidator) extractBranchCommandName(gitCmd *parser.GitCommand) (string, bool) {
 	// For 'git branch <branch>', the branch name is the first arg.
 	if len(gitCmd.Args) > 0 {
 		branchName := gitCmd.Args[0]

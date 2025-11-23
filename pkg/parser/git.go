@@ -125,16 +125,16 @@ func parseCombinedFlags(combined string, args []string, idx int, gitCmd *GitComm
 		}
 
 		// This flag takes a value
-		if j == len(flags)-1 {
-			// Last flag: consume next arg if available
-			if idx+1 < len(args) {
-				gitCmd.FlagMap[flag] = args[idx+1]
-				return idx + skipFlagAndValue
-			}
-		} else {
+		if j != len(flags)-1 {
 			// Not last flag: rest of string is the inline value
 			gitCmd.FlagMap[flag] = flags[j+1:]
 			return idx + skipFlagOnly
+		}
+
+		// Last flag: consume next arg if available
+		if idx+1 < len(args) {
+			gitCmd.FlagMap[flag] = args[idx+1]
+			return idx + skipFlagAndValue
 		}
 	}
 

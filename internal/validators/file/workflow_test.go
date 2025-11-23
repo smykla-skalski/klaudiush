@@ -20,16 +20,16 @@ type mockGitHubClient struct {
 	authenticated bool
 }
 
-func (m *mockGitHubClient) GetLatestRelease(
-	ctx context.Context,
-	owner, repo string,
+func (*mockGitHubClient) GetLatestRelease(
+	_ context.Context,
+	_, _ string,
 ) (*github.Release, error) {
 	return nil, github.ErrNoReleases
 }
 
-func (m *mockGitHubClient) GetTags(
-	ctx context.Context,
-	owner, repo string,
+func (*mockGitHubClient) GetTags(
+	_ context.Context,
+	_, _ string,
 ) ([]*github.Tag, error) {
 	return nil, github.ErrNoTags
 }

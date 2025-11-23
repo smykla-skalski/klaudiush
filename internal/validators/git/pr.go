@@ -80,7 +80,7 @@ func (v *PRValidator) Validate(ctx context.Context, hookCtx *hook.Context) *vali
 }
 
 // isGHPRCreate checks if a command is gh pr create
-func (v *PRValidator) isGHPRCreate(cmd *parser.Command) bool {
+func (*PRValidator) isGHPRCreate(cmd *parser.Command) bool {
 	if cmd.Name != ghCommand {
 		return false
 	}
@@ -144,7 +144,7 @@ func (v *PRValidator) extractPRData(command string) PRData {
 }
 
 // parseLabels splits a comma-separated label string
-func (v *PRValidator) parseLabels(labelStr string) []string {
+func (*PRValidator) parseLabels(labelStr string) []string {
 	if labelStr == "" {
 		return []string{}
 	}
@@ -253,7 +253,7 @@ func validateBaseBranchLabels(data PRData, allErrors *[]string) {
 }
 
 // buildResult builds the final validation result
-func (v *PRValidator) buildResult(allErrors, allWarnings []string, title string) *validator.Result {
+func (*PRValidator) buildResult(allErrors, allWarnings []string, title string) *validator.Result {
 	if len(allErrors) > 0 {
 		message := "PR validation failed\n\n" + strings.Join(allErrors, "\n")
 		if len(allWarnings) > 0 {
@@ -274,7 +274,7 @@ func (v *PRValidator) buildResult(allErrors, allWarnings []string, title string)
 }
 
 // checkCILabelHeuristics suggests ci/ labels based on PR type and content
-func (v *PRValidator) checkCILabelHeuristics(data PRData, prType string) []string {
+func (*PRValidator) checkCILabelHeuristics(data PRData, prType string) []string {
 	warnings := []string{}
 
 	shouldSkipTests := false

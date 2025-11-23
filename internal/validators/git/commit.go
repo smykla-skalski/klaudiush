@@ -37,7 +37,7 @@ func NewCommitValidator(log logger.Logger, gitRunner GitRunner) *CommitValidator
 }
 
 // Validate checks git commit command and message
-func (v *CommitValidator) Validate(ctx context.Context, hookCtx *hook.Context) *validator.Result {
+func (v *CommitValidator) Validate(_ context.Context, hookCtx *hook.Context) *validator.Result {
 	log := v.Logger()
 	log.Debug("Running git commit validation")
 
@@ -96,7 +96,7 @@ func (v *CommitValidator) Validate(ctx context.Context, hookCtx *hook.Context) *
 }
 
 // checkFlags validates that the commit command has -sS flags
-func (v *CommitValidator) checkFlags(gitCmd *parser.GitCommand) *validator.Result {
+func (*CommitValidator) checkFlags(gitCmd *parser.GitCommand) *validator.Result {
 	// Check for -s (signoff) and -S (GPG sign)
 	hasSignoff := gitCmd.HasFlag("-s") || gitCmd.HasFlag("--signoff")
 	hasGPGSign := gitCmd.HasFlag("-S") || gitCmd.HasFlag("--gpg-sign")
@@ -179,7 +179,7 @@ func (v *CommitValidator) getStatusCounts() (modified, untracked int) {
 // hasGitAddInChain checks if there's a git add command in the command chain
 // This is important because in PreToolUse hooks, the add hasn't executed yet,
 // so we shouldn't check the staging area.
-func (v *CommitValidator) hasGitAddInChain(commands []parser.Command) bool {
+func (*CommitValidator) hasGitAddInChain(commands []parser.Command) bool {
 	for _, cmd := range commands {
 		if cmd.Name == gitCommand && len(cmd.Args) > 0 && cmd.Args[0] == addSubcommand {
 			return true

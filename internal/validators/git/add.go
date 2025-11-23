@@ -40,7 +40,7 @@ func NewAddValidator(log logger.Logger, gitRunner GitRunner) *AddValidator {
 }
 
 // Validate checks if git add command includes files from tmp/ directory
-func (v *AddValidator) Validate(ctx context.Context, hookCtx *hook.Context) *validator.Result {
+func (v *AddValidator) Validate(_ context.Context, hookCtx *hook.Context) *validator.Result {
 	log := v.Logger()
 	log.Debug("Running git add validation")
 
@@ -107,7 +107,7 @@ func (v *AddValidator) Validate(ctx context.Context, hookCtx *hook.Context) *val
 }
 
 // extractFilePaths extracts file paths from git add arguments, excluding flags
-func (v *AddValidator) extractFilePaths(args []string) []string {
+func (*AddValidator) extractFilePaths(args []string) []string {
 	files := make([]string, 0, len(args))
 	skipNext := false
 

@@ -24,7 +24,7 @@ func NewToolChecker() *toolChecker {
 }
 
 // IsAvailable checks if a tool is available in PATH.
-func (t *toolChecker) IsAvailable(tool string) bool {
+func (*toolChecker) IsAvailable(tool string) bool {
 	_, err := exec.LookPath(tool)
 	return err == nil
 }

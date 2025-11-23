@@ -28,7 +28,7 @@ func NewActionLinter(runner execpkg.CommandRunner) *RealActionLinter {
 }
 
 // Lint validates GitHub Actions workflow file content
-func (a *RealActionLinter) Lint(ctx context.Context, content string, filePath string) *LintResult {
+func (a *RealActionLinter) Lint(ctx context.Context, content string, _ string) *LintResult {
 	// Check if actionlint is available
 	if !a.toolChecker.IsAvailable("actionlint") {
 		return &LintResult{

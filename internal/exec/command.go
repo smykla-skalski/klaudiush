@@ -62,7 +62,7 @@ func NewCommandRunner(defaultTimeout time.Duration) *commandRunner {
 }
 
 // Run executes a command and returns the result.
-func (r *commandRunner) Run(
+func (*commandRunner) Run(
 	ctx context.Context,
 	name string,
 	args ...string,
@@ -93,7 +93,7 @@ func (r *commandRunner) Run(
 }
 
 // RunWithStdin executes a command with stdin input.
-func (r *commandRunner) RunWithStdin(
+func (*commandRunner) RunWithStdin(
 	ctx context.Context,
 	stdin io.Reader,
 	name string,

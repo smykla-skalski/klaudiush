@@ -13,7 +13,7 @@ func NewRepositoryAdapter(repo Repository) *RepositoryAdapter {
 
 // NewSDKRunner creates a Runner backed by the go-git SDK
 //
-//nolint:ireturn // Factory function intentionally returns interface
+//nolint:ireturn,nolintlint // Factory function intentionally returns interface
 func NewSDKRunner() (Runner, error) {
 	repo, err := DiscoverRepository()
 	if err != nil {

@@ -21,7 +21,7 @@ func NewTempFileManager() *tempFileManager {
 }
 
 // Create creates a temporary file with the given pattern and content.
-func (m *tempFileManager) Create(pattern, content string) (string, func(), error) {
+func (*tempFileManager) Create(pattern, content string) (string, func(), error) {
 	tmpFile, err := os.CreateTemp("", pattern)
 	if err != nil {
 		return "", nil, fmt.Errorf("creating temp file: %w", err)

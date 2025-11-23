@@ -74,7 +74,7 @@ var _ = Describe("ShellChecker", func() {
 	Describe("Check", func() {
 		Context("when shellcheck passes", func() {
 			It("should return success", func() {
-				mockRunner.runFunc = func(ctx context.Context, name string, args ...string) execpkg.CommandResult {
+				mockRunner.runFunc = func(_ context.Context, name string, args ...string) execpkg.CommandResult {
 					Expect(name).To(Equal("shellcheck"))
 					Expect(args).To(HaveLen(1))
 
@@ -98,7 +98,7 @@ var _ = Describe("ShellChecker", func() {
 			It("should return failure with output", func() {
 				shellcheckOutput := "script.sh:2:1: warning: Use $(...) instead of legacy backticks"
 
-				mockRunner.runFunc = func(ctx context.Context, name string, args ...string) execpkg.CommandResult {
+				mockRunner.runFunc = func(_ context.Context, _ string, _ ...string) execpkg.CommandResult {
 					return execpkg.CommandResult{
 						Stdout:   shellcheckOutput,
 						Stderr:   "",
@@ -118,7 +118,7 @@ var _ = Describe("ShellChecker", func() {
 			It("should include stderr in output when stdout is empty", func() {
 				stderrOutput := "shellcheck: error parsing script"
 
-				mockRunner.runFunc = func(ctx context.Context, name string, args ...string) execpkg.CommandResult {
+				mockRunner.runFunc = func(_ context.Context, _ string, _ ...string) execpkg.CommandResult {
 					return execpkg.CommandResult{
 						Stdout:   "",
 						Stderr:   stderrOutput,

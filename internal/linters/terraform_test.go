@@ -51,7 +51,7 @@ var _ = Describe("TerraformFormatter", func() {
 	Describe("CheckFormat", func() {
 		Context("when terraform fmt succeeds", func() {
 			It("should return success", func() {
-				mockRunner.runFunc = func(ctx context.Context, name string, args ...string) execpkg.CommandResult {
+				mockRunner.runFunc = func(_ context.Context, name string, args ...string) execpkg.CommandResult {
 					// Expect either tofu or terraform
 					Expect(name).To(Or(Equal("tofu"), Equal("terraform")))
 					Expect(args).To(ContainElements("fmt", "-check", "-diff"))
@@ -84,7 +84,7 @@ var _ = Describe("TerraformFormatter", func() {
 +  ami = "ami-12345"
  }`
 
-				mockRunner.runFunc = func(ctx context.Context, name string, args ...string) execpkg.CommandResult {
+				mockRunner.runFunc = func(_ context.Context, _ string, _ ...string) execpkg.CommandResult {
 					return execpkg.CommandResult{
 						Stdout:   diffOutput,
 						Stderr:   "",
@@ -108,7 +108,7 @@ ami = "ami-12345"
 			It("should include stderr in output", func() {
 				stderrOutput := "Error: Invalid Terraform configuration"
 
-				mockRunner.runFunc = func(ctx context.Context, name string, args ...string) execpkg.CommandResult {
+				mockRunner.runFunc = func(_ context.Context, _ string, _ ...string) execpkg.CommandResult {
 					return execpkg.CommandResult{
 						Stdout:   "",
 						Stderr:   stderrOutput,

@@ -169,7 +169,7 @@ func (l *FileLogger) writeKeyValues(builder *strings.Builder, kvs []any) {
 }
 
 // quote escapes and quotes a string value.
-func (l *FileLogger) quote(s string) string {
+func (*FileLogger) quote(s string) string {
 	s = strings.ReplaceAll(s, "\\", "\\\\")
 	s = strings.ReplaceAll(s, "\"", "\\\"")
 	s = strings.ReplaceAll(s, "\n", "\\n")
@@ -188,13 +188,13 @@ func NewNoOpLogger() *NoOpLogger {
 }
 
 // Debug does nothing.
-func (n *NoOpLogger) Debug(string, ...any) {}
+func (*NoOpLogger) Debug(string, ...any) {}
 
 // Info does nothing.
-func (n *NoOpLogger) Info(string, ...any) {}
+func (*NoOpLogger) Info(string, ...any) {}
 
 // Error does nothing.
-func (n *NoOpLogger) Error(string, ...any) {}
+func (*NoOpLogger) Error(string, ...any) {}
 
 // With returns the same NoOpLogger.
 //

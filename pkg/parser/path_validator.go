@@ -75,7 +75,7 @@ func (v *PathValidator) getSuggestion(path string) string {
 }
 
 // getLocalPath converts a /tmp path to a local tmp/ path.
-func (v *PathValidator) getLocalPath(path string) string {
+func (*PathValidator) getLocalPath(path string) string {
 	// Extract filename from path
 	filename := filepath.Base(path)
 
