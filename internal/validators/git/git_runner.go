@@ -2,9 +2,10 @@ package git
 
 import (
 	"context"
-	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/smykla-labs/claude-hooks/internal/exec"
 )
 
 // GitRunner defines the interface for git operations
@@ -39,12 +40,14 @@ type GitRunner interface {
 
 // RealGitRunner implements GitRunner using actual git commands
 type RealGitRunner struct {
+	runner  exec.CommandRunner
 	timeout time.Duration
 }
 
 // NewRealGitRunner creates a new RealGitRunner instance
 func NewRealGitRunner() *RealGitRunner {
 	return &RealGitRunner{
+		runner:  exec.NewCommandRunner(gitCommandTimeout),
 		timeout: gitCommandTimeout,
 	}
 }
@@ -54,8 +57,8 @@ func (r *RealGitRunner) IsInRepo() bool {
 	ctx, cancel := context.WithTimeout(context.Background(), r.timeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "git", "rev-parse", "--git-dir")
-	return cmd.Run() == nil
+	_, err := r.runner.Run(ctx, "git", "rev-parse", "--git-dir")
+	return err == nil
 }
 
 // GetStagedFiles returns the list of staged files
@@ -63,18 +66,12 @@ func (r *RealGitRunner) GetStagedFiles() ([]string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), r.timeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "git", "diff", "--cached", "--name-only")
-	output, err := cmd.Output()
+	result, err := r.runner.Run(ctx, "git", "diff", "--cached", "--name-only")
 	if err != nil {
 		return nil, err
 	}
 
-	files := strings.TrimSpace(string(output))
-	if files == "" {
-		return []string{}, nil
-	}
-
-	return strings.Split(files, "\n"), nil
+	return parseLines(result.Stdout), nil
 }
 
 // GetModifiedFiles returns the list of modified but unstaged files
@@ -82,18 +79,12 @@ func (r *RealGitRunner) GetModifiedFiles() ([]string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), r.timeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "git", "diff", "--name-only")
-	output, err := cmd.Output()
+	result, err := r.runner.Run(ctx, "git", "diff", "--name-only")
 	if err != nil {
 		return nil, err
 	}
 
-	files := strings.TrimSpace(string(output))
-	if files == "" {
-		return []string{}, nil
-	}
-
-	return strings.Split(files, "\n"), nil
+	return parseLines(result.Stdout), nil
 }
 
 // GetUntrackedFiles returns the list of untracked files
@@ -101,18 +92,12 @@ func (r *RealGitRunner) GetUntrackedFiles() ([]string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), r.timeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "git", "ls-files", "--others", "--exclude-standard")
-	output, err := cmd.Output()
+	result, err := r.runner.Run(ctx, "git", "ls-files", "--others", "--exclude-standard")
 	if err != nil {
 		return nil, err
 	}
 
-	files := strings.TrimSpace(string(output))
-	if files == "" {
-		return []string{}, nil
-	}
-
-	return strings.Split(files, "\n"), nil
+	return parseLines(result.Stdout), nil
 }
 
 // GetRepoRoot returns the git repository root directory
@@ -120,13 +105,12 @@ func (r *RealGitRunner) GetRepoRoot() (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), r.timeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "git", "rev-parse", "--show-toplevel")
-	output, err := cmd.Output()
+	result, err := r.runner.Run(ctx, "git", "rev-parse", "--show-toplevel")
 	if err != nil {
 		return "", err
 	}
 
-	return strings.TrimSpace(string(output)), nil
+	return strings.TrimSpace(result.Stdout), nil
 }
 
 // GetRemoteURL returns the URL for the given remote
@@ -134,13 +118,12 @@ func (r *RealGitRunner) GetRemoteURL(remote string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), r.timeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "git", "remote", "get-url", remote)
-	output, err := cmd.Output()
+	result, err := r.runner.Run(ctx, "git", "remote", "get-url", remote)
 	if err != nil {
 		return "", err
 	}
 
-	return strings.TrimSpace(string(output)), nil
+	return strings.TrimSpace(result.Stdout), nil
 }
 
 // GetCurrentBranch returns the current branch name
@@ -148,13 +131,12 @@ func (r *RealGitRunner) GetCurrentBranch() (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), r.timeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "git", "symbolic-ref", "--short", "HEAD")
-	output, err := cmd.Output()
+	result, err := r.runner.Run(ctx, "git", "symbolic-ref", "--short", "HEAD")
 	if err != nil {
 		return "", err
 	}
 
-	return strings.TrimSpace(string(output)), nil
+	return strings.TrimSpace(result.Stdout), nil
 }
 
 // GetBranchRemote returns the tracking remote for the given branch
@@ -163,14 +145,12 @@ func (r *RealGitRunner) GetBranchRemote(branch string) (string, error) {
 	defer cancel()
 
 	configKey := "branch." + branch + ".remote"
-	//nolint:gosec // configKey is constructed from trusted input, not user-provided
-	cmd := exec.CommandContext(ctx, "git", "config", configKey)
-	output, err := cmd.Output()
+	result, err := r.runner.Run(ctx, "git", "config", configKey)
 	if err != nil {
 		return "", err
 	}
 
-	return strings.TrimSpace(string(output)), nil
+	return strings.TrimSpace(result.Stdout), nil
 }
 
 // GetRemotes returns the list of all remotes with their URLs
@@ -178,14 +158,13 @@ func (r *RealGitRunner) GetRemotes() (map[string]string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), r.timeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "git", "remote", "-v")
-	output, err := cmd.Output()
+	result, err := r.runner.Run(ctx, "git", "remote", "-v")
 	if err != nil {
 		return nil, err
 	}
 
 	remotes := make(map[string]string)
-	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	lines := strings.Split(strings.TrimSpace(result.Stdout), "\n")
 	for _, line := range lines {
 		if line == "" {
 			continue
@@ -203,4 +182,13 @@ func (r *RealGitRunner) GetRemotes() (map[string]string, error) {
 	}
 
 	return remotes, nil
+}
+
+// parseLines splits output by newlines and filters empty lines
+func parseLines(output string) []string {
+	output = strings.TrimSpace(output)
+	if output == "" {
+		return []string{}
+	}
+	return strings.Split(output, "\n")
 }

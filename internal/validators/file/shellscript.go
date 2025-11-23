@@ -1,14 +1,13 @@
 package file
 
 import (
-	"bytes"
 	"context"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
 
+	execpkg "github.com/smykla-labs/claude-hooks/internal/exec"
 	"github.com/smykla-labs/claude-hooks/internal/validator"
 	"github.com/smykla-labs/claude-hooks/pkg/hook"
 	"github.com/smykla-labs/claude-hooks/pkg/logger"
@@ -21,12 +20,16 @@ const (
 // ShellScriptValidator validates shell scripts using shellcheck.
 type ShellScriptValidator struct {
 	validator.BaseValidator
+	toolChecker execpkg.ToolChecker
+	runner      execpkg.CommandRunner
 }
 
 // NewShellScriptValidator creates a new ShellScriptValidator.
 func NewShellScriptValidator(log logger.Logger) *ShellScriptValidator {
 	return &ShellScriptValidator{
 		BaseValidator: *validator.NewBaseValidator("validate-shellscript", log),
+		toolChecker:   execpkg.NewToolChecker(),
+		runner:        execpkg.NewCommandRunner(shellCheckTimeout),
 	}
 }
 
@@ -36,7 +39,7 @@ func (v *ShellScriptValidator) Validate(ctx *hook.Context) *validator.Result {
 	log.Debug("validating shell script")
 
 	// Check if shellcheck is available
-	if !v.isShellCheckAvailable() {
+	if !v.toolChecker.IsAvailable("shellcheck") {
 		log.Debug("shellcheck not available, skipping validation")
 		return validator.Pass()
 	}
@@ -56,12 +59,6 @@ func (v *ShellScriptValidator) Validate(ctx *hook.Context) *validator.Result {
 
 	// Run shellcheck
 	return v.runShellCheck(filePath, ctx.ToolInput.Content)
-}
-
-// isShellCheckAvailable checks if shellcheck is installed.
-func (v *ShellScriptValidator) isShellCheckAvailable() bool {
-	_, err := exec.LookPath("shellcheck")
-	return err == nil
 }
 
 // isFishScript checks if the script is a Fish shell script.
@@ -106,23 +103,16 @@ func (v *ShellScriptValidator) runShellCheckOnContent(content string) *validator
 	ctx, cancel := context.WithTimeout(context.Background(), shellCheckTimeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "shellcheck", "-")
-	cmd.Stdin = strings.NewReader(content)
-
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	err := cmd.Run()
+	result, err := v.runner.RunWithStdin(ctx, strings.NewReader(content), "shellcheck", "-")
 	if err == nil {
 		log.Debug("shellcheck passed")
 		return validator.Pass()
 	}
 
 	// Parse shellcheck output
-	output := stdout.String()
+	output := result.Stdout
 	if output == "" {
-		output = stderr.String()
+		output = result.Stderr
 	}
 
 	log.Debug("shellcheck failed", "output", output)
@@ -137,22 +127,16 @@ func (v *ShellScriptValidator) runShellCheckOnFile(filePath string) *validator.R
 	ctx, cancel := context.WithTimeout(context.Background(), shellCheckTimeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "shellcheck", filePath)
-
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	err := cmd.Run()
+	result, err := v.runner.Run(ctx, "shellcheck", filePath)
 	if err == nil {
 		log.Debug("shellcheck passed", "file", filePath)
 		return validator.Pass()
 	}
 
 	// Parse shellcheck output
-	output := stdout.String()
+	output := result.Stdout
 	if output == "" {
-		output = stderr.String()
+		output = result.Stderr
 	}
 
 	log.Debug("shellcheck failed", "file", filePath, "output", output)

@@ -61,6 +61,10 @@ task deps
 task verify
 ```
 
+**Before Committing Code:**
+
+Always run `task lint test` to ensure code quality and test coverage.
+
 ## Architecture
 
 ### Core Flow
