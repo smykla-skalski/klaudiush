@@ -33,7 +33,7 @@ func NewCLIGitRunner() *CLIGitRunner {
 // Falls back to CLI-based implementation if SDK initialization fails or env var not set
 // This function always returns a valid GitRunner instance
 //
-//nolint:ireturn // Factory function intentionally returns interface
+//nolint:ireturn,nolintlint // Factory function intentionally returns interface
 func NewGitRunner() GitRunner {
 	useSDK := os.Getenv("CLAUDE_HOOKS_USE_SDK_GIT")
 	if useSDK == "true" || useSDK == "1" {

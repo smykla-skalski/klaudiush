@@ -98,8 +98,6 @@ func (v *TerraformValidator) Validate(
 }
 
 // getContent extracts terraform content from context
-//
-//nolint:dupl // Same pattern used across validators, extraction would add complexity
 func (v *TerraformValidator) getContent(ctx *hook.Context) (string, error) {
 	log := v.Logger()
 
