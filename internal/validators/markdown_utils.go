@@ -12,6 +12,12 @@ const (
 	maxTruncateLength = 60
 )
 
+// MarkdownState represents the parsing state at a given position
+type MarkdownState struct {
+	InCodeBlock bool
+	// Future: InComment, ListDepth, etc.
+}
+
 // MarkdownAnalysisResult contains markdown validation warnings
 type MarkdownAnalysisResult struct {
 	Warnings []string
@@ -34,8 +40,33 @@ var (
 	emptyLineRegex = regexp.MustCompile(`^[[:space:]]*$`)
 )
 
-// AnalyzeMarkdown performs line-by-line markdown analysis and returns warnings
-func AnalyzeMarkdown(content string) MarkdownAnalysisResult {
+// DetectMarkdownState scans content up to a given line to determine the state.
+// This allows fragment validation to start with the correct context.
+func DetectMarkdownState(content string, upToLine int) MarkdownState {
+	state := MarkdownState{InCodeBlock: false}
+
+	if upToLine <= 0 {
+		return state
+	}
+
+	scanner := bufio.NewScanner(strings.NewReader(content))
+	lineNum := 0
+
+	for scanner.Scan() && lineNum < upToLine {
+		line := scanner.Text()
+		lineNum++
+
+		if isCodeBlockMarker(line) {
+			state.InCodeBlock = !state.InCodeBlock
+		}
+	}
+
+	return state
+}
+
+// AnalyzeMarkdown performs line-by-line markdown analysis and returns warnings.
+// If initialState is provided, it uses that as the starting state (for fragment validation).
+func AnalyzeMarkdown(content string, initialState *MarkdownState) MarkdownAnalysisResult {
 	result := MarkdownAnalysisResult{Warnings: []string{}}
 
 	if content == "" {
@@ -46,7 +77,12 @@ func AnalyzeMarkdown(content string) MarkdownAnalysisResult {
 	lineNum := 0
 	prevLine := ""
 	prevPrevLine := ""
+
+	// Use initial state if provided, otherwise start fresh
 	inCodeBlock := false
+	if initialState != nil {
+		inCodeBlock = initialState.InCodeBlock
+	}
 
 	var lastList *listContext
 

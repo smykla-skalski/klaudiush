@@ -30,7 +30,7 @@ Some text
 code
 ` + "```"
 
-				result := linter.Lint(ctx, content)
+				result := linter.Lint(ctx, content, nil)
 
 				// Should fail due to custom rules
 				Expect(result).NotTo(BeNil())
@@ -51,7 +51,7 @@ Some text
 code
 ` + "```"
 
-				result := linter.Lint(ctx, content)
+				result := linter.Lint(ctx, content, nil)
 
 				Expect(result).NotTo(BeNil())
 				Expect(result.Success).To(BeTrue())

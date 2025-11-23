@@ -182,7 +182,7 @@ func (*CommitValidator) validateMarkdownInBody(lines []string) []string {
 	}
 
 	body := strings.Join(lines[bodyStartIdx:], "\n")
-	markdownResult := validators.AnalyzeMarkdown(body)
+	markdownResult := validators.AnalyzeMarkdown(body, nil)
 
 	return markdownResult.Warnings
 }

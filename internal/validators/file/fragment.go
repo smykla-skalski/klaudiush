@@ -71,3 +71,27 @@ func ExtractEditFragment(
 
 	return fragment
 }
+
+// getFragmentStartLine returns the line number where the fragment starts (0-indexed).
+// This accounts for context lines added before the actual edit location.
+func getFragmentStartLine(content, oldStr string, contextLines int) int {
+	idx := strings.Index(content, oldStr)
+	if idx == -1 {
+		return 0
+	}
+
+	lines := strings.Split(content, "\n")
+	charCount := 0
+	startLine := 0
+
+	for i, line := range lines {
+		if charCount+len(line)+1 > idx { // +1 for newline
+			startLine = i
+			break
+		}
+
+		charCount += len(line) + 1
+	}
+
+	return max(0, startLine-contextLines)
+}

@@ -14,7 +14,7 @@ var ErrMarkdownCustomRules = errors.New("custom markdown rules validation failed
 
 // MarkdownLinter validates Markdown files using markdownlint
 type MarkdownLinter interface {
-	Lint(ctx context.Context, content string) *LintResult
+	Lint(ctx context.Context, content string, initialState *validators.MarkdownState) *LintResult
 }
 
 // RealMarkdownLinter implements MarkdownLinter using the markdownlint CLI tool
@@ -33,9 +33,13 @@ func NewMarkdownLinter(runner execpkg.CommandRunner) *RealMarkdownLinter {
 
 // Lint validates Markdown content using custom rules only
 // Note: markdownlint CLI integration is disabled for backward compatibility
-func (*RealMarkdownLinter) Lint(_ context.Context, content string) *LintResult {
+func (*RealMarkdownLinter) Lint(
+	_ context.Context,
+	content string,
+	initialState *validators.MarkdownState,
+) *LintResult {
 	// Run custom markdown analysis
-	analysisResult := validators.AnalyzeMarkdown(content)
+	analysisResult := validators.AnalyzeMarkdown(content, initialState)
 
 	if len(analysisResult.Warnings) > 0 {
 		output := strings.Join(analysisResult.Warnings, "\n")

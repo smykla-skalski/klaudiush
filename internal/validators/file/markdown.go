@@ -10,6 +10,7 @@ import (
 
 	"github.com/smykla-labs/claude-hooks/internal/linters"
 	"github.com/smykla-labs/claude-hooks/internal/validator"
+	"github.com/smykla-labs/claude-hooks/internal/validators"
 	"github.com/smykla-labs/claude-hooks/pkg/hook"
 	"github.com/smykla-labs/claude-hooks/pkg/logger"
 )
@@ -45,7 +46,7 @@ func NewMarkdownValidator(linter linters.MarkdownLinter, log logger.Logger) *Mar
 func (v *MarkdownValidator) Validate(ctx context.Context, hookCtx *hook.Context) *validator.Result {
 	log := v.Logger()
 
-	content, err := v.getContent(hookCtx)
+	content, initialState, err := v.getContentWithState(hookCtx)
 	if err != nil {
 		log.Debug("skipping markdown validation", "error", err)
 		return validator.Pass()
@@ -58,7 +59,7 @@ func (v *MarkdownValidator) Validate(ctx context.Context, hookCtx *hook.Context)
 	lintCtx, cancel := context.WithTimeout(ctx, markdownTimeout)
 	defer cancel()
 
-	result := v.linter.Lint(lintCtx, content)
+	result := v.linter.Lint(lintCtx, content, initialState)
 
 	if !result.Success {
 		message := "Markdown formatting errors"
@@ -72,15 +73,15 @@ func (v *MarkdownValidator) Validate(ctx context.Context, hookCtx *hook.Context)
 	return validator.Pass()
 }
 
-// getContent extracts markdown content from context
-//
-//nolint:dupl // Same pattern used across validators, extraction would add complexity
-func (v *MarkdownValidator) getContent(ctx *hook.Context) (string, error) {
+// getContentWithState extracts markdown content and detects initial state from context
+func (v *MarkdownValidator) getContentWithState(
+	ctx *hook.Context,
+) (string, *validators.MarkdownState, error) {
 	log := v.Logger()
 
 	// Try to get content from tool input (Write operation)
 	if ctx.ToolInput.Content != "" {
-		return ctx.ToolInput.Content, nil
+		return ctx.ToolInput.Content, nil, nil
 	}
 
 	// For Edit operations in PreToolUse, validate only the changed fragment with context
@@ -88,7 +89,7 @@ func (v *MarkdownValidator) getContent(ctx *hook.Context) (string, error) {
 	if ctx.EventType == hook.PreToolUse && ctx.ToolName == hook.Edit {
 		filePath := ctx.GetFilePath()
 		if filePath == "" {
-			return "", errNoContent
+			return "", nil, errNoContent
 		}
 
 		oldStr := ctx.ToolInput.OldString
@@ -96,7 +97,7 @@ func (v *MarkdownValidator) getContent(ctx *hook.Context) (string, error) {
 
 		if oldStr == "" || newStr == "" {
 			log.Debug("missing old_string or new_string in edit operation")
-			return "", errNoContent
+			return "", nil, errNoContent
 		}
 
 		// Read original file to extract context around the edit
@@ -104,7 +105,7 @@ func (v *MarkdownValidator) getContent(ctx *hook.Context) (string, error) {
 		originalContent, err := os.ReadFile(filePath)
 		if err != nil {
 			log.Debug("failed to read file for edit validation", "file", filePath, "error", err)
-			return "", err
+			return "", nil, err
 		}
 
 		// Extract fragment with context lines around the edit
@@ -117,13 +118,22 @@ func (v *MarkdownValidator) getContent(ctx *hook.Context) (string, error) {
 		)
 		if fragment == "" {
 			log.Debug("could not extract edit fragment, skipping validation")
-			return "", errNoContent
+			return "", nil, errNoContent
 		}
+
+		// Detect markdown state at fragment start
+		fragmentStartLine := getFragmentStartLine(string(originalContent), oldStr, contextLines)
+		state := validators.DetectMarkdownState(string(originalContent), fragmentStartLine)
+
+		log.Debug("fragment initial state",
+			"start_line", fragmentStartLine,
+			"in_code_block", state.InCodeBlock,
+		)
 
 		fragmentLineCount := len(strings.Split(fragment, "\n"))
 		log.Debug("validating edit fragment with context", "fragment_lines", fragmentLineCount)
 
-		return fragment, nil
+		return fragment, &state, nil
 	}
 
 	// Try to get from file path (Edit or PostToolUse)
@@ -131,8 +141,8 @@ func (v *MarkdownValidator) getContent(ctx *hook.Context) (string, error) {
 	if filePath != "" {
 		// In PostToolUse, we could read the file, but for now skip
 		// as the Bash version doesn't handle this case well either
-		return "", errFileValidationNotImpl
+		return "", nil, errFileValidationNotImpl
 	}
 
-	return "", errNoContent
+	return "", nil, errNoContent
 }

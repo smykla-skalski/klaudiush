@@ -184,7 +184,7 @@ func (v *PRValidator) validatePR(ctx context.Context, data PRData) *validator.Re
 		allErrors = append(allErrors, mdResult.Errors...)
 
 		// Internal markdown validation (code block indentation, empty lines, etc.)
-		internalMdResult := validators.AnalyzeMarkdown(data.Body)
+		internalMdResult := validators.AnalyzeMarkdown(data.Body, nil)
 		allErrors = append(allErrors, internalMdResult.Warnings...)
 	}
 
