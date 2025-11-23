@@ -80,6 +80,8 @@ linters:
     - unparam        # Reports unused function parameters
     - usestdlibvars  # Detect possibility to use stdlib variables/constants
     - wastedassign   # Finds wasted assignment statements
+    - modernize      # Modernize Go code with 'any' and other features
+    - err113         # Enforce sentinel error pattern
 
   exclusions:
     rules:
@@ -205,6 +207,8 @@ linters:
     errcheck:
       check-type-assertions: true
       check-blank: false
+
+    modernize:
 
 formatters:
   enable:
