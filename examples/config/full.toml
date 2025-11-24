@@ -53,6 +53,10 @@ require_changelog = false
 check_ci_labels = false
 require_body = false
 
+# Markdownlint rules to disable for PR body validation
+# Default: ["MD013", "MD034", "MD041"]
+markdown_disabled_rules = ["MD013", "MD034", "MD041"]
+
 # Git Branch Validator
 [validators.git.branch]
 enabled = true

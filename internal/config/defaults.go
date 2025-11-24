@@ -186,6 +186,7 @@ func DefaultPRValidatorConfig() *config.PRValidatorConfig {
 			"style",
 			"test",
 		},
+		MarkdownDisabledRules: []string{"MD013", "MD034", "MD041"},
 	}
 }
 

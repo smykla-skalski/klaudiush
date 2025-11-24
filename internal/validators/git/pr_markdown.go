@@ -18,7 +18,11 @@ type PRMarkdownValidationResult struct {
 }
 
 // ValidatePRMarkdown runs markdownlint on the PR body content
-func ValidatePRMarkdown(ctx context.Context, body string) PRMarkdownValidationResult {
+func ValidatePRMarkdown(
+	ctx context.Context,
+	body string,
+	disabledRules []string,
+) PRMarkdownValidationResult {
 	result := PRMarkdownValidationResult{
 		Errors: []string{},
 	}
@@ -39,14 +43,20 @@ func ValidatePRMarkdown(ctx context.Context, body string) PRMarkdownValidationRe
 
 	runner := execpkg.NewCommandRunner(markdownlintTimeout)
 
+	// Build markdownlint command with disabled rules
+	args := []string{}
+	for _, rule := range disabledRules {
+		args = append(args, "--disable", rule)
+	}
+
+	args = append(args, "--stdin")
+
 	// Run markdownlint with stdin input
-	// Disable MD013 (line length), MD034 (naked URLs), and MD041 (first line heading requirement for PRs only)
 	cmdResult := runner.RunWithStdin(
 		lintCtx,
 		strings.NewReader(body),
 		"markdownlint",
-		"--disable", "MD013", "MD034", "MD041",
-		"--stdin",
+		args...,
 	)
 
 	// Parse markdownlint output

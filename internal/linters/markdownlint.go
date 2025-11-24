@@ -169,9 +169,12 @@ func (l *RealMarkdownLinter) runMarkdownlint(ctx context.Context, content string
 		}
 	}
 
+	// Combine stdout and stderr for error messages
+	output := result.Stdout + result.Stderr
+
 	return &LintResult{
 		Success: false,
-		RawOut:  strings.TrimSpace(result.Stdout),
+		RawOut:  strings.TrimSpace(output),
 		Err:     ErrMarkdownlintFailed,
 	}
 }
@@ -189,21 +192,24 @@ func (l *RealMarkdownLinter) createTempConfig() (string, func(), error) {
 
 	configLines = append(configLines, "{")
 
-	first := true
+	idx := 0
+	totalRules := len(l.config.MarkdownlintRules)
 
 	for rule, enabled := range l.config.MarkdownlintRules {
-		if !first {
-			configLines = append(configLines, ",")
-		}
-
-		first = false
-
 		enabledStr := "true"
 		if !enabled {
 			enabledStr = "false"
 		}
 
-		configLines = append(configLines, fmt.Sprintf(`  "%s": %s`, rule, enabledStr))
+		line := fmt.Sprintf(`  "%s": %s`, rule, enabledStr)
+
+		// Add comma after all rules except the last one
+		if idx < totalRules-1 {
+			line += ","
+		}
+
+		configLines = append(configLines, line)
+		idx++
 	}
 
 	configLines = append(configLines, "}")

@@ -108,6 +108,16 @@ func (v *PRValidator) isRequireBody() bool {
 	return true // default: required
 }
 
+// getMarkdownDisabledRules returns the list of markdownlint rules to disable for PR body validation
+func (v *PRValidator) getMarkdownDisabledRules() []string {
+	if v.config != nil && len(v.config.MarkdownDisabledRules) > 0 {
+		return v.config.MarkdownDisabledRules
+	}
+
+	// Default: disable line length, bare URLs, and first line heading requirement
+	return []string{"MD013", "MD034", "MD041"}
+}
+
 // Validate checks gh pr create command for proper PR structure
 func (v *PRValidator) Validate(ctx context.Context, hookCtx *hook.Context) *validator.Result {
 	log := v.Logger()
@@ -243,7 +253,8 @@ func (v *PRValidator) validatePR(ctx context.Context, data PRData) *validator.Re
 	// 4. Validate markdown formatting
 	if data.Body != "" {
 		// External markdownlint validation
-		mdResult := ValidatePRMarkdown(ctx, data.Body)
+		disabledRules := v.getMarkdownDisabledRules()
+		mdResult := ValidatePRMarkdown(ctx, data.Body, disabledRules)
 		allErrors = append(allErrors, mdResult.Errors...)
 
 		// Internal markdown validation (code block indentation, empty lines, etc.)

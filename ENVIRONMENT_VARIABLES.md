@@ -136,6 +136,9 @@ export KLAUDIUSH_VALIDATORS_GIT_PR_CHECK_CI_LABELS=false
 
 # Require body
 export KLAUDIUSH_VALIDATORS_GIT_PR_REQUIRE_BODY=false
+
+# Markdownlint rules to disable for PR body (comma-separated)
+export KLAUDIUSH_VALIDATORS_GIT_PR_MARKDOWN_DISABLED_RULES="MD013,MD034,MD041"
 ```
 
 ### Git Branch Validator

@@ -315,6 +315,10 @@ func (m *Merger) mergePRConfig(dst, src *config.PRValidatorConfig) {
 	if src.RequireBody != nil {
 		dst.RequireBody = src.RequireBody
 	}
+
+	if len(src.MarkdownDisabledRules) > 0 {
+		dst.MarkdownDisabledRules = src.MarkdownDisabledRules
+	}
 }
 
 // mergeBranchConfig merges branch validator configurations.

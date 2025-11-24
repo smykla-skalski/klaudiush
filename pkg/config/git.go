@@ -137,6 +137,10 @@ type PRValidatorConfig struct {
 	// RequireBody requires PR body to be present.
 	// Default: true
 	RequireBody *bool `json:"require_body,omitempty" toml:"require_body"`
+
+	// MarkdownDisabledRules is a list of markdownlint rules to disable for PR body validation.
+	// Default: ["MD013", "MD034", "MD041"]
+	MarkdownDisabledRules []string `json:"markdown_disabled_rules,omitempty" toml:"markdown_disabled_rules"`
 }
 
 // BranchValidatorConfig configures the git branch name validator.
