@@ -10,6 +10,7 @@ import (
 
 	"github.com/smykla-labs/klaudiush/internal/templates"
 	"github.com/smykla-labs/klaudiush/internal/validator"
+	"github.com/smykla-labs/klaudiush/pkg/config"
 	"github.com/smykla-labs/klaudiush/pkg/hook"
 	"github.com/smykla-labs/klaudiush/pkg/logger"
 	"github.com/smykla-labs/klaudiush/pkg/parser"
@@ -21,14 +22,19 @@ const (
 	addCmd            = "add"
 )
 
-// AddValidator validates git add commands to block tmp/ files from being staged
+// AddValidator validates git add commands to block files matching blocked patterns from being staged
 type AddValidator struct {
 	validator.BaseValidator
 	gitRunner GitRunner
+	config    *config.AddValidatorConfig
 }
 
 // NewAddValidator creates a new GitAddValidator instance
-func NewAddValidator(log logger.Logger, gitRunner GitRunner) *AddValidator {
+func NewAddValidator(
+	log logger.Logger,
+	gitRunner GitRunner,
+	cfg *config.AddValidatorConfig,
+) *AddValidator {
 	if gitRunner == nil {
 		gitRunner = NewGitRunner()
 	}
@@ -36,6 +42,7 @@ func NewAddValidator(log logger.Logger, gitRunner GitRunner) *AddValidator {
 	return &AddValidator{
 		BaseValidator: *validator.NewBaseValidator("validate-git-add", log),
 		gitRunner:     gitRunner,
+		config:        cfg,
 	}
 }
 
@@ -67,37 +74,24 @@ func (v *AddValidator) Validate(_ context.Context, hookCtx *hook.Context) *valid
 		return validator.Warn(fmt.Sprintf("Failed to parse command: %v", err))
 	}
 
-	// Find all git add commands
-	var tmpFiles []string
+	// Get blocked patterns from config (default: ["tmp/*"])
+	blockedPatterns := v.getBlockedPatterns()
+	log.Debug("Using blocked patterns", "patterns", blockedPatterns)
 
-	for _, cmd := range result.Commands {
-		if cmd.Name != gitCmd || len(cmd.Args) == 0 || cmd.Args[0] != addCmd {
-			continue
-		}
+	// Find all git add commands and check for blocked files
+	blockedFiles := v.findBlockedFiles(result.Commands, blockedPatterns)
 
-		// Extract file paths from git add command
-		files := v.extractFilePaths(cmd.Args[1:])
-		log.Debug("Extracted files from git add", "count", len(files), "files", files)
-
-		// Check for tmp/ files
-		for _, file := range files {
-			if strings.HasPrefix(file, "tmp/") {
-				tmpFiles = append(tmpFiles, file)
-			}
-		}
-	}
-
-	// Report errors if tmp/ files found
-	if len(tmpFiles) > 0 {
+	// Report errors if blocked files found
+	if len(blockedFiles) > 0 {
 		message := templates.MustExecute(
 			templates.GitAddTmpFilesTemplate,
 			templates.GitAddTmpFilesData{
-				Files: tmpFiles,
+				Files: blockedFiles,
 			},
 		)
 
 		return validator.Fail(
-			"Attempting to add files from tmp/ directory",
+			"Attempting to add blocked files",
 		).AddDetail("help", message)
 	}
 
@@ -146,6 +140,89 @@ func (*AddValidator) extractFilePaths(args []string) []string {
 	}
 
 	return files
+}
+
+// findBlockedFiles finds all files matching blocked patterns in git add commands
+func (v *AddValidator) findBlockedFiles(
+	commands []parser.Command,
+	blockedPatterns []string,
+) []string {
+	log := v.Logger()
+
+	var blockedFiles []string
+
+	for _, cmd := range commands {
+		if !v.isGitAddCommand(cmd) {
+			continue
+		}
+
+		// Extract file paths from git add command
+		files := v.extractFilePaths(cmd.Args[1:])
+		log.Debug("Extracted files from git add", "count", len(files), "files", files)
+
+		// Check each file against blocked patterns
+		blocked := v.checkFilesAgainstPatterns(files, blockedPatterns)
+		blockedFiles = append(blockedFiles, blocked...)
+	}
+
+	return blockedFiles
+}
+
+// isGitAddCommand checks if a command is a git add command
+func (*AddValidator) isGitAddCommand(cmd parser.Command) bool {
+	return cmd.Name == gitCmd && len(cmd.Args) > 0 && cmd.Args[0] == addCmd
+}
+
+// checkFilesAgainstPatterns checks files against blocked patterns
+func (v *AddValidator) checkFilesAgainstPatterns(files, patterns []string) []string {
+	var blocked []string
+
+	for _, file := range files {
+		if v.isFileBlocked(file, patterns) {
+			blocked = append(blocked, file)
+		}
+	}
+
+	return blocked
+}
+
+// isFileBlocked checks if a file matches any blocked pattern
+func (v *AddValidator) isFileBlocked(file string, patterns []string) bool {
+	log := v.Logger()
+
+	for _, pattern := range patterns {
+		// Try glob pattern match
+		matched, err := filepath.Match(pattern, file)
+		if err != nil {
+			log.Debug("Invalid pattern", "pattern", pattern, "error", err)
+			continue
+		}
+
+		if matched {
+			return true
+		}
+
+		// Also check prefix for patterns like "tmp/*" to match "tmp/nested/file.txt"
+		// Extract directory prefix from pattern by removing glob characters
+		prefix := strings.TrimSuffix(pattern, "/*")
+		prefix = strings.TrimSuffix(prefix, "/**")
+
+		if strings.HasPrefix(file, prefix+"/") || file == prefix {
+			return true
+		}
+	}
+
+	return false
+}
+
+// getBlockedPatterns returns the blocked patterns from config, or defaults to ["tmp/*"]
+func (v *AddValidator) getBlockedPatterns() []string {
+	if v.config != nil && len(v.config.BlockedPatterns) > 0 {
+		return v.config.BlockedPatterns
+	}
+
+	// Default: block tmp/ files
+	return []string{"tmp/*"}
 }
 
 // Ensure AddValidator implements validator.Validator

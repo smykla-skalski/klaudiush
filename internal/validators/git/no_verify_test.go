@@ -19,7 +19,7 @@ var _ = Describe("NoVerifyValidator", func() {
 
 	BeforeEach(func() {
 		log = logger.NewNoOpLogger()
-		validator = git.NewNoVerifyValidator(log)
+		validator = git.NewNoVerifyValidator(log, nil)
 	})
 
 	createContext := func(command string) *hook.Context {

@@ -21,7 +21,7 @@ var _ = Describe("GitAddValidator", func() {
 	BeforeEach(func() {
 		log = logger.NewNoOpLogger()
 		mockGit = git.NewMockGitRunner()
-		val = git.NewAddValidator(log, mockGit)
+		val = git.NewAddValidator(log, mockGit, nil)
 	})
 
 	Describe("Name", func() {
@@ -45,7 +45,7 @@ var _ = Describe("GitAddValidator", func() {
 
 				Expect(result.Passed).To(BeFalse())
 				Expect(result.ShouldBlock).To(BeTrue())
-				Expect(result.Message).To(ContainSubstring("tmp/ directory"))
+				Expect(result.Message).To(ContainSubstring("blocked files"))
 				Expect(result.Details).To(HaveKey("help"))
 				Expect(result.Details["help"]).To(ContainSubstring("tmp/test.txt"))
 				Expect(result.Details["help"]).To(ContainSubstring(".git/info/exclude"))

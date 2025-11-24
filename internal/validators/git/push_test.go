@@ -23,7 +23,7 @@ var _ = Describe("PushValidator", func() {
 		gitRunner = git.NewMockGitRunner()
 		gitRunner.InRepo = true
 		gitRunner.RepoRoot = "/home/user/projects/github.com/user/my-project"
-		validator = git.NewPushValidator(log, gitRunner)
+		validator = git.NewPushValidator(log, gitRunner, nil)
 	})
 
 	// Helper function to create context with command

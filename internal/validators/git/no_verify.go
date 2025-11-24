@@ -5,6 +5,7 @@ import (
 
 	"github.com/smykla-labs/klaudiush/internal/templates"
 	"github.com/smykla-labs/klaudiush/internal/validator"
+	"github.com/smykla-labs/klaudiush/pkg/config"
 	"github.com/smykla-labs/klaudiush/pkg/hook"
 	"github.com/smykla-labs/klaudiush/pkg/logger"
 	"github.com/smykla-labs/klaudiush/pkg/parser"
@@ -13,12 +14,17 @@ import (
 // NoVerifyValidator validates that git commit commands don't use --no-verify flag
 type NoVerifyValidator struct {
 	validator.BaseValidator
+	config *config.NoVerifyValidatorConfig
 }
 
 // NewNoVerifyValidator creates a new NoVerifyValidator instance
-func NewNoVerifyValidator(log logger.Logger) *NoVerifyValidator {
+func NewNoVerifyValidator(
+	log logger.Logger,
+	cfg *config.NoVerifyValidatorConfig,
+) *NoVerifyValidator {
 	return &NoVerifyValidator{
 		BaseValidator: *validator.NewBaseValidator("validate-no-verify", log),
+		config:        cfg,
 	}
 }
 

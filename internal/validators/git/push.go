@@ -7,6 +7,7 @@ import (
 
 	"github.com/smykla-labs/klaudiush/internal/templates"
 	"github.com/smykla-labs/klaudiush/internal/validator"
+	"github.com/smykla-labs/klaudiush/pkg/config"
 	"github.com/smykla-labs/klaudiush/pkg/hook"
 	"github.com/smykla-labs/klaudiush/pkg/logger"
 	"github.com/smykla-labs/klaudiush/pkg/parser"
@@ -20,10 +21,15 @@ const (
 type PushValidator struct {
 	validator.BaseValidator
 	gitRunner GitRunner
+	config    *config.PushValidatorConfig
 }
 
 // NewPushValidator creates a new PushValidator instance
-func NewPushValidator(log logger.Logger, gitRunner GitRunner) *PushValidator {
+func NewPushValidator(
+	log logger.Logger,
+	gitRunner GitRunner,
+	cfg *config.PushValidatorConfig,
+) *PushValidator {
 	if gitRunner == nil {
 		gitRunner = NewGitRunner()
 	}
@@ -31,6 +37,7 @@ func NewPushValidator(log logger.Logger, gitRunner GitRunner) *PushValidator {
 	return &PushValidator{
 		BaseValidator: *validator.NewBaseValidator("validate-git-push", log),
 		gitRunner:     gitRunner,
+		config:        cfg,
 	}
 }
 

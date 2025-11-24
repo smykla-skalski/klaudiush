@@ -10,19 +10,22 @@ import (
 )
 
 const (
-	maxTitleLength       = 50
-	maxBodyLineLength    = 72
-	maxBodyLineTolerance = 77 // 72 + 5 tolerance
-	truncateErrorLineAt  = 60 // Truncate long lines in error messages for readability
+	// Default values for commit message validation
+	defaultMaxTitleLength    = 50
+	defaultMaxBodyLineLength = 72
+	defaultBodyLineTolerance = 5  // Additional tolerance beyond max body line length
+	truncateErrorLineAt      = 60 // Truncate long lines in error messages for readability
 )
 
-// ExpectedSignoff can be set at build time using:
-// go build -ldflags="-X 'github.com/smykla-labs/klaudiush/internal/validators/git.ExpectedSignoff=Your Name <your@email.com>'"
+// ExpectedSignoff can be set at build time for signoff validation.
+// This variable is kept for backward compatibility and will be removed in a future version.
+//
+// Deprecated: Use config.CommitMessageConfig.ExpectedSignoff instead.
 var ExpectedSignoff = "" // Default empty, must be set at build time
 
 var (
-	// validTypes from commitlint config-conventional
-	validTypes = []string{
+	// defaultValidTypes from commitlint config-conventional
+	defaultValidTypes = []string{
 		"build",
 		"chore",
 		"ci",
@@ -35,11 +38,6 @@ var (
 		"style",
 		"test",
 	}
-
-	// Conventional commit format: type(scope): description (scope is mandatory)
-	conventionalCommitRegex = regexp.MustCompile(
-		`^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)\([a-zA-Z0-9_\/-]+\)!?: .+`,
-	)
 
 	// Infrastructure scope misuse: feat(ci), fix(test), etc.
 	infraScopeMisuseRegex = regexp.MustCompile(`^(feat|fix)\((ci|test|docs|build)\):`)
@@ -61,8 +59,8 @@ func (v *CommitValidator) validateMessage(message string) *validator.Result {
 
 	errors := make([]string, 0)
 
-	// Check for Claude AI attribution (allow CLAUDE.md file references)
-	if v.containsClaudeAIAttribution(message) {
+	// Check for Claude AI attribution (if enabled)
+	if v.shouldBlockAIAttribution() && v.containsClaudeAIAttribution(message) {
 		errors = append(
 			errors,
 			"❌ Commit message contains AI attribution - remove any AI generation attribution",
@@ -113,32 +111,47 @@ func (v *CommitValidator) validateTitle(lines []string) (string, []string) {
 	}
 
 	// Check title length
-	if len(title) > maxTitleLength {
+	maxLen := v.getTitleMaxLength()
+	if len(title) > maxLen {
 		errors = append(
 			errors,
 			fmt.Sprintf(
 				"❌ Title exceeds %d characters (%d chars): '%s'",
-				maxTitleLength,
+				maxLen,
 				len(title),
 				title,
 			),
 		)
 	}
 
-	// Check conventional commit format
-	if !conventionalCommitRegex.MatchString(title) {
-		errors = append(
-			errors,
-			"❌ Title doesn't follow conventional commits format: type(scope): description",
-		)
-		errors = append(errors, "   Scope is mandatory and must be in parentheses")
-		errors = append(errors, "   Valid types: "+strings.Join(validTypes, ", "))
-		errors = append(errors, fmt.Sprintf("   Current title: '%s'", title))
+	// Check conventional commit format (if enabled)
+	if v.shouldCheckConventionalCommits() {
+		validTypes := v.getValidTypes()
+		requireScope := v.shouldRequireScope()
+
+		// Build regex pattern based on configuration
+		pattern := v.buildConventionalCommitPattern(validTypes, requireScope)
+		conventionalCommitRegex := regexp.MustCompile(pattern)
+
+		if !conventionalCommitRegex.MatchString(title) {
+			errors = append(
+				errors,
+				"❌ Title doesn't follow conventional commits format: type(scope): description",
+			)
+			if requireScope {
+				errors = append(errors, "   Scope is mandatory and must be in parentheses")
+			}
+
+			errors = append(errors, "   Valid types: "+strings.Join(validTypes, ", "))
+			errors = append(errors, fmt.Sprintf("   Current title: '%s'", title))
+		}
 	}
 
-	// Check for feat/fix misuse with infrastructure scopes
-	infraErrors := v.checkInfraScopeMisuse(title)
-	errors = append(errors, infraErrors...)
+	// Check for feat/fix misuse with infrastructure scopes (if enabled)
+	if v.shouldBlockInfraScopeMisuse() {
+		infraErrors := v.checkInfraScopeMisuse(title)
+		errors = append(errors, infraErrors...)
+	}
 
 	return title, errors
 }
@@ -157,13 +170,16 @@ func (v *CommitValidator) validateBodyAndChecks(lines []string, message string) 
 		errors = append(errors, markdownErrors...)
 	}
 
-	// Check for PR references
-	prErrors := v.checkPRReferences(message)
-	errors = append(errors, prErrors...)
+	// Check for PR references (if enabled)
+	if v.shouldBlockPRReferences() {
+		prErrors := v.checkPRReferences(message)
+		errors = append(errors, prErrors...)
+	}
 
-	// Check Signed-off-by trailer
-	if ExpectedSignoff != "" && strings.Contains(message, "Signed-off-by:") {
-		signoffErrors := v.validateSignoff(lines)
+	// Check Signed-off-by trailer (if configured)
+	expectedSignoff := v.getExpectedSignoff()
+	if expectedSignoff != "" && strings.Contains(message, "Signed-off-by:") {
+		signoffErrors := v.validateSignoff(lines, expectedSignoff)
 		errors = append(errors, signoffErrors...)
 	}
 
@@ -189,7 +205,7 @@ func (*CommitValidator) validateMarkdownInBody(lines []string) []string {
 }
 
 // validateSignoff checks the Signed-off-by trailer
-func (*CommitValidator) validateSignoff(lines []string) []string {
+func (*CommitValidator) validateSignoff(lines []string, expectedSignoff string) []string {
 	errors := make([]string, 0)
 	signoffLine := ""
 
@@ -200,7 +216,7 @@ func (*CommitValidator) validateSignoff(lines []string) []string {
 		}
 	}
 
-	expectedSignoffLine := "Signed-off-by: " + ExpectedSignoff
+	expectedSignoffLine := "Signed-off-by: " + expectedSignoff
 	if signoffLine != expectedSignoffLine {
 		errors = append(errors, "❌ Wrong signoff identity")
 		errors = append(errors, "   Found: "+signoffLine)
@@ -264,9 +280,13 @@ func (v *CommitValidator) validateBodyLines(lines []string) []string {
 			continue
 		}
 
-		// Allow up to 77 chars (72 + 5 tolerance)
-		if lineLen > maxBodyLineTolerance {
-			errors = append(errors, v.formatLineLengthError(line, lineNum, lineLen)...)
+		// Check line length with tolerance
+		maxLen := v.getBodyMaxLineLength()
+		tolerance := v.getBodyLineTolerance()
+		maxLenWithTolerance := maxLen + tolerance
+
+		if lineLen > maxLenWithTolerance {
+			errors = append(errors, v.formatLineLengthError(line, lineNum, lineLen, maxLen)...)
 		}
 
 		prevLineEmpty = false
@@ -287,15 +307,20 @@ func (*CommitValidator) formatListItemError(line string, lineNum int) []string {
 }
 
 // formatLineLengthError formats error messages for lines exceeding length limit
-func (*CommitValidator) formatLineLengthError(line string, lineNum, lineLen int) []string {
+func (v *CommitValidator) formatLineLengthError(
+	line string,
+	lineNum, lineLen, maxLen int,
+) []string {
 	truncated := truncateLine(line)
+	tolerance := v.getBodyLineTolerance()
 
 	return []string{
 		fmt.Sprintf(
-			"❌ Line %d exceeds %d characters (%d chars, >5 over limit)",
+			"❌ Line %d exceeds %d characters (%d chars, >%d over limit)",
 			lineNum+1,
-			maxBodyLineLength,
+			maxLen,
 			lineLen,
+			tolerance,
 		),
 		fmt.Sprintf("   Line: '%s'", truncated),
 	}
@@ -425,4 +450,111 @@ func (*CommitValidator) containsClaudeAIAttribution(message string) bool {
 	// If we get here, only block explicit attribution patterns
 	// Allow general usage like "claude integration" or "claude features"
 	return false
+}
+
+// getTitleMaxLength returns the max title length from config, or default
+func (v *CommitValidator) getTitleMaxLength() int {
+	if v.config != nil && v.config.Message != nil && v.config.Message.TitleMaxLength != nil {
+		return *v.config.Message.TitleMaxLength
+	}
+
+	return defaultMaxTitleLength
+}
+
+// getBodyMaxLineLength returns the max body line length from config, or default
+func (v *CommitValidator) getBodyMaxLineLength() int {
+	if v.config != nil && v.config.Message != nil && v.config.Message.BodyMaxLineLength != nil {
+		return *v.config.Message.BodyMaxLineLength
+	}
+
+	return defaultMaxBodyLineLength
+}
+
+// getBodyLineTolerance returns the body line tolerance from config, or default
+func (v *CommitValidator) getBodyLineTolerance() int {
+	if v.config != nil && v.config.Message != nil && v.config.Message.BodyLineTolerance != nil {
+		return *v.config.Message.BodyLineTolerance
+	}
+
+	return defaultBodyLineTolerance
+}
+
+// shouldCheckConventionalCommits returns whether conventional commits validation is enabled
+func (v *CommitValidator) shouldCheckConventionalCommits() bool {
+	if v.config != nil && v.config.Message != nil && v.config.Message.ConventionalCommits != nil {
+		return *v.config.Message.ConventionalCommits
+	}
+
+	return true // Default: enabled
+}
+
+// getValidTypes returns the valid commit types from config, or defaults
+func (v *CommitValidator) getValidTypes() []string {
+	if v.config != nil && v.config.Message != nil && len(v.config.Message.ValidTypes) > 0 {
+		return v.config.Message.ValidTypes
+	}
+
+	return defaultValidTypes
+}
+
+// shouldRequireScope returns whether scope is required in conventional commits
+func (v *CommitValidator) shouldRequireScope() bool {
+	if v.config != nil && v.config.Message != nil && v.config.Message.RequireScope != nil {
+		return *v.config.Message.RequireScope
+	}
+
+	return true // Default: require scope
+}
+
+// shouldBlockInfraScopeMisuse returns whether to block feat/fix with infrastructure scopes
+func (v *CommitValidator) shouldBlockInfraScopeMisuse() bool {
+	if v.config != nil && v.config.Message != nil && v.config.Message.BlockInfraScopeMisuse != nil {
+		return *v.config.Message.BlockInfraScopeMisuse
+	}
+
+	return true // Default: block infra scope misuse
+}
+
+// shouldBlockPRReferences returns whether to block PR references in commits
+func (v *CommitValidator) shouldBlockPRReferences() bool {
+	if v.config != nil && v.config.Message != nil && v.config.Message.BlockPRReferences != nil {
+		return *v.config.Message.BlockPRReferences
+	}
+
+	return true // Default: block PR references
+}
+
+// shouldBlockAIAttribution returns whether to block AI attribution in commits
+func (v *CommitValidator) shouldBlockAIAttribution() bool {
+	if v.config != nil && v.config.Message != nil && v.config.Message.BlockAIAttribution != nil {
+		return *v.config.Message.BlockAIAttribution
+	}
+
+	return true // Default: block AI attribution
+}
+
+// getExpectedSignoff returns the expected signoff from config, or from deprecated global var
+func (v *CommitValidator) getExpectedSignoff() string {
+	if v.config != nil && v.config.Message != nil && v.config.Message.ExpectedSignoff != "" {
+		return v.config.Message.ExpectedSignoff
+	}
+
+	// Fall back to deprecated global variable for backward compatibility
+	return ExpectedSignoff
+}
+
+// buildConventionalCommitPattern builds a regex pattern for conventional commits
+func (*CommitValidator) buildConventionalCommitPattern(
+	validTypes []string,
+	requireScope bool,
+) string {
+	typesStr := strings.Join(validTypes, "|")
+
+	if requireScope {
+		// Scope is mandatory
+		return fmt.Sprintf(`^(%s)\([a-zA-Z0-9_\/-]+\)!?: .+`, typesStr)
+	}
+
+	// Scope is optional
+	return fmt.Sprintf(`^(%s)(\([a-zA-Z0-9_\/-]+\))?!?: .+`, typesStr)
 }

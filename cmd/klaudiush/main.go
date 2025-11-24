@@ -164,7 +164,7 @@ func registerValidators(registry *validator.Registry, log logger.Logger) {
 
 func registerGitValidators(registry *validator.Registry, log logger.Logger) {
 	registry.Register(
-		gitvalidators.NewAddValidator(log, nil), // nil uses RealGitRunner
+		gitvalidators.NewAddValidator(log, nil, nil), // nil uses RealGitRunner
 		validator.And(
 			validator.EventTypeIs(hook.PreToolUse),
 			validator.ToolTypeIs(hook.Bash),
@@ -173,7 +173,7 @@ func registerGitValidators(registry *validator.Registry, log logger.Logger) {
 	)
 
 	registry.Register(
-		gitvalidators.NewNoVerifyValidator(log),
+		gitvalidators.NewNoVerifyValidator(log, nil),
 		validator.And(
 			validator.EventTypeIs(hook.PreToolUse),
 			validator.ToolTypeIs(hook.Bash),
@@ -182,7 +182,7 @@ func registerGitValidators(registry *validator.Registry, log logger.Logger) {
 	)
 
 	registry.Register(
-		gitvalidators.NewCommitValidator(log, nil), // nil uses RealGitRunner
+		gitvalidators.NewCommitValidator(log, nil, nil), // nil uses RealGitRunner
 		validator.And(
 			validator.EventTypeIs(hook.PreToolUse),
 			validator.ToolTypeIs(hook.Bash),
@@ -191,7 +191,7 @@ func registerGitValidators(registry *validator.Registry, log logger.Logger) {
 	)
 
 	registry.Register(
-		gitvalidators.NewPushValidator(log, nil), // nil uses RealGitRunner
+		gitvalidators.NewPushValidator(log, nil, nil), // nil uses RealGitRunner
 		validator.And(
 			validator.EventTypeIs(hook.PreToolUse),
 			validator.ToolTypeIs(hook.Bash),

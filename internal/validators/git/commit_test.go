@@ -24,7 +24,7 @@ var _ = Describe("CommitValidator", func() {
 		mockGit = git.NewMockGitRunner()
 		// By default, set up mock to have staged files so staging check passes
 		mockGit.StagedFiles = []string{"file.txt"}
-		validator = git.NewCommitValidator(log, mockGit)
+		validator = git.NewCommitValidator(log, mockGit, nil)
 	})
 
 	Describe("Flag validation", func() {
@@ -98,7 +98,7 @@ var _ = Describe("CommitValidator", func() {
 
 				result := validator.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeFalse())
-				Expect(result.Message).To(ContainSubstring("Git commit must use -sS flags"))
+				Expect(result.Message).To(ContainSubstring("Git commit missing required flags:"))
 			})
 
 			It("should fail without -S flag", func() {
@@ -112,7 +112,7 @@ var _ = Describe("CommitValidator", func() {
 
 				result := validator.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeFalse())
-				Expect(result.Message).To(ContainSubstring("Git commit must use -sS flags"))
+				Expect(result.Message).To(ContainSubstring("Git commit missing required flags:"))
 			})
 
 			It("should fail without any signing flags", func() {
@@ -126,7 +126,7 @@ var _ = Describe("CommitValidator", func() {
 
 				result := validator.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeFalse())
-				Expect(result.Message).To(ContainSubstring("Git commit must use -sS flags"))
+				Expect(result.Message).To(ContainSubstring("Git commit missing required flags:"))
 			})
 		})
 	})

@@ -8,6 +8,7 @@ import (
 
 	"github.com/smykla-labs/klaudiush/internal/templates"
 	"github.com/smykla-labs/klaudiush/internal/validator"
+	"github.com/smykla-labs/klaudiush/pkg/config"
 	"github.com/smykla-labs/klaudiush/pkg/hook"
 	"github.com/smykla-labs/klaudiush/pkg/logger"
 	"github.com/smykla-labs/klaudiush/pkg/parser"
@@ -31,10 +32,15 @@ var (
 type CommitValidator struct {
 	validator.BaseValidator
 	gitRunner GitRunner
+	config    *config.CommitValidatorConfig
 }
 
 // NewCommitValidator creates a new CommitValidator instance
-func NewCommitValidator(log logger.Logger, gitRunner GitRunner) *CommitValidator {
+func NewCommitValidator(
+	log logger.Logger,
+	gitRunner GitRunner,
+	cfg *config.CommitValidatorConfig,
+) *CommitValidator {
 	if gitRunner == nil {
 		gitRunner = NewGitRunner()
 	}
@@ -42,6 +48,7 @@ func NewCommitValidator(log logger.Logger, gitRunner GitRunner) *CommitValidator
 	return &CommitValidator{
 		BaseValidator: *validator.NewBaseValidator("validate-commit", log),
 		gitRunner:     gitRunner,
+		config:        cfg,
 	}
 }
 
@@ -62,9 +69,9 @@ func (v *CommitValidator) Validate(_ context.Context, hookCtx *hook.Context) *va
 	// Check if there's a git add in the same command chain
 	hasGitAdd := v.hasGitAddInChain(result.Commands)
 
-	// Find git commit commands
+	// Find and validate git commit commands
 	for _, cmd := range result.Commands {
-		if cmd.Name != gitCommand || len(cmd.Args) == 0 || cmd.Args[0] != commitSubcommand {
+		if !v.isGitCommitCommand(cmd) {
 			continue
 		}
 
@@ -75,33 +82,8 @@ func (v *CommitValidator) Validate(_ context.Context, hookCtx *hook.Context) *va
 			return validator.Warn(fmt.Sprintf("Failed to parse git command: %v", err))
 		}
 
-		// Check -sS flags
-		if res := v.checkFlags(gitCmd); !res.Passed {
-			return res
-		}
-
-		// Check staging area (skip for --amend, --allow-empty, or if git add is in the chain)
-		if !gitCmd.HasFlag("--amend") && !gitCmd.HasFlag("--allow-empty") && !hasGitAdd {
-			if res := v.checkStagingArea(gitCmd); !res.Passed {
-				return res
-			}
-		}
-
-		// Extract and validate commit message
-		commitMsg, err := v.extractCommitMessage(gitCmd)
-		if err != nil {
-			log.Error("Failed to extract commit message", "error", err)
-			return validator.Fail(fmt.Sprintf("Failed to read commit message: %v", err))
-		}
-
-		if commitMsg == "" {
-			// No message flag, message will come from editor
-			log.Debug("No message flag, message will come from editor")
-			return validator.Pass()
-		}
-
-		// Validate the commit message
-		return v.validateMessage(commitMsg)
+		// Validate the git commit command
+		return v.validateGitCommit(gitCmd, hasGitAdd)
 	}
 
 	log.Debug("No git commit commands found")
@@ -109,13 +91,87 @@ func (v *CommitValidator) Validate(_ context.Context, hookCtx *hook.Context) *va
 	return validator.Pass()
 }
 
-// checkFlags validates that the commit command has -sS flags
-func (*CommitValidator) checkFlags(gitCmd *parser.GitCommand) *validator.Result {
-	// Check for -s (signoff) and -S (GPG sign)
-	hasSignoff := gitCmd.HasFlag("-s") || gitCmd.HasFlag("--signoff")
-	hasGPGSign := gitCmd.HasFlag("-S") || gitCmd.HasFlag("--gpg-sign")
+// isGitCommitCommand checks if a command is a git commit command
+func (*CommitValidator) isGitCommitCommand(cmd parser.Command) bool {
+	return cmd.Name == gitCommand && len(cmd.Args) > 0 && cmd.Args[0] == commitSubcommand
+}
 
-	if !hasSignoff || !hasGPGSign {
+// validateGitCommit validates a single git commit command
+func (v *CommitValidator) validateGitCommit(
+	gitCmd *parser.GitCommand,
+	hasGitAdd bool,
+) *validator.Result {
+	log := v.Logger()
+
+	// Check -sS flags
+	if res := v.checkFlags(gitCmd); !res.Passed {
+		return res
+	}
+
+	// Check staging area (skip for --amend, --allow-empty, or if git add is in the chain)
+	if v.shouldCheckStaging(gitCmd, hasGitAdd) {
+		if res := v.checkStagingArea(gitCmd); !res.Passed {
+			return res
+		}
+	}
+
+	// Extract and validate commit message (if enabled)
+	if !v.isMessageValidationEnabled() {
+		log.Debug("Commit message validation is disabled")
+		return validator.Pass()
+	}
+
+	commitMsg, err := v.extractCommitMessage(gitCmd)
+	if err != nil {
+		log.Error("Failed to extract commit message", "error", err)
+		return validator.Fail(fmt.Sprintf("Failed to read commit message: %v", err))
+	}
+
+	if commitMsg == "" {
+		// No message flag, message will come from editor
+		log.Debug("No message flag, message will come from editor")
+		return validator.Pass()
+	}
+
+	// Validate the commit message
+	return v.validateMessage(commitMsg)
+}
+
+// shouldCheckStaging determines if staging area should be checked
+func (*CommitValidator) shouldCheckStaging(gitCmd *parser.GitCommand, hasGitAdd bool) bool {
+	return !gitCmd.HasFlag("--amend") && !gitCmd.HasFlag("--allow-empty") && !hasGitAdd
+}
+
+// checkFlags validates that the commit command has required flags
+func (v *CommitValidator) checkFlags(gitCmd *parser.GitCommand) *validator.Result {
+	// Get required flags from config (default: ["-s", "-S"])
+	requiredFlags := v.getRequiredFlags()
+
+	if len(requiredFlags) == 0 {
+		// No required flags configured
+		return validator.Pass()
+	}
+
+	// Check each required flag
+	missingFlags := make([]string, 0)
+
+	for _, flag := range requiredFlags {
+		hasFlag := gitCmd.HasFlag(flag)
+
+		// For short flags, also check the long form
+		switch flag {
+		case "-s":
+			hasFlag = hasFlag || gitCmd.HasFlag("--signoff")
+		case "-S":
+			hasFlag = hasFlag || gitCmd.HasFlag("--gpg-sign")
+		}
+
+		if !hasFlag {
+			missingFlags = append(missingFlags, flag)
+		}
+	}
+
+	if len(missingFlags) > 0 {
 		message := templates.MustExecute(
 			templates.GitCommitFlagsTemplate,
 			templates.GitCommitFlagsData{
@@ -124,7 +180,7 @@ func (*CommitValidator) checkFlags(gitCmd *parser.GitCommand) *validator.Result 
 		)
 
 		return validator.Fail(
-			"Git commit must use -sS flags",
+			"Git commit missing required flags: "+strings.Join(missingFlags, " "),
 		).AddDetail("help", message)
 	}
 
@@ -133,6 +189,11 @@ func (*CommitValidator) checkFlags(gitCmd *parser.GitCommand) *validator.Result 
 
 // checkStagingArea validates that there are files staged or -a/-A/--all flag is present
 func (v *CommitValidator) checkStagingArea(gitCmd *parser.GitCommand) *validator.Result {
+	// Check if staging area validation is enabled (default: true)
+	if !v.shouldCheckStagingArea() {
+		return validator.Pass()
+	}
+
 	// Check if -a, -A, or --all flags are present
 	hasStageFlag := gitCmd.HasFlag("-a") || gitCmd.HasFlag("-A") || gitCmd.HasFlag("--all")
 	if hasStageFlag {
@@ -236,6 +297,36 @@ func (*CommitValidator) getFlagValue(gitCmd *parser.GitCommand, flags []string) 
 	}
 
 	return ""
+}
+
+// getRequiredFlags returns the required flags from config, or defaults to ["-s", "-S"]
+func (v *CommitValidator) getRequiredFlags() []string {
+	if v.config != nil && len(v.config.RequiredFlags) > 0 {
+		return v.config.RequiredFlags
+	}
+
+	// Default: require signoff and GPG sign
+	return []string{"-s", "-S"}
+}
+
+// shouldCheckStagingArea returns whether staging area validation is enabled
+func (v *CommitValidator) shouldCheckStagingArea() bool {
+	if v.config != nil && v.config.CheckStagingArea != nil {
+		return *v.config.CheckStagingArea
+	}
+
+	// Default: check staging area
+	return true
+}
+
+// isMessageValidationEnabled returns whether commit message validation is enabled
+func (v *CommitValidator) isMessageValidationEnabled() bool {
+	if v.config != nil && v.config.Message != nil && v.config.Message.Enabled != nil {
+		return *v.config.Message.Enabled
+	}
+
+	// Default: message validation enabled
+	return true
 }
 
 // Ensure CommitValidator implements validator.Validator
