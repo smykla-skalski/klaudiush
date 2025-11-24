@@ -170,12 +170,18 @@ func (v *MarkdownValidator) getContentWithState(
 		state := validators.DetectMarkdownState(string(originalContent), fragmentStartLine)
 		state.StartLine = fragmentStartLine
 
+		// Determine if fragment reaches end of file
+		fragmentLineCount := len(strings.Split(fragment, "\n"))
+		totalLines := len(strings.Split(string(originalContent), "\n"))
+		fragmentEndLine := fragmentStartLine + fragmentLineCount
+		state.EndsAtEOF = fragmentEndLine >= totalLines
+
 		log.Debug("fragment initial state",
 			"start_line", fragmentStartLine,
 			"in_code_block", state.InCodeBlock,
+			"ends_at_eof", state.EndsAtEOF,
 		)
 
-		fragmentLineCount := len(strings.Split(fragment, "\n"))
 		log.Debug("validating edit fragment with context", "fragment_lines", fragmentLineCount)
 
 		return fragment, &state, nil

@@ -148,6 +148,9 @@ func (l *RealMarkdownLinter) runMarkdownlint(
 	// If initialState is provided and StartLine > 0, this is a fragment
 	needsFragmentConfig := initialState != nil && initialState.StartLine > 0
 
+	// MD047 should only be disabled if fragment doesn't reach end of file
+	disableMD047 := needsFragmentConfig && !initialState.EndsAtEOF
+
 	// Add config file based on configuration and fragment status
 	hasCustomConfig := l.config != nil && l.config.MarkdownlintConfig != ""
 	hasCustomRules := l.config != nil && len(l.config.MarkdownlintRules) > 0
@@ -157,7 +160,7 @@ func (l *RealMarkdownLinter) runMarkdownlint(
 		args = append(args, "--config", l.config.MarkdownlintConfig)
 	case hasCustomRules:
 		// Create temporary config file from rules map
-		configPath, cleanupConfig, err := l.createTempConfig(needsFragmentConfig)
+		configPath, cleanupConfig, err := l.createTempConfig(needsFragmentConfig, disableMD047)
 		if err != nil {
 			return &LintResult{
 				Success: false,
@@ -169,8 +172,8 @@ func (l *RealMarkdownLinter) runMarkdownlint(
 
 		args = append(args, "--config", configPath)
 	case needsFragmentConfig:
-		// No custom config, but we need to disable MD041 for fragments
-		configPath, cleanupConfig, err := l.createFragmentConfig()
+		// No custom config, but we need to disable fragment-incompatible rules
+		configPath, cleanupConfig, err := l.createFragmentConfig(disableMD047)
 		if err != nil {
 			return &LintResult{
 				Success: false,
@@ -209,7 +212,9 @@ func (l *RealMarkdownLinter) runMarkdownlint(
 }
 
 // createTempConfig creates a temporary markdownlint config file from the rules map
-func (l *RealMarkdownLinter) createTempConfig(disableMD041 bool) (string, func(), error) {
+func (l *RealMarkdownLinter) createTempConfig(
+	disableMD041, disableMD047 bool,
+) (string, func(), error) {
 	if l.config == nil || len(l.config.MarkdownlintRules) == 0 {
 		return "", nil, ErrNoRulesConfigured
 	}
@@ -218,10 +223,16 @@ func (l *RealMarkdownLinter) createTempConfig(disableMD041 bool) (string, func()
 	rules := make(map[string]bool, len(l.config.MarkdownlintRules))
 	maps.Copy(rules, l.config.MarkdownlintRules)
 
-	// Disable MD041 for fragments (unless explicitly enabled in config)
+	// Disable fragment-incompatible rules (unless explicitly enabled in config)
 	if disableMD041 {
 		if _, exists := rules["MD041"]; !exists {
-			rules["MD041"] = false
+			rules["MD041"] = false // first-line-heading
+		}
+	}
+
+	if disableMD047 {
+		if _, exists := rules["MD047"]; !exists {
+			rules["MD047"] = false // single-trailing-newline
 		}
 	}
 
@@ -259,10 +270,17 @@ func (l *RealMarkdownLinter) createTempConfig(disableMD041 bool) (string, func()
 	return l.tempMgr.Create("markdownlint-config-*.json", configContent)
 }
 
-// createFragmentConfig creates a minimal config that disables MD041 for fragments
-func (l *RealMarkdownLinter) createFragmentConfig() (string, func(), error) {
+// createFragmentConfig creates a minimal config that disables fragment-incompatible rules
+func (l *RealMarkdownLinter) createFragmentConfig(disableMD047 bool) (string, func(), error) {
 	configContent := `{
-  "MD041": false
+  "MD041": false`
+
+	if disableMD047 {
+		configContent += `,
+  "MD047": false`
+	}
+
+	configContent += `
 }`
 
 	return l.tempMgr.Create("markdownlint-fragment-*.json", configContent)

@@ -15,7 +15,8 @@ const (
 // MarkdownState represents the parsing state at a given position
 type MarkdownState struct {
 	InCodeBlock bool
-	StartLine   int // 0-indexed line number where this state begins (0 = start of file)
+	StartLine   int  // 0-indexed line number where this state begins (0 = start of file)
+	EndsAtEOF   bool // true if this fragment includes the last line of the file
 	// Future: InComment, ListDepth, etc.
 }
 
