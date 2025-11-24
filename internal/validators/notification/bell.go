@@ -10,7 +10,7 @@ import (
 	"github.com/smykla-labs/klaudiush/pkg/logger"
 )
 
-// BellValidator sends a bell character to /dev/tty when Claude Code sends a notification.
+// BellValidator sends a bell character to /dev/tty for all notification events.
 type BellValidator struct {
 	*validator.BaseValidator
 }
@@ -22,14 +22,9 @@ func NewBellValidator(log logger.Logger) *BellValidator {
 	}
 }
 
-// Validate sends a bell character to /dev/tty if the notification type is "bell".
+// Validate sends a bell character to /dev/tty for any notification event.
 func (v *BellValidator) Validate(_ context.Context, hookCtx *hook.Context) *validator.Result {
-	v.Logger().Debug("validating notification", "notification_type", hookCtx.NotificationType)
-
-	// Only handle bell notifications
-	if hookCtx.NotificationType != "bell" {
-		return validator.Pass()
-	}
+	v.Logger().Debug("handling notification", "notification_type", hookCtx.NotificationType)
 
 	// Try to open /dev/tty
 	tty, err := os.OpenFile("/dev/tty", os.O_WRONLY, 0)

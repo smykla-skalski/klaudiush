@@ -25,9 +25,9 @@ var _ = Describe("BellValidator", func() {
 	})
 
 	Describe("Validate", func() {
-		Context("when notification type is bell", func() {
+		Context("when notification type is permission_prompt", func() {
 			BeforeEach(func() {
-				ctx.NotificationType = "bell"
+				ctx.NotificationType = "permission_prompt"
 			})
 
 			It("should pass", func() {
@@ -41,9 +41,9 @@ var _ = Describe("BellValidator", func() {
 			})
 		})
 
-		Context("when notification type is not bell", func() {
+		Context("when notification type is bell", func() {
 			BeforeEach(func() {
-				ctx.NotificationType = "other"
+				ctx.NotificationType = "bell"
 			})
 
 			It("should pass", func() {

@@ -182,6 +182,10 @@ registry.Register(
 - **TerraformValidator**: Validates Terraform/OpenTofu formatting and linting (uses `TerraformFormatter`, `TfLinter`)
 - **WorkflowValidator**: Validates GitHub Actions workflows (uses `ActionLinter`)
 
+**Notification Validators** (`internal/validators/notification/`):
+
+- **BellValidator**: Sends bell character (ASCII 7) to `/dev/tty` for all notification events (permission prompts, etc.) to trigger terminal bell/dock bounce
+
 ### Linter Abstractions
 
 **Linter Package** (`internal/linters/`):

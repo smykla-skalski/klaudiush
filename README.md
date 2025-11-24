@@ -188,7 +188,7 @@ klaudiush/
 
 ### Notification Validators
 
-- **BellValidator**: Sends bell character to `/dev/tty` for terminal notifications on "bell" events
+- **BellValidator**: Sends bell character to `/dev/tty` for all notification events (permission prompts, etc.)
 
 ## Predicate System
 
