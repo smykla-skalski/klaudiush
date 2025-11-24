@@ -10,6 +10,7 @@ import (
 	"github.com/smykla-labs/klaudiush/internal/validator"
 	"github.com/smykla-labs/klaudiush/pkg/hook"
 	"github.com/smykla-labs/klaudiush/pkg/logger"
+	"github.com/smykla-labs/klaudiush/pkg/parser"
 )
 
 var (
@@ -66,6 +67,20 @@ func (d *Dispatcher) Dispatch(ctx context.Context, hookCtx *hook.Context) []*Val
 		"tool", hookCtx.ToolName,
 	)
 
+	// Run validators on the main context
+	validationErrors := d.runValidators(ctx, hookCtx)
+
+	// If this is a Bash PreToolUse, also validate synthetic Write contexts for file writes
+	if hookCtx.EventType == hook.PreToolUse && hookCtx.ToolName == hook.Bash {
+		syntheticErrors := d.validateBashFileWrites(ctx, hookCtx)
+		validationErrors = append(validationErrors, syntheticErrors...)
+	}
+
+	return validationErrors
+}
+
+// runValidators runs validators on a context and returns validation errors.
+func (d *Dispatcher) runValidators(ctx context.Context, hookCtx *hook.Context) []*ValidationError {
 	validators := d.registry.FindValidators(hookCtx)
 
 	if len(validators) == 0 {
@@ -120,6 +135,59 @@ func (d *Dispatcher) Dispatch(ctx context.Context, hookCtx *hook.Context) []*Val
 	}
 
 	return validationErrors
+}
+
+// validateBashFileWrites parses Bash commands for file writes and validates them
+// as synthetic Write operations.
+func (d *Dispatcher) validateBashFileWrites(
+	ctx context.Context,
+	bashCtx *hook.Context,
+) []*ValidationError {
+	// Parse the bash command
+	bashParser := parser.NewBashParser()
+
+	result, err := bashParser.Parse(bashCtx.GetCommand())
+	if err != nil {
+		d.logger.Debug("failed to parse bash command for file writes",
+			"error", err,
+		)
+
+		return nil
+	}
+
+	// No file writes found
+	if len(result.FileWrites) == 0 {
+		return nil
+	}
+
+	d.logger.Info("detected bash file writes",
+		"count", len(result.FileWrites),
+	)
+
+	allErrors := make([]*ValidationError, 0)
+
+	// Create synthetic Write context for each file write
+	for _, fw := range result.FileWrites {
+		syntheticCtx := &hook.Context{
+			EventType: hook.PreToolUse,
+			ToolName:  hook.Write,
+			ToolInput: hook.ToolInput{
+				FilePath: fw.Path,
+				Content:  fw.Content,
+			},
+		}
+
+		d.logger.Debug("validating synthetic write context",
+			"file", fw.Path,
+			"operation", fw.Operation,
+		)
+
+		// Run validators on the synthetic context
+		errors := d.runValidators(ctx, syntheticCtx)
+		allErrors = append(allErrors, errors...)
+	}
+
+	return allErrors
 }
 
 // ShouldBlock returns true if any validation error should block the operation.

@@ -197,6 +197,77 @@ var _ = Describe("BashParser", func() {
 			})
 		})
 
+		Context("with heredoc", func() {
+			It("detects heredoc with output redirection", func() {
+				cmd := `cat > file.txt << 'EOF'
+line 1
+line 2
+EOF`
+				result, err := p.Parse(cmd)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result.FileWrites).To(HaveLen(1))
+
+				fw := result.FileWrites[0]
+				Expect(fw.Path).To(Equal("file.txt"))
+				Expect(fw.Operation).To(Equal(parser.WriteOpHeredoc))
+				Expect(fw.Content).To(Equal("line 1\nline 2\n"))
+			})
+
+			It("detects heredoc with unquoted delimiter", func() {
+				cmd := `cat > output.md << EOF
+# Header
+Content here
+EOF`
+				result, err := p.Parse(cmd)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result.FileWrites).To(HaveLen(1))
+
+				fw := result.FileWrites[0]
+				Expect(fw.Path).To(Equal("output.md"))
+				Expect(fw.Operation).To(Equal(parser.WriteOpHeredoc))
+				Expect(fw.Content).To(Equal("# Header\nContent here\n"))
+			})
+
+			It("detects heredoc with dash variant", func() {
+				cmd := `cat > script.sh <<- 'EOF'
+	#!/bin/bash
+	echo "test"
+EOF`
+				result, err := p.Parse(cmd)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result.FileWrites).To(HaveLen(1))
+
+				fw := result.FileWrites[0]
+				Expect(fw.Path).To(Equal("script.sh"))
+				Expect(fw.Operation).To(Equal(parser.WriteOpHeredoc))
+				Expect(fw.Content).To(ContainSubstring("#!/bin/bash"))
+			})
+
+			It("handles empty heredoc content", func() {
+				cmd := `cat > empty.txt << 'EOF'
+EOF`
+				result, err := p.Parse(cmd)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result.FileWrites).To(HaveLen(1))
+
+				fw := result.FileWrites[0]
+				Expect(fw.Path).To(Equal("empty.txt"))
+				Expect(fw.Operation).To(Equal(parser.WriteOpHeredoc))
+				Expect(fw.Content).To(Equal(""))
+			})
+
+			It("handles heredoc with special characters", func() {
+				cmd := "cat > data.txt << 'EOF'\nSpecial chars: $VAR ${FOO} $(cmd)\nEOF"
+				result, err := p.Parse(cmd)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result.FileWrites).To(HaveLen(1))
+
+				fw := result.FileWrites[0]
+				Expect(fw.Content).To(ContainSubstring("$VAR"))
+				Expect(fw.Content).To(ContainSubstring("$(cmd)"))
+			})
+		})
+
 		Context("with file write commands", func() {
 			It("detects tee command", func() {
 				result, err := p.Parse("echo 'test' | tee output.txt")

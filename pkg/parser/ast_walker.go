@@ -71,6 +71,20 @@ func (w *astWalker) extractRedirect(stmt *syntax.Stmt) {
 		return
 	}
 
+	// First pass: collect output redirections and heredocs separately
+	var outputPath string
+
+	var outputOp WriteOp
+
+	var outputLoc Location
+
+	var heredocContent string
+
+	var heredocLoc Location
+
+	hasOutput := false
+	hasHeredoc := false
+
 	for _, redir := range stmt.Redirs {
 		if redir.Op == syntax.RdrOut || redir.Op == syntax.AppOut {
 			path := wordToString(redir.Word)
@@ -78,42 +92,56 @@ func (w *astWalker) extractRedirect(stmt *syntax.Stmt) {
 				continue
 			}
 
-			op := WriteOpRedirect
+			outputPath = path
+
+			outputOp = WriteOpRedirect
 			if redir.Op == syntax.AppOut {
-				op = WriteOpAppend
+				outputOp = WriteOpAppend
 			}
 
-			fw := FileWrite{
-				Path:      path,
-				Operation: op,
-				Location: Location{
-					Line:   redir.Pos().Line(),
-					Column: redir.Pos().Col(),
-				},
+			outputLoc = Location{
+				Line:   redir.Pos().Line(),
+				Column: redir.Pos().Col(),
 			}
-
-			w.fileWrites = append(w.fileWrites, fw)
+			hasOutput = true
 		}
 
 		// Handle heredocs
 		if redir.Op == syntax.Hdoc || redir.Op == syntax.DashHdoc {
-			path := wordToString(redir.Word)
-			if path == "" {
-				continue
+			// Extract heredoc content from Hdoc field (may be empty)
+			if redir.Hdoc != nil {
+				heredocContent = wordToString(redir.Hdoc)
 			}
-
-			fw := FileWrite{
-				Path:      path,
-				Operation: WriteOpHeredoc,
-				Location: Location{
-					Line:   redir.Pos().Line(),
-					Column: redir.Pos().Col(),
-				},
+			// Mark as heredoc even if content is empty
+			heredocLoc = Location{
+				Line:   redir.Pos().Line(),
+				Column: redir.Pos().Col(),
 			}
-
-			w.fileWrites = append(w.fileWrites, fw)
+			hasHeredoc = true
 		}
 	}
+
+	// Second pass: create FileWrite entries
+	// If we have both output redirection and heredoc, combine them
+	if hasOutput && hasHeredoc {
+		fw := FileWrite{
+			Path:      outputPath,
+			Operation: WriteOpHeredoc,
+			Content:   heredocContent,
+			Location:  heredocLoc,
+		}
+		w.fileWrites = append(w.fileWrites, fw)
+	} else if hasOutput {
+		// Just output redirection without heredoc
+		fw := FileWrite{
+			Path:      outputPath,
+			Operation: outputOp,
+			Location:  outputLoc,
+		}
+		w.fileWrites = append(w.fileWrites, fw)
+	}
+	// Note: heredoc without output redirection is rare and not handled
+	// (it would just pipe to stdin of a command)
 }
 
 // extractFileWriteCommand detects file write commands (tee, cp, mv).

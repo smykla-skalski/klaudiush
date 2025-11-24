@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/smykla-labs/klaudiush/pkg/hook"
+	"github.com/smykla-labs/klaudiush/pkg/parser"
 )
 
 // Predicate determines if a validator should be applied to a context.
@@ -148,6 +149,46 @@ func FileExtensionIn(exts ...string) Predicate {
 	return func(ctx *hook.Context) bool {
 		fileExt := filepath.Ext(ctx.GetFilePath())
 		return slices.Contains(normalized, fileExt)
+	}
+}
+
+// BashWritesFileWithExtension returns a predicate that matches if a Bash command writes
+// to a file with any of the given extensions.
+func BashWritesFileWithExtension(exts ...string) Predicate {
+	// Normalize extensions
+	normalized := make([]string, len(exts))
+
+	for i, ext := range exts {
+		if !strings.HasPrefix(ext, ".") {
+			ext = "." + ext
+		}
+
+		normalized[i] = ext
+	}
+
+	return func(ctx *hook.Context) bool {
+		// Only apply to Bash commands
+		if ctx.ToolName != hook.Bash {
+			return false
+		}
+
+		// Parse the bash command
+		bashParser := parser.NewBashParser()
+
+		result, err := bashParser.Parse(ctx.GetCommand())
+		if err != nil {
+			return false
+		}
+
+		// Check if any file write has a matching extension
+		for _, fw := range result.FileWrites {
+			fileExt := filepath.Ext(fw.Path)
+			if slices.Contains(normalized, fileExt) {
+				return true
+			}
+		}
+
+		return false
 	}
 }
 

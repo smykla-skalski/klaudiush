@@ -49,6 +49,7 @@ type FileWrite struct {
 	Path      string   // Target file path
 	Operation WriteOp  // Type of write operation
 	Source    string   // Source command (for cp, mv, tee)
+	Content   string   // Content for heredoc operations
 	Location  Location // Position in source
 }
 
