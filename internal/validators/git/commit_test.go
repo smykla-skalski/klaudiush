@@ -568,6 +568,79 @@ EOF
 				result := validator.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeTrue())
 			})
+
+			It("should fail with 'Generated with Claude' markdown link", func() {
+				ctx := &hook.Context{
+					EventType: hook.PreToolUse,
+					ToolName:  hook.Bash,
+					ToolInput: hook.ToolInput{
+						Command: `git commit -sS -a -m "$(cat <<'EOF'
+chore(styles): add duplicate btn-radius definition
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+EOF
+)"`,
+					},
+				}
+
+				result := validator.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeFalse())
+				Expect(result.Details["errors"]).To(ContainSubstring("AI attribution"))
+			})
+
+			It("should fail with Co-Authored-By: Claude", func() {
+				ctx := &hook.Context{
+					EventType: hook.PreToolUse,
+					ToolName:  hook.Bash,
+					ToolInput: hook.ToolInput{
+						Command: `git commit -sS -a -m "$(cat <<'EOF'
+chore(styles): add duplicate btn-radius definition
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+EOF
+)"`,
+					},
+				}
+
+				result := validator.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeFalse())
+				Expect(result.Details["errors"]).To(ContainSubstring("AI attribution"))
+			})
+
+			It("should fail with 'generated with claude' pattern", func() {
+				ctx := &hook.Context{
+					EventType: hook.PreToolUse,
+					ToolName:  hook.Bash,
+					ToolInput: hook.ToolInput{
+						Command: `git commit -sS -a -m "feat(api): add endpoint\\n\\nGenerated with Claude assistance"`,
+					},
+				}
+
+				result := validator.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeFalse())
+				Expect(result.Details["errors"]).To(ContainSubstring("AI attribution"))
+			})
+
+			It("should fail with full Claude Code attribution footer", func() {
+				ctx := &hook.Context{
+					EventType: hook.PreToolUse,
+					ToolName:  hook.Bash,
+					ToolInput: hook.ToolInput{
+						Command: `git commit -sS -a -m "$(cat <<'EOF'
+chore(styles): add duplicate btn-radius definition
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+EOF
+)"`,
+					},
+				}
+
+				result := validator.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeFalse())
+				Expect(result.Details["errors"]).To(ContainSubstring("AI attribution"))
+			})
 		})
 
 		Context("when message has signoff", func() {
