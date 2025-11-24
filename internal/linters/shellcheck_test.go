@@ -76,10 +76,11 @@ var _ = Describe("ShellChecker", func() {
 			It("should return success", func() {
 				mockRunner.runFunc = func(_ context.Context, name string, args ...string) execpkg.CommandResult {
 					Expect(name).To(Equal("shellcheck"))
-					Expect(args).To(HaveLen(1))
+					Expect(args).To(HaveLen(2))
+					Expect(args[0]).To(Equal("--format=json"))
 
 					return execpkg.CommandResult{
-						Stdout:   "",
+						Stdout:   "[]",
 						Stderr:   "",
 						ExitCode: 0,
 						Err:      nil,

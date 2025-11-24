@@ -2,9 +2,15 @@ package linters
 
 import (
 	"context"
+	"regexp"
+	"strconv"
+	"strings"
 
 	execpkg "github.com/smykla-labs/klaudiush/internal/exec"
 )
+
+// actionlintPattern matches actionlint output: file:line:col: message [rule]
+var actionlintPattern = regexp.MustCompile(`^(.+):(\d+):(\d+): (.+) \[([^\]]+)\]$`)
 
 // ActionLinter validates GitHub Actions workflow files using actionlint
 type ActionLinter interface {
@@ -13,47 +19,60 @@ type ActionLinter interface {
 
 // RealActionLinter implements ActionLinter using the actionlint CLI tool
 type RealActionLinter struct {
-	runner      execpkg.CommandRunner
-	toolChecker execpkg.ToolChecker
-	tempManager execpkg.TempFileManager
+	linter *ContentLinter
 }
 
 // NewActionLinter creates a new RealActionLinter
 func NewActionLinter(runner execpkg.CommandRunner) *RealActionLinter {
 	return &RealActionLinter{
-		runner:      runner,
-		toolChecker: execpkg.NewToolChecker(),
-		tempManager: execpkg.NewTempFileManager(),
+		linter: NewContentLinter(runner),
 	}
 }
 
 // Lint validates GitHub Actions workflow file content
 func (a *RealActionLinter) Lint(ctx context.Context, content string, _ string) *LintResult {
-	// Check if actionlint is available
-	if !a.toolChecker.IsAvailable("actionlint") {
-		return &LintResult{
-			Success: true,
-			Err:     nil,
+	return a.linter.LintContent(
+		ctx,
+		"actionlint",
+		"workflow-*.yml",
+		content,
+		parseActionlintOutput,
+		"-no-color",
+	)
+}
+
+// parseActionlintOutput parses actionlint text output into LintFindings
+// Format: file:line:col: message [rule]
+func parseActionlintOutput(output string) []LintFinding {
+	if output == "" {
+		return []LintFinding{}
+	}
+
+	findings := make([]LintFinding, 0, strings.Count(output, "\n")+1)
+
+	for line := range strings.SplitSeq(output, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
 		}
-	}
 
-	// Create temp file for validation
-	tmpFile, cleanup, err := a.tempManager.Create("workflow-*.yml", content)
-	if err != nil {
-		return &LintResult{
-			Success: false,
-			Err:     err,
+		matches := actionlintPattern.FindStringSubmatch(line)
+		if matches == nil {
+			continue
 		}
-	}
-	defer cleanup()
 
-	// Run actionlint
-	result := a.runner.Run(ctx, "actionlint", "-no-color", tmpFile)
+		lineNum, _ := strconv.Atoi(matches[2])
+		col, _ := strconv.Atoi(matches[3])
 
-	return &LintResult{
-		Success:  result.Err == nil,
-		RawOut:   result.Stdout + result.Stderr,
-		Findings: []LintFinding{}, // TODO: Parse actionlint output
-		Err:      result.Err,
+		findings = append(findings, LintFinding{
+			File:     matches[1],
+			Line:     lineNum,
+			Column:   col,
+			Severity: SeverityError,
+			Message:  matches[4],
+			Rule:     matches[5],
+		})
 	}
+
+	return findings
 }

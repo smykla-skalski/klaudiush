@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Masterminds/semver/v3"
+
 	"github.com/smykla-labs/klaudiush/internal/github"
 	"github.com/smykla-labs/klaudiush/internal/linters"
 	"github.com/smykla-labs/klaudiush/internal/validator"
@@ -456,13 +458,19 @@ func (v *WorkflowValidator) getLatestVersion(ctx context.Context, actionName str
 
 // isVersionLatest checks if current version is >= latest version
 func (*WorkflowValidator) isVersionLatest(current, latest string) bool {
-	// Normalize versions (strip leading 'v')
-	current = strings.TrimPrefix(current, "v")
-	latest = strings.TrimPrefix(latest, "v")
+	currentVer, err := semver.NewVersion(current)
+	if err != nil {
+		// Fall back to string comparison if not valid semver
+		return strings.TrimPrefix(current, "v") >= strings.TrimPrefix(latest, "v")
+	}
 
-	// Simple string comparison for now
-	// TODO: Could use proper semver comparison library
-	return current >= latest
+	latestVer, err := semver.NewVersion(latest)
+	if err != nil {
+		// Fall back to string comparison if not valid semver
+		return strings.TrimPrefix(current, "v") >= strings.TrimPrefix(latest, "v")
+	}
+
+	return currentVer.Compare(latestVer) >= 0
 }
 
 // runActionlint runs actionlint on the workflow content using ActionLinter

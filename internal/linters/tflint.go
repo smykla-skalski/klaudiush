@@ -2,9 +2,15 @@ package linters
 
 import (
 	"context"
+	"regexp"
+	"strconv"
+	"strings"
 
 	execpkg "github.com/smykla-labs/klaudiush/internal/exec"
 )
+
+// tflintPattern matches tflint compact format: file:line:col: severity - message (rule)
+var tflintPattern = regexp.MustCompile(`^(.+):(\d+):(\d+): (\w+) - (.+) \(([^)]+)\)$`)
 
 // TfLinter validates Terraform files using tflint
 type TfLinter interface {
@@ -37,6 +43,7 @@ func (t *RealTfLinter) Lint(ctx context.Context, filePath string) *LintResult {
 
 	// Run tflint with compact format
 	result := t.runner.Run(ctx, "tflint", "--format=compact", filePath)
+
 	// tflint returns non-zero when findings are detected
 	if result.Err != nil {
 		// If there's output, it means there are findings (not an error)
@@ -49,7 +56,7 @@ func (t *RealTfLinter) Lint(ctx context.Context, filePath string) *LintResult {
 			return &LintResult{
 				Success:  false,
 				RawOut:   output,
-				Findings: []LintFinding{}, // TODO: Parse compact output
+				Findings: parseTflintOutput(output),
 				Err:      result.Err,
 			}
 		}
@@ -67,5 +74,55 @@ func (t *RealTfLinter) Lint(ctx context.Context, filePath string) *LintResult {
 		RawOut:   result.Stdout,
 		Findings: []LintFinding{},
 		Err:      nil,
+	}
+}
+
+// parseTflintOutput parses tflint compact output into LintFindings
+// Format: file:line:col: severity - message (rule)
+func parseTflintOutput(output string) []LintFinding {
+	if output == "" {
+		return []LintFinding{}
+	}
+
+	findings := make([]LintFinding, 0, strings.Count(output, "\n")+1)
+
+	for line := range strings.SplitSeq(output, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		matches := tflintPattern.FindStringSubmatch(line)
+		if matches == nil {
+			continue
+		}
+
+		lineNum, _ := strconv.Atoi(matches[2])
+		col, _ := strconv.Atoi(matches[3])
+
+		findings = append(findings, LintFinding{
+			File:     matches[1],
+			Line:     lineNum,
+			Column:   col,
+			Severity: tflintSeverityToLintSeverity(matches[4]),
+			Message:  matches[5],
+			Rule:     matches[6],
+		})
+	}
+
+	return findings
+}
+
+// tflintSeverityToLintSeverity converts tflint severity to LintSeverity
+func tflintSeverityToLintSeverity(severity string) LintSeverity {
+	switch strings.ToLower(severity) {
+	case "error":
+		return SeverityError
+	case "warning":
+		return SeverityWarning
+	case "notice", "info":
+		return SeverityInfo
+	default:
+		return SeverityWarning
 	}
 }

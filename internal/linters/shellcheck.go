@@ -2,9 +2,21 @@ package linters
 
 import (
 	"context"
+	"encoding/json"
+	"strconv"
 
 	execpkg "github.com/smykla-labs/klaudiush/internal/exec"
 )
+
+// shellcheckFinding represents a single finding from shellcheck JSON output
+type shellcheckFinding struct {
+	File    string `json:"file"`
+	Line    int    `json:"line"`
+	Column  int    `json:"column"`
+	Level   string `json:"level"`
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+}
 
 // ShellChecker validates shell scripts using shellcheck
 type ShellChecker interface {
@@ -13,47 +25,70 @@ type ShellChecker interface {
 
 // RealShellChecker implements ShellChecker using the shellcheck CLI tool
 type RealShellChecker struct {
-	runner      execpkg.CommandRunner
-	toolChecker execpkg.ToolChecker
-	tempManager execpkg.TempFileManager
+	linter *ContentLinter
 }
 
 // NewShellChecker creates a new RealShellChecker
 func NewShellChecker(runner execpkg.CommandRunner) *RealShellChecker {
 	return &RealShellChecker{
-		runner:      runner,
-		toolChecker: execpkg.NewToolChecker(),
-		tempManager: execpkg.NewTempFileManager(),
+		linter: NewContentLinter(runner),
 	}
 }
 
 // Check validates shell script content using shellcheck
 func (s *RealShellChecker) Check(ctx context.Context, content string) *LintResult {
-	// Check if shellcheck is available
-	if !s.toolChecker.IsAvailable("shellcheck") {
-		return &LintResult{
-			Success: true,
-			Err:     nil,
-		}
+	return s.linter.LintContent(
+		ctx,
+		"shellcheck",
+		"script-*.sh",
+		content,
+		parseShellcheckOutput,
+		"--format=json",
+	)
+}
+
+// parseShellcheckOutput parses shellcheck JSON output into LintFindings
+func parseShellcheckOutput(output string) []LintFinding {
+	if output == "" {
+		return []LintFinding{}
 	}
 
-	// Create temp file for validation
-	tmpFile, cleanup, err := s.tempManager.Create("script-*.sh", content)
-	if err != nil {
-		return &LintResult{
-			Success: false,
-			Err:     err,
-		}
+	var scFindings []shellcheckFinding
+	if err := json.Unmarshal([]byte(output), &scFindings); err != nil {
+		return []LintFinding{}
 	}
-	defer cleanup()
 
-	// Run shellcheck
-	result := s.runner.Run(ctx, "shellcheck", tmpFile)
+	findings := make([]LintFinding, 0, len(scFindings))
 
-	return &LintResult{
-		Success:  result.Err == nil,
-		RawOut:   result.Stdout + result.Stderr,
-		Findings: []LintFinding{}, // TODO: Parse shellcheck output
-		Err:      result.Err,
+	for _, f := range scFindings {
+		findings = append(findings, LintFinding{
+			File:     f.File,
+			Line:     f.Line,
+			Column:   f.Column,
+			Severity: shellcheckLevelToSeverity(f.Level),
+			Message:  f.Message,
+			Rule:     formatShellcheckRule(f.Code),
+		})
 	}
+
+	return findings
+}
+
+// shellcheckLevelToSeverity converts shellcheck level to LintSeverity
+func shellcheckLevelToSeverity(level string) LintSeverity {
+	switch level {
+	case "error":
+		return SeverityError
+	case "warning":
+		return SeverityWarning
+	case "info", "style":
+		return SeverityInfo
+	default:
+		return SeverityWarning
+	}
+}
+
+// formatShellcheckRule formats shellcheck code as SC#### rule
+func formatShellcheckRule(code int) string {
+	return "SC" + strconv.Itoa(code)
 }
