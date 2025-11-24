@@ -17,12 +17,6 @@ const (
 	truncateErrorLineAt      = 60 // Truncate long lines in error messages for readability
 )
 
-// ExpectedSignoff can be set at build time for signoff validation.
-// This variable is kept for backward compatibility and will be removed in a future version.
-//
-// Deprecated: Use config.CommitMessageConfig.ExpectedSignoff instead.
-var ExpectedSignoff = "" // Default empty, must be set at build time
-
 var (
 	// defaultValidTypes from commitlint config-conventional
 	defaultValidTypes = []string{
@@ -533,14 +527,13 @@ func (v *CommitValidator) shouldBlockAIAttribution() bool {
 	return true // Default: block AI attribution
 }
 
-// getExpectedSignoff returns the expected signoff from config, or from deprecated global var
+// getExpectedSignoff returns the expected signoff from config
 func (v *CommitValidator) getExpectedSignoff() string {
-	if v.config != nil && v.config.Message != nil && v.config.Message.ExpectedSignoff != "" {
+	if v.config != nil && v.config.Message != nil {
 		return v.config.Message.ExpectedSignoff
 	}
 
-	// Fall back to deprecated global variable for backward compatibility
-	return ExpectedSignoff
+	return ""
 }
 
 // buildConventionalCommitPattern builds a regex pattern for conventional commits

@@ -644,17 +644,7 @@ EOF
 		})
 
 		Context("when message has signoff", func() {
-			BeforeEach(func() {
-				// Set expected signoff for these tests
-				git.ExpectedSignoff = "Test User <test@example.com>"
-			})
-
-			AfterEach(func() {
-				// Reset to empty after tests
-				git.ExpectedSignoff = ""
-			})
-
-			It("should pass with correct signoff", func() {
+			It("should pass with signoff when no expected signoff configured", func() {
 				message := `feat(api): add endpoint
 
 Signed-off-by: Test User <test@example.com>`
@@ -669,42 +659,6 @@ Signed-off-by: Test User <test@example.com>`
 
 				result := validator.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeTrue())
-			})
-
-			It("should fail with wrong email", func() {
-				message := `feat(api): add endpoint
-
-Signed-off-by: Bart Smykla <wrong@example.com>`
-
-				ctx := &hook.Context{
-					EventType: hook.PreToolUse,
-					ToolName:  hook.Bash,
-					ToolInput: hook.ToolInput{
-						Command: `git commit -sS -a -m "` + message + `"`,
-					},
-				}
-
-				result := validator.Validate(context.Background(), ctx)
-				Expect(result.Passed).To(BeFalse())
-				Expect(result.Details["errors"]).To(ContainSubstring("Wrong signoff identity"))
-			})
-
-			It("should fail with wrong name", func() {
-				message := `feat(api): add endpoint
-
-Signed-off-by: John Doe <bartek@smykla.com>`
-
-				ctx := &hook.Context{
-					EventType: hook.PreToolUse,
-					ToolName:  hook.Bash,
-					ToolInput: hook.ToolInput{
-						Command: `git commit -sS -a -m "` + message + `"`,
-					},
-				}
-
-				result := validator.Validate(context.Background(), ctx)
-				Expect(result.Passed).To(BeFalse())
-				Expect(result.Details["errors"]).To(ContainSubstring("Wrong signoff identity"))
 			})
 		})
 	})

@@ -35,23 +35,9 @@ tasks:
       - bin/{{.BINARY_NAME}}
 
   build:prod:
-    desc: Build the binary with signoff validation (uses git config for signoff)
-    vars:
-      GIT_NAME:
-        sh: git config user.name
-      GIT_EMAIL:
-        sh: git config user.email
-      SIGNOFF: '{{.GIT_NAME}} <{{.GIT_EMAIL}}>'
+    desc: Build production binary (same as build, signoff now configured via config file)
     cmds:
-      - |
-        mise exec -- go build \
-          -ldflags="-X 'github.com/smykla-labs/klaudiush/internal/validators/git.ExpectedSignoff={{.SIGNOFF}}'" \
-          -o bin/{{.BINARY_NAME}} \
-          ./cmd/klaudiush
-    sources:
-      - '**/*.go'
-    generates:
-      - bin/{{.BINARY_NAME}}
+      - task: build
 
   test:
     desc: Run all tests
