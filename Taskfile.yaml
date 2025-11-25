@@ -32,10 +32,12 @@ tasks:
     sources:
       - pkg/hook/context.go
       - pkg/config/types.go
+      - pkg/logger/level.go
     generates:
       - pkg/hook/eventtype_enumer.go
       - pkg/hook/tooltype_enumer.go
       - pkg/config/severity_enumer.go
+      - pkg/logger/level_enumer.go
 
   build:
     desc: Build the binary (without signoff validation)

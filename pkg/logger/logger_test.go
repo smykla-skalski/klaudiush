@@ -17,10 +17,10 @@ func TestLogger(t *testing.T) {
 	RunSpecs(t, "Logger Suite")
 }
 
-var _ = Describe("FileLogger", func() {
+var _ = Describe("SlogAdapter", func() {
 	var (
 		buf    *bytes.Buffer
-		log    *logger.FileLogger
+		log    *logger.SlogAdapter
 		output string
 	)
 
@@ -43,7 +43,9 @@ var _ = Describe("FileLogger", func() {
 
 			// Timestamp should include timezone offset like +01:00 or -05:00
 			// Format: 2006-01-02T15:04:05-07:00
-			timestampRegex := regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}`)
+			timestampRegex := regexp.MustCompile(
+				`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}`,
+			)
 			Expect(timestampRegex.MatchString(output)).To(BeTrue(),
 				"expected local timezone format, got: %s", output)
 		})
@@ -62,7 +64,9 @@ var _ = Describe("FileLogger", func() {
 			output = buf.String()
 
 			// Extract the timestamp part
-			timestampRegex := regexp.MustCompile(`^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2})`)
+			timestampRegex := regexp.MustCompile(
+				`^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2})`,
+			)
 			matches := timestampRegex.FindStringSubmatch(output)
 			Expect(matches).To(HaveLen(2), "should match timestamp format")
 
