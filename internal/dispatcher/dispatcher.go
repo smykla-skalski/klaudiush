@@ -45,6 +45,11 @@ func (e *ValidationError) Error() string {
 	return e.Validator
 }
 
+// shortName returns the validator name without the "validate-" prefix.
+func shortName(name string) string {
+	return strings.TrimPrefix(name, "validate-")
+}
+
 // Dispatcher orchestrates validation of hook contexts.
 type Dispatcher struct {
 	registry *validator.Registry
@@ -99,15 +104,17 @@ func (d *Dispatcher) runValidators(ctx context.Context, hookCtx *hook.Context) [
 	validationErrors := make([]*ValidationError, 0, len(validators))
 
 	for _, v := range validators {
+		name := shortName(v.Name())
+
 		d.logger.Debug("running validator",
-			"validator", v.Name(),
+			"validator", name,
 		)
 
 		result := v.Validate(ctx, hookCtx)
 
 		if result.Passed {
 			d.logger.Info("validator passed",
-				"validator", v.Name(),
+				"validator", name,
 			)
 
 			continue
@@ -116,12 +123,12 @@ func (d *Dispatcher) runValidators(ctx context.Context, hookCtx *hook.Context) [
 		// Log based on whether it blocks
 		if result.ShouldBlock {
 			d.logger.Error("validator failed",
-				"validator", v.Name(),
+				"validator", name,
 				"message", result.Message,
 			)
 		} else {
 			d.logger.Info("validator warned",
-				"validator", v.Name(),
+				"validator", name,
 				"message", result.Message,
 			)
 		}
@@ -232,10 +239,7 @@ func formatErrorList(header string, errors []*ValidationError) string {
 	// Add validator names after header
 	for _, err := range errors {
 		builder.WriteString(" ")
-		// Remove "validate-" prefix if present
-		validatorName := err.Validator
-		validatorName = strings.TrimPrefix(validatorName, "validate-")
-		builder.WriteString(validatorName)
+		builder.WriteString(shortName(err.Validator))
 	}
 
 	builder.WriteString("\n\n")
