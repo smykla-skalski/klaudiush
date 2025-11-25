@@ -24,6 +24,13 @@ jobs:
       new_release_git_tag: ${{ steps.semantic.outputs.new_release_git_tag }}
 
     steps:
+      - name: Generate App Token
+        id: app-token
+        uses: actions/create-github-app-token@df432ceedc7162793a195dd1713ff69aefc7379e # v2.0.6
+        with:
+          app-id: ${{ vars.SMYKLOT_APP_ID }}
+          private-key: ${{ secrets.SMYKLOT_PRIVATE_KEY }}
+
       - name: Checkout
         uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
         with:
@@ -40,7 +47,11 @@ jobs:
             @semantic-release/exec
             conventional-changelog-conventionalcommits
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+          GIT_AUTHOR_NAME: smyklot[bot]
+          GIT_AUTHOR_EMAIL: 205507218+smyklot[bot]@users.noreply.github.com
+          GIT_COMMITTER_NAME: smyklot[bot]
+          GIT_COMMITTER_EMAIL: 205507218+smyklot[bot]@users.noreply.github.com
 
   # Build and release binaries with GoReleaser
   goreleaser:
@@ -50,11 +61,17 @@ jobs:
     if: needs.release.outputs.new_release_published == 'true'
 
     steps:
+      - name: Generate App Token
+        id: app-token
+        uses: actions/create-github-app-token@df432ceedc7162793a195dd1713ff69aefc7379e # v2.0.6
+        with:
+          app-id: ${{ vars.SMYKLOT_APP_ID }}
+          private-key: ${{ secrets.SMYKLOT_PRIVATE_KEY }}
+
       - name: Checkout
         uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
         with:
           fetch-depth: 0
-          # Checkout the tag created by semantic-release
           ref: ${{ needs.release.outputs.new_release_git_tag }}
 
       - name: Setup Go
@@ -70,7 +87,7 @@ jobs:
           version: '~> v2'
           args: release --clean
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
 
   # Run tests on all pushes to main (before release)
   test:
