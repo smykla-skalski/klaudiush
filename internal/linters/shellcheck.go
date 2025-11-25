@@ -1,5 +1,7 @@
 package linters
 
+//go:generate mockgen -source=shellcheck.go -destination=shellcheck_mock.go -package=linters
+
 import (
 	"context"
 	"encoding/json"

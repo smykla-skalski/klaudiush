@@ -26,18 +26,46 @@ tasks:
       - task --list
 
   generate:
-    desc: Run go generate for enumer code generation
+    desc: Run all code generation (enums and mocks)
     cmds:
       - mise exec -- go generate ./...
     sources:
       - pkg/hook/context.go
       - pkg/config/types.go
       - pkg/logger/level.go
+      - pkg/logger/logger.go
+      - internal/git/runner.go
+      - internal/exec/command.go
+      - internal/exec/tool.go
+      - internal/exec/tempfile.go
+      - internal/linters/shellcheck.go
+      - internal/linters/terraform.go
+      - internal/linters/tflint.go
+      - internal/linters/actionlint.go
+      - internal/linters/markdownlint.go
+      - internal/prompt/prompt.go
+      - internal/validator/validator.go
+      - internal/doctor/types.go
     generates:
+      # Enums
       - pkg/hook/eventtype_enumer.go
       - pkg/hook/tooltype_enumer.go
       - pkg/config/severity_enumer.go
       - pkg/logger/level_enumer.go
+      # Mocks
+      - pkg/logger/logger_mock.go
+      - internal/git/runner_mock.go
+      - internal/exec/command_mock.go
+      - internal/exec/tool_mock.go
+      - internal/exec/tempfile_mock.go
+      - internal/linters/shellcheck_mock.go
+      - internal/linters/terraform_mock.go
+      - internal/linters/tflint_mock.go
+      - internal/linters/actionlint_mock.go
+      - internal/linters/markdownlint_mock.go
+      - internal/prompt/prompt_mock.go
+      - internal/validator/validator_mock.go
+      - internal/doctor/types_mock.go
 
   build:
     desc: Build the binary (without signoff validation)

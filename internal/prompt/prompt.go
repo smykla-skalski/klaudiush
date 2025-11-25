@@ -1,6 +1,8 @@
 // Package prompt provides utilities for interactive user prompts.
 package prompt
 
+//go:generate mockgen -source=prompt.go -destination=prompt_mock.go -package=prompt
+
 import (
 	"bufio"
 	"fmt"

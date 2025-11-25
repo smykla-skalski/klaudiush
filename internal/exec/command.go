@@ -1,6 +1,8 @@
 // Package exec provides abstractions for executing external commands.
 package exec
 
+//go:generate mockgen -source=command.go -destination=command_mock.go -package=exec
+
 import (
 	"bytes"
 	"context"

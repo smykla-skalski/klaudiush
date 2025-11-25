@@ -4,13 +4,16 @@ go 1.25.4
 
 require (
 	github.com/Masterminds/semver/v3 v3.4.0
+	github.com/dmarkham/enumer v1.6.1
 	github.com/go-git/go-git/v6 v6.0.0-20251123213212-d5ca7ab6ebf9
 	github.com/google/go-github/v79 v79.0.0
+	github.com/mattn/go-runewidth v0.0.19
 	github.com/onsi/ginkgo/v2 v2.27.2
 	github.com/onsi/gomega v1.38.2
 	github.com/pelletier/go-toml/v2 v2.2.4
 	github.com/pkg/errors v0.9.1
 	github.com/spf13/cobra v1.10.1
+	go.uber.org/mock v0.5.0
 	golang.org/x/sync v0.18.0
 	mvdan.cc/sh/v3 v3.12.0
 )
@@ -33,7 +36,7 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/kevinburke/ssh_config v1.4.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
-	github.com/mattn/go-runewidth v0.0.19 // indirect
+	github.com/pascaldekloe/name v1.0.0 // indirect
 	github.com/pjbgf/sha1cd v0.5.0 // indirect
 	github.com/sergi/go-diff v1.4.0 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect

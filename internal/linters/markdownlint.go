@@ -1,5 +1,7 @@
 package linters
 
+//go:generate mockgen -source=markdownlint.go -destination=markdownlint_mock.go -package=linters
+
 import (
 	"context"
 	"errors"

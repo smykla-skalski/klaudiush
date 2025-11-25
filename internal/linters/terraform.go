@@ -1,5 +1,7 @@
 package linters
 
+//go:generate mockgen -source=terraform.go -destination=terraform_mock.go -package=linters
+
 import (
 	"context"
 

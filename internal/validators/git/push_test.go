@@ -6,6 +6,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	gitpkg "github.com/smykla-labs/klaudiush/internal/git"
 	"github.com/smykla-labs/klaudiush/internal/validators/git"
 	"github.com/smykla-labs/klaudiush/pkg/hook"
 	"github.com/smykla-labs/klaudiush/pkg/logger"
@@ -14,16 +15,16 @@ import (
 var _ = Describe("PushValidator", func() {
 	var (
 		validator *git.PushValidator
-		gitRunner *git.MockGitRunner
+		fakeGit   *gitpkg.FakeRunner
 		log       logger.Logger
 	)
 
 	BeforeEach(func() {
 		log = logger.NewNoOpLogger()
-		gitRunner = git.NewMockGitRunner()
-		gitRunner.InRepo = true
-		gitRunner.RepoRoot = "/home/user/projects/github.com/user/my-project"
-		validator = git.NewPushValidator(log, gitRunner, nil)
+		fakeGit = gitpkg.NewFakeRunner()
+		fakeGit.InRepo = true
+		fakeGit.RepoRoot = "/home/user/projects/github.com/user/my-project"
+		validator = git.NewPushValidator(log, fakeGit, nil)
 	})
 
 	// Helper function to create context with command
@@ -54,7 +55,7 @@ var _ = Describe("PushValidator", func() {
 
 		Context("when not in a git repository", func() {
 			It("passes when not in repo", func() {
-				gitRunner.InRepo = false
+				fakeGit.InRepo = false
 				ctx := createContext("git push upstream main")
 				result := validator.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeTrue())
@@ -122,8 +123,8 @@ var _ = Describe("PushValidator", func() {
 
 		Context("default remote handling", func() {
 			It("uses tracking remote when no remote specified", func() {
-				gitRunner.CurrentBranch = "feature-branch"
-				gitRunner.BranchRemotes = map[string]string{
+				fakeGit.CurrentBranch = "feature-branch"
+				fakeGit.BranchRemotes = map[string]string{
 					"feature-branch": "upstream",
 				}
 				ctx := createContext("git push")
@@ -132,15 +133,15 @@ var _ = Describe("PushValidator", func() {
 			})
 
 			It("falls back to origin when no tracking remote", func() {
-				gitRunner.CurrentBranch = "feature-branch"
-				gitRunner.BranchRemotes = map[string]string{}
+				fakeGit.CurrentBranch = "feature-branch"
+				fakeGit.BranchRemotes = map[string]string{}
 				ctx := createContext("git push")
 				result := validator.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeTrue())
 			})
 
 			It("falls back to origin when getting branch fails", func() {
-				gitRunner.Err = &git.MockError{Msg: "not a git repository"}
+				fakeGit.Err = &gitpkg.FakeRunnerError{Msg: "not a git repository"}
 				ctx := createContext("git push")
 				result := validator.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeFalse())
@@ -149,7 +150,7 @@ var _ = Describe("PushValidator", func() {
 
 		Context("Kong organization projects", func() {
 			BeforeEach(func() {
-				gitRunner.RepoRoot = "/home/user/projects/github.com/kong/kong-mesh"
+				fakeGit.RepoRoot = "/home/user/projects/github.com/kong/kong-mesh"
 			})
 
 			It("blocks push to origin remote", func() {
@@ -180,7 +181,7 @@ var _ = Describe("PushValidator", func() {
 			})
 
 			It("detects Kong with capital K", func() {
-				gitRunner.RepoRoot = "/home/user/projects/github.com/Kong/kong-mesh"
+				fakeGit.RepoRoot = "/home/user/projects/github.com/Kong/kong-mesh"
 				ctx := createContext("git push origin feature-branch")
 				result := validator.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeFalse())
@@ -189,7 +190,7 @@ var _ = Describe("PushValidator", func() {
 
 		Context("kumahq/kuma projects", func() {
 			BeforeEach(func() {
-				gitRunner.RepoRoot = "/home/user/projects/github.com/kumahq/kuma"
+				fakeGit.RepoRoot = "/home/user/projects/github.com/kumahq/kuma"
 			})
 
 			It("warns when pushing to upstream", func() {
@@ -225,7 +226,7 @@ var _ = Describe("PushValidator", func() {
 
 		Context("chained commands", func() {
 			It("validates all push commands in chain", func() {
-				gitRunner.RepoRoot = "/home/user/projects/github.com/kong/kong-mesh"
+				fakeGit.RepoRoot = "/home/user/projects/github.com/kong/kong-mesh"
 				ctx := createContext(`git add . && git commit -m "fix" && git push origin main`)
 				result := validator.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeFalse())
@@ -248,7 +249,7 @@ var _ = Describe("PushValidator", func() {
 
 		Context("complex command formats", func() {
 			It("handles subshell", func() {
-				gitRunner.RepoRoot = "/home/user/projects/github.com/kong/kong-mesh"
+				fakeGit.RepoRoot = "/home/user/projects/github.com/kong/kong-mesh"
 				ctx := createContext("(cd /some/dir && git push origin main)")
 				result := validator.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeFalse())
@@ -288,7 +289,7 @@ var _ = Describe("PushValidator", func() {
 			})
 
 			It("handles missing remote gracefully", func() {
-				gitRunner.Remotes = map[string]string{}
+				fakeGit.Remotes = map[string]string{}
 				ctx := createContext("git push origin main")
 				result := validator.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeFalse())
@@ -297,14 +298,14 @@ var _ = Describe("PushValidator", func() {
 
 		Context("other project types", func() {
 			It("passes for non-Kong, non-kuma projects", func() {
-				gitRunner.RepoRoot = "/home/user/projects/github.com/user/my-project"
+				fakeGit.RepoRoot = "/home/user/projects/github.com/user/my-project"
 				ctx := createContext("git push origin main")
 				result := validator.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeTrue())
 			})
 
 			It("allows any valid remote for other projects", func() {
-				gitRunner.RepoRoot = "/home/user/projects/github.com/user/my-project"
+				fakeGit.RepoRoot = "/home/user/projects/github.com/user/my-project"
 				ctx := createContext("git push upstream main")
 				result := validator.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeTrue())

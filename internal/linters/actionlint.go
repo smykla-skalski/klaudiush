@@ -1,5 +1,7 @@
 package linters
 
+//go:generate mockgen -source=actionlint.go -destination=actionlint_mock.go -package=linters
+
 import (
 	"context"
 	"regexp"

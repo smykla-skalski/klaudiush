@@ -1,5 +1,7 @@
 package validator
 
+//go:generate mockgen -source=validator.go -destination=validator_mock.go -package=validator
+
 import (
 	"context"
 

@@ -1,5 +1,7 @@
 package exec
 
+//go:generate mockgen -source=tempfile.go -destination=tempfile_mock.go -package=exec
+
 import (
 	"fmt"
 	"os"

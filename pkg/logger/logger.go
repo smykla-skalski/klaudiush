@@ -1,6 +1,8 @@
 // Package logger provides structured logging for Claude Code hooks.
 package logger
 
+//go:generate mockgen -source=logger.go -destination=logger_mock.go -package=logger
+
 import (
 	"context"
 	"io"

@@ -1,5 +1,7 @@
 package exec
 
+//go:generate mockgen -source=tool.go -destination=tool_mock.go -package=exec
+
 import "os/exec"
 
 // ToolChecker checks for tool availability in PATH.

@@ -7,6 +7,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	gitpkg "github.com/smykla-labs/klaudiush/internal/git"
 	"github.com/smykla-labs/klaudiush/internal/validators/git"
 	"github.com/smykla-labs/klaudiush/pkg/hook"
 	"github.com/smykla-labs/klaudiush/pkg/logger"
@@ -16,15 +17,15 @@ var _ = Describe("CommitValidator", func() {
 	var (
 		validator *git.CommitValidator
 		log       logger.Logger
-		mockGit   *git.MockGitRunner
+		fakeGit   *gitpkg.FakeRunner
 	)
 
 	BeforeEach(func() {
 		log = logger.NewNoOpLogger()
-		mockGit = git.NewMockGitRunner()
-		// By default, set up mock to have staged files so staging check passes
-		mockGit.StagedFiles = []string{"file.txt"}
-		validator = git.NewCommitValidator(log, mockGit, nil)
+		fakeGit = gitpkg.NewFakeRunner()
+		// By default, set up fake to have staged files so staging check passes
+		fakeGit.StagedFiles = []string{"file.txt"}
+		validator = git.NewCommitValidator(log, fakeGit, nil)
 	})
 
 	Describe("Flag validation", func() {
@@ -70,8 +71,8 @@ var _ = Describe("CommitValidator", func() {
 
 			It("should pass with --all flag instead of -a", func() {
 				// Set no staged files to test that --all flag bypasses staging check
-				mockGit.StagedFiles = []string{}
-				mockGit.ModifiedFiles = []string{"file1.go", "file2.go"}
+				fakeGit.StagedFiles = []string{}
+				fakeGit.ModifiedFiles = []string{"file1.go", "file2.go"}
 
 				ctx := &hook.Context{
 					EventType: hook.EventTypePreToolUse,
@@ -1005,7 +1006,7 @@ Signed-off-by: Test User <test@example.com>`
 	Describe("Chained commands with git add", func() {
 		It("should skip staging check when git add is in the chain", func() {
 			// No staged files, but git add is in the command chain
-			mockGit.StagedFiles = []string{}
+			fakeGit.StagedFiles = []string{}
 
 			ctx := &hook.Context{
 				EventType: hook.EventTypePreToolUse,
@@ -1020,7 +1021,7 @@ Signed-off-by: Test User <test@example.com>`
 		})
 
 		It("should skip staging check with multiple files in git add", func() {
-			mockGit.StagedFiles = []string{}
+			fakeGit.StagedFiles = []string{}
 
 			ctx := &hook.Context{
 				EventType: hook.EventTypePreToolUse,
@@ -1035,7 +1036,7 @@ Signed-off-by: Test User <test@example.com>`
 		})
 
 		It("should skip staging check with git add -A in chain", func() {
-			mockGit.StagedFiles = []string{}
+			fakeGit.StagedFiles = []string{}
 
 			ctx := &hook.Context{
 				EventType: hook.EventTypePreToolUse,
@@ -1123,7 +1124,7 @@ Signed-off-by: Test User <test@example.com>`
 		})
 
 		It("should validate commit in chained command with -C option", func() {
-			mockGit.StagedFiles = []string{}
+			fakeGit.StagedFiles = []string{}
 
 			ctx := &hook.Context{
 				EventType: hook.EventTypePreToolUse,
@@ -1138,7 +1139,7 @@ Signed-off-by: Test User <test@example.com>`
 		})
 
 		It("should detect git add with -C option in chain", func() {
-			mockGit.StagedFiles = []string{}
+			fakeGit.StagedFiles = []string{}
 
 			ctx := &hook.Context{
 				EventType: hook.EventTypePreToolUse,

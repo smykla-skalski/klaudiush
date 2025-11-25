@@ -1,5 +1,7 @@
 package git
 
+//go:generate mockgen -source=runner.go -destination=runner_mock.go -package=git
+
 // Runner defines the interface for git operations
 type Runner interface {
 	// IsInRepo checks if we're in a git repository

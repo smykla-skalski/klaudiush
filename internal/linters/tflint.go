@@ -1,5 +1,7 @@
 package linters
 
+//go:generate mockgen -source=tflint.go -destination=tflint_mock.go -package=linters
+
 import (
 	"context"
 	"regexp"

@@ -1,6 +1,8 @@
 // Package doctor provides health check and diagnostics functionality for klaudiush
 package doctor
 
+//go:generate mockgen -source=types.go -destination=types_mock.go -package=doctor
+
 import "context"
 
 // Severity represents the severity level of a check result

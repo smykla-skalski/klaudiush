@@ -6,6 +6,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	gitpkg "github.com/smykla-labs/klaudiush/internal/git"
 	"github.com/smykla-labs/klaudiush/internal/validators/git"
 	"github.com/smykla-labs/klaudiush/pkg/hook"
 	"github.com/smykla-labs/klaudiush/pkg/logger"
@@ -15,13 +16,13 @@ var _ = Describe("GitAddValidator", func() {
 	var (
 		val     *git.AddValidator
 		log     logger.Logger
-		mockGit *git.MockGitRunner
+		fakeGit *gitpkg.FakeRunner
 	)
 
 	BeforeEach(func() {
 		log = logger.NewNoOpLogger()
-		mockGit = git.NewMockGitRunner()
-		val = git.NewAddValidator(log, mockGit, nil)
+		fakeGit = gitpkg.NewFakeRunner()
+		val = git.NewAddValidator(log, fakeGit, nil)
 	})
 
 	Describe("Name", func() {
