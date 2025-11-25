@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Pre-push hook for klaudiush
+# Runs full linting and tests before allowing push
+
+set -e
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+echo -e "${YELLOW}Running pre-push checks...${NC}"
+
+# Run lint task
+echo -e "${YELLOW}1/2 Running full lint...${NC}"
+if ! task lint; then
+    echo -e "${RED}✗ Linting failed${NC}"
+    echo -e "${YELLOW}Fix the issues above and try again${NC}"
+    echo -e "${YELLOW}Or use 'git push --no-verify' to skip checks${NC}"
+    exit 1
+fi
+
+# Run test task
+echo -e "${YELLOW}2/2 Running all tests...${NC}"
+if ! task test; then
+    echo -e "${RED}✗ Tests failed${NC}"
+    echo -e "${YELLOW}Fix the test failures and try again${NC}"
+    echo -e "${YELLOW}Or use 'git push --no-verify' to skip checks${NC}"
+    exit 1
+fi
+
+echo -e "${GREEN}✓ All pre-push checks passed${NC}"
+exit 0

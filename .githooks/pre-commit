@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Pre-commit hook for klaudiush
+# Runs linting and unit tests on modified and staged files before allowing commit
+
+set -e
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+echo -e "${YELLOW}Running pre-commit checks...${NC}"
+
+# Run lint:staged task
+echo -e "${YELLOW}1/2 Linting staged files...${NC}"
+if ! task lint:staged; then
+    echo -e "${RED}✗ Linting failed${NC}"
+    echo -e "${YELLOW}Fix the issues above and try again${NC}"
+    echo -e "${YELLOW}Or use 'git commit --no-verify' to skip checks${NC}"
+    exit 1
+fi
+
+# Run test:staged task
+echo -e "${YELLOW}2/2 Testing staged files...${NC}"
+if ! task test:staged; then
+    echo -e "${RED}✗ Tests failed${NC}"
+    echo -e "${YELLOW}Fix the test failures and try again${NC}"
+    echo -e "${YELLOW}Or use 'git commit --no-verify' to skip checks${NC}"
+    exit 1
+fi
+
+echo -e "${GREEN}✓ All pre-commit checks passed${NC}"
+exit 0

@@ -92,6 +92,7 @@ task install     # Install to ~/.claude/hooks/
 task test              # Run all tests (439 specs)
 task test:unit         # Unit tests only
 task test:integration  # Integration tests only
+task test:staged       # Test packages with staged files
 ```
 
 ### Code Quality
@@ -100,8 +101,31 @@ task test:integration  # Integration tests only
 task check        # Lint and auto-fix
 task lint         # Lint only (67 linters enabled)
 task lint:fix     # Lint with auto-fix
+task lint:staged  # Lint only modified and staged files
 task fmt          # Format code
 task verify       # Run fmt + lint + test
+```
+
+### Git Hooks
+
+```bash
+task install:hooks  # Install pre-commit and pre-push hooks
+```
+
+The project includes two git hooks for quality assurance:
+
+**Pre-commit hook** runs before each commit:
+- `task lint:staged` - Lints only modified and staged files
+- `task test:staged` - Tests only packages with changes
+
+**Pre-push hook** runs before each push:
+- `task lint` - Full linting of entire codebase
+- `task test` - Full test suite
+
+To bypass hooks (not recommended), use:
+```bash
+git commit --no-verify    # Skip pre-commit hook
+git push --no-verify      # Skip pre-push hook
 ```
 
 ### Other
@@ -115,7 +139,7 @@ task clean  # Remove build artifacts
 
 ### Core Flow
 
-```text
+```
 Claude Code JSON → CLI → JSON Parser → Dispatcher → Registry → Validators → Result
 ```
 
@@ -127,7 +151,7 @@ Claude Code JSON → CLI → JSON Parser → Dispatcher → Registry → Validat
 
 ### Directory Structure
 
-```text
+```
 klaudiush/
 ├── cmd/klaudiush/           # CLI entry point
 ├── pkg/
@@ -401,8 +425,8 @@ See [`examples/config/full.toml`](examples/config/full.toml) for the complete li
 
 ## Support
 
-- **Issues**: <https://github.com/smykla-labs/klaudiush/issues>
-- **Discussions**: <https://github.com/smykla-labs/klaudiush/discussions>
+- **Issues**: https://github.com/smykla-labs/klaudiush/issues
+- **Discussions**: https://github.com/smykla-labs/klaudiush/discussions
 - **Logs**: `~/.claude/hooks/dispatcher.log`
 
 ## License

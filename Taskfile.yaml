@@ -70,6 +70,35 @@ tasks:
     cmds:
       - mise exec -- go test -v -race -cover -run Integration ./...
 
+  test:staged:
+    desc: Run tests for packages with staged files
+    vars:
+      STAGED_FILES:
+        sh: git diff --cached --name-only --diff-filter=ACM | grep '\.go$' || true
+      MODIFIED_FILES:
+        sh: git diff --name-only --diff-filter=ACM | grep '\.go$' || true
+      ALL_CHANGED_FILES:
+        sh: |
+          (git diff --cached --name-only --diff-filter=ACM; git diff --name-only --diff-filter=ACM) | \
+          grep '\.go$' | sort -u || true
+      CHANGED_PACKAGES:
+        sh: |
+          files=$( (git diff --cached --name-only --diff-filter=ACM; git diff --name-only --diff-filter=ACM) | \
+                  grep '\.go$' | sort -u || true )
+          if [ -z "$files" ]; then
+            echo ""
+          else
+            echo "$files" | xargs -n1 dirname | sort -u | sed 's|^|./|' | sed 's|$|/...|' | tr '\n' ' '
+          fi
+    cmds:
+      - |
+        if [ -n "{{.CHANGED_PACKAGES}}" ]; then
+          echo "Running tests for changed packages..."
+          mise exec -- go test -v -race -cover -short {{.CHANGED_PACKAGES}}
+        else
+          echo "No Go files changed, skipping tests"
+        fi
+
   lint:
     desc: Run linters on all files
     cmds:
@@ -79,6 +108,27 @@ tasks:
     desc: Run linters with auto-fix on all files
     cmds:
       - mise exec -- golangci-lint run --fix
+
+  lint:staged:
+    desc: Run linters on modified and staged files only
+    vars:
+      CHANGED_PACKAGES:
+        sh: |
+          files=$( (git diff --cached --name-only --diff-filter=ACM; git diff --name-only --diff-filter=ACM) | \
+                  grep '\.go$' | sort -u || true )
+          if [ -z "$files" ]; then
+            echo ""
+          else
+            echo "$files" | xargs -n1 dirname | sort -u | sed 's|^|./|' | sed 's|$|/...|' | tr '\n' ' '
+          fi
+    cmds:
+      - |
+        if [ -n "{{.CHANGED_PACKAGES}}" ]; then
+          echo "Linting changed files..."
+          mise exec -- golangci-lint run {{.CHANGED_PACKAGES}}
+        else
+          echo "No Go files to lint"
+        fi
 
   check:
     desc: Alias for lint:fix
@@ -107,6 +157,22 @@ tasks:
             echo "  export PATH=\"{{.INSTALL_DIR}}:\$PATH\""
           fi
         silent: true
+
+  install:hooks:
+    desc: Install git pre-commit and pre-push hooks
+    cmds:
+      - |
+        if [ ! -d ".git" ]; then
+          echo "Error: Not a git repository"
+          exit 1
+        fi
+      - mkdir -p .git/hooks
+      - cp .githooks/pre-commit .git/hooks/pre-commit
+      - chmod +x .git/hooks/pre-commit
+      - echo "✓ Pre-commit hook installed to .git/hooks/pre-commit"
+      - cp .githooks/pre-push .git/hooks/pre-push
+      - chmod +x .git/hooks/pre-push
+      - echo "✓ Pre-push hook installed to .git/hooks/pre-push"
 
   clean:
     desc: Remove build artifacts
