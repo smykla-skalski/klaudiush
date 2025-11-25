@@ -130,8 +130,10 @@ var _ = Describe("Git Predicates", func() {
 	Describe("GitHasAnyFlag", func() {
 		It("matches any of the specified flags", func() {
 			ctx := &hook.Context{
-				ToolName:  hook.Bash,
-				ToolInput: hook.ToolInput{Command: "git -C /repo checkout -b feature upstream/main"},
+				ToolName: hook.Bash,
+				ToolInput: hook.ToolInput{
+					Command: "git -C /repo checkout -b feature upstream/main",
+				},
 			}
 
 			predicate := validator.GitHasAnyFlag("-b", "--branch")
@@ -162,8 +164,10 @@ var _ = Describe("Git Predicates", func() {
 	Describe("GitSubcommandWithFlag", func() {
 		It("matches subcommand with specific flag", func() {
 			ctx := &hook.Context{
-				ToolName:  hook.Bash,
-				ToolInput: hook.ToolInput{Command: "git -C /repo checkout -b feature upstream/main"},
+				ToolName: hook.Bash,
+				ToolInput: hook.ToolInput{
+					Command: "git -C /repo checkout -b feature upstream/main",
+				},
 			}
 
 			predicate := validator.GitSubcommandWithFlag("checkout", "-b")
@@ -194,8 +198,10 @@ var _ = Describe("Git Predicates", func() {
 	Describe("GitSubcommandWithAnyFlag", func() {
 		It("matches checkout with -b flag", func() {
 			ctx := &hook.Context{
-				ToolName:  hook.Bash,
-				ToolInput: hook.ToolInput{Command: "git -C /path/to/repo checkout -b feature upstream/main"},
+				ToolName: hook.Bash,
+				ToolInput: hook.ToolInput{
+					Command: "git -C /path/to/repo checkout -b feature upstream/main",
+				},
 			}
 
 			predicate := validator.GitSubcommandWithAnyFlag("checkout", "-b", "--branch")
@@ -208,7 +214,13 @@ var _ = Describe("Git Predicates", func() {
 				ToolInput: hook.ToolInput{Command: "git switch -c feature"},
 			}
 
-			predicate := validator.GitSubcommandWithAnyFlag("switch", "-c", "--create", "-C", "--force-create")
+			predicate := validator.GitSubcommandWithAnyFlag(
+				"switch",
+				"-c",
+				"--create",
+				"-C",
+				"--force-create",
+			)
 			Expect(predicate(ctx)).To(BeTrue())
 		})
 
@@ -270,7 +282,13 @@ var _ = Describe("Git Predicates", func() {
 				validator.EventTypeIs(hook.PreToolUse),
 				validator.Or(
 					validator.GitSubcommandWithAnyFlag("checkout", "-b", "--branch"),
-					validator.GitSubcommandWithAnyFlag("switch", "-c", "--create", "-C", "--force-create"),
+					validator.GitSubcommandWithAnyFlag(
+						"switch",
+						"-c",
+						"--create",
+						"-C",
+						"--force-create",
+					),
 					validator.GitSubcommandWithoutAnyFlag("branch", "-d", "-D", "--delete"),
 				),
 			)

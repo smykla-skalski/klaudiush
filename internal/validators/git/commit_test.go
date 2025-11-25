@@ -316,6 +316,77 @@ var _ = Describe("CommitValidator", func() {
 			})
 		})
 
+		Context("when commit is a revert", func() {
+			It("should pass with git revert format using double quotes", func() {
+				ctx := &hook.Context{
+					EventType: hook.PreToolUse,
+					ToolName:  hook.Bash,
+					ToolInput: hook.ToolInput{
+						Command: `git commit -sS -a -m 'Revert "feat(api): add new endpoint"'`,
+					},
+				}
+
+				result := validator.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("should pass with git revert format using single quotes", func() {
+				ctx := &hook.Context{
+					EventType: hook.PreToolUse,
+					ToolName:  hook.Bash,
+					ToolInput: hook.ToolInput{
+						Command: `git commit -sS -a -m "Revert 'fix(auth): resolve login issue'"`,
+					},
+				}
+
+				result := validator.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("should pass with revert of non-conventional commit", func() {
+				ctx := &hook.Context{
+					EventType: hook.PreToolUse,
+					ToolName:  hook.Bash,
+					ToolInput: hook.ToolInput{
+						Command: `git commit -sS -a -m 'Revert "Add new feature"'`,
+					},
+				}
+
+				result := validator.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("should fail with revert title over 50 characters", func() {
+				ctx := &hook.Context{
+					EventType: hook.PreToolUse,
+					ToolName:  hook.Bash,
+					ToolInput: hook.ToolInput{
+						Command: `git commit -sS -a -m 'Revert "feat(api): this is a very long commit message title"'`,
+					},
+				}
+
+				result := validator.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeFalse())
+				Expect(result.Details["errors"]).To(ContainSubstring("Title exceeds 50 characters"))
+			})
+
+			It("should fail without quotes around original message", func() {
+				ctx := &hook.Context{
+					EventType: hook.PreToolUse,
+					ToolName:  hook.Bash,
+					ToolInput: hook.ToolInput{
+						Command: `git commit -sS -a -m "Revert feat(api): add endpoint"`,
+					},
+				}
+
+				result := validator.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeFalse())
+				Expect(
+					result.Details["errors"],
+				).To(ContainSubstring("doesn't follow conventional commits format"))
+			})
+		})
+
 		Context("when body has line length issues", func() {
 			It("should pass with lines under 72 characters", func() {
 				message := `feat(api): add endpoint

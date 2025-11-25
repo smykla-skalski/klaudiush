@@ -269,7 +269,9 @@ EOF
 	Describe("Global Options", func() {
 		Context("with -C option", func() {
 			It("parses git command with -C path before subcommand", func() {
-				result, err := p.Parse("git -C /path/to/repo checkout -b feat/new-feature upstream/main")
+				result, err := p.Parse(
+					"git -C /path/to/repo checkout -b feat/new-feature upstream/main",
+				)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(result.GitOperations).To(HaveLen(1))
 

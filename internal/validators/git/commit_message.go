@@ -45,6 +45,9 @@ var (
 	// PR references: #123 or GitHub URLs
 	prReferenceRegex = regexp.MustCompile(`#[0-9]+|github\.com/.+/pull/[0-9]+`)
 
+	// Git revert commit format: Revert "original commit" or Revert 'original commit'
+	revertCommitRegex = regexp.MustCompile(`^Revert ["'].+["']$`)
+
 	// List item patterns
 	listItemRegex = regexp.MustCompile(`^\s*[-*]\s+|\s*[0-9]+\.\s+`)
 
@@ -129,7 +132,8 @@ func (v *CommitValidator) validateTitle(lines []string) (string, []string) {
 	}
 
 	// Check conventional commit format (if enabled)
-	if v.shouldCheckConventionalCommits() {
+	// Skip for git revert commits which use "Revert "original commit"" format
+	if v.shouldCheckConventionalCommits() && !isRevertCommit(title) {
 		validTypes := v.getValidTypes()
 		requireScope := v.shouldRequireScope()
 
@@ -598,4 +602,10 @@ func (*CommitValidator) buildConventionalCommitPattern(
 
 	// Scope is optional
 	return fmt.Sprintf(`^(%s)(\([a-zA-Z0-9_\/-]+\))?!?: .+`, typesStr)
+}
+
+// isRevertCommit checks if the title follows git's revert commit format.
+// Git generates revert commits with the format: Revert "original commit title"
+func isRevertCommit(title string) bool {
+	return revertCommitRegex.MatchString(title)
 }
