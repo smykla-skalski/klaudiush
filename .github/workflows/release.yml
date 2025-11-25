@@ -103,7 +103,7 @@ jobs:
           GPG_FINGERPRINT: ${{ steps.import-gpg.outputs.fingerprint }}
 
       - name: Generate build provenance attestations
-        uses: actions/attest-build-provenance@1c608d11d69870c2092266b3f9a6f3abbf17002c # v1.4.3
+        uses: actions/attest-build-provenance@977bb37f5a2d33f1462e8c5e96968d2efe0d3370 # v3.0.0
         with:
           subject-checksums: dist/checksums.txt
 
