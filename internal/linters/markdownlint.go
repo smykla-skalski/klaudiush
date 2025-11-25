@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"regexp"
 	"strings"
 
 	execpkg "github.com/smykla-labs/klaudiush/internal/exec"
@@ -172,8 +173,13 @@ func (l *RealMarkdownLinter) runMarkdownlint(
 		}
 	}
 
+	// Generate preamble if we have list context
+	// This establishes the correct markdown state for markdownlint
+	preamble, preambleLines := validators.GeneratePreamble(initialState)
+	contentToLint := preamble + content
+
 	// Write content to temp file
-	tempFile, cleanup, err := l.tempMgr.Create("markdownlint-*.md", content)
+	tempFile, cleanup, err := l.tempMgr.Create("markdownlint-*.md", contentToLint)
 	if err != nil {
 		return &LintResult{
 			Success: false,
@@ -186,7 +192,7 @@ func (l *RealMarkdownLinter) runMarkdownlint(
 	// Build markdownlint command
 	args := []string{}
 
-	// Determine if we need to disable MD041 for fragments
+	// Determine if we need to disable MD047 for fragments
 	// If initialState is provided and StartLine > 0, this is a fragment
 	needsFragmentConfig := initialState != nil && initialState.StartLine > 0
 
@@ -246,11 +252,74 @@ func (l *RealMarkdownLinter) runMarkdownlint(
 	// Clean up temp file path from output
 	output = strings.ReplaceAll(output, tempFile, "<file>")
 
+	// Adjust line numbers to account for preamble and filter out preamble errors
+	if preambleLines > 0 {
+		output = adjustLineNumbers(output, preambleLines)
+	}
+
+	// Check if any real errors remain after filtering
+	if strings.TrimSpace(output) == "" {
+		return &LintResult{
+			Success: true,
+			RawOut:  "",
+		}
+	}
+
 	return &LintResult{
 		Success: false,
 		RawOut:  strings.TrimSpace(output),
 		Err:     ErrMarkdownlintFailed,
 	}
+}
+
+const (
+	// minLineNumberMatches is the minimum number of matches expected for line number regex
+	minLineNumberMatches = 2
+)
+
+// lineNumberRegex matches markdownlint output line numbers in formats like:
+// <file>:10:1 or <file>:10
+var lineNumberRegex = regexp.MustCompile(`<file>:(\d+)`)
+
+// adjustLineNumbers adjusts line numbers in markdownlint output to account for preamble lines.
+// It also filters out errors that occur in the preamble itself.
+func adjustLineNumbers(output string, preambleLines int) string {
+	lines := strings.Split(output, "\n")
+	result := make([]string, 0, len(lines))
+
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+
+		// Find line number in the output
+		matches := lineNumberRegex.FindStringSubmatch(line)
+		if len(matches) < minLineNumberMatches {
+			// No line number found, keep the line as-is
+			result = append(result, line)
+
+			continue
+		}
+
+		lineNum := 0
+		_, _ = fmt.Sscanf(matches[1], "%d", &lineNum)
+
+		// Skip errors that occur in the preamble
+		if lineNum <= preambleLines {
+			continue
+		}
+
+		// Adjust line number by subtracting preamble lines
+		adjustedLine := lineNum - preambleLines
+		adjustedOutput := lineNumberRegex.ReplaceAllString(
+			line,
+			fmt.Sprintf("<file>:%d", adjustedLine),
+		)
+
+		result = append(result, adjustedOutput)
+	}
+
+	return strings.Join(result, "\n")
 }
 
 // createTempConfig creates a temporary markdownlint config file from the rules map
@@ -313,17 +382,26 @@ func (l *RealMarkdownLinter) createTempConfig(
 }
 
 // createFragmentConfig creates a minimal config that disables fragment-incompatible rules
+// Note: MD041 (first-line-heading) is no longer disabled because we use a preamble with a header.
+// List-related rules (MD007, MD029, MD032) are also no longer disabled because the preamble
+// establishes the correct list context.
 func (l *RealMarkdownLinter) createFragmentConfig(disableMD047 bool) (string, func(), error) {
-	configContent := `{
-  "MD041": false`
+	// With the preamble approach, we don't need to disable MD041 anymore
+	// The preamble includes a header
+	configContent := "{"
 
 	if disableMD047 {
-		configContent += `,
+		configContent += `
   "MD047": false`
 	}
 
-	configContent += `
+	// Close the JSON object properly
+	if configContent == "{" {
+		configContent = "{}"
+	} else {
+		configContent += `
 }`
+	}
 
 	return l.tempMgr.Create("markdownlint-fragment-*.json", configContent)
 }

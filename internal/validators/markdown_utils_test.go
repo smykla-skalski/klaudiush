@@ -9,31 +9,32 @@ import (
 
 var _ = Describe("MarkdownState", func() {
 	Describe("DetectMarkdownState", func() {
-		It("starts with InCodeBlock=false for empty content", func() {
-			state := validators.DetectMarkdownState("", 0)
-			Expect(state.InCodeBlock).To(BeFalse())
-		})
+		Context("code block detection", func() {
+			It("starts with InCodeBlock=false for empty content", func() {
+				state := validators.DetectMarkdownState("", 0)
+				Expect(state.InCodeBlock).To(BeFalse())
+			})
 
-		It("starts with InCodeBlock=false for upToLine=0", func() {
-			content := "```\ncode\n```"
-			state := validators.DetectMarkdownState(content, 0)
-			Expect(state.InCodeBlock).To(BeFalse())
-		})
+			It("starts with InCodeBlock=false for upToLine=0", func() {
+				content := "```\ncode\n```"
+				state := validators.DetectMarkdownState(content, 0)
+				Expect(state.InCodeBlock).To(BeFalse())
+			})
 
-		It("detects InCodeBlock=true after opening marker", func() {
-			content := `# Header
+			It("detects InCodeBlock=true after opening marker", func() {
+				content := `# Header
 
 ` + "```json" + `
 {
   "key": "value"
 }
 `
-			state := validators.DetectMarkdownState(content, 4)
-			Expect(state.InCodeBlock).To(BeTrue())
-		})
+				state := validators.DetectMarkdownState(content, 4)
+				Expect(state.InCodeBlock).To(BeTrue())
+			})
 
-		It("detects InCodeBlock=false after closing marker", func() {
-			content := `# Header
+			It("detects InCodeBlock=false after closing marker", func() {
+				content := `# Header
 
 ` + "```json" + `
 {
@@ -43,12 +44,12 @@ var _ = Describe("MarkdownState", func() {
 
 Text after
 `
-			state := validators.DetectMarkdownState(content, 8)
-			Expect(state.InCodeBlock).To(BeFalse())
-		})
+				state := validators.DetectMarkdownState(content, 8)
+				Expect(state.InCodeBlock).To(BeFalse())
+			})
 
-		It("handles multiple code blocks correctly", func() {
-			content := `# Header
+			It("handles multiple code blocks correctly", func() {
+				content := `# Header
 
 ` + "```bash" + `
 echo "first"
@@ -60,17 +61,17 @@ Some text
 echo "second"
 ` + "```" + `
 `
-			// After first code block (line 6 = after first closing ```)
-			state := validators.DetectMarkdownState(content, 6)
-			Expect(state.InCodeBlock).To(BeFalse())
+				// After first code block (line 6 = after first closing ```)
+				state := validators.DetectMarkdownState(content, 6)
+				Expect(state.InCodeBlock).To(BeFalse())
 
-			// Inside second code block (line 10 = inside second code block)
-			state = validators.DetectMarkdownState(content, 10)
-			Expect(state.InCodeBlock).To(BeTrue())
-		})
+				// Inside second code block (line 10 = inside second code block)
+				state = validators.DetectMarkdownState(content, 10)
+				Expect(state.InCodeBlock).To(BeTrue())
+			})
 
-		It("handles nested code blocks in lists", func() {
-			content := `- List item
+			It("handles nested code blocks in lists", func() {
+				content := `- List item
 
   ` + "```bash" + `
   code inside list
@@ -78,13 +79,127 @@ echo "second"
 
 - Another item
 `
-			// Inside code block within list (line 4)
-			state := validators.DetectMarkdownState(content, 4)
-			Expect(state.InCodeBlock).To(BeTrue())
+				// Inside code block within list (line 4)
+				state := validators.DetectMarkdownState(content, 4)
+				Expect(state.InCodeBlock).To(BeTrue())
 
-			// After code block (line 7)
-			state = validators.DetectMarkdownState(content, 7)
-			Expect(state.InCodeBlock).To(BeFalse())
+				// After code block (line 7)
+				state = validators.DetectMarkdownState(content, 7)
+				Expect(state.InCodeBlock).To(BeFalse())
+			})
+		})
+
+		Context("list context detection", func() {
+			It("detects no list context outside of lists", func() {
+				content := `# Header
+
+Some paragraph text.
+
+More text.
+`
+				state := validators.DetectMarkdownState(content, 5)
+				Expect(state.InList).To(BeFalse())
+				Expect(state.ListIndent).To(Equal(0))
+				Expect(state.ListItemDepth).To(Equal(0))
+			})
+
+			It("detects list context inside a simple list", func() {
+				content := `# Header
+
+- First item
+- Second item
+`
+				// After second list item (line 4)
+				state := validators.DetectMarkdownState(content, 4)
+				Expect(state.InList).To(BeTrue())
+				Expect(state.ListIndent).To(Equal(2)) // "- " = 2 chars
+				Expect(state.ListItemDepth).To(Equal(1))
+			})
+
+			It("detects nested list context", func() {
+				content := `- First item
+  - Nested item
+    - Deeply nested
+`
+				// After deeply nested item (line 3)
+				state := validators.DetectMarkdownState(content, 3)
+				Expect(state.InList).To(BeTrue())
+				Expect(state.ListItemDepth).To(Equal(3))
+			})
+
+			It("detects list context with numbered lists", func() {
+				content := `1. First item
+2. Second item
+   - Nested bullet
+`
+				// After nested bullet (line 3)
+				state := validators.DetectMarkdownState(content, 3)
+				Expect(state.InList).To(BeTrue())
+				Expect(state.ListItemDepth).To(Equal(2))
+			})
+
+			It("resets list context after two empty lines", func() {
+				content := `- List item
+
+
+Paragraph after two empty lines.
+`
+				// After paragraph (line 4)
+				state := validators.DetectMarkdownState(content, 4)
+				Expect(state.InList).To(BeFalse())
+				Expect(state.ListIndent).To(Equal(0))
+			})
+
+			It("maintains list context with single empty line", func() {
+				content := `- First item
+
+  Continuation of first item.
+`
+				// After continuation (line 3)
+				state := validators.DetectMarkdownState(content, 3)
+				Expect(state.InList).To(BeTrue())
+			})
+
+			It("detects list context for fragment starting mid-list", func() {
+				// This is the key test case for the MD007 false positive fix
+				content := `# Implementation Plan
+
+1. First step
+   - Sub-step A
+   - Sub-step B
+     - Detail 1
+     - Detail 2
+2. Second step
+`
+				// After "Detail 2" (line 7) - fragment would start here
+				state := validators.DetectMarkdownState(content, 7)
+				Expect(state.InList).To(BeTrue())
+				Expect(state.ListItemDepth).To(Equal(3)) // 1. -> - -> -
+			})
+
+			It("handles list context with code blocks", func() {
+				content := `- List item
+
+  ` + "```bash" + `
+  echo "code"
+  ` + "```" + `
+
+  More list content
+`
+				// After code block, still in list context (line 7)
+				state := validators.DetectMarkdownState(content, 7)
+				Expect(state.InList).To(BeTrue())
+			})
+
+			It("exits list when content is not indented enough", func() {
+				content := `- List item
+  - Nested item
+Not part of list anymore
+`
+				// After unindented line (line 3)
+				state := validators.DetectMarkdownState(content, 3)
+				Expect(state.InList).To(BeFalse())
+			})
 		})
 	})
 

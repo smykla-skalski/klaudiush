@@ -12,14 +12,44 @@ import (
 
 const (
 	maxTruncateLength = 60
+
+	// consecutiveEmptyLinesToEndList is the number of consecutive empty lines
+	// that ends a list context in markdown
+	consecutiveEmptyLinesToEndList = 2
+
+	// preambleHeaderLines is the number of lines in the basic preamble header
+	preambleHeaderLines = 2
+
+	// minRegexMatches is the minimum number of matches expected from list marker regex
+	minRegexMatches = 2
 )
+
+// ListItemInfo represents information about a single list item in the stack
+type ListItemInfo struct {
+	MarkerIndent  int    // indentation of the list marker (leading spaces)
+	ContentIndent int    // where content should start (after marker + space)
+	IsOrdered     bool   // true if this is an ordered list (1. 2. etc.)
+	OrderNumber   int    // current number for ordered lists (1, 2, 3...)
+	Marker        string // the marker used (-, *, +, or "1.", "2.", etc.)
+}
 
 // MarkdownState represents the parsing state at a given position
 type MarkdownState struct {
 	InCodeBlock bool
 	StartLine   int  // 0-indexed line number where this state begins (0 = start of file)
 	EndsAtEOF   bool // true if this fragment includes the last line of the file
-	// Future: InComment, ListDepth, etc.
+
+	// List context tracking for proper indentation validation
+	InList        bool // true if currently inside a list structure
+	ListIndent    int  // expected indentation level for nested content (0 if not in list)
+	ListItemDepth int  // nesting depth of list items (0 = not in list, 1 = top-level, etc.)
+
+	// Detailed list stack for preamble generation
+	ListStack []ListItemInfo // stack of list items from outermost to innermost
+
+	// Tracks if there was a blank line before the fragment start
+	// (needed for MD032 blanks-around-lists validation)
+	HadBlankLineBeforeFragment bool
 }
 
 // MarkdownAnalysisResult contains markdown validation warnings
@@ -59,10 +89,215 @@ var (
 	listItemRegex  = regexp.MustCompile(
 		`^[[:space:]]*[-*+][[:space:]]|^[[:space:]]*[0-9]+\.[[:space:]]`,
 	)
-	headerRegex    = regexp.MustCompile(`^#+[[:space:]]`)
-	commentRegex   = regexp.MustCompile(`^<!--`)
-	emptyLineRegex = regexp.MustCompile(`^[[:space:]]*$`)
+	orderedListRegex   = regexp.MustCompile(`^([[:space:]]*)([0-9]+)\.[[:space:]]`)
+	unorderedListRegex = regexp.MustCompile(`^([[:space:]]*)([*+-])[[:space:]]`)
+	headerRegex        = regexp.MustCompile(`^#+[[:space:]]`)
+	commentRegex       = regexp.MustCompile(`^<!--`)
+	emptyLineRegex     = regexp.MustCompile(`^[[:space:]]*$`)
 )
+
+// parseListMarker extracts list marker information from a line
+// Returns: isOrdered, orderNumber (or 0), marker string
+func parseListMarker(line string) (bool, int, string) {
+	// Try ordered list first
+	if matches := orderedListRegex.FindStringSubmatch(line); len(matches) >= minRegexMatches+1 {
+		num := 0
+		_, _ = fmt.Sscanf(matches[2], "%d", &num)
+
+		return true, num, matches[2] + "."
+	}
+
+	// Try unordered list
+	if matches := unorderedListRegex.FindStringSubmatch(line); len(matches) >= minRegexMatches+1 {
+		return false, 0, matches[2]
+	}
+
+	return false, 0, ""
+}
+
+// GeneratePreamble creates synthetic markdown content that establishes the correct
+// list context for a fragment. This allows markdownlint to validate the fragment
+// with proper understanding of the list nesting and ordering.
+//
+// Returns the preamble string and the number of lines in the preamble.
+func GeneratePreamble(state *MarkdownState) (string, int) {
+	if state == nil || !state.InList || len(state.ListStack) == 0 {
+		// No list context, but add a blank line if fragment doesn't start at beginning
+		if state != nil && state.StartLine > 0 {
+			// Add a header and blank line to satisfy MD041 (first-line-heading)
+			// and provide context for any content
+			return "# Preamble\n\n", preambleHeaderLines
+		}
+
+		return "", 0
+	}
+
+	var builder strings.Builder
+
+	lineCount := 0
+
+	// Start with a header to satisfy MD041
+	builder.WriteString("# Preamble\n\n")
+
+	lineCount += preambleHeaderLines
+
+	// Generate list items for each level in the stack
+	// We need to establish context for each nesting level
+	for i, item := range state.ListStack {
+		indent := strings.Repeat(" ", item.MarkerIndent)
+
+		if item.IsOrdered {
+			// For ordered lists, generate all preceding items (1 to N-1)
+			// plus the current item N to establish context
+			// The fragment will continue from or after item N
+			for j := 1; j <= item.OrderNumber; j++ {
+				builder.WriteString(fmt.Sprintf("%s%d. Item %d\n", indent, j, j))
+
+				lineCount++
+			}
+
+			// Add blank line if there are more nested levels
+			if i < len(state.ListStack)-1 {
+				builder.WriteString("\n")
+
+				lineCount++
+			}
+		} else {
+			// For unordered lists, one item establishes context at this level
+			builder.WriteString(fmt.Sprintf("%s%s Item\n", indent, item.Marker))
+
+			lineCount++
+
+			// Add blank line if there are more nested levels
+			if i < len(state.ListStack)-1 {
+				builder.WriteString("\n")
+
+				lineCount++
+			}
+		}
+	}
+
+	// Add a blank line before the fragment if needed for MD032
+	if state.HadBlankLineBeforeFragment {
+		builder.WriteString("\n")
+
+		lineCount++
+	}
+
+	return builder.String(), lineCount
+}
+
+// listTracker manages the list context stack during markdown parsing
+type listTracker struct {
+	stack                 []ListItemInfo
+	consecutiveEmptyLines int
+	lastLineWasEmpty      bool
+}
+
+// processCodeBlockMarker handles code block markers for list tracking
+func (lt *listTracker) processCodeBlockMarker() {
+	lt.consecutiveEmptyLines = 0
+	lt.lastLineWasEmpty = false
+}
+
+// processCodeBlockContent handles content inside code blocks
+func (lt *listTracker) processCodeBlockContent() {
+	lt.consecutiveEmptyLines = 0
+	lt.lastLineWasEmpty = false
+}
+
+// processEmptyLine handles empty lines for list tracking
+func (lt *listTracker) processEmptyLine() {
+	lt.consecutiveEmptyLines++
+	lt.lastLineWasEmpty = true
+
+	if lt.consecutiveEmptyLines >= consecutiveEmptyLinesToEndList {
+		lt.stack = nil
+	}
+}
+
+// processListItem handles list item lines
+func (lt *listTracker) processListItem(line string) {
+	lt.consecutiveEmptyLines = 0
+	lt.lastLineWasEmpty = false
+
+	markerIndent := getIndentation(line)
+	contentIndent := getListIndent(line)
+	isOrdered, orderNum, marker := parseListMarker(line)
+
+	// Pop items from stack where this marker is at or before their content indent
+	for len(lt.stack) > 0 && markerIndent < lt.stack[len(lt.stack)-1].ContentIndent {
+		lt.stack = lt.stack[:len(lt.stack)-1]
+	}
+
+	// Check if this is a continuation of an existing list at the same level
+	if len(lt.stack) > 0 {
+		lastItem := &lt.stack[len(lt.stack)-1]
+
+		if lastItem.MarkerIndent == markerIndent && lastItem.IsOrdered == isOrdered {
+			// Same list, update the order number
+			lastItem.OrderNumber = orderNum
+			lastItem.Marker = marker
+
+			return
+		}
+	}
+
+	lt.stack = append(lt.stack, ListItemInfo{
+		MarkerIndent:  markerIndent,
+		ContentIndent: contentIndent,
+		IsOrdered:     isOrdered,
+		OrderNumber:   orderNum,
+		Marker:        marker,
+	})
+}
+
+// processNonListContent handles non-list content lines
+func (lt *listTracker) processNonListContent(line string) {
+	lt.consecutiveEmptyLines = 0
+	lt.lastLineWasEmpty = false
+
+	if len(lt.stack) == 0 {
+		return
+	}
+
+	lineIndent := getIndentation(line)
+	lastEntry := lt.stack[len(lt.stack)-1]
+
+	if lineIndent < lastEntry.ContentIndent {
+		// Pop stack entries until we find one that contains this indent level
+		for len(lt.stack) > 0 {
+			entry := lt.stack[len(lt.stack)-1]
+
+			if lineIndent >= entry.ContentIndent {
+				break
+			}
+
+			lt.stack = lt.stack[:len(lt.stack)-1]
+		}
+	}
+}
+
+// getState returns the current list state
+func (lt *listTracker) getState() (
+	inList bool,
+	indent int,
+	depth int,
+	stack []ListItemInfo,
+	hadBlank bool,
+) {
+	if len(lt.stack) == 0 {
+		return false, 0, 0, nil, lt.lastLineWasEmpty
+	}
+
+	// Return a copy of the stack to avoid mutation
+	stackCopy := make([]ListItemInfo, len(lt.stack))
+	copy(stackCopy, lt.stack)
+
+	lastIndent := lt.stack[len(lt.stack)-1].ContentIndent
+
+	return true, lastIndent, len(lt.stack), stackCopy, lt.lastLineWasEmpty
+}
 
 // DetectMarkdownState scans content up to a given line to determine the state.
 // This allows fragment validation to start with the correct context.
@@ -75,15 +310,45 @@ func DetectMarkdownState(content string, upToLine int) MarkdownState {
 
 	scanner := bufio.NewScanner(strings.NewReader(content))
 	lineNum := 0
+	tracker := &listTracker{}
 
 	for scanner.Scan() && lineNum < upToLine {
 		line := scanner.Text()
 		lineNum++
 
+		// Track code block state
 		if isCodeBlockMarker(line) {
 			state.InCodeBlock = !state.InCodeBlock
+
+			tracker.processCodeBlockMarker()
+
+			continue
+		}
+
+		// Skip list tracking inside code blocks
+		if state.InCodeBlock {
+			tracker.processCodeBlockContent()
+
+			continue
+		}
+
+		// Track empty lines
+		if isEmptyLine(line) {
+			tracker.processEmptyLine()
+
+			continue
+		}
+
+		// Process list items or regular content
+		if isListItem(line) {
+			tracker.processListItem(line)
+		} else {
+			tracker.processNonListContent(line)
 		}
 	}
+
+	// Update state with list context
+	state.InList, state.ListIndent, state.ListItemDepth, state.ListStack, state.HadBlankLineBeforeFragment = tracker.getState()
 
 	return state
 }
