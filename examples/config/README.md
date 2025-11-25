@@ -144,3 +144,31 @@ Error: failed to load configuration: invalid configuration:
 ## No Configuration
 
 klaudiush works without any configuration files. All validators are enabled with sensible defaults.
+
+## Performance
+
+Configuration loading is optimized for fast startup:
+
+| Scenario           | Time  | Notes                                  |
+| ------------------ | ----- | -------------------------------------- |
+| Cache hit          | ~5ns  | Subsequent loads within same session   |
+| Defaults only      | ~7µs  | No config files                        |
+| Single config file | ~25µs | Global or project only                 |
+| All sources        | ~45µs | Global + project + env + flags         |
+
+Key findings:
+
+- **Cache provides ~200x speedup** - config is cached after first load
+- **File I/O dominates** - each config file adds ~17-21µs
+- **Env vars are fast** - parsing adds only ~1-2µs
+- **CLI flags are fastest** - ~100-300ns overhead
+
+Run benchmarks yourself:
+
+```bash
+# Human-readable report
+go test -v -run TestConfigPerformanceReport ./internal/config/provider/
+
+# Go benchmarks with memory stats
+go test -bench=. -benchmem -run=NONE ./internal/config/provider/
+```
