@@ -19,7 +19,7 @@ task = "3.45.5"
 
 # Enum code generator
 # https://github.com/dmarkham/enumer
-"go:github.com/dmarkham/enumer" = "1.5.11"
+"go:github.com/dmarkham/enumer" = "1.6.1"
 
 # Mock generator for Go interfaces
 # https://github.com/uber-go/mock
