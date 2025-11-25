@@ -240,3 +240,119 @@ func Never() Predicate {
 		return false
 	}
 }
+
+// Git Command Predicates
+
+// GitSubcommandIs returns a predicate that matches if the command is a git command
+// with the given subcommand. This properly handles global options like -C.
+func GitSubcommandIs(subcommand string) Predicate {
+	return func(ctx *hook.Context) bool {
+		gitCmd := parseGitFromContext(ctx)
+		if gitCmd == nil {
+			return false
+		}
+
+		return gitCmd.Subcommand == subcommand
+	}
+}
+
+// GitSubcommandIn returns a predicate that matches if the command is a git command
+// with any of the given subcommands.
+func GitSubcommandIn(subcommands ...string) Predicate {
+	return func(ctx *hook.Context) bool {
+		gitCmd := parseGitFromContext(ctx)
+		if gitCmd == nil {
+			return false
+		}
+
+		return slices.Contains(subcommands, gitCmd.Subcommand)
+	}
+}
+
+// GitHasFlag returns a predicate that matches if the git command has the given flag.
+func GitHasFlag(flag string) Predicate {
+	return func(ctx *hook.Context) bool {
+		gitCmd := parseGitFromContext(ctx)
+		if gitCmd == nil {
+			return false
+		}
+
+		return gitCmd.HasFlag(flag)
+	}
+}
+
+// GitHasAnyFlag returns a predicate that matches if the git command has any of the given flags.
+func GitHasAnyFlag(flags ...string) Predicate {
+	return func(ctx *hook.Context) bool {
+		gitCmd := parseGitFromContext(ctx)
+		if gitCmd == nil {
+			return false
+		}
+
+		return slices.ContainsFunc(flags, gitCmd.HasFlag)
+	}
+}
+
+// GitSubcommandWithFlag returns a predicate that matches if the command is a git command
+// with the given subcommand AND has the given flag.
+func GitSubcommandWithFlag(subcommand, flag string) Predicate {
+	return And(
+		GitSubcommandIs(subcommand),
+		GitHasFlag(flag),
+	)
+}
+
+// GitSubcommandWithAnyFlag returns a predicate that matches if the command is a git command
+// with the given subcommand AND has any of the given flags.
+func GitSubcommandWithAnyFlag(subcommand string, flags ...string) Predicate {
+	return And(
+		GitSubcommandIs(subcommand),
+		GitHasAnyFlag(flags...),
+	)
+}
+
+// GitSubcommandWithoutFlag returns a predicate that matches if the command is a git command
+// with the given subcommand AND does NOT have the given flag.
+func GitSubcommandWithoutFlag(subcommand, flag string) Predicate {
+	return And(
+		GitSubcommandIs(subcommand),
+		Not(GitHasFlag(flag)),
+	)
+}
+
+// GitSubcommandWithoutAnyFlag returns a predicate that matches if the command is a git command
+// with the given subcommand AND does NOT have any of the given flags.
+func GitSubcommandWithoutAnyFlag(subcommand string, flags ...string) Predicate {
+	return And(
+		GitSubcommandIs(subcommand),
+		Not(GitHasAnyFlag(flags...)),
+	)
+}
+
+// parseGitFromContext parses the git command from a hook context.
+// Returns nil if the command is not a git command or parsing fails.
+func parseGitFromContext(ctx *hook.Context) *parser.GitCommand {
+	if ctx.ToolName != hook.Bash {
+		return nil
+	}
+
+	bashParser := parser.NewBashParser()
+
+	result, err := bashParser.Parse(ctx.GetCommand())
+	if err != nil {
+		return nil
+	}
+
+	for _, cmd := range result.Commands {
+		if cmd.Name == "git" {
+			gitCmd, err := parser.ParseGitCommand(cmd)
+			if err != nil {
+				return nil
+			}
+
+			return gitCmd
+		}
+	}
+
+	return nil
+}

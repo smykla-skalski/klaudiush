@@ -266,6 +266,99 @@ EOF
 		})
 	})
 
+	Describe("Global Options", func() {
+		Context("with -C option", func() {
+			It("parses git command with -C path before subcommand", func() {
+				result, err := p.Parse("git -C /path/to/repo checkout -b feat/new-feature upstream/main")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result.GitOperations).To(HaveLen(1))
+
+				gitCmd, err := parser.ParseGitCommand(result.GitOperations[0])
+				Expect(err).NotTo(HaveOccurred())
+				Expect(gitCmd.Subcommand).To(Equal("checkout"))
+				Expect(gitCmd.HasFlag("-b")).To(BeTrue())
+				Expect(gitCmd.GetWorkingDirectory()).To(Equal("/path/to/repo"))
+				Expect(gitCmd.ExtractBranchName()).To(Equal("feat/new-feature"))
+			})
+
+			It("parses git command with long path containing spaces", func() {
+				result, err := p.Parse(`git -C "/path/with spaces/repo" commit -sS -m "test"`)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result.GitOperations).To(HaveLen(1))
+
+				gitCmd, err := parser.ParseGitCommand(result.GitOperations[0])
+				Expect(err).NotTo(HaveOccurred())
+				Expect(gitCmd.Subcommand).To(Equal("commit"))
+				Expect(gitCmd.GetWorkingDirectory()).To(Equal("/path/with spaces/repo"))
+			})
+		})
+
+		Context("with --git-dir option", func() {
+			It("parses git command with --git-dir", func() {
+				result, err := p.Parse("git --git-dir=/custom/.git status")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result.GitOperations).To(HaveLen(1))
+
+				gitCmd, err := parser.ParseGitCommand(result.GitOperations[0])
+				Expect(err).NotTo(HaveOccurred())
+				Expect(gitCmd.Subcommand).To(Equal("status"))
+				Expect(gitCmd.GetGitDir()).To(Equal("/custom/.git"))
+			})
+
+			It("parses git command with --git-dir=value format", func() {
+				result, err := p.Parse("git --git-dir=/custom/.git commit -m 'test'")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result.GitOperations).To(HaveLen(1))
+
+				gitCmd, err := parser.ParseGitCommand(result.GitOperations[0])
+				Expect(err).NotTo(HaveOccurred())
+				Expect(gitCmd.Subcommand).To(Equal("commit"))
+				Expect(gitCmd.GetGitDir()).To(Equal("/custom/.git"))
+			})
+		})
+
+		Context("with multiple global options", func() {
+			It("parses git command with -C and --no-pager", func() {
+				result, err := p.Parse("git -C /repo --no-pager log --oneline")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result.GitOperations).To(HaveLen(1))
+
+				gitCmd, err := parser.ParseGitCommand(result.GitOperations[0])
+				Expect(err).NotTo(HaveOccurred())
+				Expect(gitCmd.Subcommand).To(Equal("log"))
+				Expect(gitCmd.GetWorkingDirectory()).To(Equal("/repo"))
+				Expect(gitCmd.HasGlobalOption("--no-pager")).To(BeTrue())
+			})
+		})
+
+		Context("with no global options", func() {
+			It("parses normally without global options", func() {
+				result, err := p.Parse("git checkout -b feat/feature")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result.GitOperations).To(HaveLen(1))
+
+				gitCmd, err := parser.ParseGitCommand(result.GitOperations[0])
+				Expect(err).NotTo(HaveOccurred())
+				Expect(gitCmd.Subcommand).To(Equal("checkout"))
+				Expect(gitCmd.HasFlag("-b")).To(BeTrue())
+				Expect(gitCmd.GetWorkingDirectory()).To(BeEmpty())
+			})
+		})
+
+		Context("with -c config option", func() {
+			It("parses git command with -c config", func() {
+				result, err := p.Parse("git -c user.name=Test commit -m 'test'")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result.GitOperations).To(HaveLen(1))
+
+				gitCmd, err := parser.ParseGitCommand(result.GitOperations[0])
+				Expect(err).NotTo(HaveOccurred())
+				Expect(gitCmd.Subcommand).To(Equal("commit"))
+				Expect(gitCmd.HasGlobalOption("-c")).To(BeTrue())
+			})
+		})
+	})
+
 	Describe("Integration with BashParser", func() {
 		It("parses and extracts git command details", func() {
 			result, err := p.Parse("git commit -sS -m 'feat: add feature'")

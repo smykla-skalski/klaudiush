@@ -15,10 +15,37 @@ var (
 
 // GitCommand represents a parsed git command.
 type GitCommand struct {
-	Subcommand string            // Git subcommand (e.g., "commit", "push", "add")
-	Flags      []string          // Command flags
-	Args       []string          // Positional arguments
-	FlagMap    map[string]string // Flag values (e.g., "-m" -> "commit message")
+	Subcommand    string            // Git subcommand (e.g., "commit", "push", "add")
+	Flags         []string          // Command flags
+	Args          []string          // Positional arguments
+	FlagMap       map[string]string // Flag values (e.g., "-m" -> "commit message")
+	GlobalOptions map[string]string // Global git options (e.g., "-C" -> "/path/to/repo")
+}
+
+// Global git options that take a value.
+var globalOptionsWithValue = map[string]bool{
+	"-C":                   true,
+	"--git-dir":            true,
+	"--work-tree":          true,
+	"-c":                   true,
+	"--namespace":          true,
+	"--super-prefix":       true,
+	"--config-env":         true,
+	"--exec-path":          true,
+	"--html-path":          false,
+	"--man-path":           false,
+	"--info-path":          false,
+	"--paginate":           false,
+	"-p":                   false,
+	"--no-pager":           false,
+	"--bare":               false,
+	"--no-replace-objects": false,
+	"--literal-pathspecs":  false,
+	"--glob-pathspecs":     false,
+	"--noglob-pathspecs":   false,
+	"--icase-pathspecs":    false,
+	"--no-optional-locks":  false,
+	"--list-cmds":          true,
 }
 
 // Flags that take values.
@@ -44,14 +71,23 @@ func ParseGitCommand(cmd Command) (*GitCommand, error) {
 	}
 
 	gitCmd := &GitCommand{
-		Subcommand: cmd.Args[0],
-		Flags:      make([]string, 0),
-		Args:       make([]string, 0),
-		FlagMap:    make(map[string]string),
+		Flags:         make([]string, 0),
+		Args:          make([]string, 0),
+		FlagMap:       make(map[string]string),
+		GlobalOptions: make(map[string]string),
 	}
 
-	// Parse remaining arguments
-	i := 1
+	// First, parse global options and find the subcommand
+	subcommandIdx := parseGlobalOptions(cmd.Args, gitCmd)
+
+	if subcommandIdx >= len(cmd.Args) {
+		return nil, ErrNoSubcommand
+	}
+
+	gitCmd.Subcommand = cmd.Args[subcommandIdx]
+
+	// Parse remaining arguments after the subcommand
+	i := subcommandIdx + 1
 	for i < len(cmd.Args) {
 		arg := cmd.Args[i]
 
@@ -83,7 +119,57 @@ func ParseGitCommand(cmd Command) (*GitCommand, error) {
 const (
 	skipFlagOnly     = 1
 	skipFlagAndValue = 2
+	splitKeyValue    = 2 // Split into key=value pair
 )
+
+// parseGlobalOptions parses global git options from args and returns the index of the subcommand.
+func parseGlobalOptions(args []string, gitCmd *GitCommand) int {
+	i := 0
+
+	for i < len(args) {
+		arg := args[i]
+
+		// Check if this is a global option
+		if !strings.HasPrefix(arg, "-") {
+			// Found the subcommand
+			return i
+		}
+
+		// Handle --option=value format
+		if strings.HasPrefix(arg, "--") && strings.Contains(arg, "=") {
+			parts := strings.SplitN(arg, "=", splitKeyValue)
+			optName := parts[0]
+
+			if _, isGlobal := globalOptionsWithValue[optName]; isGlobal {
+				gitCmd.GlobalOptions[optName] = parts[1]
+				i++
+
+				continue
+			}
+
+			// Not a global option, must be subcommand flags (shouldn't happen before subcommand)
+			return i
+		}
+
+		// Check if it's a known global option
+		takesValue, isGlobal := globalOptionsWithValue[arg]
+		if !isGlobal {
+			// Not a global option - this must be the start of subcommand or unknown
+			// Could be combined flags or subcommand-specific flag before subcommand (unusual)
+			return i
+		}
+
+		if takesValue && i+1 < len(args) {
+			gitCmd.GlobalOptions[arg] = args[i+1]
+			i += 2
+		} else {
+			gitCmd.GlobalOptions[arg] = ""
+			i++
+		}
+	}
+
+	return i
+}
 
 // addFlag adds a flag to the GitCommand and optionally captures its value
 func addFlag(flag string, args []string, idx int, gitCmd *GitCommand) int {
@@ -246,4 +332,29 @@ func (g *GitCommand) ExtractFilePaths() []string {
 	}
 
 	return nil
+}
+
+// GetWorkingDirectory returns the working directory from -C global option.
+func (g *GitCommand) GetWorkingDirectory() string {
+	if dir, ok := g.GlobalOptions["-C"]; ok {
+		return dir
+	}
+
+	return ""
+}
+
+// GetGitDir returns the git directory from --git-dir global option.
+func (g *GitCommand) GetGitDir() string {
+	if dir, ok := g.GlobalOptions["--git-dir"]; ok {
+		return dir
+	}
+
+	return ""
+}
+
+// HasGlobalOption checks if the git command has a specific global option.
+func (g *GitCommand) HasGlobalOption(option string) bool {
+	_, ok := g.GlobalOptions[option]
+
+	return ok
 }

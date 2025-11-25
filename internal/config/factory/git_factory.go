@@ -59,8 +59,7 @@ func (f *GitValidatorFactory) createAddValidator(
 		Validator: gitvalidators.NewAddValidator(f.log, nil, cfg),
 		Predicate: validator.And(
 			validator.EventTypeIs(hook.PreToolUse),
-			validator.ToolTypeIs(hook.Bash),
-			validator.CommandContains("git add"),
+			validator.GitSubcommandIs("add"),
 		),
 	}
 }
@@ -72,8 +71,7 @@ func (f *GitValidatorFactory) createNoVerifyValidator(
 		Validator: gitvalidators.NewNoVerifyValidator(f.log, cfg),
 		Predicate: validator.And(
 			validator.EventTypeIs(hook.PreToolUse),
-			validator.ToolTypeIs(hook.Bash),
-			validator.CommandContains("git commit"),
+			validator.GitSubcommandIs("commit"),
 		),
 	}
 }
@@ -85,8 +83,7 @@ func (f *GitValidatorFactory) createCommitValidator(
 		Validator: gitvalidators.NewCommitValidator(f.log, nil, cfg),
 		Predicate: validator.And(
 			validator.EventTypeIs(hook.PreToolUse),
-			validator.ToolTypeIs(hook.Bash),
-			validator.CommandContains("git commit"),
+			validator.GitSubcommandIs("commit"),
 		),
 	}
 }
@@ -98,8 +95,7 @@ func (f *GitValidatorFactory) createPushValidator(
 		Validator: gitvalidators.NewPushValidator(f.log, nil, cfg),
 		Predicate: validator.And(
 			validator.EventTypeIs(hook.PreToolUse),
-			validator.ToolTypeIs(hook.Bash),
-			validator.CommandContains("git push"),
+			validator.GitSubcommandIs("push"),
 		),
 	}
 }
@@ -124,17 +120,19 @@ func (f *GitValidatorFactory) createBranchValidator(
 		Validator: gitvalidators.NewBranchValidator(cfg, f.log),
 		Predicate: validator.And(
 			validator.EventTypeIs(hook.PreToolUse),
-			validator.ToolTypeIs(hook.Bash),
 			validator.Or(
-				validator.CommandContains("git checkout -b"),
-				validator.And(
-					validator.CommandContains("git branch"),
-					validator.Not(validator.Or(
-						validator.CommandContains("-d"),
-						validator.CommandContains("-D"),
-						validator.CommandContains("--delete"),
-					)),
+				// git checkout -b or --branch (create new branch)
+				validator.GitSubcommandWithAnyFlag("checkout", "-b", "--branch"),
+				// git switch -c/--create/-C/--force-create (create new branch)
+				validator.GitSubcommandWithAnyFlag(
+					"switch",
+					"-c",
+					"--create",
+					"-C",
+					"--force-create",
 				),
+				// git branch without delete flags (create new branch)
+				validator.GitSubcommandWithoutAnyFlag("branch", "-d", "-D", "--delete"),
 			),
 		),
 	}
