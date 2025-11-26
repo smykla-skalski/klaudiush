@@ -3,6 +3,7 @@
   "extends": [
     "config:best-practices",
     "helpers:pinGitHubActionDigests",
+    "customManagers:githubActionsVersions",
     ":semanticCommits",
     ":dependencyDashboard"
   ],
@@ -59,6 +60,14 @@
         "github-actions"
       ],
       "pinDigests": true
+    },
+    {
+      "description": "Group golangci-lint across mise and CI workflow",
+      "matchPackageNames": [
+        "golangci-lint",
+        "golangci/golangci-lint"
+      ],
+      "groupName": "golangci-lint"
     }
   ],
   "vulnerabilityAlerts": {

@@ -1,0 +1,46 @@
+# CodeQL analysis workflow for klaudiush
+# Performs static analysis security testing (SAST)
+
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Run weekly on Sundays at 3 AM UTC
+    - cron: '0 3 * * 0'
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  analyze:
+    name: Analyze
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+
+      - name: Setup Go
+        uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@54d6aed7e1777f7f415f2a16629646dfc8514fa7 # v3.31.5
+        with:
+          languages: go
+          queries: security-and-quality
+
+      - name: Auto-build
+        uses: github/codeql-action/autobuild@54d6aed7e1777f7f415f2a16629646dfc8514fa7 # v3.31.5
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@54d6aed7e1777f7f415f2a16629646dfc8514fa7 # v3.31.5
+        with:
+          category: "/language:go"

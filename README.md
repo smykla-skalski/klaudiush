@@ -1,5 +1,12 @@
 # Klaudiush
 
+[![CI](https://github.com/smykla-labs/klaudiush/actions/workflows/ci.yml/badge.svg)](https://github.com/smykla-labs/klaudiush/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/smykla-labs/klaudiush/actions/workflows/codeql.yml/badge.svg)](https://github.com/smykla-labs/klaudiush/actions/workflows/codeql.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/smykla-labs/klaudiush/badge)](https://scorecard.dev/viewer/?uri=github.com/smykla-labs/klaudiush)
+[![Go Report Card](https://goreportcard.com/badge/github.com/smykla-labs/klaudiush)](https://goreportcard.com/report/github.com/smykla-labs/klaudiush)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![Release](https://img.shields.io/github/v/release/smykla-labs/klaudiush)](https://github.com/smykla-labs/klaudiush/releases/latest)
+
 A validation dispatcher for Claude Code hooks that intercepts tool invocations and enforces git workflow standards, commit message conventions, and code quality rules.
 
 ## Overview
@@ -154,7 +161,7 @@ task clean  # Remove build artifacts
 
 ### Core Flow
 
-```
+```text
 Claude Code JSON → CLI → JSON Parser → Dispatcher → Registry → Validators → Result
 ```
 
@@ -166,7 +173,7 @@ Claude Code JSON → CLI → JSON Parser → Dispatcher → Registry → Validat
 
 ### Directory Structure
 
-```
+```text
 klaudiush/
 ├── cmd/klaudiush/           # CLI entry point
 ├── pkg/
@@ -440,8 +447,8 @@ See [`examples/config/full.toml`](examples/config/full.toml) for the complete li
 
 ## Support
 
-- **Issues**: https://github.com/smykla-labs/klaudiush/issues
-- **Discussions**: https://github.com/smykla-labs/klaudiush/discussions
+- **Issues**: [GitHub Issues](https://github.com/smykla-labs/klaudiush/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/smykla-labs/klaudiush/discussions)
 - **Logs**: `~/.claude/hooks/dispatcher.log`
 
 ## License
