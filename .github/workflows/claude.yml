@@ -25,17 +25,30 @@ jobs:
     runs-on: ubuntu-24.04
 
     permissions:
-      contents: read
+      contents: write
       pull-requests: write
       issues: write
       id-token: write
       actions: read
 
     steps:
+      - name: Generate GitHub App token
+        id: generate-token
+        uses: actions/create-github-app-token@7e473efe3cb98aa54f8d4bac15400b15fad77d94 # v2.2.0
+        with:
+          app-id: ${{ vars.SMYKLOT_APP_ID }}
+          private-key: ${{ secrets.SMYKLOT_PRIVATE_KEY }}
+
       - name: Checkout
         uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
         with:
-          fetch-depth: 1
+          token: ${{ steps.generate-token.outputs.token }}
+          fetch-depth: 0
+
+      - name: Configure git for smyklot bot
+        run: |
+          git config user.name "smyklot[bot]"
+          git config user.email "205507218+smyklot[bot]@users.noreply.github.com"
 
       - name: Run Claude Code
         uses: anthropics/claude-code-action@a7e4c51380c42dd89b127f5e5f9be7b54020bc6b # v1.0.21
@@ -43,3 +56,5 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           additional_permissions: |
             actions: read
+        env:
+          GH_TOKEN: ${{ steps.generate-token.outputs.token }}
