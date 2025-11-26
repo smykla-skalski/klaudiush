@@ -159,6 +159,26 @@ Framework: Ginkgo/Gomega. 336 tests. Run: `mise exec -- go test -v ./pkg/parser 
 - `0`: Allowed (pass/warn/no match)
 - `2`: Blocked (fail with `ShouldBlock=true`)
 
+## GitHub Push Protection
+
+When pushing code with intentional test secrets (e.g., in fuzz tests or detector tests), GitHub may block the push. To allow test secrets:
+
+```bash
+# Extract placeholder_id from the error message URL (last path segment)
+# e.g., https://github.com/OWNER/REPO/security/secret-scanning/unblock-secret/PLACEHOLDER_ID
+
+# Allow the secret with reason "used_in_tests"
+gh api repos/OWNER/REPO/secret-scanning/push-protection-bypasses \
+  -X POST \
+  -f secret_type="SECRET_TYPE" \
+  -f reason="used_in_tests" \
+  -f placeholder_id="PLACEHOLDER_ID"
+```
+
+Common secret types: `stripe_api_key`, `slack_api_token`, `github_token`, `aws_access_key_id`
+
+Valid reasons: `used_in_tests`, `false_positive`, `will_fix_later`
+
 ## Session Notes
 
 Additional implementation details from specific sessions are in `.claude/session-*.md` files:
