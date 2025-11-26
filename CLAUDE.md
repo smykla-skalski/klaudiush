@@ -156,4 +156,7 @@ Framework: Ginkgo/Gomega. 336 tests. Run: `mise exec -- go test -v ./pkg/parser 
 
 ## Session Notes
 
-Additional implementation details from specific sessions are in `.claude/session-*.md` files. Check these for patterns around parallel execution, testing concurrent code, etc.
+Additional implementation details from specific sessions are in `.claude/session-*.md` files:
+
+- `session-parallel-execution.md` - Parallel validator execution, category-specific worker pools, race detection testing
+- `session-error-reporting.md` - Error codes, suggestions/doc links registries, FailWithCode pattern, cognitive complexity refactoring
