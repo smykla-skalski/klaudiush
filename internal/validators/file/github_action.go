@@ -152,7 +152,10 @@ func (v *WorkflowValidator) Validate(ctx context.Context, hookCtx *hook.Context)
     uses: vendor/custom-action@v1`,
 		}
 
-		return validator.FailWithDetails(message, details)
+		return validator.FailWithCode(
+			validator.ErrActionlint,
+			message,
+		).AddDetail("file", details["file"]).AddDetail("errors", details["errors"]).AddDetail("help", details["help"])
 	}
 
 	return validator.Pass()

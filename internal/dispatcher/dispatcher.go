@@ -34,6 +34,15 @@ type ValidationError struct {
 
 	// ShouldBlock indicates whether this error should block the operation.
 	ShouldBlock bool
+
+	// ErrorCode is the unique identifier for this error type.
+	ErrorCode validator.ErrorCode
+
+	// FixHint provides a short suggestion for fixing the issue.
+	FixHint string
+
+	// DocLink is a URL to detailed documentation for this error.
+	DocLink string
 }
 
 // Error implements the error interface.
@@ -227,43 +236,77 @@ func formatErrorList(header string, errors []*ValidationError) string {
 
 	var builder strings.Builder
 
-	// Header with validator names
+	formatErrorHeader(&builder, header, errors)
+
+	for _, err := range errors {
+		formatSingleError(&builder, err)
+	}
+
+	return builder.String()
+}
+
+// formatErrorHeader writes the header with validator names.
+func formatErrorHeader(builder *strings.Builder, header string, errors []*ValidationError) {
 	builder.WriteString("\n")
 	builder.WriteString(header)
 
-	// Add validator names after header
 	for _, err := range errors {
 		builder.WriteString(" ")
 		builder.WriteString(shortName(err.Validator))
 	}
 
 	builder.WriteString("\n\n")
+}
 
-	for _, err := range errors {
-		// Main message
-		builder.WriteString(err.Message)
-		builder.WriteString("\n")
+// formatSingleError writes a single validation error to the builder.
+func formatSingleError(builder *strings.Builder, err *ValidationError) {
+	builder.WriteString(err.Message)
+	builder.WriteString("\n")
 
-		// Details - just the values without the key label
-		if len(err.Details) > 0 {
-			builder.WriteString("\n")
+	formatErrorMetadata(builder, err)
+	formatErrorDetails(builder, err.Details)
 
-			for _, v := range err.Details {
-				// Handle multi-line detail values
-				lines := strings.SplitSeq(strings.TrimSpace(v), "\n")
-				for line := range lines {
-					if line != "" {
-						builder.WriteString(line)
-						builder.WriteString("\n")
-					}
-				}
-			}
-		}
+	builder.WriteString("\n")
+}
 
+// formatErrorMetadata writes error code, fix hint, and doc link if present.
+func formatErrorMetadata(builder *strings.Builder, err *ValidationError) {
+	if err.ErrorCode != "" {
+		builder.WriteString("   Code: ")
+		builder.WriteString(string(err.ErrorCode))
 		builder.WriteString("\n")
 	}
 
-	return builder.String()
+	if err.FixHint != "" {
+		builder.WriteString("   Fix: ")
+		builder.WriteString(err.FixHint)
+		builder.WriteString("\n")
+	}
+
+	if err.DocLink != "" {
+		builder.WriteString("   Docs: ")
+		builder.WriteString(err.DocLink)
+		builder.WriteString("\n")
+	}
+}
+
+// formatErrorDetails writes error details to the builder.
+func formatErrorDetails(builder *strings.Builder, details map[string]string) {
+	if len(details) == 0 {
+		return
+	}
+
+	builder.WriteString("\n")
+
+	for _, v := range details {
+		lines := strings.SplitSeq(strings.TrimSpace(v), "\n")
+		for line := range lines {
+			if line != "" {
+				builder.WriteString(line)
+				builder.WriteString("\n")
+			}
+		}
+	}
 }
 
 // FormatErrors formats validation errors for display.

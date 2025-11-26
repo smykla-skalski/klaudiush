@@ -68,6 +68,16 @@ type Result struct {
 	// ShouldBlock indicates whether this failure should block the operation.
 	// Some validators may only warn without blocking.
 	ShouldBlock bool
+
+	// ErrorCode is the unique identifier for this error type.
+	// Used for programmatic error handling and documentation lookup.
+	ErrorCode ErrorCode
+
+	// FixHint provides a short suggestion for fixing the issue.
+	FixHint string
+
+	// DocLink is a URL to detailed documentation for this error.
+	DocLink string
 }
 
 // Pass creates a passing validation result.
@@ -122,6 +132,32 @@ func WarnWithDetails(message string, details map[string]string) *Result {
 		Message:     message,
 		Details:     details,
 		ShouldBlock: false,
+	}
+}
+
+// FailWithCode creates a failing validation result with an error code.
+// Automatically populates FixHint and DocLink from registries.
+func FailWithCode(code ErrorCode, message string) *Result {
+	return &Result{
+		Passed:      false,
+		Message:     message,
+		ShouldBlock: true,
+		ErrorCode:   code,
+		FixHint:     GetSuggestion(code),
+		DocLink:     GetDocLink(code),
+	}
+}
+
+// WarnWithCode creates a warning validation result with an error code.
+// Automatically populates FixHint and DocLink from registries.
+func WarnWithCode(code ErrorCode, message string) *Result {
+	return &Result{
+		Passed:      false,
+		Message:     message,
+		ShouldBlock: false,
+		ErrorCode:   code,
+		FixHint:     GetSuggestion(code),
+		DocLink:     GetDocLink(code),
 	}
 }
 

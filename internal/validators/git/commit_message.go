@@ -174,7 +174,10 @@ func (*CommitValidator) buildErrorResult(errors []string, message string) *valid
 	details.WriteString(message)
 	details.WriteString("\n---")
 
-	return validator.Fail("Commit message validation failed").AddDetail("errors", details.String())
+	return validator.FailWithCode(
+		validator.ErrGitConventionalCommit,
+		"Commit message validation failed",
+	).AddDetail("errors", details.String())
 }
 
 // truncateLine truncates a line for display in error messages.

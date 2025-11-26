@@ -148,13 +148,15 @@ func (v *PushValidator) validateRemoteExists(remote string) *validator.Result {
 	if err != nil {
 		remotes, remoteErr := v.gitRunner.GetRemotes()
 		if remoteErr != nil {
-			return validator.Fail(
-				"🚫 Git push validation failed:\n\n❌ Remote '" + remote + "' does not exist",
+			return validator.FailWithCode(
+				validator.ErrGitNoRemote,
+				"🚫 Git push validation failed:\n\n❌ Remote '"+remote+"' does not exist",
 			)
 		}
 
-		return validator.Fail(
-			"🚫 Git push validation failed:\n\n" + v.formatRemoteNotFoundError(remote, remotes),
+		return validator.FailWithCode(
+			validator.ErrGitNoRemote,
+			"🚫 Git push validation failed:\n\n"+v.formatRemoteNotFoundError(remote, remotes),
 		)
 	}
 

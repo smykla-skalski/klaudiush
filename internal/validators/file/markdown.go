@@ -106,20 +106,20 @@ func (v *MarkdownValidator) Validate(ctx context.Context, hookCtx *hook.Context)
 
 	if !result.Success {
 		message := "Markdown formatting errors"
-		details := map[string]string{
-			"errors": strings.TrimSpace(result.RawOut),
-		}
+
+		r := validator.FailWithCode(validator.ErrMarkdownLint, message).
+			AddDetail("errors", strings.TrimSpace(result.RawOut))
 
 		// Include table suggestions if available
 		if len(result.TableSuggested) > 0 {
 			for lineNum, suggestion := range result.TableSuggested {
-				details["suggested_table"] = formatTableSuggestion(lineNum, suggestion)
+				r = r.AddDetail("suggested_table", formatTableSuggestion(lineNum, suggestion))
 
 				break // Only include first suggestion in details for now
 			}
 		}
 
-		return validator.FailWithDetails(message, details)
+		return r
 	}
 
 	return validator.Pass()

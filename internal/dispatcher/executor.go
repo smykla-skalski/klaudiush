@@ -198,5 +198,8 @@ func toValidationError(v validator.Validator, result *validator.Result) *Validat
 		Message:     result.Message,
 		Details:     result.Details,
 		ShouldBlock: result.ShouldBlock,
+		ErrorCode:   result.ErrorCode,
+		FixHint:     result.FixHint,
+		DocLink:     result.DocLink,
 	}
 }
