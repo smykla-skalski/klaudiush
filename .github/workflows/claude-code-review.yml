@@ -64,8 +64,9 @@ jobs:
               echo "Triggered via manual workflow dispatch for PR #$pr_number"
               ;;
             issue_comment)
-              # Check if comment is on a PR and contains "/claude review"
-              if [[ "$IS_PR_COMMENT" == "true" ]] && grep -qiE '/claude\s+review' <<< "$COMMENT_BODY"; then
+              # Check if comment is on a PR and contains "/claude review" command
+              # Pattern requires start-of-line or whitespace before command, word boundary after
+              if [[ "$IS_PR_COMMENT" == "true" ]] && grep -qiE '(^|\s)/claude\s+review\b' <<< "$COMMENT_BODY"; then
                 should_run="true"
                 pr_number="$ISSUE_NUMBER"
                 echo "Triggered via /claude review command on PR #$pr_number"
