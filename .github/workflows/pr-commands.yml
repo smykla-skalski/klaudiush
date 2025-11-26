@@ -30,7 +30,7 @@ jobs:
         uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
 
       - name: Run Smyklot
-        uses: bartsmykla/smyklot@22fe4f0403f6c6bc8a4efe84f6d9cc32f700dedf # v1.7.10
+        uses: bartsmykla/smyklot@01888395dd2c0f603c8050319a1a237391e4e6a0 # v1.7.11
         env:
           GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
           COMMENT_BODY: ${{ github.event.comment.body }}
