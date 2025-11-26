@@ -261,9 +261,13 @@ type PRReferenceRule struct {
 
 func NewPRReferenceRule() *PRReferenceRule {
 	return &PRReferenceRule{
-		prReferenceRegex: regexp.MustCompile(`#[0-9]+|github\.com/.+/pull/[0-9]+`),
-		hashRefRegex:     regexp.MustCompile(`#[0-9]+`),
-		urlRefRegex:      regexp.MustCompile(`github\.com/.+/pull/[0-9]+`),
+		prReferenceRegex: regexp.MustCompile(
+			`#[0-9]{1,10}\b|(?:^|://|[^/a-zA-Z0-9])github\.com/[^/]+/[^/]+/pull/[0-9]{1,10}\b`,
+		),
+		hashRefRegex: regexp.MustCompile(`#[0-9]{1,10}\b`),
+		urlRefRegex: regexp.MustCompile(
+			`(?:^|://|[^/a-zA-Z0-9])github\.com/[^/]+/[^/]+/pull/[0-9]{1,10}\b`,
+		),
 	}
 }
 
@@ -286,11 +290,18 @@ func (r *PRReferenceRule) Validate(_ *ParsedCommit, message string) []string {
 
 	// Show examples for URL references
 	if urlMatch := r.urlRefRegex.FindString(message); urlMatch != "" {
-		prNumRegex := regexp.MustCompile(`[0-9]+$`)
+		prNumRegex := regexp.MustCompile(`[0-9]{1,10}$`)
 		prNum := prNumRegex.FindString(urlMatch)
+
+		// Strip any prefix captured by the anchor pattern (e.g., "://", space, etc.)
+		cleanURL := urlMatch
+		if idx := strings.Index(urlMatch, "github.com"); idx > 0 {
+			cleanURL = urlMatch[idx:]
+		}
+
 		errors = append(
 			errors,
-			fmt.Sprintf("   Found: 'https://%s' → Should be: '%s'", urlMatch, prNum),
+			fmt.Sprintf("   Found: 'https://%s' → Should be: '%s'", cleanURL, prNum),
 		)
 	}
 

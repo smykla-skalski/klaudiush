@@ -161,5 +161,128 @@ var _ = Describe("Pattern detection coverage", func() {
 			"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U",
 			"jwt-token",
 		),
+		//nolint:lll // Slack webhook URL test data is intentionally long
+		Entry(
+			"Slack Webhook at start",
+			"https://hooks.slack.com/services/T12345678/B12345678/abcdefghijklmnopqrstuvwx",
+			"slack-webhook",
+		),
+		//nolint:lll // Slack webhook URL test data is intentionally long
+		Entry(
+			"Slack Webhook after space",
+			"webhook: https://hooks.slack.com/services/T12345678/B12345678/abcdefghijklmnopqrstuvwx",
+			"slack-webhook",
+		),
 	)
+})
+
+var _ = Describe("Slack webhook URL pattern security", func() {
+	var detector *secrets.PatternDetector
+
+	BeforeEach(func() {
+		detector = secrets.NewDefaultPatternDetector()
+	})
+
+	Context("should detect legitimate Slack webhook URLs", func() {
+		DescribeTable(
+			"valid Slack webhooks",
+			func(content string) {
+				findings := detector.Detect(content)
+				var found bool
+				for _, f := range findings {
+					if f.Pattern.Name == "slack-webhook" {
+						found = true
+						break
+					}
+				}
+				Expect(found).To(BeTrue(), "Expected slack-webhook to be detected in: %s", content)
+			},
+			//nolint:lll // Slack webhook URL test data is intentionally long
+			Entry(
+				"URL at start of string",
+				"https://hooks.slack.com/services/T12345678/B12345678/abcdefghijklmnopqrstuvwx",
+			),
+			//nolint:lll // Slack webhook URL test data is intentionally long
+			Entry(
+				"URL after space",
+				"webhook https://hooks.slack.com/services/T12345678/B12345678/abcdefghijklmnopqrstuvwx",
+			),
+			//nolint:lll // Slack webhook URL test data is intentionally long
+			Entry(
+				"URL after newline",
+				"config:\nhttps://hooks.slack.com/services/T12345678/B12345678/abcdefghijklmnopqrstuvwx",
+			),
+			//nolint:lll // Slack webhook URL test data is intentionally long
+			Entry(
+				"URL in quotes",
+				`"https://hooks.slack.com/services/T12345678/B12345678/abcdefghijklmnopqrstuvwx"`,
+			),
+			//nolint:lll // Slack webhook URL test data is intentionally long
+			Entry(
+				"URL with longer workspace ID",
+				"https://hooks.slack.com/services/T1234567890123456/B1234567890123456/abcdefghijklmnopqrstuvwx",
+			),
+		)
+	})
+
+	Context("should NOT detect embedded Slack webhook URLs (prevents URL injection)", func() {
+		DescribeTable(
+			"embedded URLs should be rejected",
+			func(content string) {
+				findings := detector.Detect(content)
+				for _, f := range findings {
+					Expect(f.Pattern.Name).NotTo(
+						Equal("slack-webhook"),
+						"Should not detect slack-webhook in embedded URL: %s",
+						content,
+					)
+				}
+			},
+			//nolint:lll // Slack webhook URL test data is intentionally long
+			Entry(
+				"URL embedded in malicious path",
+				"evil.com/https://hooks.slack.com/services/T12345678/B12345678/abcdefghijklmnopqrstuvwx",
+			),
+			//nolint:lll // Slack webhook URL test data is intentionally long
+			Entry(
+				"URL after redirect path",
+				"https://malicious.com/redirect/https://hooks.slack.com/services/T12345678/B12345678/abcdefghijklmnopqrstuvwx",
+			),
+			//nolint:lll // Slack webhook URL test data is intentionally long
+			Entry(
+				"URL embedded after domain path",
+				"legitimate.com/phishing/hooks.slack.com/services/T12345678/B12345678/abcdefghijklmnopqrstuvwx",
+			),
+		)
+	})
+
+	Context("bounded quantifiers prevent ReDoS", func() {
+		It("should handle workspace IDs at boundary length", func() {
+			// 20 digits after 'T' (21 characters total, upper bound)
+			//nolint:lll // Slack webhook URL test data is intentionally long
+			content := "https://hooks.slack.com/services/T12345678901234567890/B12345678901234567890/abcdefghijklmnopqrstuvwx"
+			findings := detector.Detect(content)
+			var found bool
+			for _, f := range findings {
+				if f.Pattern.Name == "slack-webhook" {
+					found = true
+					break
+				}
+			}
+			Expect(found).To(BeTrue(), "Should detect webhook with max length IDs")
+		})
+
+		It("should not match IDs exceeding upper bound", func() {
+			// 21 digits after T (22 characters total, exceeds upper bound of 20)
+			//nolint:lll // Slack webhook URL test data is intentionally long
+			content := "https://hooks.slack.com/services/T123456789012345678901/B123456789012345678901/abcdefghijklmnopqrstuvwx"
+			findings := detector.Detect(content)
+			for _, f := range findings {
+				Expect(f.Pattern.Name).NotTo(
+					Equal("slack-webhook"),
+					"Should not detect webhook with IDs exceeding max length",
+				)
+			}
+		})
+	})
 })

@@ -100,7 +100,7 @@ var defaultPatterns = []Pattern{
 		Name:        "slack-webhook",
 		Description: "Slack Webhook URL",
 		Regex: regexp.MustCompile(
-			`https://hooks\.slack\.com/services/T[A-Z0-9]{8,}/B[A-Z0-9]{8,}/[A-Za-z0-9]{24}`,
+			`(?:^|://|[^/a-zA-Z0-9])https://hooks\.slack\.com/services/T[A-Z0-9]{8,20}/B[A-Z0-9]{8,20}/[A-Za-z0-9]{24}\b`,
 		),
 		ErrorCode: validator.ErrSecretsToken,
 	},
