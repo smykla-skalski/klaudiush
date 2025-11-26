@@ -29,6 +29,10 @@ task = "3.45.5"
 # https://github.com/evilmartians/lefthook
 lefthook = "2.0.4"
 
+# Protocol buffer tooling
+# https://buf.build/
+buf = "1.61.0"
+
 [env]
 # Ensure Go binaries are in PATH
 _.path = ["{{ env.HOME }}/.local/share/mise/installs/go/*/bin"]

@@ -189,6 +189,7 @@ Additional implementation details from specific sessions are in `.claude/session
 - `session-error-reporting.md` - Error codes, suggestions/doc links registries, FailWithCode pattern, cognitive complexity refactoring
 - `session-secrets-detection.md` - Secrets validator with 25+ regex patterns, two-tier detection (patterns + gitleaks), configuration schema for allow lists/custom patterns
 - `session-plugin-system.md` - Plugin system with Go/exec loaders, predicate-based matching, flexible configuration, validator adapter integration
+- `session-grpc-loader.md` - gRPC plugin loader with connection pooling, buf 1.61.0 setup, protobuf protocol, double-check locking, type conversion between internal and protobuf types
 - `session-fuzzing.md` - Go native fuzzing for parsers, fuzz targets by risk, type limitations, progress tracking in `tmp/fuzzing/`
 - `session-github-quality.md` - OSSF Scorecard, branch rulesets API, Renovate version sync (customManagers:githubActionsVersions), smyklot bot workflows
 - `session-codeql-regex-security.md` - CodeQL regex anchor fixes (CWE-020), URL pattern anchoring with `(?:^|://|[^/a-zA-Z0-9])`, bounded quantifiers for ReDoS, prefix consumption in matches, GitHub push protection bypass for test secrets, PR review thread resolution

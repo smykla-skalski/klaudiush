@@ -49,8 +49,8 @@ func NewRegistry(log logger.Logger) *Registry {
 	return &Registry{
 		loaders: map[config.PluginType]Loader{
 			config.PluginTypeGo:   NewGoLoader(),
+			config.PluginTypeGRPC: NewGRPCLoader(),
 			config.PluginTypeExec: NewExecLoader(runner),
-			// gRPC loader will be added when implemented
 		},
 		plugins: make([]*PluginEntry, 0),
 		logger:  log,
@@ -109,8 +109,8 @@ func (r *Registry) LoadPlugin(cfg *config.PluginInstanceConfig) error {
 
 	// Determine plugin category (default to CPU for external plugins)
 	category := validator.CategoryCPU
-	if cfg.Type == config.PluginTypeExec {
-		// Exec plugins are I/O-bound since they spawn processes
+	if cfg.Type == config.PluginTypeExec || cfg.Type == config.PluginTypeGRPC {
+		// Exec and gRPC plugins are I/O-bound (process spawning and network I/O)
 		category = validator.CategoryIO
 	}
 
@@ -309,7 +309,7 @@ func (r *Registry) LoadPluginForTesting(
 
 	// Determine plugin category
 	category := validator.CategoryCPU
-	if cfg.Type == config.PluginTypeExec {
+	if cfg.Type == config.PluginTypeExec || cfg.Type == config.PluginTypeGRPC {
 		category = validator.CategoryIO
 	}
 

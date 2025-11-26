@@ -1,0 +1,89 @@
+syntax = "proto3";
+
+package plugin.v1;
+
+option go_package = "github.com/smykla-labs/klaudiush/api/plugin/v1;pluginv1";
+
+// ValidatorPlugin defines the gRPC service for external validator plugins.
+service ValidatorPlugin {
+  // Info returns metadata about the plugin.
+  rpc Info(InfoRequest) returns (InfoResponse);
+
+  // Validate performs validation and returns a result.
+  rpc Validate(ValidateRequest) returns (ValidateResponse);
+}
+
+// InfoRequest is an empty request for plugin metadata.
+message InfoRequest {}
+
+// InfoResponse contains plugin metadata.
+message InfoResponse {
+  // name is the unique plugin identifier.
+  string name = 1;
+
+  // version is the plugin version (semver recommended).
+  string version = 2;
+
+  // description is a human-readable description of what the plugin does.
+  string description = 3;
+
+  // author is the plugin author or organization.
+  string author = 4;
+
+  // url is a link to the plugin's homepage or documentation.
+  string url = 5;
+}
+
+// ValidateRequest contains the context passed to plugin validators.
+message ValidateRequest {
+  // event_type is the hook event type ("PreToolUse", "PostToolUse", "Notification").
+  string event_type = 1;
+
+  // tool_name is the tool being invoked ("Bash", "Write", "Edit", etc.).
+  string tool_name = 2;
+
+  // command is the shell command (for Bash tool).
+  string command = 3;
+
+  // file_path is the file path (for file operations).
+  string file_path = 4;
+
+  // content is the file content (for Write/Edit tools).
+  string content = 5;
+
+  // old_string is the string to replace (for Edit tool).
+  string old_string = 6;
+
+  // new_string is the replacement string (for Edit tool).
+  string new_string = 7;
+
+  // pattern is the search pattern (for Grep/Glob tools).
+  string pattern = 8;
+
+  // config contains plugin-specific configuration from the config file.
+  map<string, string> config = 9;
+}
+
+// ValidateResponse contains the validation result returned by a plugin.
+message ValidateResponse {
+  // passed indicates whether the validation passed.
+  bool passed = 1;
+
+  // should_block indicates whether this failure should block the operation.
+  bool should_block = 2;
+
+  // message is a human-readable message describing the result.
+  string message = 3;
+
+  // error_code is a unique identifier for this error type.
+  string error_code = 4;
+
+  // fix_hint provides a short suggestion for fixing the issue.
+  string fix_hint = 5;
+
+  // doc_link is a URL to detailed documentation for this error.
+  string doc_link = 6;
+
+  // details contains additional structured information about the result.
+  map<string, string> details = 7;
+}
