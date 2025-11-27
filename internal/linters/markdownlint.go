@@ -211,8 +211,8 @@ func (l *RealMarkdownLinter) buildConfigArgs(
 	return args, noopCleanup, nil
 }
 
-// processMarkdownlintOutput processes the output from markdownlint execution.
-func processMarkdownlintOutput(
+// ProcessMarkdownlintOutput processes the output from markdownlint execution.
+func ProcessMarkdownlintOutput(
 	result *execpkg.CommandResult,
 	tempFile string,
 	preambleLines int,
@@ -293,7 +293,7 @@ func (l *RealMarkdownLinter) runMarkdownlint(
 	args = append(args, tempFile)
 	result := l.runner.Run(ctx, markdownlintPath, args...)
 
-	return processMarkdownlintOutput(&result, tempFile, preambleLines)
+	return ProcessMarkdownlintOutput(&result, tempFile, preambleLines)
 }
 
 const (
