@@ -516,20 +516,14 @@ func AnalyzeMarkdown(
 			inCodeBlock = checkCodeBlock(line, prevLine, lineNum, inCodeBlock, &result.Warnings)
 		}
 
-		// Skip list checks inside code blocks
-		if inCodeBlock {
-			prevPrevLine = prevLine
-			prevLine = line
+		// Skip header/list validation inside code blocks or on code block markers.
+		// For closing markers, this prevents treating the previous line (from inside
+		// the code block) as markdown. Opening markers are already handled above.
+		skipValidation := inCodeBlock || isCodeBlockMarker(line)
 
-			continue
-		}
-
-		// Skip validation for first line (can't check previous line)
-		if lineNum > 1 {
-			// Check for first list item (transition from non-list to list)
+		// Validate header/list spacing for non-code-block content after first line
+		if !skipValidation && lineNum > 1 {
 			checkListItem(line, prevLine, lineNum, &result.Warnings)
-
-			// Check for content immediately after headers
 			checkHeader(line, prevLine, lineNum, &result.Warnings)
 		}
 
