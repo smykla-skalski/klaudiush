@@ -46,7 +46,7 @@ RefShellcheck     Reference = "https://klaudiu.sh/FILE001"
 
 ### Error Code Organization
 
-**GIT001-GIT022**: Git operations
+**GIT001-GIT023**: Git operations
 
 - GIT001: Missing signoff (`-s`)
 - GIT002: Missing GPG sign (`-S`)
@@ -70,6 +70,7 @@ RefShellcheck     Reference = "https://klaudiu.sh/FILE001"
 - GIT020: Branch naming violations (spaces, uppercase, patterns)
 - GIT021: --no-verify flag not allowed
 - GIT022: Kong org push to origin remote blocked
+- GIT023: PR validation failure (title, body, markdown, or labels)
 
 **FILE001-FILE005**: File validation
 

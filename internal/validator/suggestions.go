@@ -26,6 +26,7 @@ var DefaultSuggestions = map[Reference]string{
 	RefGitBranchName:         "Use lowercase kebab-case for branch names (e.g., feat/my-feature)",
 	RefGitNoVerify:           "Remove --no-verify flag and fix any pre-commit hook issues",
 	RefGitKongOrgPush:        "Push to 'upstream' remote instead: git push upstream <branch>",
+	RefGitPRValidation:       "Fix PR title, body, markdown formatting, or labels per validation errors",
 
 	// File suggestions
 	RefShellcheck:   "Run 'shellcheck <file>' to see detailed errors",

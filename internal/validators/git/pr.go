@@ -377,12 +377,12 @@ func (*PRValidator) buildResult(allErrors, allWarnings []string, title string) *
 
 		message += "\n\nPR title: " + title
 
-		return validator.FailWithRef(validator.RefGitBadTitle, message)
+		return validator.FailWithRef(validator.RefGitPRValidation, message)
 	}
 
 	if len(allWarnings) > 0 {
 		message := "PR validation passed with warnings:\n\n" + strings.Join(allWarnings, "\n")
-		return validator.WarnWithRef(validator.RefGitBadTitle, message)
+		return validator.WarnWithRef(validator.RefGitPRValidation, message)
 	}
 
 	return validator.Pass()
