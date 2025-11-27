@@ -70,6 +70,8 @@ Represents tool invocations: `EventType` (PreToolUse/PostToolUse/Notification), 
 
 **Creating**: 1) Embed `BaseValidator`, 2) Implement `Validate(ctx *hook.Context)`, 3) Register in `main.go:registerValidators()`
 
+**Error Format Policy**: Validators return errors with structured format including error codes (GIT001-GIT018, FILE001-FILE005, SEC001-SEC005), automatic fix hints from suggestions registry, and documentation URLs (`https://klaudiu.sh/{CODE}`). Use `FailWithRef(ref, msg)` to auto-populate fix hints - NEVER set `FixHint` manually. Error priority determines which reference is shown when multiple rules fail. See `.claude/validator-error-format-policy.md` for comprehensive guide.
+
 ### Parsers
 
 **Bash** (`pkg/parser/bash.go`): AST parsing via `mvdan.cc/sh/v3/syntax`, extracts commands/file writes/git ops
@@ -181,10 +183,11 @@ Common secret types: `stripe_api_key`, `slack_api_token`, `github_token`, `aws_a
 
 Valid reasons: `used_in_tests`, `false_positive`, `will_fix_later`
 
-## Session Notes
+## Documentation
 
-Additional implementation details from specific sessions are in `.claude/session-*.md` files:
+Additional implementation details and policies are in `.claude/` files:
 
+- `validator-error-format-policy.md` - Comprehensive guide for validator error formatting, reference system (GIT001-GIT018, FILE001-FILE005, SEC001-SEC005), suggestions registry, FailWithRef pattern, error display format, best practices
 - `session-parallel-execution.md` - Parallel validator execution, category-specific worker pools, race detection testing
 - `session-error-reporting.md` - Error codes, suggestions/doc links registries, FailWithCode pattern, cognitive complexity refactoring
 - `session-secrets-detection.md` - Secrets validator with 25+ regex patterns, two-tier detection (patterns + gitleaks), configuration schema for allow lists/custom patterns
