@@ -7,6 +7,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	gitpkg "github.com/smykla-labs/klaudiush/internal/git"
+	validatorpkg "github.com/smykla-labs/klaudiush/internal/validator"
 	"github.com/smykla-labs/klaudiush/internal/validators/git"
 	"github.com/smykla-labs/klaudiush/pkg/hook"
 	"github.com/smykla-labs/klaudiush/pkg/logger"
@@ -41,6 +42,12 @@ var _ = Describe("PushValidator", func() {
 	Describe("Name", func() {
 		It("returns the validator name", func() {
 			Expect(validator.Name()).To(Equal("validate-git-push"))
+		})
+	})
+
+	Describe("Category", func() {
+		It("returns CategoryGit", func() {
+			Expect(validator.Category()).To(Equal(validatorpkg.CategoryGit))
 		})
 	})
 
@@ -157,6 +164,8 @@ var _ = Describe("PushValidator", func() {
 				ctx := createContext("git push origin feature-branch")
 				result := validator.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeFalse())
+				Expect(result.Reference).To(Equal(validatorpkg.RefGitKongOrgPush))
+				Expect(result.FixHint).To(ContainSubstring("upstream"))
 				Expect(result.Message).To(ContainSubstring("Git push validation failed"))
 				Expect(
 					result.Message,

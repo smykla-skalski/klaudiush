@@ -7,6 +7,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	gitpkg "github.com/smykla-labs/klaudiush/internal/git"
+	"github.com/smykla-labs/klaudiush/internal/validator"
 	"github.com/smykla-labs/klaudiush/internal/validators/git"
 	"github.com/smykla-labs/klaudiush/pkg/hook"
 	"github.com/smykla-labs/klaudiush/pkg/logger"
@@ -31,6 +32,12 @@ var _ = Describe("GitAddValidator", func() {
 		})
 	})
 
+	Describe("Category", func() {
+		It("should return CategoryGit", func() {
+			Expect(val.Category()).To(Equal(validator.CategoryGit))
+		})
+	})
+
 	Describe("Validate", func() {
 		Context("when adding tmp/ files", func() {
 			It("should block adding a single tmp/ file", func() {
@@ -47,6 +54,8 @@ var _ = Describe("GitAddValidator", func() {
 				Expect(result.Passed).To(BeFalse())
 				Expect(result.ShouldBlock).To(BeTrue())
 				Expect(result.Message).To(ContainSubstring("blocked files"))
+				Expect(result.Reference).To(Equal(validator.RefGitBlockedFiles))
+				Expect(result.FixHint).To(ContainSubstring(".git/info/exclude"))
 				Expect(result.Details).To(HaveKey("help"))
 				Expect(result.Details["help"]).To(ContainSubstring("tmp/test.txt"))
 				Expect(result.Details["help"]).To(ContainSubstring(".git/info/exclude"))
