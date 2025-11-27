@@ -1208,4 +1208,47 @@ Signed-off-by: Test User <test@example.com>`
 			Expect(result.Passed).To(BeTrue())
 		})
 	})
+
+	Describe("HEREDOC message format", func() {
+		It("should pass valid commit with trailing newline from HEREDOC", func() {
+			// HEREDOC syntax adds trailing newline: -m "$(cat <<'EOF'\n...\nEOF\n)"
+			// The parser extracts: "chore(deploy): migrate\n"
+			ctx := &hook.Context{
+				EventType: hook.EventTypePreToolUse,
+				ToolName:  hook.ToolTypeBash,
+				ToolInput: hook.ToolInput{
+					Command: "git commit -sS -m \"$(cat <<'EOF'\nchore(deploy): migrate to Frankfurt region\nEOF\n)\"",
+				},
+			}
+
+			result := validator.Validate(context.Background(), ctx)
+			Expect(result.Passed).To(BeTrue())
+		})
+
+		It("should pass valid commit with multiple trailing newlines", func() {
+			ctx := &hook.Context{
+				EventType: hook.EventTypePreToolUse,
+				ToolName:  hook.ToolTypeBash,
+				ToolInput: hook.ToolInput{
+					Command: "git commit -sS -m \"$(cat <<'EOF'\nfeat(api): add endpoint\n\n\nEOF\n)\"",
+				},
+			}
+
+			result := validator.Validate(context.Background(), ctx)
+			Expect(result.Passed).To(BeTrue())
+		})
+
+		It("should pass commit with body and trailing newlines from HEREDOC", func() {
+			ctx := &hook.Context{
+				EventType: hook.EventTypePreToolUse,
+				ToolName:  hook.ToolTypeBash,
+				ToolInput: hook.ToolInput{
+					Command: "git commit -sS -m \"$(cat <<'EOF'\nfeat(api): add endpoint\n\nThis adds a new API endpoint.\nEOF\n)\"",
+				},
+			}
+
+			result := validator.Validate(context.Background(), ctx)
+			Expect(result.Passed).To(BeTrue())
+		})
+	})
 })

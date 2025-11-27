@@ -293,8 +293,9 @@ func (v *CommitValidator) extractCommitMessage(gitCmd *parser.GitCommand) (strin
 	}
 
 	// Check for inline message flags (-m/--message)
+	// TrimSpace handles trailing newlines from HEREDOC syntax: -m "$(cat <<'EOF'\n...\nEOF\n)"
 	if msg := v.getFlagValue(gitCmd, commitMessageFlags); msg != "" {
-		return msg, nil
+		return strings.TrimSpace(msg), nil
 	}
 
 	return "", nil
