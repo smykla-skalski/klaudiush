@@ -90,7 +90,8 @@ func (v *AddValidator) Validate(_ context.Context, hookCtx *hook.Context) *valid
 			},
 		)
 
-		return validator.Fail(
+		return validator.FailWithRef(
+			validator.RefGitBlockedFiles,
 			"Attempting to add blocked files",
 		).AddDetail("help", message)
 	}

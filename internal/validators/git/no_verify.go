@@ -55,7 +55,8 @@ func (v *NoVerifyValidator) Validate(_ context.Context, hookCtx *hook.Context) *
 		if gitCmd.HasFlag("--no-verify") || gitCmd.HasFlag("-n") {
 			message := templates.MustExecute(templates.GitNoVerifyTemplate, nil)
 
-			return validator.Fail(
+			return validator.FailWithRef(
+				validator.RefGitNoVerify,
 				"Git commit --no-verify is not allowed",
 			).AddDetail("help", message)
 		}

@@ -9,7 +9,7 @@ type Reference string
 // ReferenceBaseURL is the base URL for error references.
 const ReferenceBaseURL = "https://klaudiu.sh"
 
-// Git-related references (GIT001-GIT016).
+// Git-related references (GIT001-GIT022).
 const (
 	// RefGitNoSignoff indicates missing -s/--signoff flag.
 	RefGitNoSignoff Reference = ReferenceBaseURL + "/GIT001"
@@ -64,6 +64,18 @@ const (
 
 	// RefGitMergeSignoff indicates missing signoff in merge commit body.
 	RefGitMergeSignoff Reference = ReferenceBaseURL + "/GIT018"
+
+	// RefGitBlockedFiles indicates attempting to add blocked files (e.g., tmp/*).
+	RefGitBlockedFiles Reference = ReferenceBaseURL + "/GIT019"
+
+	// RefGitBranchName indicates branch naming violations (spaces, uppercase, patterns).
+	RefGitBranchName Reference = ReferenceBaseURL + "/GIT020"
+
+	// RefGitNoVerify indicates --no-verify flag is not allowed.
+	RefGitNoVerify Reference = ReferenceBaseURL + "/GIT021"
+
+	// RefGitKongOrgPush indicates Kong org push to origin remote is blocked.
+	RefGitKongOrgPush Reference = ReferenceBaseURL + "/GIT022"
 )
 
 // File-related references (FILE001-FILE005).

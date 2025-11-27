@@ -48,7 +48,7 @@ func (v *CommitValidator) validateMessage(message string) *validator.Result {
 	log.Debug("Validating commit message", "length", len(message))
 
 	if message == "" {
-		return validator.Fail("Commit message is empty")
+		return validator.FailWithRef(validator.RefGitBadTitle, "Commit message is empty")
 	}
 
 	// Create parser with configured valid types

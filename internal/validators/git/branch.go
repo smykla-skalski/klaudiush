@@ -185,7 +185,7 @@ func (v *BranchValidator) validateBranchCreation(gitCmd *parser.GitCommand) *val
 // createSpaceError creates an error for branch names with spaces.
 func (*BranchValidator) createSpaceError() *validator.Result {
 	message := templates.MustExecute(templates.BranchSpaceErrorTemplate, nil)
-	return validator.Fail(message)
+	return validator.FailWithRef(validator.RefGitBranchName, message)
 }
 
 // extractBranchName extracts the branch name from a git command.
@@ -274,7 +274,7 @@ func (v *BranchValidator) validateBranchName(branchName string) *validator.Resul
 			},
 		)
 
-		return validator.Fail(message)
+		return validator.FailWithRef(validator.RefGitBranchName, message)
 	}
 
 	requireType := v.isRequireType()
@@ -296,7 +296,7 @@ func (v *BranchValidator) validateBranchName(branchName string) *validator.Resul
 				},
 			)
 
-			return validator.Fail(message)
+			return validator.FailWithRef(validator.RefGitBranchName, message)
 		}
 
 		parts := strings.SplitN(branchName, "/", minBranchParts)
@@ -308,7 +308,7 @@ func (v *BranchValidator) validateBranchName(branchName string) *validator.Resul
 				},
 			)
 
-			return validator.Fail(message)
+			return validator.FailWithRef(validator.RefGitBranchName, message)
 		}
 
 		branchType := parts[0]
@@ -339,7 +339,7 @@ func (v *BranchValidator) validateBranchName(branchName string) *validator.Resul
 				},
 			)
 
-			return validator.Fail(message)
+			return validator.FailWithRef(validator.RefGitBranchName, message)
 		}
 	}
 

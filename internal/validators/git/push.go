@@ -218,7 +218,7 @@ func (v *PushValidator) validateProjectSpecificRules(projectType, remote string)
 func (*PushValidator) validateKongOrgPush(remote string) *validator.Result {
 	if remote == "origin" {
 		message := templates.MustExecute(templates.PushKongOrgTemplate, nil)
-		return validator.Fail(message)
+		return validator.FailWithRef(validator.RefGitKongOrgPush, message)
 	}
 
 	return validator.Pass()
