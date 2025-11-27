@@ -242,14 +242,14 @@ var _ = Describe("ValidatorAdapter", func() {
 			Expect(result.Message).To(Equal("warning message"))
 		})
 
-		It("should convert error code and hints", func() {
+		It("should preserve plugin's DocLink as reference", func() {
 			mockPlugin.EXPECT().
 				Validate(gomock.Any(), gomock.Any()).
 				Return(pluginapi.FailWithCode(
 					"TEST001",
 					"validation failed",
 					"fix hint",
-					"https://docs.example.com/TEST001",
+					"https://errors.smyk.la/TEST001",
 				), nil)
 
 			hookCtx := &hook.Context{
@@ -262,9 +262,49 @@ var _ = Describe("ValidatorAdapter", func() {
 			Expect(result).NotTo(BeNil())
 			Expect(result.Passed).To(BeFalse())
 			Expect(result.ShouldBlock).To(BeTrue())
-			Expect(result.ErrorCode).To(Equal(validator.ErrorCode("TEST001")))
+			// Plugin's own DocLink is used as-is, not converted to klaudiu.sh URL
+			expected := validator.Reference("https://errors.smyk.la/TEST001")
+			Expect(result.Reference).To(Equal(expected))
 			Expect(result.FixHint).To(Equal("fix hint"))
-			Expect(result.DocLink).To(Equal("https://docs.example.com/TEST001"))
+		})
+
+		It("should not set reference when plugin provides no DocLink", func() {
+			mockPlugin.EXPECT().
+				Validate(gomock.Any(), gomock.Any()).
+				Return(pluginapi.FailResponse("validation failed"), nil)
+
+			hookCtx := &hook.Context{
+				EventType: hook.EventTypePreToolUse,
+				ToolName:  hook.ToolTypeBash,
+			}
+
+			result := adapter.Validate(ctx, hookCtx)
+
+			Expect(result).NotTo(BeNil())
+			Expect(result.Passed).To(BeFalse())
+			Expect(result.Reference).To(Equal(validator.Reference("")))
+		})
+
+		It("should preserve FixHint even without DocLink", func() {
+			mockPlugin.EXPECT().
+				Validate(gomock.Any(), gomock.Any()).
+				Return(&pluginapi.ValidateResponse{
+					Passed:      false,
+					ShouldBlock: true,
+					Message:     "validation failed",
+					FixHint:     "try this fix",
+				}, nil)
+
+			hookCtx := &hook.Context{
+				EventType: hook.EventTypePreToolUse,
+				ToolName:  hook.ToolTypeBash,
+			}
+
+			result := adapter.Validate(ctx, hookCtx)
+
+			Expect(result).NotTo(BeNil())
+			Expect(result.FixHint).To(Equal("try this fix"))
+			Expect(result.Reference).To(Equal(validator.Reference("")))
 		})
 
 		It("should convert details map", func() {

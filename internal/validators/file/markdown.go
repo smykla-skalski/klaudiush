@@ -107,7 +107,7 @@ func (v *MarkdownValidator) Validate(ctx context.Context, hookCtx *hook.Context)
 	if !result.Success {
 		message := "Markdown formatting errors"
 
-		r := validator.FailWithCode(validator.ErrMarkdownLint, message).
+		r := validator.FailWithRef(validator.RefMarkdownLint, message).
 			AddDetail("errors", strings.TrimSpace(result.RawOut))
 
 		// Include table suggestions if available

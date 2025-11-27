@@ -8,13 +8,13 @@ import (
 	"github.com/smykla-labs/klaudiush/internal/validator"
 )
 
-// RuleResult contains the result of a rule validation including error code.
+// RuleResult contains the result of a rule validation including reference.
 type RuleResult struct {
 	// Errors contains the error messages from this rule.
 	Errors []string
 
-	// ErrorCode is the specific error code for this type of validation failure.
-	ErrorCode validator.ErrorCode
+	// Reference is the URL that uniquely identifies this type of validation failure.
+	Reference validator.Reference
 }
 
 // CommitRule represents a validation rule for commit messages.
@@ -47,7 +47,7 @@ func (r *TitleLengthRule) Validate(commit *ParsedCommit, _ string) *RuleResult {
 	}
 
 	return &RuleResult{
-		ErrorCode: validator.ErrGitBadTitle,
+		Reference: validator.RefGitBadTitle,
 		Errors: []string{
 			fmt.Sprintf(
 				"❌ Title exceeds %d characters (%d chars): '%s'",
@@ -90,7 +90,7 @@ func (r *ConventionalFormatRule) Validate(commit *ParsedCommit, _ string) *RuleR
 		errors = append(errors, fmt.Sprintf("   Current title: '%s'", commit.Title))
 
 		return &RuleResult{
-			ErrorCode: validator.ErrGitConventionalCommit,
+			Reference: validator.RefGitConventionalCommit,
 			Errors:    errors,
 		}
 	}
@@ -98,7 +98,7 @@ func (r *ConventionalFormatRule) Validate(commit *ParsedCommit, _ string) *RuleR
 	// Check scope requirement
 	if r.RequireScope && commit.Scope == "" {
 		return &RuleResult{
-			ErrorCode: validator.ErrGitConventionalCommit,
+			Reference: validator.RefGitConventionalCommit,
 			Errors: []string{
 				"❌ Title doesn't follow conventional commits format: type(scope): description",
 				"   Scope is mandatory and must be in parentheses",
@@ -144,7 +144,7 @@ func (r *InfraScopeMisuseRule) Validate(commit *ParsedCommit, _ string) *RuleRes
 	scopeMatch := matches[2] // ci, test, docs, or build
 
 	return &RuleResult{
-		ErrorCode: validator.ErrGitFeatCI,
+		Reference: validator.RefGitFeatCI,
 		Errors: []string{
 			fmt.Sprintf(
 				"❌ Use '%s(...)' not '%s(%s)' for infrastructure changes",
@@ -218,7 +218,7 @@ func (r *BodyLineLengthRule) Validate(_ *ParsedCommit, message string) *RuleResu
 	}
 
 	return &RuleResult{
-		ErrorCode: validator.ErrGitBadBody,
+		Reference: validator.RefGitBadBody,
 		Errors:    errors,
 	}
 }
@@ -284,7 +284,7 @@ func (r *ListFormattingRule) Validate(_ *ParsedCommit, message string) *RuleResu
 	}
 
 	return &RuleResult{
-		ErrorCode: validator.ErrGitListFormat,
+		Reference: validator.RefGitListFormat,
 		Errors:    errors,
 	}
 }
@@ -343,7 +343,7 @@ func (r *PRReferenceRule) Validate(_ *ParsedCommit, message string) *RuleResult 
 	}
 
 	return &RuleResult{
-		ErrorCode: validator.ErrGitPRRef,
+		Reference: validator.RefGitPRRef,
 		Errors:    errors,
 	}
 }
@@ -365,7 +365,7 @@ func (*AIAttributionRule) Validate(_ *ParsedCommit, message string) *RuleResult 
 	}
 
 	return &RuleResult{
-		ErrorCode: validator.ErrGitClaudeAttr,
+		Reference: validator.RefGitClaudeAttr,
 		Errors: []string{
 			"❌ Commit message contains AI attribution - remove any AI generation attribution",
 		},
@@ -409,7 +409,7 @@ func (r *ForbiddenPatternRule) Validate(_ *ParsedCommit, message string) *RuleRe
 	}
 
 	return &RuleResult{
-		ErrorCode: validator.ErrGitForbiddenPattern,
+		Reference: validator.RefGitForbiddenPattern,
 		Errors:    errors,
 	}
 }
@@ -446,7 +446,7 @@ func (r *SignoffRule) Validate(_ *ParsedCommit, message string) *RuleResult {
 	expectedSignoffLine := "Signed-off-by: " + r.ExpectedSignoff
 	if signoffLine != expectedSignoffLine {
 		return &RuleResult{
-			ErrorCode: validator.ErrGitSignoffMismatch,
+			Reference: validator.RefGitSignoffMismatch,
 			Errors: []string{
 				"❌ Wrong signoff identity",
 				"   Found: " + signoffLine,

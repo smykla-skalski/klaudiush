@@ -60,7 +60,7 @@ var _ = Describe("SecretsValidator", func() {
 			hookCtx.ToolInput.Content = `aws_access_key_id = "AKIAIOSFODNN7EXAMPLE"`
 			result := v.Validate(context.Background(), hookCtx)
 			Expect(result.Passed).To(BeFalse())
-			Expect(result.ErrorCode).To(Equal(validator.ErrSecretsAPIKey))
+			Expect(result.Reference).To(Equal(validator.RefSecretsAPIKey))
 			Expect(result.Message).To(ContainSubstring("AWS Access Key ID"))
 		})
 
@@ -68,7 +68,7 @@ var _ = Describe("SecretsValidator", func() {
 			hookCtx.ToolInput.Content = `aws_secret_access_key = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"`
 			result := v.Validate(context.Background(), hookCtx)
 			Expect(result.Passed).To(BeFalse())
-			Expect(result.ErrorCode).To(Equal(validator.ErrSecretsAPIKey))
+			Expect(result.Reference).To(Equal(validator.RefSecretsAPIKey))
 		})
 	})
 
@@ -77,7 +77,7 @@ var _ = Describe("SecretsValidator", func() {
 			hookCtx.ToolInput.Content = `GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`
 			result := v.Validate(context.Background(), hookCtx)
 			Expect(result.Passed).To(BeFalse())
-			Expect(result.ErrorCode).To(Equal(validator.ErrSecretsToken))
+			Expect(result.Reference).To(Equal(validator.RefSecretsToken))
 			Expect(result.Message).To(ContainSubstring("GitHub Personal Access Token"))
 		})
 
@@ -85,14 +85,14 @@ var _ = Describe("SecretsValidator", func() {
 			hookCtx.ToolInput.Content = `token: gho_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`
 			result := v.Validate(context.Background(), hookCtx)
 			Expect(result.Passed).To(BeFalse())
-			Expect(result.ErrorCode).To(Equal(validator.ErrSecretsToken))
+			Expect(result.Reference).To(Equal(validator.RefSecretsToken))
 		})
 
 		It("should detect GitHub App Token", func() {
 			hookCtx.ToolInput.Content = `ghs_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`
 			result := v.Validate(context.Background(), hookCtx)
 			Expect(result.Passed).To(BeFalse())
-			Expect(result.ErrorCode).To(Equal(validator.ErrSecretsToken))
+			Expect(result.Reference).To(Equal(validator.RefSecretsToken))
 		})
 	})
 
@@ -103,7 +103,7 @@ MIIEpQIBAAKCAQEA...
 -----END RSA PRIVATE KEY-----`
 			result := v.Validate(context.Background(), hookCtx)
 			Expect(result.Passed).To(BeFalse())
-			Expect(result.ErrorCode).To(Equal(validator.ErrSecretsPrivKey))
+			Expect(result.Reference).To(Equal(validator.RefSecretsPrivKey))
 			Expect(result.Message).To(ContainSubstring("RSA Private Key"))
 		})
 
@@ -113,7 +113,7 @@ b3BlbnNzaC1rZXktdjEAAAA...
 -----END OPENSSH PRIVATE KEY-----`
 			result := v.Validate(context.Background(), hookCtx)
 			Expect(result.Passed).To(BeFalse())
-			Expect(result.ErrorCode).To(Equal(validator.ErrSecretsPrivKey))
+			Expect(result.Reference).To(Equal(validator.RefSecretsPrivKey))
 		})
 
 		It("should detect EC private key", func() {
@@ -122,7 +122,7 @@ MHQCAQEEIBhzUvl...
 -----END EC PRIVATE KEY-----`
 			result := v.Validate(context.Background(), hookCtx)
 			Expect(result.Passed).To(BeFalse())
-			Expect(result.ErrorCode).To(Equal(validator.ErrSecretsPrivKey))
+			Expect(result.Reference).To(Equal(validator.RefSecretsPrivKey))
 		})
 	})
 
@@ -131,28 +131,28 @@ MHQCAQEEIBhzUvl...
 			hookCtx.ToolInput.Content = `mongodb://user:password123@localhost:27017/database`
 			result := v.Validate(context.Background(), hookCtx)
 			Expect(result.Passed).To(BeFalse())
-			Expect(result.ErrorCode).To(Equal(validator.ErrSecretsConnString))
+			Expect(result.Reference).To(Equal(validator.RefSecretsConnString))
 		})
 
 		It("should detect PostgreSQL connection string", func() {
 			hookCtx.ToolInput.Content = `postgresql://admin:secretpass@db.example.com:5432/mydb`
 			result := v.Validate(context.Background(), hookCtx)
 			Expect(result.Passed).To(BeFalse())
-			Expect(result.ErrorCode).To(Equal(validator.ErrSecretsConnString))
+			Expect(result.Reference).To(Equal(validator.RefSecretsConnString))
 		})
 
 		It("should detect MySQL connection string", func() {
 			hookCtx.ToolInput.Content = `mysql://root:toor@localhost:3306/test`
 			result := v.Validate(context.Background(), hookCtx)
 			Expect(result.Passed).To(BeFalse())
-			Expect(result.ErrorCode).To(Equal(validator.ErrSecretsConnString))
+			Expect(result.Reference).To(Equal(validator.RefSecretsConnString))
 		})
 
 		It("should detect Redis connection string", func() {
 			hookCtx.ToolInput.Content = `redis://default:mypassword@redis.example.com:6379`
 			result := v.Validate(context.Background(), hookCtx)
 			Expect(result.Passed).To(BeFalse())
-			Expect(result.ErrorCode).To(Equal(validator.ErrSecretsConnString))
+			Expect(result.Reference).To(Equal(validator.RefSecretsConnString))
 		})
 	})
 
@@ -161,7 +161,7 @@ MHQCAQEEIBhzUvl...
 			hookCtx.ToolInput.Content = `SLACK_TOKEN=xoxb-1234567890-1234567890123-AbCdEfGhIjKlMnOpQrStUvWx`
 			result := v.Validate(context.Background(), hookCtx)
 			Expect(result.Passed).To(BeFalse())
-			Expect(result.ErrorCode).To(Equal(validator.ErrSecretsToken))
+			Expect(result.Reference).To(Equal(validator.RefSecretsToken))
 		})
 
 		It("should detect Google API Key", func() {
@@ -169,14 +169,14 @@ MHQCAQEEIBhzUvl...
 			hookCtx.ToolInput.Content = `GOOGLE_API_KEY=AIzaSyD-abcdefghijklmnopqrstuvwxyz12345`
 			result := v.Validate(context.Background(), hookCtx)
 			Expect(result.Passed).To(BeFalse())
-			Expect(result.ErrorCode).To(Equal(validator.ErrSecretsAPIKey))
+			Expect(result.Reference).To(Equal(validator.RefSecretsAPIKey))
 		})
 
 		It("should detect Stripe API Key", func() {
 			hookCtx.ToolInput.Content = `stripe_key = "sk_live_AbCdEfGhIjKlMnOpQrStUvWxYz"`
 			result := v.Validate(context.Background(), hookCtx)
 			Expect(result.Passed).To(BeFalse())
-			Expect(result.ErrorCode).To(Equal(validator.ErrSecretsAPIKey))
+			Expect(result.Reference).To(Equal(validator.RefSecretsAPIKey))
 		})
 
 		It("should detect SendGrid API Key", func() {
@@ -184,7 +184,7 @@ MHQCAQEEIBhzUvl...
 			hookCtx.ToolInput.Content = `SENDGRID_API_KEY=SG.abcdefghijklmnopqrstuv.wxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abc`
 			result := v.Validate(context.Background(), hookCtx)
 			Expect(result.Passed).To(BeFalse())
-			Expect(result.ErrorCode).To(Equal(validator.ErrSecretsAPIKey))
+			Expect(result.Reference).To(Equal(validator.RefSecretsAPIKey))
 		})
 
 		It("should detect JWT token", func() {
@@ -192,7 +192,7 @@ MHQCAQEEIBhzUvl...
 			hookCtx.ToolInput.Content = `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIn0.Gfx6VO9tcxwk6xqx9yYzSfebfeakZp5JYIgP_edcw_A`
 			result := v.Validate(context.Background(), hookCtx)
 			Expect(result.Passed).To(BeFalse())
-			Expect(result.ErrorCode).To(Equal(validator.ErrSecretsToken))
+			Expect(result.Reference).To(Equal(validator.RefSecretsToken))
 		})
 	})
 
@@ -274,7 +274,7 @@ secret = os.getenv("SECRET_KEY")
 
 			result := v.Validate(context.Background(), hookCtx)
 			Expect(result.Passed).To(BeFalse())
-			Expect(result.ErrorCode).To(Equal(validator.ErrSecretsToken))
+			Expect(result.Reference).To(Equal(validator.RefSecretsToken))
 		})
 	})
 

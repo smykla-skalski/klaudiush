@@ -35,14 +35,12 @@ type ValidationError struct {
 	// ShouldBlock indicates whether this error should block the operation.
 	ShouldBlock bool
 
-	// ErrorCode is the unique identifier for this error type.
-	ErrorCode validator.ErrorCode
+	// Reference is the URL that uniquely identifies this error type.
+	// Format: https://klaudiu.sh/{CODE} (e.g., https://klaudiu.sh/GIT001).
+	Reference validator.Reference
 
 	// FixHint provides a short suggestion for fixing the issue.
 	FixHint string
-
-	// DocLink is a URL to detailed documentation for this error.
-	DocLink string
 }
 
 // Error implements the error interface.
@@ -269,23 +267,17 @@ func formatSingleError(builder *strings.Builder, err *ValidationError) {
 	builder.WriteString("\n")
 }
 
-// formatErrorMetadata writes error code, fix hint, and doc link if present.
+// formatErrorMetadata writes fix hint and reference if present.
 func formatErrorMetadata(builder *strings.Builder, err *ValidationError) {
-	if err.ErrorCode != "" {
-		builder.WriteString("   Code: ")
-		builder.WriteString(string(err.ErrorCode))
-		builder.WriteString("\n")
-	}
-
 	if err.FixHint != "" {
 		builder.WriteString("   Fix: ")
 		builder.WriteString(err.FixHint)
 		builder.WriteString("\n")
 	}
 
-	if err.DocLink != "" {
-		builder.WriteString("   Docs: ")
-		builder.WriteString(err.DocLink)
+	if err.Reference != "" {
+		builder.WriteString("   Reference: ")
+		builder.WriteString(string(err.Reference))
 		builder.WriteString("\n")
 	}
 }

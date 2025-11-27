@@ -68,7 +68,7 @@ line 4`
 			Expect(findings[0].Pattern).NotTo(BeNil())
 			Expect(findings[0].Pattern.Name).To(Equal("github-pat"))
 			Expect(findings[0].Pattern.Description).To(Equal("GitHub Personal Access Token"))
-			Expect(findings[0].Pattern.ErrorCode).To(Equal(validator.ErrSecretsToken))
+			Expect(findings[0].Pattern.Reference).To(Equal(validator.RefSecretsToken))
 		})
 	})
 
@@ -78,7 +78,7 @@ line 4`
 				Name:        "custom-key",
 				Description: "Custom API Key",
 				Regex:       regexp.MustCompile(`CUSTOM_[A-Z0-9]{16}`),
-				ErrorCode:   validator.ErrSecretsAPIKey,
+				Reference:   validator.RefSecretsAPIKey,
 			}
 			detector.AddPatterns(customPattern)
 

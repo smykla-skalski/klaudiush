@@ -12,6 +12,7 @@ import (
 
 	pb "github.com/smykla-labs/klaudiush/api/plugin/v1"
 	"github.com/smykla-labs/klaudiush/internal/plugin"
+	"github.com/smykla-labs/klaudiush/internal/validator"
 	"github.com/smykla-labs/klaudiush/pkg/config"
 	"github.com/smykla-labs/klaudiush/pkg/hook"
 	"github.com/smykla-labs/klaudiush/pkg/logger"
@@ -524,6 +525,7 @@ var _ = Describe("Plugin Integration Tests", func() {
 					Message:     "gRPC validation failed",
 					ErrorCode:   "TEST001",
 					FixHint:     "Fix the issue",
+					DocLink:     "https://errors.smyk.la/TEST001",
 				}
 
 				address := srv.start()
@@ -559,7 +561,9 @@ var _ = Describe("Plugin Integration Tests", func() {
 				Expect(result.Passed).To(BeFalse())
 				Expect(result.ShouldBlock).To(BeTrue())
 				Expect(result.Message).To(ContainSubstring("gRPC validation failed"))
-				Expect(string(result.ErrorCode)).To(Equal("TEST001"))
+				// Plugin's DocLink is preserved as-is (plugins manage their own error references)
+				expected := validator.Reference("https://errors.smyk.la/TEST001")
+				Expect(result.Reference).To(Equal(expected))
 				Expect(result.FixHint).To(Equal("Fix the issue"))
 			})
 		})

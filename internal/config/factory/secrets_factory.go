@@ -105,7 +105,7 @@ func (f *SecretsValidatorFactory) buildCustomPatterns(
 			Name:        cp.Name,
 			Description: cp.Description,
 			Regex:       re,
-			ErrorCode:   validator.ErrSecretsAPIKey, // default error code for custom patterns
+			Reference:   validator.RefSecretsAPIKey, // default reference for custom patterns
 		})
 	}
 

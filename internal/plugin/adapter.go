@@ -66,12 +66,13 @@ func (a *ValidatorAdapter) Validate(ctx context.Context, hookCtx *hook.Context) 
 		Details:     resp.Details,
 	}
 
-	// Map error code if present
-	if resp.ErrorCode != "" {
-		result.ErrorCode = validator.ErrorCode(resp.ErrorCode)
-		result.FixHint = resp.FixHint
-		result.DocLink = resp.DocLink
+	// Use plugin's own error metadata if provided
+	// Plugins manage their own error codes and documentation URLs
+	if resp.DocLink != "" {
+		result.Reference = validator.Reference(resp.DocLink)
 	}
+
+	result.FixHint = resp.FixHint
 
 	return result
 }

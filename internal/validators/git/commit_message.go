@@ -77,7 +77,7 @@ func (v *CommitValidator) validateMessage(message string) *validator.Result {
 		if len(markdownErrors) > 0 {
 			// Markdown errors are body-related warnings
 			ruleResults = append(ruleResults, &RuleResult{
-				ErrorCode: validator.ErrGitBadBody,
+				Reference: validator.RefGitBadBody,
 				Errors:    markdownErrors,
 			})
 		}
@@ -169,12 +169,12 @@ func (*CommitValidator) validateMarkdownInBody(lines []string) []string {
 }
 
 // buildErrorResult constructs the error result with details.
-// It selects the most appropriate error code based on what rules failed.
+// It selects the most appropriate reference based on what rules failed.
 func (*CommitValidator) buildErrorResult(results []*RuleResult, message string) *validator.Result {
 	var details strings.Builder
 
-	// Collect all errors and determine the primary error code
-	errorCode := selectPrimaryErrorCode(results)
+	// Collect all errors and determine the primary reference
+	ref := selectPrimaryReference(results)
 
 	for _, result := range results {
 		for _, err := range result.Errors {
@@ -188,13 +188,13 @@ func (*CommitValidator) buildErrorResult(results []*RuleResult, message string) 
 	details.WriteString(message)
 	details.WriteString("\n---")
 
-	return validator.FailWithCode(
-		errorCode,
+	return validator.FailWithRef(
+		ref,
 		"Commit message validation failed",
 	).AddDetail("errors", details.String())
 }
 
-// selectPrimaryErrorCode selects the most appropriate error code from rule results.
+// selectPrimaryReference selects the most appropriate reference from rule results.
 // Priority order (highest to lowest):
 // 1. Conventional commit format errors (GIT013)
 // 2. Infrastructure scope misuse (GIT006)
@@ -205,44 +205,44 @@ func (*CommitValidator) buildErrorResult(results []*RuleResult, message string) 
 // 7. AI attribution (GIT012)
 // 8. Forbidden patterns (GIT014)
 // 9. Signoff mismatch (GIT015)
-func selectPrimaryErrorCode(results []*RuleResult) validator.ErrorCode {
+func selectPrimaryReference(results []*RuleResult) validator.Reference {
 	if len(results) == 0 {
-		return validator.ErrGitConventionalCommit // fallback
+		return validator.RefGitConventionalCommit // fallback
 	}
 
-	// If only one result, use its error code
+	// If only one result, use its reference
 	if len(results) == 1 {
-		return results[0].ErrorCode
+		return results[0].Reference
 	}
 
 	// Priority-based selection for multiple errors
-	// Use a map to track which error codes are present
-	errorCodes := make(map[validator.ErrorCode]bool)
+	// Use a map to track which references are present
+	refs := make(map[validator.Reference]bool)
 	for _, result := range results {
-		errorCodes[result.ErrorCode] = true
+		refs[result.Reference] = true
 	}
 
 	// Check in priority order
-	priorityOrder := []validator.ErrorCode{
-		validator.ErrGitConventionalCommit, // Format issues are fundamental
-		validator.ErrGitFeatCI,             // Semantic type misuse
-		validator.ErrGitBadTitle,           // Title issues
-		validator.ErrGitBadBody,            // Body issues
-		validator.ErrGitListFormat,         // List formatting
-		validator.ErrGitPRRef,              // Content issues
-		validator.ErrGitClaudeAttr,         // Content issues
-		validator.ErrGitForbiddenPattern,   // Content issues
-		validator.ErrGitSignoffMismatch,    // Signoff issues
+	priorityOrder := []validator.Reference{
+		validator.RefGitConventionalCommit, // Format issues are fundamental
+		validator.RefGitFeatCI,             // Semantic type misuse
+		validator.RefGitBadTitle,           // Title issues
+		validator.RefGitBadBody,            // Body issues
+		validator.RefGitListFormat,         // List formatting
+		validator.RefGitPRRef,              // Content issues
+		validator.RefGitClaudeAttr,         // Content issues
+		validator.RefGitForbiddenPattern,   // Content issues
+		validator.RefGitSignoffMismatch,    // Signoff issues
 	}
 
-	for _, code := range priorityOrder {
-		if errorCodes[code] {
-			return code
+	for _, ref := range priorityOrder {
+		if refs[ref] {
+			return ref
 		}
 	}
 
-	// Fallback to first result's error code
-	return results[0].ErrorCode
+	// Fallback to first result's reference
+	return results[0].Reference
 }
 
 // truncateLine truncates a line for display in error messages.

@@ -81,7 +81,7 @@ func (v *ShellScriptValidator) Validate(
 
 	log.Debug("shellcheck failed", "output", result.RawOut)
 
-	return validator.FailWithCode(validator.ErrShellcheck, v.formatShellCheckOutput(result.RawOut))
+	return validator.FailWithRef(validator.RefShellcheck, v.formatShellCheckOutput(result.RawOut))
 }
 
 // getContent extracts shell script content from context

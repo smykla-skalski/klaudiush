@@ -179,8 +179,8 @@ func (v *CommitValidator) checkFlags(gitCmd *parser.GitCommand) *validator.Resul
 			},
 		)
 
-		return validator.FailWithCode(
-			validator.ErrGitMissingFlags,
+		return validator.FailWithRef(
+			validator.RefGitMissingFlags,
 			"Git commit missing required flags: "+strings.Join(missingFlags, " "),
 		).AddDetail("help", message)
 	}
@@ -227,8 +227,8 @@ func (v *CommitValidator) checkStagingArea(gitCmd *parser.GitCommand) *validator
 			},
 		)
 
-		return validator.FailWithCode(
-			validator.ErrGitNoStaged,
+		return validator.FailWithRef(
+			validator.RefGitNoStaged,
 			"No files staged for commit",
 		).AddDetail("help", message)
 	}

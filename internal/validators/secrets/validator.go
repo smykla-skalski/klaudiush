@@ -198,7 +198,7 @@ func (v *SecretsValidator) createResult(findings []Finding) *validator.Result {
 		messages = append(messages, msg)
 	}
 
-	errorCode := findings[0].Pattern.ErrorCode
+	ref := findings[0].Pattern.Reference
 	message := fmt.Sprintf(
 		"Potential secrets detected (%d finding(s)):\n%s",
 		len(findings),
@@ -206,10 +206,10 @@ func (v *SecretsValidator) createResult(findings []Finding) *validator.Result {
 	)
 
 	if v.shouldBlock() {
-		return validator.FailWithCode(errorCode, message)
+		return validator.FailWithRef(ref, message)
 	}
 
-	return validator.WarnWithCode(errorCode, message)
+	return validator.WarnWithRef(ref, message)
 }
 
 // createGitleaksResult creates a validation result from gitleaks findings.
@@ -228,10 +228,10 @@ func (v *SecretsValidator) createGitleaksResult(findings []linters.LintFinding) 
 	)
 
 	if v.shouldBlock() {
-		return validator.FailWithCode(validator.ErrSecretsToken, message)
+		return validator.FailWithRef(validator.RefSecretsToken, message)
 	}
 
-	return validator.WarnWithCode(validator.ErrSecretsToken, message)
+	return validator.WarnWithRef(validator.RefSecretsToken, message)
 }
 
 // shouldBlock returns whether detection should block the operation.

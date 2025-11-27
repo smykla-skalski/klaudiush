@@ -1,74 +1,84 @@
 # Session: Enhanced Error Reporting
 
 Date: 2024-11-26
+Updated: 2024-11-27
 
 ## What Was Implemented
 
-Added structured error codes, fix suggestions, and documentation links to validation errors.
+Added structured error references, fix suggestions, and documentation URLs to validation errors.
 
 ## Key Patterns Discovered
 
-### ErrorCode System
+### Unified Reference System (Current)
+
+Reference URLs combine error code and documentation link into a single field:
+
+- Format: `https://klaudiu.sh/{CODE}` (e.g., `https://klaudiu.sh/GIT001`)
+- The redirect service (future) resolves to full documentation
 
 Error codes organized by category with numeric suffixes:
 
-- **GIT001-GIT099**: Git-related errors (signoff, GPG, staging, commits)
-- **FILE001-FILE099**: File validation errors (shellcheck, terraform, actionlint, markdown)
-- **SEC001-SEC099**: Security errors (API keys, passwords, tokens) - reserved for future
+- **GIT001-GIT016**: Git-related errors (signoff, GPG, staging, commits)
+- **FILE001-FILE005**: File validation errors (shellcheck, terraform, actionlint, markdown)
+- **SEC001-SEC005**: Security errors (API keys, passwords, tokens, connection strings)
 
-### Creating Error Codes
+### Creating References
 
-`internal/validator/error_code.go`:
+`internal/validator/reference.go`:
 
 ```go
-type ErrorCode string
+type Reference string
+
+const ReferenceBaseURL = "https://klaudiu.sh"
 
 const (
-    ErrGitMissingFlags ErrorCode = "GIT010"
-    ErrShellcheck      ErrorCode = "FILE001"
+    RefGitNoSignoff   Reference = ReferenceBaseURL + "/GIT001"
+    RefGitMissingFlags Reference = ReferenceBaseURL + "/GIT010"
+    RefShellcheck     Reference = ReferenceBaseURL + "/FILE001"
+    RefSecretsAPIKey  Reference = ReferenceBaseURL + "/SEC001"
 )
+
+// Methods
+func (r Reference) String() string  // Returns full URL
+func (r Reference) Code() string    // Extracts "GIT001" from URL
+func (r Reference) Category() string // Returns "GIT", "FILE", "SEC"
 ```
 
-### Registries Pattern
+### Suggestions Registry
 
-Suggestions and doc links are kept in separate registries (not in validators):
+Fix hints are keyed by Reference:
 
 ```go
 // internal/validator/suggestions.go
-var DefaultSuggestions = map[ErrorCode]string{
-    ErrGitMissingFlags: "Add -sS flags: git commit -sS -m \"message\"",
-}
-
-// internal/validator/doc_links.go
-var DefaultDocLinks = map[ErrorCode]string{
-    ErrGitMissingFlags: BaseDocURL + "/GIT010.md",
+var DefaultSuggestions = map[Reference]string{
+    RefGitMissingFlags: "Add -sS flags: git commit -sS -m \"message\"",
+    RefShellcheck:      "Run 'shellcheck <file>' to see detailed errors",
 }
 ```
 
-### Using FailWithCode
+### Using FailWithRef/WarnWithRef
 
-Auto-populates FixHint and DocLink from registries:
+Auto-populates FixHint from suggestions registry:
 
 ```go
 // Instead of:
 return validator.Fail("Git commit missing required flags: -s -S")
 
 // Use:
-return validator.FailWithCode(
-    validator.ErrGitMissingFlags,
+return validator.FailWithRef(
+    validator.RefGitMissingFlags,
     "Git commit missing required flags: -s -S",
 )
 ```
 
 Result automatically includes:
 
-- `ErrorCode`: "GIT010"
+- `Reference`: Reference URL for error docs
 - `FixHint`: from suggestions registry
-- `DocLink`: from doc links registry
 
 ### ValidationError Struct
 
-Extended `ValidationError` in dispatcher to pass through new fields:
+Extended `ValidationError` in dispatcher:
 
 ```go
 type ValidationError struct {
@@ -76,9 +86,8 @@ type ValidationError struct {
     Message     string
     Details     map[string]string
     ShouldBlock bool
-    ErrorCode   validator.ErrorCode  // NEW
-    FixHint     string               // NEW
-    DocLink     string               // NEW
+    Reference   validator.Reference  // URL for error docs
+    FixHint     string               // Fix suggestion
 }
 ```
 
@@ -88,9 +97,8 @@ Formatted errors now show structured information:
 
 ```text
 Git commit missing required flags: -S
-   Code: GIT010
    Fix: Add -sS flags: git commit -sS -m "message"
-   Docs: https://github.com/smykla-labs/klaudiush/blob/main/docs/errors/GIT010.md
+   Reference: https://klaudiu.sh/GIT010
 ```
 
 ## Refactoring for Cognitive Complexity
@@ -110,7 +118,7 @@ func formatErrorList(header string, errors []*ValidationError) string {
 
 func formatErrorHeader(...)     // Writes header line
 func formatSingleError(...)     // Writes one error
-func formatErrorMetadata(...)   // Writes code/fix/docs
+func formatErrorMetadata(...)   // Writes fix/reference
 func formatErrorDetails(...)    // Writes details map
 ```
 
@@ -123,23 +131,22 @@ Linter `mnd` flags magic numbers. Define constants:
 if len(code) < 3 {
 
 // After:
-const minCategoryLength = 3
-if len(code) < minCategoryLength {
+const minCodeLength = 3
+if len(code) < minCodeLength {
 ```
 
-## Testing Error Codes
+## Testing Reference System
 
-Ginkgo tests for error code functionality:
+Ginkgo tests for reference functionality:
 
 ```go
-var _ = Describe("FailWithCode", func() {
-    It("creates a failing result with error code", func() {
-        result := validator.FailWithCode(validator.ErrGitMissingFlags, "test")
+var _ = Describe("FailWithRef", func() {
+    It("creates a failing result with reference", func() {
+        result := validator.FailWithRef(validator.RefGitMissingFlags, "test")
 
         Expect(result.Passed).To(BeFalse())
-        Expect(result.ErrorCode).To(Equal(validator.ErrGitMissingFlags))
+        Expect(result.Reference).To(Equal(validator.RefGitMissingFlags))
         Expect(result.FixHint).To(ContainSubstring("-sS"))
-        Expect(result.DocLink).To(ContainSubstring("GIT010"))
     })
 })
 ```
@@ -148,16 +155,55 @@ var _ = Describe("FailWithCode", func() {
 
 ```text
 internal/validator/
-├── error_code.go       # ErrorCode type and constants
-├── error_code_test.go  # Tests for error codes
-├── suggestions.go      # Fix hints registry
-├── doc_links.go        # Documentation URLs registry
-└── validator.go        # Extended Result type, FailWithCode()
+├── reference.go        # Reference type and constants
+├── reference_test.go   # Tests for references
+├── suggestions.go      # Fix hints registry (keyed by Reference)
+└── validator.go        # Extended Result type, FailWithRef(), WarnWithRef()
 ```
 
-## Adding New Error Codes
+## Adding New References
 
-1. Add constant in `error_code.go`
+1. Add constant in `reference.go` with proper URL format
 2. Add suggestion in `suggestions.go`
-3. Add doc link in `doc_links.go`
-4. Use `FailWithCode()` in validator
+3. Use `FailWithRef()` or `WarnWithRef()` in validator
+
+## Migration Notes (2024-11-27)
+
+Changed from separate `ErrorCode` + `DocLink` fields to unified `Reference` URL:
+
+- Removed `error_code.go` and `doc_links.go`
+- Renamed `FailWithCode` → `FailWithRef`, `WarnWithCode` → `WarnWithRef`
+- `ErrXxx` constants → `RefXxx` constants
+- Result no longer has `DocLink` field (it's embedded in Reference URL)
+
+## Plugin System (2025-11-27)
+
+Plugins manage their own error documentation. The adapter preserves plugin-provided URLs:
+
+```go
+// internal/plugin/adapter.go
+// Use plugin's own error metadata if provided
+// Plugins manage their own error codes and documentation URLs
+if resp.DocLink != "" {
+    result.Reference = validator.Reference(resp.DocLink)
+}
+
+result.FixHint = resp.FixHint
+```
+
+Plugin API (`pkg/plugin/api.go`) provides:
+
+- `ErrorCode`: Plugin's error identifier (for internal use)
+- `FixHint`: Short fix suggestion
+- `DocLink`: URL to plugin's documentation (used as-is for Reference)
+
+Example plugin response with custom documentation:
+
+```go
+return pluginapi.FailWithCode(
+    "MYPLUGIN001",           // ErrorCode (for logging/debugging)
+    "validation failed",     // Message
+    "try using --flag",      // FixHint
+    "https://my-plugin.smyk.la/errors/MYPLUGIN001", // DocLink
+)
+```

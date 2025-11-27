@@ -69,15 +69,12 @@ type Result struct {
 	// Some validators may only warn without blocking.
 	ShouldBlock bool
 
-	// ErrorCode is the unique identifier for this error type.
-	// Used for programmatic error handling and documentation lookup.
-	ErrorCode ErrorCode
+	// Reference is the URL that uniquely identifies this error type.
+	// Format: https://klaudiu.sh/{CODE} (e.g., https://klaudiu.sh/GIT001).
+	Reference Reference
 
 	// FixHint provides a short suggestion for fixing the issue.
 	FixHint string
-
-	// DocLink is a URL to detailed documentation for this error.
-	DocLink string
 }
 
 // Pass creates a passing validation result.
@@ -135,29 +132,27 @@ func WarnWithDetails(message string, details map[string]string) *Result {
 	}
 }
 
-// FailWithCode creates a failing validation result with an error code.
-// Automatically populates FixHint and DocLink from registries.
-func FailWithCode(code ErrorCode, message string) *Result {
+// FailWithRef creates a failing validation result with a reference URL.
+// Automatically populates FixHint from the suggestions registry.
+func FailWithRef(ref Reference, message string) *Result {
 	return &Result{
 		Passed:      false,
 		Message:     message,
 		ShouldBlock: true,
-		ErrorCode:   code,
-		FixHint:     GetSuggestion(code),
-		DocLink:     GetDocLink(code),
+		Reference:   ref,
+		FixHint:     GetSuggestion(ref),
 	}
 }
 
-// WarnWithCode creates a warning validation result with an error code.
-// Automatically populates FixHint and DocLink from registries.
-func WarnWithCode(code ErrorCode, message string) *Result {
+// WarnWithRef creates a warning validation result with a reference URL.
+// Automatically populates FixHint from the suggestions registry.
+func WarnWithRef(ref Reference, message string) *Result {
 	return &Result{
 		Passed:      false,
 		Message:     message,
 		ShouldBlock: false,
-		ErrorCode:   code,
-		FixHint:     GetSuggestion(code),
-		DocLink:     GetDocLink(code),
+		Reference:   ref,
+		FixHint:     GetSuggestion(ref),
 	}
 }
 
