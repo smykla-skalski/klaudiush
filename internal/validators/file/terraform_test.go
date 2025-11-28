@@ -24,7 +24,7 @@ var _ = Describe("TerraformValidator", func() {
 		runner := execpkg.NewCommandRunner(10 * time.Second)
 		formatter := linters.NewTerraformFormatter(runner)
 		linter := linters.NewTfLinter(runner)
-		v = file.NewTerraformValidator(formatter, linter, logger.NewNoOpLogger(), nil)
+		v = file.NewTerraformValidator(formatter, linter, logger.NewNoOpLogger(), nil, nil)
 		ctx = &hook.Context{
 			EventType: hook.EventTypePreToolUse,
 			ToolName:  hook.ToolTypeWrite,

@@ -15,6 +15,7 @@ import (
 
 	"github.com/smykla-labs/klaudiush/internal/github"
 	"github.com/smykla-labs/klaudiush/internal/linters"
+	"github.com/smykla-labs/klaudiush/internal/rules"
 	"github.com/smykla-labs/klaudiush/internal/validator"
 	"github.com/smykla-labs/klaudiush/pkg/config"
 	"github.com/smykla-labs/klaudiush/pkg/hook"
@@ -68,6 +69,7 @@ type WorkflowValidator struct {
 	linter       linters.ActionLinter
 	githubClient github.Client
 	config       *config.WorkflowValidatorConfig
+	ruleAdapter  *rules.RuleValidatorAdapter
 }
 
 // NewWorkflowValidator creates a new WorkflowValidator
@@ -76,18 +78,27 @@ func NewWorkflowValidator(
 	githubClient github.Client,
 	log logger.Logger,
 	cfg *config.WorkflowValidatorConfig,
+	ruleAdapter *rules.RuleValidatorAdapter,
 ) *WorkflowValidator {
 	return &WorkflowValidator{
 		BaseValidator: *validator.NewBaseValidator("validate-github-workflow", log),
 		linter:        linter,
 		githubClient:  githubClient,
 		config:        cfg,
+		ruleAdapter:   ruleAdapter,
 	}
 }
 
 // Validate checks GitHub Actions workflow and composable action files for digest pinning and runs actionlint
 func (v *WorkflowValidator) Validate(ctx context.Context, hookCtx *hook.Context) *validator.Result {
 	log := v.Logger()
+
+	// Check rules first if rule adapter is configured
+	if v.ruleAdapter != nil {
+		if result := v.ruleAdapter.CheckRules(ctx, hookCtx); result != nil {
+			return result
+		}
+	}
 
 	// Check if this is a workflow or composable action file
 	filePath := hookCtx.GetFilePath()

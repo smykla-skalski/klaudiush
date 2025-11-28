@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/smykla-labs/klaudiush/internal/rules"
 	"github.com/smykla-labs/klaudiush/internal/validator"
 	"github.com/smykla-labs/klaudiush/pkg/config"
 	"github.com/smykla-labs/klaudiush/pkg/hook"
@@ -16,24 +17,34 @@ import (
 // BacktickValidator validates against unescaped backticks in double-quoted strings.
 type BacktickValidator struct {
 	validator.BaseValidator
-	config *config.BacktickValidatorConfig
+	config      *config.BacktickValidatorConfig
+	ruleAdapter *rules.RuleValidatorAdapter
 }
 
 // NewBacktickValidator creates a new BacktickValidator instance.
 func NewBacktickValidator(
 	log logger.Logger,
 	cfg *config.BacktickValidatorConfig,
+	ruleAdapter *rules.RuleValidatorAdapter,
 ) *BacktickValidator {
 	return &BacktickValidator{
 		BaseValidator: *validator.NewBaseValidator("validate-backticks", log),
 		config:        cfg,
+		ruleAdapter:   ruleAdapter,
 	}
 }
 
 // Validate checks for backticks in double-quoted strings for specific commands.
-func (v *BacktickValidator) Validate(_ context.Context, hookCtx *hook.Context) *validator.Result {
+func (v *BacktickValidator) Validate(ctx context.Context, hookCtx *hook.Context) *validator.Result {
 	log := v.Logger()
 	log.Debug("Running backtick validation")
+
+	// Check rules first if rule adapter is configured
+	if v.ruleAdapter != nil {
+		if result := v.ruleAdapter.CheckRules(ctx, hookCtx); result != nil {
+			return result
+		}
+	}
 
 	command := hookCtx.GetCommand()
 	if command == "" {

@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 
+	"github.com/smykla-labs/klaudiush/internal/rules"
 	"github.com/smykla-labs/klaudiush/internal/validator"
 	"github.com/smykla-labs/klaudiush/pkg/config"
 	"github.com/smykla-labs/klaudiush/pkg/hook"
@@ -15,20 +16,33 @@ import (
 // BellValidator sends a bell character to /dev/tty for all notification events.
 type BellValidator struct {
 	*validator.BaseValidator
-	config *config.BellValidatorConfig
+	config      *config.BellValidatorConfig
+	ruleAdapter *rules.RuleValidatorAdapter
 }
 
 // NewBellValidator creates a new BellValidator.
-func NewBellValidator(log logger.Logger, cfg *config.BellValidatorConfig) *BellValidator {
+func NewBellValidator(
+	log logger.Logger,
+	cfg *config.BellValidatorConfig,
+	ruleAdapter *rules.RuleValidatorAdapter,
+) *BellValidator {
 	return &BellValidator{
 		BaseValidator: validator.NewBaseValidator("bell", log),
 		config:        cfg,
+		ruleAdapter:   ruleAdapter,
 	}
 }
 
 // Validate sends a bell character to /dev/tty for any notification event.
 func (v *BellValidator) Validate(ctx context.Context, hookCtx *hook.Context) *validator.Result {
 	v.Logger().Debug("handling notification", "notification_type", hookCtx.NotificationType)
+
+	// Check rules first if rule adapter is configured
+	if v.ruleAdapter != nil {
+		if result := v.ruleAdapter.CheckRules(ctx, hookCtx); result != nil {
+			return result
+		}
+	}
 
 	// Check if custom command is configured
 	customCmd := v.getCustomCommand()

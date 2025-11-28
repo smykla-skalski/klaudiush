@@ -12,6 +12,7 @@ import (
 	"github.com/cockroachdb/errors"
 
 	"github.com/smykla-labs/klaudiush/internal/linters"
+	"github.com/smykla-labs/klaudiush/internal/rules"
 	"github.com/smykla-labs/klaudiush/internal/validator"
 	"github.com/smykla-labs/klaudiush/internal/validators"
 	"github.com/smykla-labs/klaudiush/pkg/config"
@@ -35,8 +36,9 @@ var (
 // MarkdownValidator validates Markdown formatting rules
 type MarkdownValidator struct {
 	validator.BaseValidator
-	config *config.MarkdownValidatorConfig
-	linter linters.MarkdownLinter
+	config      *config.MarkdownValidatorConfig
+	linter      linters.MarkdownLinter
+	ruleAdapter *rules.RuleValidatorAdapter
 }
 
 // NewMarkdownValidator creates a new MarkdownValidator
@@ -44,11 +46,13 @@ func NewMarkdownValidator(
 	cfg *config.MarkdownValidatorConfig,
 	linter linters.MarkdownLinter,
 	log logger.Logger,
+	ruleAdapter *rules.RuleValidatorAdapter,
 ) *MarkdownValidator {
 	return &MarkdownValidator{
 		BaseValidator: *validator.NewBaseValidator("validate-markdown", log),
 		config:        cfg,
 		linter:        linter,
+		ruleAdapter:   ruleAdapter,
 	}
 }
 
@@ -82,6 +86,13 @@ func (v *MarkdownValidator) isUseMarkdownlint() bool {
 // Validate checks Markdown formatting rules
 func (v *MarkdownValidator) Validate(ctx context.Context, hookCtx *hook.Context) *validator.Result {
 	log := v.Logger()
+
+	// Check rules first if rule adapter is configured
+	if v.ruleAdapter != nil {
+		if result := v.ruleAdapter.CheckRules(ctx, hookCtx); result != nil {
+			return result
+		}
+	}
 
 	// Skip if markdownlint is disabled
 	if !v.isUseMarkdownlint() {

@@ -24,7 +24,7 @@ var _ = Describe("ShellScriptValidator", func() {
 		// Create a real ShellChecker for integration tests
 		runner := execpkg.NewCommandRunner(10 * time.Second)
 		checker := linters.NewShellChecker(runner)
-		v = file.NewShellScriptValidator(logger.NewNoOpLogger(), checker, nil)
+		v = file.NewShellScriptValidator(logger.NewNoOpLogger(), checker, nil, nil)
 		ctx = &hook.Context{
 			EventType: hook.EventTypePreToolUse,
 			ToolName:  hook.ToolTypeWrite,

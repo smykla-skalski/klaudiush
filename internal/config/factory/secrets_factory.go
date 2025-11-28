@@ -6,6 +6,7 @@ import (
 
 	execpkg "github.com/smykla-labs/klaudiush/internal/exec"
 	"github.com/smykla-labs/klaudiush/internal/linters"
+	"github.com/smykla-labs/klaudiush/internal/rules"
 	"github.com/smykla-labs/klaudiush/internal/validator"
 	"github.com/smykla-labs/klaudiush/internal/validators/secrets"
 	"github.com/smykla-labs/klaudiush/pkg/config"
@@ -15,12 +16,18 @@ import (
 
 // SecretsValidatorFactory creates secrets validators from configuration.
 type SecretsValidatorFactory struct {
-	log logger.Logger
+	log        logger.Logger
+	ruleEngine *rules.RuleEngine
 }
 
 // NewSecretsValidatorFactory creates a new SecretsValidatorFactory.
 func NewSecretsValidatorFactory(log logger.Logger) *SecretsValidatorFactory {
 	return &SecretsValidatorFactory{log: log}
+}
+
+// SetRuleEngine sets the rule engine for the factory.
+func (f *SecretsValidatorFactory) SetRuleEngine(engine *rules.RuleEngine) {
+	f.ruleEngine = engine
 }
 
 // CreateValidators creates all secrets validators based on configuration.
@@ -45,8 +52,18 @@ func (f *SecretsValidatorFactory) CreateValidators(cfg *config.Config) []Validat
 	// Create gitleaks checker
 	gitleaks := f.createGitleaksChecker(timeout)
 
+	// Create rule adapter if rule engine is configured
+	var ruleAdapter *rules.RuleValidatorAdapter
+	if f.ruleEngine != nil {
+		ruleAdapter = rules.NewRuleValidatorAdapter(
+			f.ruleEngine,
+			rules.ValidatorSecrets,
+			rules.WithAdapterLogger(f.log),
+		)
+	}
+
 	validators = append(validators, ValidatorWithPredicate{
-		Validator: secrets.NewSecretsValidator(f.log, detector, gitleaks, secretsCfg),
+		Validator: secrets.NewSecretsValidator(f.log, detector, gitleaks, secretsCfg, ruleAdapter),
 		Predicate: validator.And(
 			validator.EventTypeIs(hook.EventTypePreToolUse),
 			validator.ToolTypeIn(hook.ToolTypeWrite, hook.ToolTypeEdit),

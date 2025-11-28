@@ -66,7 +66,10 @@ func NewValidatorFactory(log logger.Logger) *DefaultValidatorFactory {
 // SetRuleEngine sets the rule engine for all factories.
 func (f *DefaultValidatorFactory) SetRuleEngine(engine *rules.RuleEngine) {
 	f.gitFactory.SetRuleEngine(engine)
-	// TODO: Set rule engine for other factories as they are migrated
+	f.fileFactory.SetRuleEngine(engine)
+	f.notificationFactory.SetRuleEngine(engine)
+	f.secretsFactory.SetRuleEngine(engine)
+	f.shellFactory.SetRuleEngine(engine)
 }
 
 // CreateGitValidators creates all git validators from config.

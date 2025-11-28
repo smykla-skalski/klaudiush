@@ -18,7 +18,7 @@ var _ = Describe("BellValidator", func() {
 	)
 
 	BeforeEach(func() {
-		validator = notification.NewBellValidator(logger.NewNoOpLogger(), nil)
+		validator = notification.NewBellValidator(logger.NewNoOpLogger(), nil, nil)
 		ctx = &hook.Context{
 			EventType: hook.EventTypeNotification,
 		}

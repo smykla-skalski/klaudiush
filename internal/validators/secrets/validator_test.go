@@ -47,7 +47,7 @@ var _ = Describe("SecretsValidator", func() {
 		cfg = &config.SecretsValidatorConfig{
 			ValidatorConfig: config.ValidatorConfig{Enabled: boolPtr(true)},
 		}
-		v = secrets.NewSecretsValidator(logger.NewNoOpLogger(), detector, gitleaks, cfg)
+		v = secrets.NewSecretsValidator(logger.NewNoOpLogger(), detector, gitleaks, cfg, nil)
 		hookCtx = &hook.Context{
 			EventType: hook.EventTypePreToolUse,
 			ToolName:  hook.ToolTypeWrite,
@@ -229,7 +229,7 @@ secret = os.getenv("SECRET_KEY")
 	Describe("configuration options", func() {
 		It("should respect allow list", func() {
 			cfg.AllowList = []string{`AKIA.*EXAMPLE`}
-			v = secrets.NewSecretsValidator(logger.NewNoOpLogger(), detector, gitleaks, cfg)
+			v = secrets.NewSecretsValidator(logger.NewNoOpLogger(), detector, gitleaks, cfg, nil)
 
 			hookCtx.ToolInput.Content = `aws_access_key_id = "AKIAIOSFODNN7EXAMPLE"`
 			result := v.Validate(context.Background(), hookCtx)
@@ -238,7 +238,7 @@ secret = os.getenv("SECRET_KEY")
 
 		It("should respect disabled patterns", func() {
 			cfg.DisabledPatterns = []string{"aws-access-key-id"}
-			v = secrets.NewSecretsValidator(logger.NewNoOpLogger(), detector, gitleaks, cfg)
+			v = secrets.NewSecretsValidator(logger.NewNoOpLogger(), detector, gitleaks, cfg, nil)
 
 			hookCtx.ToolInput.Content = `aws_access_key_id = "AKIAIOSFODNN7EXAMPLE"`
 			result := v.Validate(context.Background(), hookCtx)
@@ -247,7 +247,7 @@ secret = os.getenv("SECRET_KEY")
 
 		It("should warn instead of block when configured", func() {
 			cfg.BlockOnDetection = boolPtr(false)
-			v = secrets.NewSecretsValidator(logger.NewNoOpLogger(), detector, gitleaks, cfg)
+			v = secrets.NewSecretsValidator(logger.NewNoOpLogger(), detector, gitleaks, cfg, nil)
 
 			hookCtx.ToolInput.Content = `GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`
 			result := v.Validate(context.Background(), hookCtx)
@@ -257,7 +257,7 @@ secret = os.getenv("SECRET_KEY")
 
 		It("should skip files larger than max size", func() {
 			cfg.MaxFileSize = 10 // 10 bytes
-			v = secrets.NewSecretsValidator(logger.NewNoOpLogger(), detector, gitleaks, cfg)
+			v = secrets.NewSecretsValidator(logger.NewNoOpLogger(), detector, gitleaks, cfg, nil)
 
 			hookCtx.ToolInput.Content = `GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`
 			result := v.Validate(context.Background(), hookCtx)
@@ -288,7 +288,7 @@ secret = os.getenv("SECRET_KEY")
 					{Line: 1, Message: "Detected AWS credentials"},
 				},
 			}
-			v = secrets.NewSecretsValidator(logger.NewNoOpLogger(), detector, gitleaks, cfg)
+			v = secrets.NewSecretsValidator(logger.NewNoOpLogger(), detector, gitleaks, cfg, nil)
 
 			// Content that doesn't match built-in patterns but gitleaks detects
 			hookCtx.ToolInput.Content = `some obscure secret format`
@@ -300,7 +300,7 @@ secret = os.getenv("SECRET_KEY")
 		It("should skip gitleaks when not available", func() {
 			cfg.UseGitleaks = boolPtr(true)
 			gitleaks.available = false
-			v = secrets.NewSecretsValidator(logger.NewNoOpLogger(), detector, gitleaks, cfg)
+			v = secrets.NewSecretsValidator(logger.NewNoOpLogger(), detector, gitleaks, cfg, nil)
 
 			hookCtx.ToolInput.Content = `some safe content`
 			result := v.Validate(context.Background(), hookCtx)
@@ -316,7 +316,7 @@ secret = os.getenv("SECRET_KEY")
 					{Line: 1, Message: "Detected something"},
 				},
 			}
-			v = secrets.NewSecretsValidator(logger.NewNoOpLogger(), detector, gitleaks, cfg)
+			v = secrets.NewSecretsValidator(logger.NewNoOpLogger(), detector, gitleaks, cfg, nil)
 
 			hookCtx.ToolInput.Content = `some safe content`
 			result := v.Validate(context.Background(), hookCtx)

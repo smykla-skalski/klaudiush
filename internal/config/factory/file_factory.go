@@ -6,6 +6,7 @@ import (
 	execpkg "github.com/smykla-labs/klaudiush/internal/exec"
 	githubpkg "github.com/smykla-labs/klaudiush/internal/github"
 	"github.com/smykla-labs/klaudiush/internal/linters"
+	"github.com/smykla-labs/klaudiush/internal/rules"
 	"github.com/smykla-labs/klaudiush/internal/validator"
 	filevalidators "github.com/smykla-labs/klaudiush/internal/validators/file"
 	"github.com/smykla-labs/klaudiush/pkg/config"
@@ -20,12 +21,18 @@ const (
 
 // FileValidatorFactory creates file validators from configuration.
 type FileValidatorFactory struct {
-	log logger.Logger
+	log        logger.Logger
+	ruleEngine *rules.RuleEngine
 }
 
 // NewFileValidatorFactory creates a new FileValidatorFactory.
 func NewFileValidatorFactory(log logger.Logger) *FileValidatorFactory {
 	return &FileValidatorFactory{log: log}
+}
+
+// SetRuleEngine sets the rule engine for the factory.
+func (f *FileValidatorFactory) SetRuleEngine(engine *rules.RuleEngine) {
+	f.ruleEngine = engine
 }
 
 // CreateValidators creates all file validators based on configuration.
@@ -80,8 +87,17 @@ func (f *FileValidatorFactory) createMarkdownValidator(
 	cfg *config.MarkdownValidatorConfig,
 	linter linters.MarkdownLinter,
 ) ValidatorWithPredicate {
+	var ruleAdapter *rules.RuleValidatorAdapter
+	if f.ruleEngine != nil {
+		ruleAdapter = rules.NewRuleValidatorAdapter(
+			f.ruleEngine,
+			rules.ValidatorFileMarkdown,
+			rules.WithAdapterLogger(f.log),
+		)
+	}
+
 	return ValidatorWithPredicate{
-		Validator: filevalidators.NewMarkdownValidator(cfg, linter, f.log),
+		Validator: filevalidators.NewMarkdownValidator(cfg, linter, f.log, ruleAdapter),
 		Predicate: validator.And(
 			validator.EventTypeIs(hook.EventTypePreToolUse),
 			validator.ToolTypeIn(hook.ToolTypeWrite, hook.ToolTypeEdit, hook.ToolTypeMultiEdit),
@@ -95,8 +111,17 @@ func (f *FileValidatorFactory) createTerraformValidator(
 	formatter linters.TerraformFormatter,
 	linter linters.TfLinter,
 ) ValidatorWithPredicate {
+	var ruleAdapter *rules.RuleValidatorAdapter
+	if f.ruleEngine != nil {
+		ruleAdapter = rules.NewRuleValidatorAdapter(
+			f.ruleEngine,
+			rules.ValidatorFileTerraform,
+			rules.WithAdapterLogger(f.log),
+		)
+	}
+
 	return ValidatorWithPredicate{
-		Validator: filevalidators.NewTerraformValidator(formatter, linter, f.log, cfg),
+		Validator: filevalidators.NewTerraformValidator(formatter, linter, f.log, cfg, ruleAdapter),
 		Predicate: validator.And(
 			validator.EventTypeIs(hook.EventTypePreToolUse),
 			validator.ToolTypeIn(hook.ToolTypeWrite, hook.ToolTypeEdit, hook.ToolTypeMultiEdit),
@@ -109,8 +134,17 @@ func (f *FileValidatorFactory) createShellScriptValidator(
 	cfg *config.ShellScriptValidatorConfig,
 	checker linters.ShellChecker,
 ) ValidatorWithPredicate {
+	var ruleAdapter *rules.RuleValidatorAdapter
+	if f.ruleEngine != nil {
+		ruleAdapter = rules.NewRuleValidatorAdapter(
+			f.ruleEngine,
+			rules.ValidatorFileShell,
+			rules.WithAdapterLogger(f.log),
+		)
+	}
+
 	return ValidatorWithPredicate{
-		Validator: filevalidators.NewShellScriptValidator(f.log, checker, cfg),
+		Validator: filevalidators.NewShellScriptValidator(f.log, checker, cfg, ruleAdapter),
 		Predicate: validator.And(
 			validator.EventTypeIs(hook.EventTypePreToolUse),
 			validator.ToolTypeIn(hook.ToolTypeWrite, hook.ToolTypeEdit, hook.ToolTypeMultiEdit),
@@ -127,8 +161,19 @@ func (f *FileValidatorFactory) createWorkflowValidator(
 	linter linters.ActionLinter,
 	githubClient githubpkg.Client,
 ) ValidatorWithPredicate {
+	var ruleAdapter *rules.RuleValidatorAdapter
+	if f.ruleEngine != nil {
+		ruleAdapter = rules.NewRuleValidatorAdapter(
+			f.ruleEngine,
+			rules.ValidatorFileWorkflow,
+			rules.WithAdapterLogger(f.log),
+		)
+	}
+
 	return ValidatorWithPredicate{
-		Validator: filevalidators.NewWorkflowValidator(linter, githubClient, f.log, cfg),
+		Validator: filevalidators.NewWorkflowValidator(
+			linter, githubClient, f.log, cfg, ruleAdapter,
+		),
 		Predicate: validator.And(
 			validator.EventTypeIs(hook.EventTypePreToolUse),
 			validator.ToolTypeIn(hook.ToolTypeWrite, hook.ToolTypeEdit, hook.ToolTypeMultiEdit),

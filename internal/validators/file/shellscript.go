@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/smykla-labs/klaudiush/internal/linters"
+	"github.com/smykla-labs/klaudiush/internal/rules"
 	"github.com/smykla-labs/klaudiush/internal/validator"
 	"github.com/smykla-labs/klaudiush/pkg/config"
 	"github.com/smykla-labs/klaudiush/pkg/hook"
@@ -24,8 +25,9 @@ const (
 // ShellScriptValidator validates shell scripts using shellcheck.
 type ShellScriptValidator struct {
 	validator.BaseValidator
-	checker linters.ShellChecker
-	config  *config.ShellScriptValidatorConfig
+	checker     linters.ShellChecker
+	config      *config.ShellScriptValidatorConfig
+	ruleAdapter *rules.RuleValidatorAdapter
 }
 
 // NewShellScriptValidator creates a new ShellScriptValidator.
@@ -33,11 +35,13 @@ func NewShellScriptValidator(
 	log logger.Logger,
 	checker linters.ShellChecker,
 	cfg *config.ShellScriptValidatorConfig,
+	ruleAdapter *rules.RuleValidatorAdapter,
 ) *ShellScriptValidator {
 	return &ShellScriptValidator{
 		BaseValidator: *validator.NewBaseValidator("validate-shellscript", log),
 		checker:       checker,
 		config:        cfg,
+		ruleAdapter:   ruleAdapter,
 	}
 }
 
@@ -48,6 +52,13 @@ func (v *ShellScriptValidator) Validate(
 ) *validator.Result {
 	log := v.Logger()
 	log.Debug("validating shell script")
+
+	// Check rules first if rule adapter is configured
+	if v.ruleAdapter != nil {
+		if result := v.ruleAdapter.CheckRules(ctx, hookCtx); result != nil {
+			return result
+		}
+	}
 
 	// Get the file path
 	filePath := hookCtx.GetFilePath()

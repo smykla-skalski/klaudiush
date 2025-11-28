@@ -25,7 +25,7 @@ var _ = Describe("BacktickValidator", func() {
 		ctx = context.Background()
 		log = logger.NewNoOpLogger()
 		cfg = &config.BacktickValidatorConfig{}
-		v = shell.NewBacktickValidator(log, cfg)
+		v = shell.NewBacktickValidator(log, cfg, nil)
 	})
 
 	Describe("Validate", func() {
