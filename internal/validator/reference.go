@@ -123,6 +123,12 @@ const (
 	RefShellBackticks Reference = ReferenceBaseURL + "/SHELL001"
 )
 
+// GitHub CLI-related references (GH001-GH005).
+const (
+	// RefGHIssueValidation indicates gh issue create validation failure (body markdown).
+	RefGHIssueValidation Reference = ReferenceBaseURL + "/GH001"
+)
+
 // minCodeLength is the minimum length for a valid reference code.
 const minCodeLength = 3
 

@@ -92,6 +92,10 @@ RefShellcheck     Reference = "https://klaudiu.sh/FILE001"
 
 - SHELL001: Command substitution in double-quoted strings
 
+**GH001-GH005**: GitHub CLI operations
+
+- GH001: Issue body validation failure (markdown formatting)
+
 ## Suggestions Registry
 
 `internal/validator/suggestions.go` maps references to fix hints:

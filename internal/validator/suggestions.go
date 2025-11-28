@@ -44,6 +44,9 @@ var DefaultSuggestions = map[Reference]string{
 
 	// Shell suggestions
 	RefShellBackticks: "Use HEREDOC (git commit -m \"$(cat <<'EOF'\\n...\\nEOF\\n)\") or file-based input (--body-file)",
+
+	// GitHub CLI suggestions
+	RefGHIssueValidation: "Fix markdown formatting in issue body (empty lines around headings, proper list spacing)",
 }
 
 // GetSuggestion returns the fix suggestion for a reference.

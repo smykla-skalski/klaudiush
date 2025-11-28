@@ -52,6 +52,7 @@ func DefaultGlobalConfig() *config.GlobalConfig {
 func DefaultValidatorsConfig() *config.ValidatorsConfig {
 	return &config.ValidatorsConfig{
 		Git:          DefaultGitConfig(),
+		GitHub:       DefaultGitHubConfig(),
 		File:         DefaultFileConfig(),
 		Notification: DefaultNotificationConfig(),
 	}
@@ -66,6 +67,34 @@ func DefaultGitConfig() *config.GitConfig {
 		PR:       DefaultPRValidatorConfig(),
 		Branch:   DefaultBranchValidatorConfig(),
 		NoVerify: DefaultNoVerifyValidatorConfig(),
+	}
+}
+
+// DefaultGitHubConfig returns the default GitHub CLI validators configuration.
+func DefaultGitHubConfig() *config.GitHubConfig {
+	return &config.GitHubConfig{
+		Issue: DefaultIssueValidatorConfig(),
+	}
+}
+
+// DefaultIssueValidatorConfig returns the default issue validator configuration.
+func DefaultIssueValidatorConfig() *config.IssueValidatorConfig {
+	enabled := true
+	requireBody := false
+
+	return &config.IssueValidatorConfig{
+		ValidatorConfig: config.ValidatorConfig{
+			Enabled:  &enabled,
+			Severity: config.SeverityWarning, // Default: warning only, don't block
+		},
+		RequireBody: &requireBody,
+		MarkdownDisabledRules: []string{
+			"MD013", // Line length
+			"MD034", // Bare URLs
+			"MD041", // First line heading
+			"MD047", // Trailing newline
+		},
+		Timeout: config.Duration(DefaultTimeout),
 	}
 }
 

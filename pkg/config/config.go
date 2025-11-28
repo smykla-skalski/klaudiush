@@ -21,6 +21,9 @@ type ValidatorsConfig struct {
 	// Git validator configurations.
 	Git *GitConfig `json:"git,omitempty" koanf:"git" toml:"git"`
 
+	// GitHub CLI validator configurations.
+	GitHub *GitHubConfig `json:"github,omitempty" koanf:"github" toml:"github"`
+
 	// File validator configurations.
 	File *FileConfig `json:"file,omitempty" koanf:"file" toml:"file"`
 
@@ -96,6 +99,15 @@ func (v *ValidatorsConfig) GetGit() *GitConfig {
 	}
 
 	return v.Git
+}
+
+// GetGitHub returns the GitHub CLI validators config, creating it if it doesn't exist.
+func (v *ValidatorsConfig) GetGitHub() *GitHubConfig {
+	if v.GitHub == nil {
+		v.GitHub = &GitHubConfig{}
+	}
+
+	return v.GitHub
 }
 
 // GetFile returns the file validators config, creating it if it doesn't exist.

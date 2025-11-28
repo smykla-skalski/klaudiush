@@ -22,6 +22,9 @@ type ValidatorFactory interface {
 	// CreateGitValidators creates all git validators from config.
 	CreateGitValidators(cfg *config.Config) []ValidatorWithPredicate
 
+	// CreateGitHubValidators creates all GitHub CLI validators from config.
+	CreateGitHubValidators(cfg *config.Config) []ValidatorWithPredicate
+
 	// CreateFileValidators creates all file validators from config.
 	CreateFileValidators(cfg *config.Config) []ValidatorWithPredicate
 
@@ -44,6 +47,7 @@ type ValidatorFactory interface {
 // DefaultValidatorFactory is the default implementation of ValidatorFactory.
 type DefaultValidatorFactory struct {
 	gitFactory          *GitValidatorFactory
+	githubFactory       *GitHubValidatorFactory
 	fileFactory         *FileValidatorFactory
 	notificationFactory *NotificationValidatorFactory
 	secretsFactory      *SecretsValidatorFactory
@@ -55,6 +59,7 @@ type DefaultValidatorFactory struct {
 func NewValidatorFactory(log logger.Logger) *DefaultValidatorFactory {
 	return &DefaultValidatorFactory{
 		gitFactory:          NewGitValidatorFactory(log),
+		githubFactory:       NewGitHubValidatorFactory(log),
 		fileFactory:         NewFileValidatorFactory(log),
 		notificationFactory: NewNotificationValidatorFactory(log),
 		secretsFactory:      NewSecretsValidatorFactory(log),
@@ -66,6 +71,7 @@ func NewValidatorFactory(log logger.Logger) *DefaultValidatorFactory {
 // SetRuleEngine sets the rule engine for all factories.
 func (f *DefaultValidatorFactory) SetRuleEngine(engine *rules.RuleEngine) {
 	f.gitFactory.SetRuleEngine(engine)
+	f.githubFactory.SetRuleEngine(engine)
 	f.fileFactory.SetRuleEngine(engine)
 	f.notificationFactory.SetRuleEngine(engine)
 	f.secretsFactory.SetRuleEngine(engine)
@@ -75,6 +81,13 @@ func (f *DefaultValidatorFactory) SetRuleEngine(engine *rules.RuleEngine) {
 // CreateGitValidators creates all git validators from config.
 func (f *DefaultValidatorFactory) CreateGitValidators(cfg *config.Config) []ValidatorWithPredicate {
 	return f.gitFactory.CreateValidators(cfg)
+}
+
+// CreateGitHubValidators creates all GitHub CLI validators from config.
+func (f *DefaultValidatorFactory) CreateGitHubValidators(
+	cfg *config.Config,
+) []ValidatorWithPredicate {
+	return f.githubFactory.CreateValidators(cfg)
 }
 
 // CreateFileValidators creates all file validators from config.
@@ -117,6 +130,7 @@ func (f *DefaultValidatorFactory) CreateAll(cfg *config.Config) []ValidatorWithP
 	var all []ValidatorWithPredicate
 
 	all = append(all, f.CreateGitValidators(cfg)...)
+	all = append(all, f.CreateGitHubValidators(cfg)...)
 	all = append(all, f.CreateFileValidators(cfg)...)
 	all = append(all, f.CreateNotificationValidators(cfg)...)
 	all = append(all, f.CreateSecretsValidators(cfg)...)

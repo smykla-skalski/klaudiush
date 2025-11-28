@@ -38,6 +38,8 @@ const (
 	ValidatorGitBranch     ValidatorType = "git.branch"
 	ValidatorGitNoVerify   ValidatorType = "git.no_verify"
 	ValidatorGitAll        ValidatorType = "git.*"
+	ValidatorGitHubIssue   ValidatorType = "github.issue"
+	ValidatorGitHubAll     ValidatorType = "github.*"
 	ValidatorFileMarkdown  ValidatorType = "file.markdown"
 	ValidatorFileShell     ValidatorType = "file.shell"
 	ValidatorFileTerraform ValidatorType = "file.terraform"

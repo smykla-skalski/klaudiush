@@ -944,3 +944,222 @@ var _ = Describe("ShellValidatorFactory", func() {
 		})
 	})
 })
+
+var _ = Describe("GitHubValidatorFactory", func() {
+	var (
+		githubFactory *factory.GitHubValidatorFactory
+		log           logger.Logger
+	)
+
+	BeforeEach(func() {
+		log = logger.NewNoOpLogger()
+		githubFactory = factory.NewGitHubValidatorFactory(log)
+	})
+
+	Describe("NewGitHubValidatorFactory", func() {
+		It("should create a factory", func() {
+			Expect(githubFactory).NotTo(BeNil())
+		})
+	})
+
+	Describe("SetRuleEngine", func() {
+		It("should set rule engine", func() {
+			engine, _ := rules.NewRuleEngine([]*rules.Rule{
+				{Name: "test", Enabled: true, Action: &rules.RuleAction{Type: rules.ActionBlock}},
+			})
+
+			// Should not panic.
+			githubFactory.SetRuleEngine(engine)
+		})
+
+		It("should handle nil engine", func() {
+			// Should not panic.
+			githubFactory.SetRuleEngine(nil)
+		})
+	})
+
+	Describe("CreateValidators", func() {
+		It("should return empty when GitHub config is nil", func() {
+			cfg := &config.Config{
+				Validators: &config.ValidatorsConfig{
+					GitHub: nil,
+				},
+			}
+
+			validators := githubFactory.CreateValidators(cfg)
+			Expect(validators).To(BeEmpty())
+		})
+
+		It("should return empty when validators config is nil", func() {
+			cfg := &config.Config{
+				Validators: nil,
+			}
+
+			validators := githubFactory.CreateValidators(cfg)
+			Expect(validators).To(BeEmpty())
+		})
+
+		It("should create issue validator when enabled", func() {
+			cfg := &config.Config{
+				Validators: &config.ValidatorsConfig{
+					GitHub: &config.GitHubConfig{
+						Issue: &config.IssueValidatorConfig{
+							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(true)},
+						},
+					},
+				},
+			}
+
+			validators := githubFactory.CreateValidators(cfg)
+			Expect(len(validators)).To(Equal(1))
+		})
+
+		It("should not create issue validator when disabled", func() {
+			cfg := &config.Config{
+				Validators: &config.ValidatorsConfig{
+					GitHub: &config.GitHubConfig{
+						Issue: &config.IssueValidatorConfig{
+							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(false)},
+						},
+					},
+				},
+			}
+
+			validators := githubFactory.CreateValidators(cfg)
+			Expect(validators).To(BeEmpty())
+		})
+
+		It("should return empty when issue config is nil", func() {
+			cfg := &config.Config{
+				Validators: &config.ValidatorsConfig{
+					GitHub: &config.GitHubConfig{
+						Issue: nil,
+					},
+				},
+			}
+
+			validators := githubFactory.CreateValidators(cfg)
+			Expect(validators).To(BeEmpty())
+		})
+
+		It("should create validator with rule engine integration", func() {
+			engine, _ := rules.NewRuleEngine([]*rules.Rule{
+				{
+					Name:    "test-rule",
+					Enabled: true,
+					Action:  &rules.RuleAction{Type: rules.ActionBlock},
+				},
+			})
+			githubFactory.SetRuleEngine(engine)
+
+			cfg := &config.Config{
+				Validators: &config.ValidatorsConfig{
+					GitHub: &config.GitHubConfig{
+						Issue: &config.IssueValidatorConfig{
+							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(true)},
+						},
+					},
+				},
+			}
+
+			validators := githubFactory.CreateValidators(cfg)
+			Expect(len(validators)).To(Equal(1))
+		})
+
+		It("should create validator with custom configuration", func() {
+			requireBody := true
+			cfg := &config.Config{
+				Validators: &config.ValidatorsConfig{
+					GitHub: &config.GitHubConfig{
+						Issue: &config.IssueValidatorConfig{
+							ValidatorConfig:       config.ValidatorConfig{Enabled: ptrBool(true)},
+							RequireBody:           &requireBody,
+							MarkdownDisabledRules: []string{"MD001", "MD002"},
+							Timeout:               config.Duration(5000000000), // 5 seconds
+						},
+					},
+				},
+			}
+
+			validators := githubFactory.CreateValidators(cfg)
+			Expect(len(validators)).To(Equal(1))
+		})
+	})
+})
+
+var _ = Describe("DefaultValidatorFactory GitHub Integration", func() {
+	var (
+		validatorFactory *factory.DefaultValidatorFactory
+		log              logger.Logger
+	)
+
+	BeforeEach(func() {
+		log = logger.NewNoOpLogger()
+		validatorFactory = factory.NewValidatorFactory(log)
+	})
+
+	Describe("CreateGitHubValidators", func() {
+		It("should create issue validator when enabled", func() {
+			cfg := &config.Config{
+				Validators: &config.ValidatorsConfig{
+					GitHub: &config.GitHubConfig{
+						Issue: &config.IssueValidatorConfig{
+							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(true)},
+						},
+					},
+				},
+			}
+
+			validators := validatorFactory.CreateGitHubValidators(cfg)
+			Expect(len(validators)).To(Equal(1))
+		})
+
+		It("should not create validators when disabled", func() {
+			cfg := &config.Config{
+				Validators: &config.ValidatorsConfig{
+					GitHub: &config.GitHubConfig{
+						Issue: &config.IssueValidatorConfig{
+							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(false)},
+						},
+					},
+				},
+			}
+
+			validators := validatorFactory.CreateGitHubValidators(cfg)
+			Expect(validators).To(BeEmpty())
+		})
+
+		It("should return empty for nil GitHub config", func() {
+			cfg := &config.Config{
+				Validators: &config.ValidatorsConfig{
+					GitHub: nil,
+				},
+			}
+
+			validators := validatorFactory.CreateGitHubValidators(cfg)
+			Expect(validators).To(BeEmpty())
+		})
+	})
+
+	Describe("CreateAll with GitHub validators", func() {
+		It("should include GitHub validators in CreateAll", func() {
+			cfg := &config.Config{
+				Validators: &config.ValidatorsConfig{
+					GitHub: &config.GitHubConfig{
+						Issue: &config.IssueValidatorConfig{
+							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(true)},
+						},
+					},
+					Git:          &config.GitConfig{},
+					File:         &config.FileConfig{},
+					Notification: &config.NotificationConfig{},
+					Secrets:      &config.SecretsConfig{},
+					Shell:        &config.ShellConfig{},
+				},
+			}
+
+			validators := validatorFactory.CreateAll(cfg)
+			Expect(len(validators)).To(Equal(1))
+		})
+	})
+})
