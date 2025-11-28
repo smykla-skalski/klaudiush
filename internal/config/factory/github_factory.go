@@ -39,7 +39,7 @@ func (f *GitHubValidatorFactory) CreateValidators(cfg *config.Config) []Validato
 	var validators []ValidatorWithPredicate
 
 	// Check if GitHub config exists.
-	if cfg.Validators.GitHub == nil {
+	if cfg.Validators == nil || cfg.Validators.GitHub == nil {
 		return validators
 	}
 
