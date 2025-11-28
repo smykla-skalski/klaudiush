@@ -241,6 +241,7 @@ code
 				0,
 				false,
 				"<file>",
+				"",
 			)
 			Expect(lintResult.Success).To(BeTrue())
 			Expect(lintResult.RawOut).To(BeEmpty())
@@ -259,6 +260,7 @@ code
 				0,
 				false,
 				"<file>",
+				"",
 			)
 			Expect(lintResult.Success).To(BeFalse())
 			Expect(lintResult.RawOut).To(ContainSubstring("<file>:10"))
@@ -278,6 +280,7 @@ code
 				0,
 				false,
 				"README.md",
+				"",
 			)
 			Expect(lintResult.Success).To(BeFalse())
 			Expect(lintResult.RawOut).To(ContainSubstring("README.md:10"))
@@ -297,6 +300,7 @@ code
 				0,
 				false,
 				"<file>",
+				"",
 			)
 			Expect(lintResult.Success).To(BeFalse())
 			Expect(lintResult.RawOut).To(ContainSubstring("<file>:11"))
@@ -315,6 +319,7 @@ code
 				10,
 				false,
 				"<file>",
+				"",
 			)
 			Expect(lintResult.Success).To(BeFalse())
 			Expect(lintResult.RawOut).To(ContainSubstring("<file>:14"))
@@ -333,6 +338,7 @@ code
 				0,
 				false,
 				"<file>",
+				"",
 			)
 			Expect(lintResult.Success).To(BeFalse())
 			Expect(lintResult.RawOut).NotTo(ContainSubstring("<file>:3"))
@@ -352,6 +358,7 @@ code
 				0,
 				false,
 				"<file>",
+				"",
 			)
 			Expect(lintResult.Success).To(BeTrue())
 		})
@@ -369,6 +376,7 @@ code
 				0,
 				false,
 				"<file>",
+				"",
 			)
 			Expect(lintResult.Success).To(BeFalse())
 			Expect(lintResult.RawOut).To(ContainSubstring("MD022"))
@@ -392,6 +400,7 @@ Summary: 1 error(s)
 				0,
 				true,
 				"<file>",
+				"",
 			)
 			Expect(lintResult.Success).To(BeFalse())
 			Expect(lintResult.RawOut).To(ContainSubstring("<file>:10 MD022"))
@@ -414,6 +423,7 @@ Summary: 1 error(s)
 				0,
 				false,
 				"<file>",
+				"",
 			)
 			Expect(lintResult.Success).To(BeFalse())
 			Expect(lintResult.RawOut).To(ContainSubstring("Finding:"))
@@ -432,6 +442,7 @@ Summary: 1 error(s)
 				0,
 				false,
 				"README.md",
+				"",
 			)
 			Expect(lintResult.Success).To(BeFalse())
 			Expect(lintResult.RawOut).To(ContainSubstring("README.md:10"))
@@ -452,12 +463,43 @@ Summary: 1 error(s)
 				0,
 				false,
 				".claude/session.md",
+				"",
 			)
 			Expect(lintResult.Success).To(BeFalse())
 			Expect(lintResult.RawOut).To(ContainSubstring(".claude/session.md:5"))
 			Expect(lintResult.RawOut).To(ContainSubstring(".claude/session.md:10"))
 			Expect(lintResult.RawOut).NotTo(ContainSubstring("../"))
 			Expect(lintResult.RawOut).NotTo(ContainSubstring("/var/folders/"))
+		})
+
+		It("should enhance fragment errors with problematic lines", func() {
+			fragmentContent := `**Status**: Not Started
+
+**Tasks**:
+- [x] Add ruleAdapter
+- [x] Update constructor`
+
+			result := &execpkg.CommandResult{
+				ExitCode: 1,
+				Stdout:   "<file>:5 MD032/blanks-around-lists Lists should be surrounded by blank lines [Context: \"- [x] Add\"]",
+				Stderr:   "",
+			}
+			lintResult := linters.ProcessMarkdownlintOutput(
+				result,
+				"/tmp/test.md",
+				2,  // preamble lines
+				90, // fragment starts at line 90
+				false,
+				"progress.md",
+				fragmentContent,
+			)
+			Expect(lintResult.Success).To(BeFalse())
+			Expect(lintResult.RawOut).To(ContainSubstring("<fragment>"))
+			Expect(lintResult.RawOut).To(ContainSubstring("MD032/blanks-around-lists"))
+			Expect(lintResult.RawOut).To(ContainSubstring("Problematic section:"))
+			Expect(lintResult.RawOut).To(ContainSubstring("**Tasks**:"))
+			Expect(lintResult.RawOut).To(ContainSubstring("- [x] Add ruleAdapter"))
+			Expect(lintResult.RawOut).NotTo(ContainSubstring("progress.md:"))
 		})
 	})
 

@@ -23,6 +23,9 @@ const (
 	configJSONBrackets = 2
 	// configWrapperLines is the number of extra lines for markdownlint-cli2 wrapper
 	configWrapperLines = 2
+
+	// defaultFragmentContextSize is the default number of lines before/after error to show
+	defaultFragmentContextSize = 2
 )
 
 // ErrMarkdownCustomRules indicates custom markdown rules found issues
@@ -261,6 +264,7 @@ func ProcessMarkdownlintOutput(
 	fragmentStartLine int,
 	isCli2 bool,
 	displayPath string,
+	fragmentContent string,
 ) *LintResult {
 	if result.ExitCode == 0 {
 		return &LintResult{
@@ -271,15 +275,26 @@ func ProcessMarkdownlintOutput(
 
 	output := result.Stdout + result.Stderr
 
+	// For fragments, use <fragment> path to avoid misleading line numbers
+	isFragment := fragmentStartLine > 0
+	pathToUse := displayPath
+
+	if isFragment {
+		pathToUse = "<fragment>"
+	}
+
 	// Replace temp file path with display path
-	output = replaceTempFilePath(output, tempFile, displayPath)
+	output = replaceTempFilePath(output, tempFile, pathToUse)
 
 	// Filter out markdownlint-cli2 status messages
 	if isCli2 {
 		output = filterStatusMessages(output)
 	}
 
-	if preambleLines > 0 {
+	// For fragments, enhance with actual problematic lines
+	if isFragment && fragmentContent != "" {
+		output = enhanceFragmentErrors(output, fragmentContent, preambleLines)
+	} else if preambleLines > 0 {
 		output = adjustLineNumbers(output, preambleLines, fragmentStartLine)
 	}
 
@@ -367,6 +382,7 @@ func (l *RealMarkdownLinter) runMarkdownlint(
 		fragmentStartLine,
 		isCli2,
 		displayPath,
+		content,
 	)
 }
 
@@ -420,6 +436,72 @@ func filterStatusMessages(output string) string {
 	}
 
 	return strings.Join(result, "\n")
+}
+
+// enhanceFragmentErrors enhances markdownlint errors for fragments by including
+// the actual problematic lines from the fragment content.
+func enhanceFragmentErrors(output, fragmentContent string, preambleLines int) string {
+	lines := strings.Split(output, "\n")
+	result := make([]string, 0, len(lines))
+	fragmentLines := strings.Split(fragmentContent, "\n")
+
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+
+		// Find line number in the output
+		matches := lineNumberRegex.FindStringSubmatch(line)
+		if len(matches) < minLineNumberMatches {
+			// No line number found, keep the line as-is
+			result = append(result, line)
+			continue
+		}
+
+		lineNum := 0
+		_, _ = fmt.Sscanf(matches[1], "%d", &lineNum)
+
+		// Skip errors in preamble
+		if lineNum <= preambleLines {
+			continue
+		}
+
+		// Convert to fragment line number (1-indexed)
+		fragmentLineNum := lineNum - preambleLines
+
+		// Remove line number from error message
+		errorMsg := lineNumberRegex.ReplaceAllString(line, "<fragment>")
+		result = append(result, errorMsg)
+
+		// Add context showing the actual problematic lines
+		contextLines := extractContextLines(
+			fragmentLines,
+			fragmentLineNum-1,
+			defaultFragmentContextSize,
+		)
+		if contextLines != "" {
+			result = append(result, "")
+			result = append(result, "Problematic section:")
+			result = append(result, contextLines)
+		}
+	}
+
+	return strings.Join(result, "\n")
+}
+
+// extractContextLines extracts lines around the specified line number with context.
+// lineNum is 0-indexed. Returns empty string if lineNum is out of bounds.
+func extractContextLines(lines []string, lineNum, contextSize int) string {
+	if lineNum < 0 || lineNum >= len(lines) {
+		return ""
+	}
+
+	start := max(0, lineNum-contextSize)
+	end := min(len(lines), lineNum+contextSize+1)
+
+	contextLines := lines[start:end]
+
+	return strings.Join(contextLines, "\n")
 }
 
 // adjustLineNumbers adjusts line numbers in markdownlint output to account for preamble lines
