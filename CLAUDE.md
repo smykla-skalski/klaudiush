@@ -20,6 +20,10 @@ Guidance for Claude Code (claude.ai/code) when working with this repository.
 ./bin/klaudiush doctor --fix      # auto-fix issues
 ./bin/klaudiush doctor --category binary,hook  # filter by category
 
+# Debug (inspect configuration)
+./bin/klaudiush debug rules                       # show all rules
+./bin/klaudiush debug rules --validator git.push  # filter by validator
+
 # Build & Install
 task build                        # dev build
 task build:prod                   # prod build (validates signoff)
@@ -78,7 +82,9 @@ Dynamic validation configuration without modifying code. Rules allow users to de
 
 **Components**: Pattern system (glob/regex auto-detection via `gobwas/glob`), Matchers (repo/remote/branch/file/content/command), Registry (priority sorting, merge), Evaluator (first-match semantics), Engine (main entry point), ValidatorAdapter (bridges with validators).
 
-**Usage**: Validators use `RuleValidatorAdapter.CheckRules()` before built-in logic. If rule matches, returns validator.Result; otherwise continues with built-in validation. See `.claude/session-rule-engine.md` for details.
+**Usage**: Validators use `RuleValidatorAdapter.CheckRules()` before built-in logic. If rule matches, returns validator.Result; otherwise continues with built-in validation.
+
+**Documentation**: See `docs/RULES_GUIDE.md` for complete configuration guide with examples. Example configurations in `examples/rules/`.
 
 ### Parsers
 
@@ -209,7 +215,7 @@ Additional implementation details and policies are in `.claude/` files:
 - `session-fuzzing.md` - Go native fuzzing for parsers, fuzz targets by risk, type limitations, progress tracking in `tmp/fuzzing/`
 - `session-github-quality.md` - OSSF Scorecard, branch rulesets API, Renovate version sync (customManagers:githubActionsVersions), smyklot bot workflows
 - `session-codeql-regex-security.md` - CodeQL regex anchor fixes (CWE-020), URL pattern anchoring with `(?:^|://|[^/a-zA-Z0-9])`, bounded quantifiers for ReDoS, prefix consumption in matches, GitHub push protection bypass for test secrets, PR review thread resolution
-- `session-rule-engine.md` - Dynamic validation rule engine with pattern matching (glob/regex auto-detection), matchers, registry, evaluator, and validator adapter integration
+- `session-rule-engine.md` - Rule engine implementation details (covered more comprehensively in `docs/RULES_GUIDE.md`)
 
 ## Plugin Documentation
 
@@ -220,3 +226,13 @@ Comprehensive plugin development guide available in `docs/PLUGIN_GUIDE.md` with 
 - **gRPC plugins** (`examples/plugins/grpc-go/`) - Persistent server plugins with hot-reload capability
 
 Each example includes source code, configuration, testing instructions, and customization guidance.
+
+## Rules Documentation
+
+Dynamic validation rules guide available in `docs/RULES_GUIDE.md` with example configurations in `examples/rules/`:
+
+- **organization.toml** - Organization-specific rules (remote restrictions, branch protection)
+- **secrets-allow-list.toml** - Allow list for test fixtures and mock data
+- **advanced-patterns.toml** - Complex pattern matching examples (glob, regex, combined conditions)
+
+Debug rules with: `klaudiush debug rules`

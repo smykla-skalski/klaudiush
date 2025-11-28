@@ -1,0 +1,81 @@
+# Example: Organization-Specific Rules
+#
+# Configure rules for organization-specific git workflows where
+# 'upstream' is the main repository and 'origin' is your fork.
+#
+# Usage:
+#   Copy to ~/.klaudiush/config.toml (global) or .klaudiush/config.toml (project)
+
+[rules]
+enabled = true
+stop_on_first_match = true
+
+# Block push to origin remote in organization repos
+#
+# Many organizations use 'upstream' for the main repository and 'origin' for forks.
+# This rule prevents accidental pushes to origin which would fail anyway.
+[[rules.rules]]
+name = "block-origin-push"
+description = "Block push to origin in organization repositories"
+enabled = true
+priority = 100
+
+[rules.rules.match]
+validator_type = "git.push"
+repo_pattern = "**/myorg/**"
+remote = "origin"
+
+[rules.rules.action]
+type = "block"
+message = "Push to origin is blocked. Use 'upstream' for main repository."
+reference = "ORG001"
+
+# Warn on upstream push
+#
+# Pushing to upstream is sometimes intentional (for maintainers).
+# This rule warns without blocking.
+[[rules.rules]]
+name = "warn-upstream-push"
+description = "Warn when pushing to upstream"
+enabled = true
+priority = 50
+
+[rules.rules.match]
+validator_type = "git.push"
+remote = "upstream"
+
+[rules.rules.action]
+type = "warn"
+message = "Pushing to upstream. Ensure this is intentional."
+
+# Protect main branch in all repositories
+[[rules.rules]]
+name = "protect-main-branch"
+description = "Block direct pushes to main branch"
+enabled = true
+priority = 200
+
+[rules.rules.match]
+validator_type = "git.push"
+branch_pattern = "main"
+
+[rules.rules.action]
+type = "block"
+message = "Direct push to main branch is not allowed. Use a pull request."
+reference = "GIT019"
+
+# Protect master branch (legacy)
+[[rules.rules]]
+name = "protect-master-branch"
+description = "Block direct pushes to master branch"
+enabled = true
+priority = 200
+
+[rules.rules.match]
+validator_type = "git.push"
+branch_pattern = "master"
+
+[rules.rules.action]
+type = "block"
+message = "Direct push to master branch is not allowed. Use a pull request."
+reference = "GIT019"
