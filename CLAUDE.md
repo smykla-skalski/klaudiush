@@ -210,7 +210,7 @@ Additional implementation details and policies are in `.claude/` files:
 - `session-error-reporting.md` - Error codes, suggestions/doc links registries, FailWithCode pattern, cognitive complexity refactoring
 - `session-secrets-detection.md` - Secrets validator with 25+ regex patterns, two-tier detection (patterns + gitleaks), configuration schema for allow lists/custom patterns
 - `session-plugin-system.md` - Plugin system with Go/exec loaders, predicate-based matching, flexible configuration, validator adapter integration
-- `session-grpc-loader.md` - gRPC plugin loader with connection pooling, buf 1.61.0 setup, protobuf protocol, double-check locking, type conversion between internal and protobuf types
+- `session-grpc-loader.md` - gRPC plugin loader with connection pooling, buf 1.61.0 setup, protobuf protocol, double-check locking, type conversion between internal and protobuf types, TLS security (auto/manual modes, mTLS support)
 - `session-plugin-integration-tests.md` - Integration tests for plugin system with real shell scripts and gRPC servers, testing best practices research (bufconn vs real network, subprocess patterns)
 - `session-fuzzing.md` - Go native fuzzing for parsers, fuzz targets by risk, type limitations, progress tracking in `tmp/fuzzing/`
 - `session-github-quality.md` - OSSF Scorecard, branch rulesets API, Renovate version sync (customManagers:githubActionsVersions), smyklot bot workflows

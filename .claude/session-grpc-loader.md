@@ -124,6 +124,102 @@ event_types = ["PreToolUse"]
 tool_types = ["Write", "Edit"]
 ```
 
+## TLS Security
+
+### Configuration Schema
+
+```go
+type TLSConfig struct {
+    Enabled             *bool  // nil=auto, true=force TLS, false=insecure
+    CertFile            string // Client cert for mTLS
+    KeyFile             string // Client key for mTLS
+    CAFile              string // CA cert for server verification
+    InsecureSkipVerify  *bool  // Skip server cert verification
+    AllowInsecureRemote *bool  // Allow insecure to non-localhost
+}
+```
+
+### Security Modes
+
+| Address   | TLS Config | Behavior                   |
+|:----------|:-----------|:---------------------------|
+| localhost | nil/auto   | Insecure (development)     |
+| localhost | enabled    | TLS required               |
+| remote    | nil/auto   | Error (TLS required)       |
+| remote    | enabled    | TLS required               |
+| remote    | disabled   | Error unless AllowInsecure |
+
+### Implementation
+
+**Transport Credentials** (`buildTransportCredentials`):
+
+1. Check if address is localhost via `IsLocalAddress()`
+2. Auto mode (nil Enabled): insecure for localhost, error for remote
+3. Explicit insecure to remote: requires `AllowInsecureRemote` flag
+4. TLS mode: builds credentials via `buildTLSCredentials()`
+
+**TLS Configuration** (`buildTLSCredentials`):
+
+- Minimum TLS 1.2 enforced
+- Optional CA cert loading for custom CAs
+- Optional client cert loading for mTLS
+- `InsecureSkipVerify` for self-signed certs (development only)
+
+### Loader Lifecycle
+
+**Closed Flag**:
+
+```go
+type GRPCLoader struct {
+    // ...
+    closed bool // Prevents Load() after Close()
+}
+```
+
+- `Load()` checks `closed` flag before attempting connection
+- `Close()` sets `closed = true` before closing connections
+- Returns `ErrLoaderClosed` if loader already closed
+
+### TOML Examples
+
+**Basic TLS**:
+
+```toml
+[[plugins.plugins]]
+name = "secure-validator"
+type = "grpc"
+address = "validator.example.com:443"
+
+[plugins.plugins.tls]
+enabled = true
+ca_file = "/etc/ssl/certs/ca-bundle.crt"
+```
+
+**Mutual TLS (mTLS)**:
+
+```toml
+[[plugins.plugins]]
+name = "mtls-validator"
+type = "grpc"
+address = "validator.example.com:443"
+
+[plugins.plugins.tls]
+enabled = true
+cert_file = "/etc/klaudiush/client.crt"
+key_file = "/etc/klaudiush/client.key"
+ca_file = "/etc/klaudiush/ca.crt"
+```
+
+**Development (localhost)**:
+
+```toml
+[[plugins.plugins]]
+name = "dev-validator"
+type = "grpc"
+address = "localhost:50051"
+# No TLS config needed - auto-insecure for localhost
+```
+
 ## Testing
 
 **File**: `internal/plugin/grpc_loader_test.go`

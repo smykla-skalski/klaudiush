@@ -129,6 +129,24 @@ const (
 	RefGHIssueValidation Reference = ReferenceBaseURL + "/GH001"
 )
 
+// Plugin-related references (PLUG001-PLUG005).
+const (
+	// RefPluginPathTraversal indicates path traversal detected in plugin path.
+	RefPluginPathTraversal Reference = ReferenceBaseURL + "/PLUG001"
+
+	// RefPluginPathNotAllowed indicates plugin path not in allowed directory.
+	RefPluginPathNotAllowed Reference = ReferenceBaseURL + "/PLUG002"
+
+	// RefPluginInvalidExtension indicates invalid plugin file extension.
+	RefPluginInvalidExtension Reference = ReferenceBaseURL + "/PLUG003"
+
+	// RefPluginInsecureRemote indicates insecure connection to remote gRPC plugin.
+	RefPluginInsecureRemote Reference = ReferenceBaseURL + "/PLUG004"
+
+	// RefPluginDangerousChars indicates dangerous characters in plugin path.
+	RefPluginDangerousChars Reference = ReferenceBaseURL + "/PLUG005"
+)
+
 // minCodeLength is the minimum length for a valid reference code.
 const minCodeLength = 3
 

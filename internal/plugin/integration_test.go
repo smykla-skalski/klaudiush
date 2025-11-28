@@ -74,9 +74,11 @@ echo '%s'
 
 var _ = Describe("Plugin Integration Tests", func() {
 	var (
-		log     logger.Logger
-		tmpDir  string
-		cleanup func()
+		log         logger.Logger
+		tmpDir      string // Project root directory
+		pluginDir   string // .klaudiush/plugins directory
+		projectRoot string // Same as tmpDir, for explicit naming
+		cleanup     func()
 	)
 
 	BeforeEach(func() {
@@ -84,7 +86,14 @@ var _ = Describe("Plugin Integration Tests", func() {
 
 		var err error
 
+		// Create a temp directory to act as project root
 		tmpDir, err = os.MkdirTemp("", "plugin-integration-test-*")
+		Expect(err).NotTo(HaveOccurred())
+		projectRoot = tmpDir
+
+		// Create .klaudiush/plugins directory for plugin path validation
+		pluginDir = filepath.Join(tmpDir, ".klaudiush", "plugins")
+		err = os.MkdirAll(pluginDir, 0o755)
 		Expect(err).NotTo(HaveOccurred())
 
 		cleanup = func() {
@@ -104,7 +113,7 @@ var _ = Describe("Plugin Integration Tests", func() {
 		Context("with a simple pass plugin", func() {
 			It("should load and execute successfully", func() {
 				pluginPath, err := createExecPlugin(
-					tmpDir,
+					pluginDir,
 					"pass-plugin",
 					&pluginapi.ValidateResponse{
 						Passed:      true,
@@ -116,11 +125,12 @@ var _ = Describe("Plugin Integration Tests", func() {
 
 				enabled := true
 				cfg := &config.PluginInstanceConfig{
-					Name:    "pass-plugin",
-					Type:    config.PluginTypeExec,
-					Enabled: &enabled,
-					Path:    pluginPath,
-					Timeout: config.Duration(5 * time.Second),
+					Name:        "pass-plugin",
+					Type:        config.PluginTypeExec,
+					Enabled:     &enabled,
+					Path:        pluginPath,
+					Timeout:     config.Duration(5 * time.Second),
+					ProjectRoot: projectRoot,
 				}
 
 				registry := plugin.NewRegistry(log)
@@ -149,7 +159,7 @@ var _ = Describe("Plugin Integration Tests", func() {
 		Context("with a failing plugin", func() {
 			It("should return failure result", func() {
 				pluginPath, err := createExecPlugin(
-					tmpDir,
+					pluginDir,
 					"fail-plugin", &pluginapi.ValidateResponse{
 						Passed:      false,
 						ShouldBlock: true,
@@ -159,11 +169,12 @@ var _ = Describe("Plugin Integration Tests", func() {
 
 				enabled := true
 				cfg := &config.PluginInstanceConfig{
-					Name:    "fail-plugin",
-					Type:    config.PluginTypeExec,
-					Enabled: &enabled,
-					Path:    pluginPath,
-					Timeout: config.Duration(5 * time.Second),
+					Name:        "fail-plugin",
+					Type:        config.PluginTypeExec,
+					Enabled:     &enabled,
+					Path:        pluginPath,
+					Timeout:     config.Duration(5 * time.Second),
+					ProjectRoot: projectRoot,
 				}
 
 				registry := plugin.NewRegistry(log)
@@ -193,7 +204,7 @@ var _ = Describe("Plugin Integration Tests", func() {
 		Context("with event type predicate", func() {
 			It("should only match specified event types", func() {
 				pluginPath, err := createExecPlugin(
-					tmpDir,
+					pluginDir,
 					"event-plugin", &pluginapi.ValidateResponse{
 						Passed:  true,
 						Message: "Event matched",
@@ -202,10 +213,11 @@ var _ = Describe("Plugin Integration Tests", func() {
 
 				enabled := true
 				cfg := &config.PluginInstanceConfig{
-					Name:    "event-plugin",
-					Type:    config.PluginTypeExec,
-					Enabled: &enabled,
-					Path:    pluginPath,
+					Name:        "event-plugin",
+					Type:        config.PluginTypeExec,
+					Enabled:     &enabled,
+					Path:        pluginPath,
+					ProjectRoot: projectRoot,
 					Predicate: &config.PluginPredicate{
 						EventTypes: []string{"PreToolUse"},
 					},
@@ -239,7 +251,7 @@ var _ = Describe("Plugin Integration Tests", func() {
 		Context("with tool type predicate", func() {
 			It("should only match specified tool types", func() {
 				pluginPath, err := createExecPlugin(
-					tmpDir,
+					pluginDir,
 					"tool-plugin", &pluginapi.ValidateResponse{
 						Passed:  true,
 						Message: "Tool matched",
@@ -248,10 +260,11 @@ var _ = Describe("Plugin Integration Tests", func() {
 
 				enabled := true
 				cfg := &config.PluginInstanceConfig{
-					Name:    "tool-plugin",
-					Type:    config.PluginTypeExec,
-					Enabled: &enabled,
-					Path:    pluginPath,
+					Name:        "tool-plugin",
+					Type:        config.PluginTypeExec,
+					Enabled:     &enabled,
+					Path:        pluginPath,
+					ProjectRoot: projectRoot,
 					Predicate: &config.PluginPredicate{
 						ToolTypes: []string{"Write", "Edit"},
 					},
@@ -285,7 +298,7 @@ var _ = Describe("Plugin Integration Tests", func() {
 		Context("with file pattern predicate", func() {
 			It("should only match specified file patterns", func() {
 				pluginPath, err := createExecPlugin(
-					tmpDir,
+					pluginDir,
 					"file-plugin", &pluginapi.ValidateResponse{
 						Passed:  true,
 						Message: "File matched",
@@ -294,10 +307,11 @@ var _ = Describe("Plugin Integration Tests", func() {
 
 				enabled := true
 				cfg := &config.PluginInstanceConfig{
-					Name:    "file-plugin",
-					Type:    config.PluginTypeExec,
-					Enabled: &enabled,
-					Path:    pluginPath,
+					Name:        "file-plugin",
+					Type:        config.PluginTypeExec,
+					Enabled:     &enabled,
+					Path:        pluginPath,
+					ProjectRoot: projectRoot,
 					Predicate: &config.PluginPredicate{
 						FilePatterns: []string{"*.go", "*.tf"},
 					},
@@ -337,7 +351,7 @@ var _ = Describe("Plugin Integration Tests", func() {
 		Context("with command pattern predicate", func() {
 			It("should only match specified command patterns", func() {
 				pluginPath, err := createExecPlugin(
-					tmpDir,
+					pluginDir,
 					"cmd-plugin", &pluginapi.ValidateResponse{
 						Passed:  true,
 						Message: "Command matched",
@@ -346,10 +360,11 @@ var _ = Describe("Plugin Integration Tests", func() {
 
 				enabled := true
 				cfg := &config.PluginInstanceConfig{
-					Name:    "cmd-plugin",
-					Type:    config.PluginTypeExec,
-					Enabled: &enabled,
-					Path:    pluginPath,
+					Name:        "cmd-plugin",
+					Type:        config.PluginTypeExec,
+					Enabled:     &enabled,
+					Path:        pluginPath,
+					ProjectRoot: projectRoot,
 					Predicate: &config.PluginPredicate{
 						CommandPatterns: []string{"^git commit", "^terraform apply"},
 					},
@@ -389,7 +404,7 @@ var _ = Describe("Plugin Integration Tests", func() {
 		Context("with multiple plugins", func() {
 			It("should load and match multiple plugins correctly", func() {
 				plugin1Path, err := createExecPlugin(
-					tmpDir,
+					pluginDir,
 					"plugin1",
 					&pluginapi.ValidateResponse{
 						Passed:  true,
@@ -399,7 +414,7 @@ var _ = Describe("Plugin Integration Tests", func() {
 				Expect(err).NotTo(HaveOccurred())
 
 				plugin2Path, err := createExecPlugin(
-					tmpDir,
+					pluginDir,
 					"plugin2",
 					&pluginapi.ValidateResponse{
 						Passed:  true,
@@ -410,10 +425,11 @@ var _ = Describe("Plugin Integration Tests", func() {
 
 				enabled := true
 				cfg1 := &config.PluginInstanceConfig{
-					Name:    "plugin1",
-					Type:    config.PluginTypeExec,
-					Enabled: &enabled,
-					Path:    plugin1Path,
+					Name:        "plugin1",
+					Type:        config.PluginTypeExec,
+					Enabled:     &enabled,
+					Path:        plugin1Path,
+					ProjectRoot: projectRoot,
 					Predicate: &config.PluginPredicate{
 						ToolTypes: []string{"Bash"},
 					},
@@ -421,10 +437,11 @@ var _ = Describe("Plugin Integration Tests", func() {
 				}
 
 				cfg2 := &config.PluginInstanceConfig{
-					Name:    "plugin2",
-					Type:    config.PluginTypeExec,
-					Enabled: &enabled,
-					Path:    plugin2Path,
+					Name:        "plugin2",
+					Type:        config.PluginTypeExec,
+					Enabled:     &enabled,
+					Path:        plugin2Path,
+					ProjectRoot: projectRoot,
 					Predicate: &config.PluginPredicate{
 						ToolTypes: []string{"Write"},
 					},
@@ -674,7 +691,7 @@ var _ = Describe("Plugin Integration Tests", func() {
 		It("should support exec and gRPC plugins together", func() {
 			// Create exec plugin
 			execPath, err := createExecPlugin(
-				tmpDir,
+				pluginDir,
 				"exec-mixed",
 				&pluginapi.ValidateResponse{
 					Passed:  true,
@@ -695,10 +712,11 @@ var _ = Describe("Plugin Integration Tests", func() {
 
 			enabled := true
 			execCfg := &config.PluginInstanceConfig{
-				Name:    "exec-mixed",
-				Type:    config.PluginTypeExec,
-				Enabled: &enabled,
-				Path:    execPath,
+				Name:        "exec-mixed",
+				Type:        config.PluginTypeExec,
+				Enabled:     &enabled,
+				Path:        execPath,
+				ProjectRoot: projectRoot,
 				Predicate: &config.PluginPredicate{
 					ToolTypes: []string{"Bash"},
 				},
@@ -759,9 +777,13 @@ var _ = Describe("Plugin Integration Tests", func() {
 
 	Describe("Plugin Lifecycle", func() {
 		It("should properly close all plugins on registry close", func() {
-			execPath, err := createExecPlugin(tmpDir, "lifecycle-exec", &pluginapi.ValidateResponse{
-				Passed: true,
-			})
+			execPath, err := createExecPlugin(
+				pluginDir,
+				"lifecycle-exec",
+				&pluginapi.ValidateResponse{
+					Passed: true,
+				},
+			)
 			Expect(err).NotTo(HaveOccurred())
 
 			srv := newMockGRPCServer()
@@ -770,11 +792,12 @@ var _ = Describe("Plugin Integration Tests", func() {
 
 			enabled := true
 			execCfg := &config.PluginInstanceConfig{
-				Name:    "lifecycle-exec",
-				Type:    config.PluginTypeExec,
-				Enabled: &enabled,
-				Path:    execPath,
-				Timeout: config.Duration(5 * time.Second),
+				Name:        "lifecycle-exec",
+				Type:        config.PluginTypeExec,
+				Enabled:     &enabled,
+				Path:        execPath,
+				ProjectRoot: projectRoot,
+				Timeout:     config.Duration(5 * time.Second),
 			}
 
 			grpcCfg := &config.PluginInstanceConfig{
@@ -803,7 +826,7 @@ var _ = Describe("Plugin Integration Tests", func() {
 		Context("with disabled plugin", func() {
 			It("should not load disabled plugins", func() {
 				pluginPath, err := createExecPlugin(
-					tmpDir,
+					pluginDir,
 					"disabled", &pluginapi.ValidateResponse{
 						Passed: true,
 					})
@@ -815,11 +838,12 @@ var _ = Describe("Plugin Integration Tests", func() {
 					Enabled: &enabled,
 					Plugins: []*config.PluginInstanceConfig{
 						{
-							Name:    "disabled",
-							Type:    config.PluginTypeExec,
-							Enabled: &disabled,
-							Path:    pluginPath,
-							Timeout: config.Duration(5 * time.Second),
+							Name:        "disabled",
+							Type:        config.PluginTypeExec,
+							Enabled:     &disabled,
+							Path:        pluginPath,
+							ProjectRoot: projectRoot,
+							Timeout:     config.Duration(5 * time.Second),
 						},
 					},
 				}
@@ -844,7 +868,7 @@ var _ = Describe("Plugin Integration Tests", func() {
 		Context("with LoadPlugins batch loading", func() {
 			It("should load multiple plugins from config", func() {
 				plugin1Path, err := createExecPlugin(
-					tmpDir,
+					pluginDir,
 					"batch1",
 					&pluginapi.ValidateResponse{
 						Passed: true,
@@ -852,9 +876,13 @@ var _ = Describe("Plugin Integration Tests", func() {
 				)
 				Expect(err).NotTo(HaveOccurred())
 
-				plugin2Path, err := createExecPlugin(tmpDir, "batch2", &pluginapi.ValidateResponse{
-					Passed: true,
-				})
+				plugin2Path, err := createExecPlugin(
+					pluginDir,
+					"batch2",
+					&pluginapi.ValidateResponse{
+						Passed: true,
+					},
+				)
 				Expect(err).NotTo(HaveOccurred())
 
 				enabled := true
@@ -862,18 +890,20 @@ var _ = Describe("Plugin Integration Tests", func() {
 					Enabled: &enabled,
 					Plugins: []*config.PluginInstanceConfig{
 						{
-							Name:    "batch1",
-							Type:    config.PluginTypeExec,
-							Enabled: &enabled,
-							Path:    plugin1Path,
-							Timeout: config.Duration(5 * time.Second),
+							Name:        "batch1",
+							Type:        config.PluginTypeExec,
+							Enabled:     &enabled,
+							Path:        plugin1Path,
+							ProjectRoot: projectRoot,
+							Timeout:     config.Duration(5 * time.Second),
 						},
 						{
-							Name:    "batch2",
-							Type:    config.PluginTypeExec,
-							Enabled: &enabled,
-							Path:    plugin2Path,
-							Timeout: config.Duration(5 * time.Second),
+							Name:        "batch2",
+							Type:        config.PluginTypeExec,
+							Enabled:     &enabled,
+							Path:        plugin2Path,
+							ProjectRoot: projectRoot,
+							Timeout:     config.Duration(5 * time.Second),
 						},
 					},
 				}

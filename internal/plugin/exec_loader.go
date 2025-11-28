@@ -51,9 +51,25 @@ func (l *ExecLoader) Load(cfg *config.PluginInstanceConfig) (Plugin, error) {
 		return nil, errors.New("path is required for exec plugins")
 	}
 
+	// Defense-in-depth: reject paths with shell metacharacters
+	// Even though exec.Command doesn't use shell, this prevents suspicious paths
+	if metaErr := ValidateMetachars(cfg.Path); metaErr != nil {
+		return nil, errors.Wrap(metaErr, "invalid characters in plugin path")
+	}
+
+	// Validate path is in allowed directory (defense-in-depth)
+	allowedDirs, allowedErr := GetAllowedDirs(cfg.ProjectRoot)
+	if allowedErr != nil {
+		return nil, errors.Wrap(allowedErr, "failed to determine allowed directories")
+	}
+
+	if pathErr := ValidatePath(cfg.Path, allowedDirs); pathErr != nil {
+		return nil, errors.Wrapf(pathErr, "plugin path validation failed: %s", cfg.Path)
+	}
+
 	// Verify the plugin executable exists and is executable
-	if err := l.verifyExecutable(cfg.Path); err != nil {
-		return nil, errors.Wrap(err, "plugin executable verification failed")
+	if execErr := l.verifyExecutable(cfg.Path); execErr != nil {
+		return nil, errors.Wrap(execErr, "plugin executable verification failed")
 	}
 
 	// Fetch plugin info

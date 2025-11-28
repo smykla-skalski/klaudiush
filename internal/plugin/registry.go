@@ -182,40 +182,69 @@ func NewPredicateMatcher(cfg *config.PluginPredicate) (*PredicateMatcher, error)
 		toolTypes:  make(map[string]bool),
 	}
 
-	// Build event type map
-	if cfg != nil && len(cfg.EventTypes) > 0 {
-		for _, et := range cfg.EventTypes {
-			matcher.eventTypes[et] = true
-		}
+	if cfg == nil {
+		return matcher, nil
 	}
 
-	// Build tool type map
-	if cfg != nil && len(cfg.ToolTypes) > 0 {
-		for _, tt := range cfg.ToolTypes {
-			matcher.toolTypes[tt] = true
-		}
+	matcher.buildEventTypeMap(cfg.EventTypes)
+	matcher.buildToolTypeMap(cfg.ToolTypes)
+
+	if err := matcher.setFilePatterns(cfg.FilePatterns); err != nil {
+		return nil, err
 	}
 
-	// Store file patterns (will be evaluated using filepath.Match)
-	if cfg != nil && len(cfg.FilePatterns) > 0 {
-		matcher.filePatterns = cfg.FilePatterns
-	}
-
-	// Compile command patterns
-	if cfg != nil && len(cfg.CommandPatterns) > 0 {
-		matcher.commandPatterns = make([]*regexp.Regexp, 0, len(cfg.CommandPatterns))
-
-		for _, pattern := range cfg.CommandPatterns {
-			re, err := regexp.Compile(pattern)
-			if err != nil {
-				return nil, errors.Wrapf(err, "invalid command pattern: %s", pattern)
-			}
-
-			matcher.commandPatterns = append(matcher.commandPatterns, re)
-		}
+	if err := matcher.compileCommandPatterns(cfg.CommandPatterns); err != nil {
+		return nil, err
 	}
 
 	return matcher, nil
+}
+
+// buildEventTypeMap populates the event type lookup map.
+func (p *PredicateMatcher) buildEventTypeMap(eventTypes []string) {
+	for _, et := range eventTypes {
+		p.eventTypes[et] = true
+	}
+}
+
+// buildToolTypeMap populates the tool type lookup map.
+func (p *PredicateMatcher) buildToolTypeMap(toolTypes []string) {
+	for _, tt := range toolTypes {
+		p.toolTypes[tt] = true
+	}
+}
+
+// setFilePatterns validates and stores file patterns.
+func (p *PredicateMatcher) setFilePatterns(patterns []string) error {
+	for _, pattern := range patterns {
+		if _, err := filepath.Match(pattern, ""); err != nil {
+			return errors.Wrapf(err, "invalid file pattern: %s", pattern)
+		}
+	}
+
+	p.filePatterns = patterns
+
+	return nil
+}
+
+// compileCommandPatterns validates and compiles command regex patterns.
+func (p *PredicateMatcher) compileCommandPatterns(patterns []string) error {
+	if len(patterns) == 0 {
+		return nil
+	}
+
+	p.commandPatterns = make([]*regexp.Regexp, 0, len(patterns))
+
+	for _, pattern := range patterns {
+		re, err := regexp.Compile(pattern)
+		if err != nil {
+			return errors.Wrapf(err, "invalid command pattern: %s", pattern)
+		}
+
+		p.commandPatterns = append(p.commandPatterns, re)
+	}
+
+	return nil
 }
 
 // Matches returns whether this predicate matches the given hook context.
@@ -278,6 +307,7 @@ func (p *PredicateMatcher) matchesFilePatterns(hookCtx *hook.Context) bool {
 	}
 
 	for _, pattern := range p.filePatterns {
+		// Error is impossible here - patterns are validated in NewPredicateMatcher
 		if ok, _ := filepath.Match(pattern, filePath); ok {
 			return true
 		}

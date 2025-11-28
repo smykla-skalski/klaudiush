@@ -2,6 +2,8 @@ package plugin_test
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -30,10 +32,31 @@ func (m *mockGoPlugin) Validate(req *pluginapi.ValidateRequest) *pluginapi.Valid
 }
 
 var _ = Describe("GoLoader", func() {
-	var loader *plugin.GoLoader
+	var (
+		loader      *plugin.GoLoader
+		tmpDir      string
+		pluginDir   string
+		projectRoot string
+	)
 
 	BeforeEach(func() {
 		loader = plugin.NewGoLoader()
+
+		// Create temp project structure
+		var err error
+		tmpDir, err = os.MkdirTemp("", "go-loader-test-*")
+		Expect(err).NotTo(HaveOccurred())
+		projectRoot = tmpDir
+
+		pluginDir = filepath.Join(tmpDir, ".klaudiush", "plugins")
+		err = os.MkdirAll(pluginDir, 0o755)
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	AfterEach(func() {
+		if tmpDir != "" {
+			_ = os.RemoveAll(tmpDir)
+		}
 	})
 
 	Describe("NewGoLoader", func() {
@@ -58,10 +81,13 @@ var _ = Describe("GoLoader", func() {
 			})
 
 			It("should return error when .so file does not exist", func() {
+				pluginPath := filepath.Join(pluginDir, "nonexistent.so")
+
 				cfg := &config.PluginInstanceConfig{
-					Name: "test",
-					Type: config.PluginTypeGo,
-					Path: "/nonexistent/plugin.so",
+					Name:        "test",
+					Type:        config.PluginTypeGo,
+					Path:        pluginPath,
+					ProjectRoot: projectRoot,
 				}
 
 				_, err := loader.Load(cfg)
@@ -70,28 +96,50 @@ var _ = Describe("GoLoader", func() {
 				Expect(err.Error()).To(ContainSubstring("failed to open Go plugin"))
 			})
 
-			It("should return error when path is a directory", func() {
+			It("should return error when extension is not .so", func() {
+				pluginPath := filepath.Join(pluginDir, "plugin.dll")
+
 				cfg := &config.PluginInstanceConfig{
-					Name: "test",
-					Type: config.PluginTypeGo,
-					Path: "/tmp",
+					Name:        "test",
+					Type:        config.PluginTypeGo,
+					Path:        pluginPath,
+					ProjectRoot: projectRoot,
 				}
 
 				_, err := loader.Load(cfg)
 
 				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("invalid Go plugin extension"))
 			})
 
-			It("should return error when path is not a valid .so file", func() {
+			It("should return error when path is not in allowed directory", func() {
 				cfg := &config.PluginInstanceConfig{
-					Name: "test",
-					Type: config.PluginTypeGo,
-					Path: "/etc/hosts",
+					Name:        "test",
+					Type:        config.PluginTypeGo,
+					Path:        "/tmp/plugin.so",
+					ProjectRoot: projectRoot,
 				}
 
 				_, err := loader.Load(cfg)
 
 				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("plugin path validation failed"))
+			})
+
+			It("should return error when path contains traversal patterns", func() {
+				pluginPath := filepath.Join(pluginDir, "..", "..", "etc", "plugin.so")
+
+				cfg := &config.PluginInstanceConfig{
+					Name:        "test",
+					Type:        config.PluginTypeGo,
+					Path:        pluginPath,
+					ProjectRoot: projectRoot,
+				}
+
+				_, err := loader.Load(cfg)
+
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("plugin path validation failed"))
 			})
 		})
 

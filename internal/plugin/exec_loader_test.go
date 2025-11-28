@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"os"
+	"path/filepath"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -65,13 +67,32 @@ func (m *mockCommandRunner) RunWithTimeout(
 
 var _ = Describe("ExecLoader", func() {
 	var (
-		loader *plugin.ExecLoader
-		runner *mockCommandRunner
+		loader      *plugin.ExecLoader
+		runner      *mockCommandRunner
+		tmpDir      string
+		pluginDir   string
+		projectRoot string
 	)
 
 	BeforeEach(func() {
 		runner = &mockCommandRunner{}
 		loader = plugin.NewExecLoader(runner)
+
+		// Create temp project structure
+		var err error
+		tmpDir, err = os.MkdirTemp("", "exec-loader-test-*")
+		Expect(err).NotTo(HaveOccurred())
+		projectRoot = tmpDir
+
+		pluginDir = filepath.Join(tmpDir, ".klaudiush", "plugins")
+		err = os.MkdirAll(pluginDir, 0o755)
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	AfterEach(func() {
+		if tmpDir != "" {
+			_ = os.RemoveAll(tmpDir)
+		}
 	})
 
 	Describe("NewExecLoader", func() {
@@ -93,6 +114,52 @@ var _ = Describe("ExecLoader", func() {
 
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("path is required"))
+			})
+
+			It("should return error when path contains shell metacharacters", func() {
+				pluginPath := filepath.Join(pluginDir, "plugin;rm -rf")
+
+				cfg := &config.PluginInstanceConfig{
+					Name:        "test",
+					Type:        config.PluginTypeExec,
+					Path:        pluginPath,
+					ProjectRoot: projectRoot,
+				}
+
+				_, err := loader.Load(cfg)
+
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("invalid characters in plugin path"))
+			})
+
+			It("should return error when path is not in allowed directory", func() {
+				cfg := &config.PluginInstanceConfig{
+					Name:        "test",
+					Type:        config.PluginTypeExec,
+					Path:        "/tmp/test-plugin",
+					ProjectRoot: projectRoot,
+				}
+
+				_, err := loader.Load(cfg)
+
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("plugin path validation failed"))
+			})
+
+			It("should return error when path contains traversal patterns", func() {
+				pluginPath := filepath.Join(pluginDir, "..", "..", "etc", "passwd")
+
+				cfg := &config.PluginInstanceConfig{
+					Name:        "test",
+					Type:        config.PluginTypeExec,
+					Path:        pluginPath,
+					ProjectRoot: projectRoot,
+				}
+
+				_, err := loader.Load(cfg)
+
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("plugin path validation failed"))
 			})
 		})
 
@@ -129,10 +196,13 @@ var _ = Describe("ExecLoader", func() {
 			})
 
 			It("should successfully load plugin", func() {
+				pluginPath := filepath.Join(pluginDir, "test-plugin")
+
 				cfg := &config.PluginInstanceConfig{
-					Name: "test",
-					Type: config.PluginTypeExec,
-					Path: "/usr/local/bin/test-plugin",
+					Name:        "test",
+					Type:        config.PluginTypeExec,
+					Path:        pluginPath,
+					ProjectRoot: projectRoot,
 				}
 
 				p, err := loader.Load(cfg)
@@ -143,11 +213,14 @@ var _ = Describe("ExecLoader", func() {
 			})
 
 			It("should handle plugin with args", func() {
+				pluginPath := filepath.Join(pluginDir, "test-plugin")
+
 				cfg := &config.PluginInstanceConfig{
-					Name: "test",
-					Type: config.PluginTypeExec,
-					Path: "/usr/local/bin/test-plugin",
-					Args: []string{"--extra", "arg"},
+					Name:        "test",
+					Type:        config.PluginTypeExec,
+					Path:        pluginPath,
+					Args:        []string{"--extra", "arg"},
+					ProjectRoot: projectRoot,
 				}
 
 				p, err := loader.Load(cfg)
@@ -157,11 +230,14 @@ var _ = Describe("ExecLoader", func() {
 			})
 
 			It("should handle custom timeout", func() {
+				pluginPath := filepath.Join(pluginDir, "test-plugin")
+
 				cfg := &config.PluginInstanceConfig{
-					Name:    "test",
-					Type:    config.PluginTypeExec,
-					Path:    "/usr/local/bin/test-plugin",
-					Timeout: config.Duration(30 * time.Second),
+					Name:        "test",
+					Type:        config.PluginTypeExec,
+					Path:        pluginPath,
+					Timeout:     config.Duration(30 * time.Second),
+					ProjectRoot: projectRoot,
 				}
 
 				p, err := loader.Load(cfg)
@@ -188,10 +264,13 @@ var _ = Describe("ExecLoader", func() {
 					return exec.CommandResult{ExitCode: 0}
 				}
 
+				pluginPath := filepath.Join(pluginDir, "test-plugin")
+
 				cfg := &config.PluginInstanceConfig{
-					Name: "test",
-					Type: config.PluginTypeExec,
-					Path: "/usr/local/bin/test-plugin",
+					Name:        "test",
+					Type:        config.PluginTypeExec,
+					Path:        pluginPath,
+					ProjectRoot: projectRoot,
 				}
 
 				_, err := loader.Load(cfg)
@@ -216,10 +295,13 @@ var _ = Describe("ExecLoader", func() {
 					return exec.CommandResult{ExitCode: 0}
 				}
 
+				pluginPath := filepath.Join(pluginDir, "test-plugin")
+
 				cfg := &config.PluginInstanceConfig{
-					Name: "test",
-					Type: config.PluginTypeExec,
-					Path: "/usr/local/bin/test-plugin",
+					Name:        "test",
+					Type:        config.PluginTypeExec,
+					Path:        pluginPath,
+					ProjectRoot: projectRoot,
 				}
 
 				_, err := loader.Load(cfg)
@@ -269,10 +351,13 @@ var _ = Describe("ExecLoader", func() {
 				return exec.CommandResult{ExitCode: 0}
 			}
 
+			pluginPath := filepath.Join(pluginDir, "test-plugin")
+
 			cfg := &config.PluginInstanceConfig{
-				Name: "test",
-				Type: config.PluginTypeExec,
-				Path: "/usr/local/bin/test-plugin",
+				Name:        "test",
+				Type:        config.PluginTypeExec,
+				Path:        pluginPath,
+				ProjectRoot: projectRoot,
 			}
 
 			var err error
@@ -348,10 +433,13 @@ var _ = Describe("ExecLoader", func() {
 					}
 				}
 
+				pluginPath := filepath.Join(pluginDir, "test-plugin")
+
 				cfg := &config.PluginInstanceConfig{
-					Name: "test",
-					Type: config.PluginTypeExec,
-					Path: "/usr/local/bin/test-plugin",
+					Name:        "test",
+					Type:        config.PluginTypeExec,
+					Path:        pluginPath,
+					ProjectRoot: projectRoot,
 					Config: map[string]any{
 						"key1": "value1",
 					},
@@ -402,10 +490,13 @@ var _ = Describe("ExecLoader", func() {
 					}
 				}
 
+				pluginPath := filepath.Join(pluginDir, "test-plugin")
+
 				cfg := &config.PluginInstanceConfig{
-					Name: "test",
-					Type: config.PluginTypeExec,
-					Path: "/usr/local/bin/test-plugin",
+					Name:        "test",
+					Type:        config.PluginTypeExec,
+					Path:        pluginPath,
+					ProjectRoot: projectRoot,
 					Config: map[string]any{
 						"key1": "value1",
 					},
@@ -459,11 +550,14 @@ var _ = Describe("ExecLoader", func() {
 					}
 				}
 
+				pluginPath := filepath.Join(pluginDir, "test-plugin")
+
 				cfg := &config.PluginInstanceConfig{
-					Name:    "test",
-					Type:    config.PluginTypeExec,
-					Path:    "/usr/local/bin/test-plugin",
-					Timeout: config.Duration(100 * time.Millisecond),
+					Name:        "test",
+					Type:        config.PluginTypeExec,
+					Path:        pluginPath,
+					Timeout:     config.Duration(100 * time.Millisecond),
+					ProjectRoot: projectRoot,
 				}
 
 				adapter2, err := loader2.Load(cfg)

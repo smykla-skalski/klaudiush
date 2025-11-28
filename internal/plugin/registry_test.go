@@ -290,6 +290,17 @@ var _ = Describe("PredicateMatcher", func() {
 			Expect(matcher).NotTo(BeNil())
 		})
 
+		It("should return error for invalid file pattern", func() {
+			predicate := &config.PluginPredicate{
+				FilePatterns: []string{"[invalid"},
+			}
+
+			_, err := plugin.NewPredicateMatcher(predicate)
+
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("invalid file pattern"))
+		})
+
 		It("should create matcher with command patterns", func() {
 			predicate := &config.PluginPredicate{
 				CommandPatterns: []string{"^git commit", "^git push"},

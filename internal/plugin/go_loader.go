@@ -30,6 +30,21 @@ func (*GoLoader) Load(cfg *config.PluginInstanceConfig) (Plugin, error) {
 		return nil, errors.New("path is required for Go plugins")
 	}
 
+	// Validate .so extension (defense-in-depth)
+	if extErr := ValidateExtension(cfg.Path, []string{".so"}); extErr != nil {
+		return nil, errors.Wrap(extErr, "invalid Go plugin extension")
+	}
+
+	// Validate path is in allowed directory (defense-in-depth)
+	allowedDirs, allowedErr := GetAllowedDirs(cfg.ProjectRoot)
+	if allowedErr != nil {
+		return nil, errors.Wrap(allowedErr, "failed to determine allowed directories")
+	}
+
+	if pathErr := ValidatePath(cfg.Path, allowedDirs); pathErr != nil {
+		return nil, errors.Wrapf(pathErr, "plugin path validation failed: %s", cfg.Path)
+	}
+
 	// Load the .so file
 	p, err := goplugin.Open(cfg.Path)
 	if err != nil {
@@ -96,12 +111,15 @@ func (a *goPluginAdapter) Validate(
 	func() {
 		defer func() {
 			if r := recover(); r != nil {
+				// Sanitize panic message to remove sensitive data (file paths, stack traces)
+				sanitizedPanic := SanitizePanicMessage(fmt.Sprintf("%v", r))
+
 				resp = &plugin.ValidateResponse{
 					Passed:      false,
 					ShouldBlock: true,
 					Message:     "Plugin panicked during validation",
 					Details: map[string]string{
-						"panic":  fmt.Sprintf("%v", r),
+						"panic":  sanitizedPanic,
 						"plugin": a.impl.Info().Name,
 					},
 				}

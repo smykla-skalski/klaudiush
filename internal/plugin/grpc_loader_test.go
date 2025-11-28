@@ -258,6 +258,177 @@ var _ = Describe("GRPCLoader", func() {
 		})
 	})
 
+	Describe("TLS configuration", func() {
+		Context("with localhost address", func() {
+			It("should use insecure credentials by default (nil TLS config)", func() {
+				cfg := &config.PluginInstanceConfig{
+					Name:    "test-plugin",
+					Type:    config.PluginTypeGRPC,
+					Address: serverAddr, // localhost:XXXXX
+					TLS:     nil,
+				}
+
+				p, err := loader.Load(cfg)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(p).NotTo(BeNil())
+			})
+
+			It("should use insecure credentials with explicit TLS disabled", func() {
+				enabled := false
+				cfg := &config.PluginInstanceConfig{
+					Name:    "test-plugin",
+					Type:    config.PluginTypeGRPC,
+					Address: serverAddr,
+					TLS: &config.TLSConfig{
+						Enabled: &enabled,
+					},
+				}
+
+				p, err := loader.Load(cfg)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(p).NotTo(BeNil())
+			})
+		})
+
+		Context("with remote address", func() {
+			It("should error by default (nil TLS config)", func() {
+				cfg := &config.PluginInstanceConfig{
+					Name:    "test-plugin",
+					Type:    config.PluginTypeGRPC,
+					Address: "remote.example.com:50051",
+					TLS:     nil,
+				}
+
+				p, err := loader.Load(cfg)
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("insecure connection to remote host"))
+				Expect(p).To(BeNil())
+			})
+
+			It("should error with explicit TLS disabled", func() {
+				enabled := false
+				cfg := &config.PluginInstanceConfig{
+					Name:    "test-plugin",
+					Type:    config.PluginTypeGRPC,
+					Address: "remote.example.com:50051",
+					TLS: &config.TLSConfig{
+						Enabled: &enabled,
+					},
+				}
+
+				p, err := loader.Load(cfg)
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("insecure connection to remote host"))
+				Expect(p).To(BeNil())
+			})
+
+			It("should allow insecure with AllowInsecureRemote flag", func() {
+				timeoutLoader := plugin.NewGRPCLoaderWithTimeout(100 * time.Millisecond)
+				defer timeoutLoader.Close()
+
+				enabled := false
+				allowInsecure := true
+				cfg := &config.PluginInstanceConfig{
+					Name:    "test-plugin",
+					Type:    config.PluginTypeGRPC,
+					Address: "remote.example.com:50051",
+					TLS: &config.TLSConfig{
+						Enabled:             &enabled,
+						AllowInsecureRemote: &allowInsecure,
+					},
+				}
+
+				// Should not error on credentials build, but will fail to connect
+				p, err := timeoutLoader.Load(cfg)
+				Expect(err).To(HaveOccurred())
+				// Error should be connection failure, not TLS configuration error
+				Expect(err.Error()).To(ContainSubstring("failed to fetch plugin info"))
+				Expect(p).To(BeNil())
+			})
+		})
+
+		Context("with TLS enabled", func() {
+			It("should error when CA file does not exist", func() {
+				enabled := true
+				cfg := &config.PluginInstanceConfig{
+					Name:    "test-plugin",
+					Type:    config.PluginTypeGRPC,
+					Address: serverAddr,
+					TLS: &config.TLSConfig{
+						Enabled: &enabled,
+						CAFile:  "/nonexistent/ca.pem",
+					},
+				}
+
+				p, err := loader.Load(cfg)
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("failed to load CA certificate"))
+				Expect(p).To(BeNil())
+			})
+
+			It("should error when client cert files do not exist", func() {
+				enabled := true
+				cfg := &config.PluginInstanceConfig{
+					Name:    "test-plugin",
+					Type:    config.PluginTypeGRPC,
+					Address: serverAddr,
+					TLS: &config.TLSConfig{
+						Enabled:  &enabled,
+						CertFile: "/nonexistent/cert.pem",
+						KeyFile:  "/nonexistent/key.pem",
+					},
+				}
+
+				p, err := loader.Load(cfg)
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("failed to load TLS certificate"))
+				Expect(p).To(BeNil())
+			})
+
+			It("should error when only CertFile is provided without KeyFile", func() {
+				enabled := true
+				cfg := &config.PluginInstanceConfig{
+					Name:    "test-plugin",
+					Type:    config.PluginTypeGRPC,
+					Address: serverAddr,
+					TLS: &config.TLSConfig{
+						Enabled:  &enabled,
+						CertFile: "/path/to/cert.pem",
+						// KeyFile missing
+					},
+				}
+
+				p, err := loader.Load(cfg)
+				Expect(err).To(HaveOccurred())
+				Expect(
+					err.Error(),
+				).To(ContainSubstring("both cert_file and key_file must be specified"))
+				Expect(p).To(BeNil())
+			})
+
+			It("should error when only KeyFile is provided without CertFile", func() {
+				enabled := true
+				cfg := &config.PluginInstanceConfig{
+					Name:    "test-plugin",
+					Type:    config.PluginTypeGRPC,
+					Address: serverAddr,
+					TLS: &config.TLSConfig{
+						Enabled: &enabled,
+						KeyFile: "/path/to/key.pem",
+						// CertFile missing
+					},
+				}
+
+				p, err := loader.Load(cfg)
+				Expect(err).To(HaveOccurred())
+				Expect(
+					err.Error(),
+				).To(ContainSubstring("both cert_file and key_file must be specified"))
+				Expect(p).To(BeNil())
+			})
+		})
+	})
+
 	Describe("Close", func() {
 		It("should close all connections", func() {
 			cfg := &config.PluginInstanceConfig{
@@ -271,10 +442,24 @@ var _ = Describe("GRPCLoader", func() {
 
 			err = loader.Close()
 			Expect(err).NotTo(HaveOccurred())
+		})
 
-			// Verify connections are closed by trying to load again
-			_, err = loader.Load(cfg)
+		It("should return ErrLoaderClosed after Close is called", func() {
+			cfg := &config.PluginInstanceConfig{
+				Name:    "test-plugin",
+				Type:    config.PluginTypeGRPC,
+				Address: serverAddr,
+			}
+
+			_, err := loader.Load(cfg)
 			Expect(err).NotTo(HaveOccurred())
+
+			err = loader.Close()
+			Expect(err).NotTo(HaveOccurred())
+
+			// After Close, Load should return ErrLoaderClosed
+			_, err = loader.Load(cfg)
+			Expect(err).To(MatchError(plugin.ErrLoaderClosed))
 		})
 
 		It("should handle closing when no connections exist", func() {
