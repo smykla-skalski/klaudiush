@@ -113,16 +113,22 @@ code
 			},
 			Entry("markdownlint-cli2 with MD047 disabled", true, true, `{
   "config": {
+    "MD013": false,
     "MD047": false
   }
 }`),
 			Entry("markdownlint-cli2 with MD047 enabled", true, false, `{
-  "config": {}
+  "config": {
+    "MD013": false
+  }
 }`),
 			Entry("markdownlint-cli with MD047 disabled", false, true, `{
+  "MD013": false,
   "MD047": false
 }`),
-			Entry("markdownlint-cli with MD047 enabled", false, false, "{}"),
+			Entry("markdownlint-cli with MD047 enabled", false, false, `{
+  "MD013": false
+}`),
 		)
 
 		DescribeTable("GetFragmentConfigPattern",
@@ -874,11 +880,14 @@ Summary: 1 error(s)
 						Return("/tmp/test.md", func() {}, nil)
 
 					// Fragment config for fragment that ends at EOF
+					// MD013 is always disabled for fragments (context lines may be long)
 					mockTempMgr.EXPECT().
 						Create("markdownlint-fragment-*.json", gomock.Any()).
 						DoAndReturn(func(_, content string) (string, func(), error) {
-							// Should be empty config (MD047 not disabled)
-							Expect(content).To(Equal("{}"))
+							// MD013 disabled, MD047 not disabled (ends at EOF)
+							Expect(content).To(Equal(`{
+  "MD013": false
+}`))
 
 							return "/tmp/fragment-config.json", func() {}, nil
 						})

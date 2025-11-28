@@ -669,28 +669,36 @@ func (*RealMarkdownLinter) getConfigPattern(isMarkdownlintCli2 bool) string {
 }
 
 // GenerateFragmentConfigContent creates config content for fragment linting.
+// MD013 (line-length) is always disabled for fragments because context lines
+// around edits may legitimately exceed 80 characters.
 func GenerateFragmentConfigContent(isCli2, disableMD047 bool) string {
 	if isCli2 {
 		if disableMD047 {
 			return `{
   "config": {
+    "MD013": false,
     "MD047": false
   }
 }`
 		}
 
 		return `{
-  "config": {}
+  "config": {
+    "MD013": false
+  }
 }`
 	}
 
 	if disableMD047 {
 		return `{
+  "MD013": false,
   "MD047": false
 }`
 	}
 
-	return "{}"
+	return `{
+  "MD013": false
+}`
 }
 
 // GetFragmentConfigPattern returns the config file pattern for fragments.
