@@ -20,7 +20,7 @@ Klaudiush is a Go-based validation system that runs as a PreToolUse hook in Clau
 - **Advanced Command Parsing**: Handle command chains (&&, ||, ;), pipes, subshells, and redirections
 - **File Write Detection**: Detect and validate file writes via redirections, tee, cp, mv
 - **Protected Path Prevention**: Block writes to /tmp, suggest project-local tmp/
-- **Project-Specific Rules**: Kong and Kuma repository-specific validations
+- **Dynamic Validation Rules**: Configure validation behavior via TOML without code changes
 
 ## Installation
 
@@ -187,6 +187,7 @@ klaudiush/
     ├── git/                    # Git SDK implementation
     ├── github/                 # GitHub API client
     ├── linters/                # Linter abstractions
+    ├── rules/                  # Dynamic validation rules engine
     ├── templates/              # Error messages
     └── validators/             # Git, file, notification validators
 ```
@@ -197,7 +198,7 @@ klaudiush/
 
 - **GitAddValidator**: Blocks staging files in `tmp/` directory, suggests adding to `.git/info/exclude`
 - **CommitValidator**: Requires `-sS` flags, validates conventional commit format (≤50 char title, ≤72 char body), blocks `feat(ci)`/`fix(test)`, no PR refs or "Claude" mentions, checks forbidden patterns (default: blocks `tmp/` and `tmp` word)
-- **PushValidator**: Validates remote existence with project-specific rules (Kong: requires `upstream`, kumahq/kuma: warns on `upstream`)
+- **PushValidator**: Validates remote existence with configurable rules
 - **BranchValidator**: Enforces `type/description` format (lowercase, no spaces). Valid types: feat, fix, docs, style, refactor, test, chore, ci, build, perf
 - **PRValidator**: Validates PR title (semantic format, blocks `feat(ci)`/`fix(test)`), body (template sections, changelog rules, no formal language), Markdown formatting, suggests CI labels, checks forbidden patterns (default: blocks `tmp/` and `tmp` word)
 
@@ -430,12 +431,75 @@ See the [examples/config/README.md](examples/config/README.md) for complete docu
 
 See [`examples/config/full.toml`](examples/config/full.toml) for the complete list of options.
 
+## Dynamic Validation Rules
+
+Configure validators dynamically without modifying code. The rule engine allows you to:
+
+- Block operations based on patterns (repository, branch, file, command)
+- Warn about potentially dangerous operations
+- Allow operations that would otherwise be blocked
+- Apply different validation logic per validator type
+
+### Quick Example
+
+```toml
+# .klaudiush/config.toml
+[rules]
+enabled = true
+
+# Block direct pushes to main branch
+[[rules.rules]]
+name = "block-main-push"
+priority = 100
+
+[rules.rules.match]
+validator_type = "git.push"
+branch_pattern = "main"
+
+[rules.rules.action]
+type = "block"
+message = "Direct push to main is not allowed. Use a pull request."
+```
+
+### Rule Features
+
+| Feature           | Description                                                      |
+|:------------------|:-----------------------------------------------------------------|
+| Pattern Matching  | Auto-detect glob (`feat/*`) or regex (`^release/v[0-9]+$`)       |
+| Priority System   | Higher priority rules evaluate first                             |
+| Config Precedence | Project config overrides global config                           |
+| Validator Scoping | Apply rules to specific (`git.push`) or all (`git.*`) validators |
+| Advanced Patterns | Negation (`!*.tmp`), case-insensitive, multi-patterns            |
+
+### Debug Rules
+
+Inspect loaded rules with the debug command:
+
+```bash
+# Show all rules
+klaudiush debug rules
+
+# Filter by validator
+klaudiush debug rules --validator git.push
+```
+
+### Examples
+
+Example configurations are available in [`examples/rules/`](examples/rules/):
+
+- **[organization.toml](examples/rules/organization.toml)** - Remote restrictions, branch protection
+- **[secrets-allow-list.toml](examples/rules/secrets-allow-list.toml)** - Allow list for test fixtures
+- **[advanced-patterns.toml](examples/rules/advanced-patterns.toml)** - Complex pattern matching
+
+See the [Rules Guide](docs/RULES_GUIDE.md) for comprehensive documentation.
+
 ## Performance
 
 - **Cold start**: <100ms target
 - **Parser**: <100µs for typical commands
 - **Validators**: <50ms each (I/O dependent)
 - **Total**: <500ms for full validation chain
+- **Rule evaluation**: <1ms per rule (155ns-10.7µs achieved)
 
 ## Contributing
 
