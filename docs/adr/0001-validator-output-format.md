@@ -122,8 +122,21 @@ Multiple validator failures:
 ```text
 Failed: shellscript
 
-  Line 1 ✖ SC2148: Add a shebang (#!/bin/bash) at the start
-  Line 30 ⚠ SC2034: PROVIDER_ENV_SETUP_CMD is unused - remove it
+  Line 1 ✖ SC2148: Add a shebang (#!/bin/bash) at the start of the script
+  Line 30 ⚠ SC2034: PROVIDER_ENV_SETUP_CMD is unused - export it or remove it
+
+  Reference: https://klaudiu.sh/FILE001
+```
+
+**With suggestion:**
+
+```text
+Failed: shellscript
+
+  Line 1 ✖ SC2148: Add a shebang (#!/bin/bash) at the start of the script
+
+  Fix for line 1:
+  #!/bin/bash
 
   Reference: https://klaudiu.sh/FILE001
 ```
@@ -134,10 +147,10 @@ Failed: shellscript
 Failed: shellscript, markdown
 
   shellscript
-  Line 1 ✖ SC2148: Add a shebang at the start of the script
+  Line 1 ✖ SC2148: Add a shebang (#!/bin/bash) at the start of the script
 
   markdown
-  Line 21 ✖ MD055: Table columns are misaligned
+  Lines 21-25 ✖ MD055: Align table columns consistently
 
   References:
   - https://klaudiu.sh/FILE001
@@ -183,6 +196,12 @@ Continuation lines are indented by 2 spaces relative to the first line:
 ```
 
 ## Implementation
+
+### Migration Strategy
+
+This is a **big-bang replacement** of the existing `validator.Result` type. The current `validator.Result` struct in `internal/validator/validator.go` will be replaced entirely with the new output-focused types. All validators will be updated in a single PR.
+
+**Rationale:** The tool is not yet in wide use, so backwards compatibility is not a concern. A clean break allows for a simpler, more consistent implementation.
 
 ### Shared Output Package
 
@@ -230,24 +249,41 @@ type Option func(*config)
 
 func WithIndent(s string) Option
 func WithMaxFindings(n int) Option
+
+// ShouldBlock returns true if any finding has Error severity
+func ShouldBlock(results []ValidatorResult) bool
 ```
+
+### Blocking Semantics
+
+The operation-blocking behavior is determined by finding severity:
+
+- **Error** (`Severity == Error`): Blocks the operation, exit code 2
+- **Warning** (`Severity == Warning`): Logs warning, allows operation, exit code 0
+- **Info** (`Severity == Info`): Informational only, exit code 0
+
+A result with **any** `Error`-severity finding blocks the operation. This replaces the previous `ShouldBlock` boolean with severity-based semantics.
 
 **Usage in dispatcher:**
 
 ```go
-output.Format(results)
-output.Format(results, output.WithMaxFindings(10))
+fmt.Println(output.Format(results))
+
+if output.ShouldBlock(results) {
+    os.Exit(2)
+}
 ```
 
 **Usage in validators:**
 
 ```go
-func (v *CommitValidator) Validate(ctx, hookCtx) *validator.Result {
-    return &validator.Result{
+func (v *CommitValidator) Validate(ctx, hookCtx) *output.ValidatorResult {
+    return &output.ValidatorResult{
+        Name: "commit",
         Findings: []output.Finding{
             {Severity: output.Error, Code: "GIT010", Message: "Add -sS flags"},
         },
-        Reference: validator.RefGitMissingFlags,
+        Reference: output.RefGitMissingFlags,
     }
 }
 ```
