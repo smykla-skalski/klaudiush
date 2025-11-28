@@ -424,4 +424,279 @@ var _ = Describe("Matcher", func() {
 			Expect(matcher.Name()).To(Equal("never"))
 		})
 	})
+
+	Describe("Advanced Pattern Matchers", func() {
+		Describe("BuildMatcher with CaseInsensitive", func() {
+			It("should match file patterns case-insensitively", func() {
+				match := &rules.RuleMatch{
+					FilePattern:     "*.Md",
+					CaseInsensitive: true,
+				}
+
+				matcher, err := rules.BuildMatcher(match)
+				Expect(err).NotTo(HaveOccurred())
+
+				ctx := &rules.MatchContext{
+					FileContext: &rules.FileContext{Path: "README.md"},
+				}
+				Expect(matcher.Match(ctx)).To(BeTrue())
+
+				ctx.FileContext.Path = "README.MD"
+				Expect(matcher.Match(ctx)).To(BeTrue())
+
+				ctx.FileContext.Path = "file.txt"
+				Expect(matcher.Match(ctx)).To(BeFalse())
+			})
+
+			It("should match branch patterns case-insensitively", func() {
+				match := &rules.RuleMatch{
+					BranchPattern:   "Feature/*",
+					CaseInsensitive: true,
+				}
+
+				matcher, err := rules.BuildMatcher(match)
+				Expect(err).NotTo(HaveOccurred())
+
+				ctx := &rules.MatchContext{
+					GitContext: &rules.GitContext{Branch: "feature/new-feature"},
+				}
+				Expect(matcher.Match(ctx)).To(BeTrue())
+
+				ctx.GitContext.Branch = "FEATURE/new-feature"
+				Expect(matcher.Match(ctx)).To(BeTrue())
+			})
+		})
+
+		Describe("BuildMatcher with Multi-Patterns", func() {
+			It("should match any of multiple file patterns", func() {
+				match := &rules.RuleMatch{
+					FilePatterns: []string{"*.go", "*.ts", "*.js"},
+					PatternMode:  "any",
+				}
+
+				matcher, err := rules.BuildMatcher(match)
+				Expect(err).NotTo(HaveOccurred())
+
+				ctx := &rules.MatchContext{
+					FileContext: &rules.FileContext{Path: "main.go"},
+				}
+				Expect(matcher.Match(ctx)).To(BeTrue())
+
+				ctx.FileContext.Path = "index.ts"
+				Expect(matcher.Match(ctx)).To(BeTrue())
+
+				ctx.FileContext.Path = "app.js"
+				Expect(matcher.Match(ctx)).To(BeTrue())
+
+				ctx.FileContext.Path = "style.css"
+				Expect(matcher.Match(ctx)).To(BeFalse())
+			})
+
+			It("should match all of multiple branch patterns", func() {
+				match := &rules.RuleMatch{
+					BranchPatterns: []string{"feat*", "*-wip"},
+					PatternMode:    "all",
+				}
+
+				matcher, err := rules.BuildMatcher(match)
+				Expect(err).NotTo(HaveOccurred())
+
+				ctx := &rules.MatchContext{
+					GitContext: &rules.GitContext{Branch: "feature-wip"},
+				}
+				Expect(matcher.Match(ctx)).To(BeTrue())
+
+				// Doesn't match all patterns.
+				ctx.GitContext.Branch = "feature-done"
+				Expect(matcher.Match(ctx)).To(BeFalse())
+
+				ctx.GitContext.Branch = "bugfix-wip"
+				Expect(matcher.Match(ctx)).To(BeFalse())
+			})
+
+			It("should match any of multiple repo patterns", func() {
+				match := &rules.RuleMatch{
+					RepoPatterns: []string{"**/kong/**", "**/kuma/**"},
+					PatternMode:  "any",
+				}
+
+				matcher, err := rules.BuildMatcher(match)
+				Expect(err).NotTo(HaveOccurred())
+
+				ctx := &rules.MatchContext{
+					GitContext: &rules.GitContext{RepoRoot: "/home/user/kong/project"},
+				}
+				Expect(matcher.Match(ctx)).To(BeTrue())
+
+				ctx.GitContext.RepoRoot = "/home/user/kuma/project"
+				Expect(matcher.Match(ctx)).To(BeTrue())
+
+				ctx.GitContext.RepoRoot = "/home/user/other/project"
+				Expect(matcher.Match(ctx)).To(BeFalse())
+			})
+		})
+
+		Describe("BuildMatcher with Negated Patterns", func() {
+			It("should match negated file patterns", func() {
+				match := &rules.RuleMatch{
+					FilePattern: "!*.tmp",
+				}
+
+				matcher, err := rules.BuildMatcher(match)
+				Expect(err).NotTo(HaveOccurred())
+
+				ctx := &rules.MatchContext{
+					FileContext: &rules.FileContext{Path: "src/main.go"},
+				}
+				Expect(matcher.Match(ctx)).To(BeTrue())
+
+				ctx.FileContext.Path = "cache.tmp"
+				Expect(matcher.Match(ctx)).To(BeFalse())
+			})
+
+			It("should combine negated patterns with multi-patterns", func() {
+				match := &rules.RuleMatch{
+					FilePatterns: []string{"*.go", "!*_test.go"},
+					PatternMode:  "all",
+				}
+
+				matcher, err := rules.BuildMatcher(match)
+				Expect(err).NotTo(HaveOccurred())
+
+				ctx := &rules.MatchContext{
+					FileContext: &rules.FileContext{Path: "main.go"},
+				}
+				Expect(matcher.Match(ctx)).To(BeTrue())
+
+				// Test files should not match.
+				ctx.FileContext.Path = "main_test.go"
+				Expect(matcher.Match(ctx)).To(BeFalse())
+			})
+		})
+
+		Describe("BuildMatcher with Combined Options", func() {
+			It("should combine case-insensitive and multi-patterns", func() {
+				match := &rules.RuleMatch{
+					FilePatterns:    []string{"*.Go", "*.TS"},
+					CaseInsensitive: true,
+					PatternMode:     "any",
+				}
+
+				matcher, err := rules.BuildMatcher(match)
+				Expect(err).NotTo(HaveOccurred())
+
+				ctx := &rules.MatchContext{
+					FileContext: &rules.FileContext{Path: "main.GO"},
+				}
+				Expect(matcher.Match(ctx)).To(BeTrue())
+
+				ctx.FileContext.Path = "index.ts"
+				Expect(matcher.Match(ctx)).To(BeTrue())
+			})
+
+			It("should use legacy builder when no advanced features", func() {
+				match := &rules.RuleMatch{
+					FilePattern: "*.go",
+				}
+
+				matcher, err := rules.BuildMatcher(match)
+				Expect(err).NotTo(HaveOccurred())
+
+				ctx := &rules.MatchContext{
+					FileContext: &rules.FileContext{Path: "main.go"},
+				}
+				Expect(matcher.Match(ctx)).To(BeTrue())
+
+				ctx.FileContext.Path = "main.GO"
+				Expect(matcher.Match(ctx)).To(BeFalse()) // Case-sensitive by default.
+			})
+		})
+
+		Describe("Content Pattern Matchers", func() {
+			It("should match content with case-insensitive patterns", func() {
+				match := &rules.RuleMatch{
+					ContentPattern:  "TODO",
+					CaseInsensitive: true,
+				}
+
+				matcher, err := rules.BuildMatcher(match)
+				Expect(err).NotTo(HaveOccurred())
+
+				ctx := &rules.MatchContext{
+					FileContext: &rules.FileContext{Content: "// todo: fix this"},
+				}
+				Expect(matcher.Match(ctx)).To(BeTrue())
+
+				ctx.FileContext.Content = "// TODO: fix this"
+				Expect(matcher.Match(ctx)).To(BeTrue())
+			})
+
+			It("should match multiple content patterns", func() {
+				match := &rules.RuleMatch{
+					ContentPatterns: []string{"TODO", "FIXME"},
+					PatternMode:     "any",
+				}
+
+				matcher, err := rules.BuildMatcher(match)
+				Expect(err).NotTo(HaveOccurred())
+
+				ctx := &rules.MatchContext{
+					FileContext: &rules.FileContext{Content: "// TODO: fix this"},
+				}
+				Expect(matcher.Match(ctx)).To(BeTrue())
+
+				ctx.FileContext.Content = "// FIXME: broken"
+				Expect(matcher.Match(ctx)).To(BeTrue())
+
+				ctx.FileContext.Content = "// Normal comment"
+				Expect(matcher.Match(ctx)).To(BeFalse())
+			})
+		})
+
+		Describe("Command Pattern Matchers", func() {
+			It("should match commands with case-insensitive patterns", func() {
+				match := &rules.RuleMatch{
+					CommandPattern:  "*GIT*",
+					CaseInsensitive: true,
+				}
+
+				matcher, err := rules.BuildMatcher(match)
+				Expect(err).NotTo(HaveOccurred())
+
+				ctx := &rules.MatchContext{
+					Command: "git push origin main",
+				}
+				Expect(matcher.Match(ctx)).To(BeTrue())
+
+				ctx.Command = "GIT push origin main"
+				Expect(matcher.Match(ctx)).To(BeTrue())
+			})
+
+			It("should match multiple command patterns", func() {
+				match := &rules.RuleMatch{
+					CommandPatterns: []string{"git push*", "git commit*"},
+					PatternMode:     "any",
+				}
+
+				matcher, err := rules.BuildMatcher(match)
+				Expect(err).NotTo(HaveOccurred())
+
+				ctx := &rules.MatchContext{
+					Command: "git push origin main",
+				}
+				Expect(matcher.Match(ctx)).To(BeTrue())
+
+				ctx.Command = "git commit -m 'test'"
+				Expect(matcher.Match(ctx)).To(BeTrue())
+
+				ctx.Command = "git status"
+				Expect(matcher.Match(ctx)).To(BeFalse())
+			})
+		})
+
+		Describe("parsePatternMode", func() {
+			// This is tested implicitly through BuildMatcher tests above.
+			// The function correctly handles "any" (default) and "all".
+		})
+	})
 })

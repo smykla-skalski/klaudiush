@@ -89,15 +89,22 @@ func convertRuleConfig(cfg config.RuleConfig) *rules.Rule {
 	// Convert match conditions
 	if cfg.Match != nil {
 		rule.Match = &rules.RuleMatch{
-			ValidatorType:  rules.ValidatorType(cfg.Match.ValidatorType),
-			RepoPattern:    cfg.Match.RepoPattern,
-			Remote:         cfg.Match.Remote,
-			BranchPattern:  cfg.Match.BranchPattern,
-			FilePattern:    cfg.Match.FilePattern,
-			ContentPattern: cfg.Match.ContentPattern,
-			CommandPattern: cfg.Match.CommandPattern,
-			ToolType:       cfg.Match.ToolType,
-			EventType:      cfg.Match.EventType,
+			ValidatorType:   rules.ValidatorType(cfg.Match.ValidatorType),
+			RepoPattern:     cfg.Match.RepoPattern,
+			RepoPatterns:    cfg.Match.RepoPatterns,
+			Remote:          cfg.Match.Remote,
+			BranchPattern:   cfg.Match.BranchPattern,
+			BranchPatterns:  cfg.Match.BranchPatterns,
+			FilePattern:     cfg.Match.FilePattern,
+			FilePatterns:    cfg.Match.FilePatterns,
+			ContentPattern:  cfg.Match.ContentPattern,
+			ContentPatterns: cfg.Match.ContentPatterns,
+			CommandPattern:  cfg.Match.CommandPattern,
+			CommandPatterns: cfg.Match.CommandPatterns,
+			ToolType:        cfg.Match.ToolType,
+			EventType:       cfg.Match.EventType,
+			CaseInsensitive: cfg.Match.IsCaseInsensitive(),
+			PatternMode:     cfg.Match.GetPatternMode(),
 		}
 	}
 

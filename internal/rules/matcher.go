@@ -21,6 +21,37 @@ func NewRepoPatternMatcher(patternStr string) (*RepoPatternMatcher, error) {
 	return &RepoPatternMatcher{pattern: pattern}, nil
 }
 
+// NewRepoPatternMatcherWithOpts creates a matcher with pattern options.
+func NewRepoPatternMatcherWithOpts(
+	patternStr string,
+	opts PatternOptions,
+) (*RepoPatternMatcher, error) {
+	pattern, err := CompilePatternWithOptions(patternStr, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	return &RepoPatternMatcher{pattern: pattern}, nil
+}
+
+// NewRepoMultiPatternMatcher creates a matcher for multiple repository path patterns.
+func NewRepoMultiPatternMatcher(
+	patterns []string,
+	mode MultiPatternMode,
+	opts PatternOptions,
+) (*RepoPatternMatcher, error) {
+	pattern, err := CompileMultiPattern(patterns, mode, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	if pattern == nil {
+		return nil, nil //nolint:nilnil // no patterns is valid
+	}
+
+	return &RepoPatternMatcher{pattern: pattern}, nil
+}
+
 // Match returns true if the repo root matches the pattern.
 func (m *RepoPatternMatcher) Match(ctx *MatchContext) bool {
 	if ctx.GitContext == nil || ctx.GitContext.RepoRoot == "" {
@@ -74,6 +105,37 @@ func NewBranchPatternMatcher(patternStr string) (*BranchPatternMatcher, error) {
 	return &BranchPatternMatcher{pattern: pattern}, nil
 }
 
+// NewBranchPatternMatcherWithOpts creates a matcher with pattern options.
+func NewBranchPatternMatcherWithOpts(
+	patternStr string,
+	opts PatternOptions,
+) (*BranchPatternMatcher, error) {
+	pattern, err := CompilePatternWithOptions(patternStr, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	return &BranchPatternMatcher{pattern: pattern}, nil
+}
+
+// NewBranchMultiPatternMatcher creates a matcher for multiple branch patterns.
+func NewBranchMultiPatternMatcher(
+	patterns []string,
+	mode MultiPatternMode,
+	opts PatternOptions,
+) (*BranchPatternMatcher, error) {
+	pattern, err := CompileMultiPattern(patterns, mode, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	if pattern == nil {
+		return nil, nil //nolint:nilnil // no patterns is valid
+	}
+
+	return &BranchPatternMatcher{pattern: pattern}, nil
+}
+
 // Match returns true if the branch matches the pattern.
 func (m *BranchPatternMatcher) Match(ctx *MatchContext) bool {
 	if ctx.GitContext == nil || ctx.GitContext.Branch == "" {
@@ -98,6 +160,37 @@ func NewFilePatternMatcher(patternStr string) (*FilePatternMatcher, error) {
 	pattern, err := GetCachedPattern(patternStr)
 	if err != nil {
 		return nil, err
+	}
+
+	return &FilePatternMatcher{pattern: pattern}, nil
+}
+
+// NewFilePatternMatcherWithOpts creates a matcher with pattern options.
+func NewFilePatternMatcherWithOpts(
+	patternStr string,
+	opts PatternOptions,
+) (*FilePatternMatcher, error) {
+	pattern, err := CompilePatternWithOptions(patternStr, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	return &FilePatternMatcher{pattern: pattern}, nil
+}
+
+// NewFileMultiPatternMatcher creates a matcher for multiple file path patterns.
+func NewFileMultiPatternMatcher(
+	patterns []string,
+	mode MultiPatternMode,
+	opts PatternOptions,
+) (*FilePatternMatcher, error) {
+	pattern, err := CompileMultiPattern(patterns, mode, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	if pattern == nil {
+		return nil, nil //nolint:nilnil // no patterns is valid
 	}
 
 	return &FilePatternMatcher{pattern: pattern}, nil
@@ -138,6 +231,90 @@ func NewContentPatternMatcher(patternStr string) (*ContentPatternMatcher, error)
 	return &ContentPatternMatcher{pattern: pattern}, nil
 }
 
+// NewContentPatternMatcherWithOpts creates a matcher with pattern options.
+// Content patterns always use regex.
+func NewContentPatternMatcherWithOpts(
+	patternStr string,
+	opts PatternOptions,
+) (*ContentPatternMatcher, error) {
+	// For content, force regex detection by using CompilePatternWithOptions
+	// but handle case-insensitivity here since content is always regex.
+	negated := opts.Negate || IsNegated(patternStr)
+	if IsNegated(patternStr) {
+		patternStr = StripNegation(patternStr)
+	}
+
+	// Add case-insensitive flag if needed.
+	if opts.CaseInsensitive && !strings.HasPrefix(patternStr, "(?i)") {
+		patternStr = "(?i)" + patternStr
+	}
+
+	pattern, err := NewRegexPattern(patternStr)
+	if err != nil {
+		return nil, err
+	}
+
+	// Wrap in NegatedPattern if needed.
+	if negated {
+		return &ContentPatternMatcher{pattern: NewNegatedPattern(pattern)}, nil
+	}
+
+	return &ContentPatternMatcher{pattern: pattern}, nil
+}
+
+// NewContentMultiPatternMatcher creates a matcher for multiple content patterns.
+func NewContentMultiPatternMatcher(
+	patterns []string,
+	mode MultiPatternMode,
+	opts PatternOptions,
+) (*ContentPatternMatcher, error) {
+	if len(patterns) == 0 {
+		return nil, nil //nolint:nilnil // no patterns is valid
+	}
+
+	// Single pattern.
+	if len(patterns) == 1 {
+		return NewContentPatternMatcherWithOpts(patterns[0], opts)
+	}
+
+	// Multiple patterns.
+	compiled := make([]Pattern, 0, len(patterns))
+
+	for _, p := range patterns {
+		negated := opts.Negate || IsNegated(p)
+		patternStr := p
+
+		if IsNegated(p) {
+			patternStr = StripNegation(p)
+		}
+
+		if opts.CaseInsensitive && !strings.HasPrefix(patternStr, "(?i)") {
+			patternStr = "(?i)" + patternStr
+		}
+
+		pattern, err := NewRegexPattern(patternStr)
+		if err != nil {
+			return nil, err
+		}
+
+		if negated {
+			compiled = append(compiled, NewNegatedPattern(pattern))
+		} else {
+			compiled = append(compiled, pattern)
+		}
+	}
+
+	// Build string representation.
+	modeStr := PatternModeAny
+	if mode == MultiPatternAll {
+		modeStr = PatternModeAll
+	}
+
+	repr := modeStr + "(" + strings.Join(patterns, ", ") + ")"
+
+	return &ContentPatternMatcher{pattern: NewMultiPattern(compiled, mode, repr)}, nil
+}
+
 // Match returns true if the file content matches the pattern.
 func (m *ContentPatternMatcher) Match(ctx *MatchContext) bool {
 	if ctx.FileContext == nil || ctx.FileContext.Content == "" {
@@ -167,6 +344,37 @@ func NewCommandPatternMatcher(patternStr string) (*CommandPatternMatcher, error)
 	pattern, err := GetCachedPattern(patternStr)
 	if err != nil {
 		return nil, err
+	}
+
+	return &CommandPatternMatcher{pattern: pattern}, nil
+}
+
+// NewCommandPatternMatcherWithOpts creates a matcher with pattern options.
+func NewCommandPatternMatcherWithOpts(
+	patternStr string,
+	opts PatternOptions,
+) (*CommandPatternMatcher, error) {
+	pattern, err := CompilePatternWithOptions(patternStr, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	return &CommandPatternMatcher{pattern: pattern}, nil
+}
+
+// NewCommandMultiPatternMatcher creates a matcher for multiple command patterns.
+func NewCommandMultiPatternMatcher(
+	patterns []string,
+	mode MultiPatternMode,
+	opts PatternOptions,
+) (*CommandPatternMatcher, error) {
+	pattern, err := CompileMultiPattern(patterns, mode, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	if pattern == nil {
+		return nil, nil //nolint:nilnil // no patterns is valid
 	}
 
 	return &CommandPatternMatcher{pattern: pattern}, nil
@@ -376,6 +584,8 @@ func (m *CompositeMatcher) Name() string {
 type matcherBuilder struct {
 	matchers []Matcher
 	err      error
+	opts     PatternOptions
+	mode     MultiPatternMode
 }
 
 // addSimple adds a matcher that doesn't require compilation.
@@ -397,6 +607,53 @@ func (b *matcherBuilder) addPatternMatcher(
 	}
 
 	m, err := factory(pattern)
+	if err != nil {
+		b.err = err
+		return
+	}
+
+	b.matchers = append(b.matchers, m)
+}
+
+// advancedPatternFactory is a function that creates a matcher with pattern options.
+type advancedPatternFactory func(string, PatternOptions) (Matcher, error)
+
+// multiPatternFactory is a function that creates a multi-pattern matcher.
+type multiPatternFactory func([]string, MultiPatternMode, PatternOptions) (Matcher, error)
+
+// addAdvancedPatternMatcher adds a pattern matcher with options support.
+// Uses multi-patterns if provided, otherwise falls back to single pattern.
+func (b *matcherBuilder) addAdvancedPatternMatcher(
+	pattern string,
+	patterns []string,
+	singleFactory advancedPatternFactory,
+	multiFactory multiPatternFactory,
+) {
+	if b.err != nil {
+		return
+	}
+
+	// Prefer multi-patterns if provided.
+	if len(patterns) > 0 {
+		m, err := multiFactory(patterns, b.mode, b.opts)
+		if err != nil {
+			b.err = err
+			return
+		}
+
+		if m != nil {
+			b.matchers = append(b.matchers, m)
+		}
+
+		return
+	}
+
+	// Fall back to single pattern.
+	if pattern == "" {
+		return
+	}
+
+	m, err := singleFactory(pattern, b.opts)
 	if err != nil {
 		b.err = err
 		return
@@ -440,6 +697,93 @@ func wrapContentMatcher(p string) (Matcher, error) { return NewContentPatternMat
 //nolint:ireturn // interface for polymorphism
 func wrapCommandMatcher(p string) (Matcher, error) { return NewCommandPatternMatcher(p) }
 
+// Advanced pattern matcher factory wrappers.
+//
+//nolint:ireturn // interface for polymorphism
+func wrapRepoMatcherWithOpts(p string, opts PatternOptions) (Matcher, error) {
+	return NewRepoPatternMatcherWithOpts(p, opts)
+}
+
+//
+//nolint:ireturn // interface for polymorphism
+func wrapRepoMultiMatcher(
+	patterns []string,
+	mode MultiPatternMode,
+	opts PatternOptions,
+) (Matcher, error) {
+	return NewRepoMultiPatternMatcher(patterns, mode, opts)
+}
+
+//nolint:ireturn // interface for polymorphism
+func wrapBranchMatcherWithOpts(p string, opts PatternOptions) (Matcher, error) {
+	return NewBranchPatternMatcherWithOpts(p, opts)
+}
+
+//
+//nolint:ireturn // interface for polymorphism
+func wrapBranchMultiMatcher(
+	patterns []string,
+	mode MultiPatternMode,
+	opts PatternOptions,
+) (Matcher, error) {
+	return NewBranchMultiPatternMatcher(patterns, mode, opts)
+}
+
+//nolint:ireturn // interface for polymorphism
+func wrapFileMatcherWithOpts(p string, opts PatternOptions) (Matcher, error) {
+	return NewFilePatternMatcherWithOpts(p, opts)
+}
+
+//
+//nolint:ireturn // interface for polymorphism
+func wrapFileMultiMatcher(
+	patterns []string,
+	mode MultiPatternMode,
+	opts PatternOptions,
+) (Matcher, error) {
+	return NewFileMultiPatternMatcher(patterns, mode, opts)
+}
+
+//nolint:ireturn // interface for polymorphism
+func wrapContentMatcherWithOpts(p string, opts PatternOptions) (Matcher, error) {
+	return NewContentPatternMatcherWithOpts(p, opts)
+}
+
+//
+//nolint:ireturn // interface for polymorphism
+func wrapContentMultiMatcher(
+	patterns []string,
+	mode MultiPatternMode,
+	opts PatternOptions,
+) (Matcher, error) {
+	return NewContentMultiPatternMatcher(patterns, mode, opts)
+}
+
+//nolint:ireturn // interface for polymorphism
+func wrapCommandMatcherWithOpts(p string, opts PatternOptions) (Matcher, error) {
+	return NewCommandPatternMatcherWithOpts(p, opts)
+}
+
+//
+//nolint:ireturn // interface for polymorphism
+func wrapCommandMultiMatcher(
+	patterns []string,
+	mode MultiPatternMode,
+	opts PatternOptions,
+) (Matcher, error) {
+	return NewCommandMultiPatternMatcher(patterns, mode, opts)
+}
+
+// parsePatternMode converts a string pattern mode to MultiPatternMode.
+func parsePatternMode(mode string) MultiPatternMode {
+	switch strings.ToLower(mode) {
+	case PatternModeAll:
+		return MultiPatternAll
+	default:
+		return MultiPatternAny
+	}
+}
+
 // BuildMatcher creates a composite matcher from RuleMatch conditions.
 // Returns nil if no conditions are specified.
 //
@@ -449,6 +793,27 @@ func BuildMatcher(match *RuleMatch) (Matcher, error) {
 		return nil, nil
 	}
 
+	// Check if advanced pattern features are used.
+	useAdvanced := match.CaseInsensitive ||
+		len(match.RepoPatterns) > 0 ||
+		len(match.BranchPatterns) > 0 ||
+		len(match.FilePatterns) > 0 ||
+		len(match.ContentPatterns) > 0 ||
+		len(match.CommandPatterns) > 0
+
+	// Use legacy builder for simple cases (backward compatibility).
+	if !useAdvanced {
+		return buildMatcherLegacy(match)
+	}
+
+	// Use advanced builder.
+	return buildMatcherAdvanced(match)
+}
+
+// buildMatcherLegacy builds a matcher using the legacy (simple) approach.
+//
+//nolint:ireturn // interface for polymorphism
+func buildMatcherLegacy(match *RuleMatch) (Matcher, error) {
 	b := &matcherBuilder{}
 
 	// Add simple matchers.
@@ -474,6 +839,49 @@ func BuildMatcher(match *RuleMatch) (Matcher, error) {
 	b.addPatternMatcher(match.FilePattern, wrapFileMatcher)
 	b.addPatternMatcher(match.ContentPattern, wrapContentMatcher)
 	b.addPatternMatcher(match.CommandPattern, wrapCommandMatcher)
+
+	return b.result()
+}
+
+// buildMatcherAdvanced builds a matcher using advanced pattern features.
+//
+//nolint:ireturn // interface for polymorphism
+func buildMatcherAdvanced(match *RuleMatch) (Matcher, error) {
+	opts := PatternOptions{
+		CaseInsensitive: match.CaseInsensitive,
+	}
+	mode := parsePatternMode(match.PatternMode)
+
+	b := &matcherBuilder{opts: opts, mode: mode}
+
+	// Add simple matchers.
+	if match.ValidatorType != "" {
+		b.addSimple(NewValidatorTypeMatcher(match.ValidatorType))
+	}
+
+	if match.Remote != "" {
+		b.addSimple(NewRemoteMatcher(match.Remote))
+	}
+
+	if match.ToolType != "" {
+		b.addSimple(NewToolTypeMatcher(match.ToolType))
+	}
+
+	if match.EventType != "" {
+		b.addSimple(NewEventTypeMatcher(match.EventType))
+	}
+
+	// Add pattern matchers with advanced options.
+	b.addAdvancedPatternMatcher(match.RepoPattern, match.RepoPatterns,
+		wrapRepoMatcherWithOpts, wrapRepoMultiMatcher)
+	b.addAdvancedPatternMatcher(match.BranchPattern, match.BranchPatterns,
+		wrapBranchMatcherWithOpts, wrapBranchMultiMatcher)
+	b.addAdvancedPatternMatcher(match.FilePattern, match.FilePatterns,
+		wrapFileMatcherWithOpts, wrapFileMultiMatcher)
+	b.addAdvancedPatternMatcher(match.ContentPattern, match.ContentPatterns,
+		wrapContentMatcherWithOpts, wrapContentMultiMatcher)
+	b.addAdvancedPatternMatcher(match.CommandPattern, match.CommandPatterns,
+		wrapCommandMatcherWithOpts, wrapCommandMultiMatcher)
 
 	return b.result()
 }

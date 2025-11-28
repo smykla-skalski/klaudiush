@@ -198,6 +198,164 @@ type = "warn"
 message = "Debug statement detected. Remove before committing."
 
 # -------------------------------------------------------------------
+# NEGATION PATTERNS (! prefix)
+# -------------------------------------------------------------------
+
+# Match all files except .tmp files
+[[rules.rules]]
+name = "ignore-tmp-files"
+description = "Skip validation for temporary files"
+enabled = true
+priority = 500
+
+[rules.rules.match]
+validator_type = "file.*"
+file_pattern = "!*.tmp"
+
+[rules.rules.action]
+type = "allow"
+message = "Temporary files are allowed"
+
+# Match all branches except main and develop
+[[rules.rules]]
+name = "allow-feature-branches"
+description = "Allow push to non-protected branches"
+enabled = true
+priority = 400
+
+[rules.rules.match]
+validator_type = "git.push"
+branch_pattern = "!{main,develop}"
+
+[rules.rules.action]
+type = "allow"
+
+# -------------------------------------------------------------------
+# CASE-INSENSITIVE PATTERNS
+# -------------------------------------------------------------------
+
+# Match markdown files regardless of extension case
+[[rules.rules]]
+name = "validate-markdown-case-insensitive"
+description = "Validate markdown files with any case extension"
+enabled = true
+priority = 100
+
+[rules.rules.match]
+validator_type = "file.markdown"
+file_pattern = "*.Md"
+case_insensitive = true  # Matches .md, .MD, .Md
+
+[rules.rules.action]
+type = "warn"
+message = "Markdown file detected - ensure proper formatting"
+
+# Match config files regardless of case
+[[rules.rules]]
+name = "warn-config-changes"
+description = "Warn about config changes (case-insensitive)"
+enabled = true
+priority = 100
+
+[rules.rules.match]
+validator_type = "file.*"
+file_pattern = "*config*"
+case_insensitive = true  # Matches Config, CONFIG, config
+
+[rules.rules.action]
+type = "warn"
+message = "Configuration file modified - verify changes"
+
+# -------------------------------------------------------------------
+# MULTIPLE PATTERNS (any/all)
+# -------------------------------------------------------------------
+
+# Match any of multiple file types (OR logic)
+[[rules.rules]]
+name = "lint-source-files"
+description = "Warn about source file changes"
+enabled = true
+priority = 100
+
+[rules.rules.match]
+validator_type = "file.*"
+file_patterns = ["*.go", "*.ts", "*.js", "*.py"]
+pattern_mode = "any"  # Match ANY of these patterns (default)
+
+[rules.rules.action]
+type = "warn"
+message = "Source file modified - ensure tests pass"
+
+# Match all conditions (AND logic)
+[[rules.rules]]
+name = "strict-feature-branches"
+description = "Enforce naming on feature branches"
+enabled = true
+priority = 200
+
+[rules.rules.match]
+validator_type = "git.push"
+branch_patterns = ["feat/*", "!*-wip"]  # Must start with feat/ AND not end with -wip
+pattern_mode = "all"
+
+[rules.rules.action]
+type = "allow"
+message = "Feature branch (non-WIP) push allowed"
+
+# Match multiple repos (OR logic)
+[[rules.rules]]
+name = "warn-org-repos"
+description = "Warn about pushes to org repos"
+enabled = true
+priority = 100
+
+[rules.rules.match]
+validator_type = "git.push"
+repo_patterns = ["**/kong/**", "**/kuma/**", "**/kumahq/**"]
+pattern_mode = "any"
+
+[rules.rules.action]
+type = "warn"
+message = "Pushing to organization repository - ensure CI passes"
+
+# -------------------------------------------------------------------
+# COMBINED ADVANCED FEATURES
+# -------------------------------------------------------------------
+
+# Case-insensitive multi-pattern matching
+[[rules.rules]]
+name = "allow-doc-files"
+description = "Allow documentation files with any case"
+enabled = true
+priority = 600
+
+[rules.rules.match]
+validator_type = "file.*"
+file_patterns = ["*.Md", "*.Rst", "*.Txt"]
+case_insensitive = true
+pattern_mode = "any"
+
+[rules.rules.action]
+type = "allow"
+message = "Documentation file - validation skipped"
+
+# Negated multi-patterns
+[[rules.rules]]
+name = "source-except-generated"
+description = "Warn about source files (excluding generated)"
+enabled = true
+priority = 150
+
+[rules.rules.match]
+validator_type = "file.*"
+file_patterns = ["*.go", "!*_mock.go", "!*_gen.go", "!*.pb.go"]
+pattern_mode = "all"
+
+[rules.rules.action]
+type = "warn"
+message = "Non-generated source file modified"
+
+# -------------------------------------------------------------------
 # PRIORITY-BASED EXCEPTIONS
 # -------------------------------------------------------------------
 

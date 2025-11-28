@@ -167,4 +167,241 @@ var _ = Describe("Pattern", func() {
 			Expect(cache.Size()).To(Equal(0))
 		})
 	})
+
+	Describe("NegatedPattern", func() {
+		It("should invert glob pattern matches", func() {
+			pattern, err := rules.CompilePattern("!*.tmp")
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(pattern.Match("file.txt")).To(BeTrue())
+			Expect(pattern.Match("file.tmp")).To(BeFalse())
+			Expect(pattern.String()).To(Equal("!*.tmp"))
+		})
+
+		It("should invert regex pattern matches", func() {
+			pattern, err := rules.CompilePattern("!^test.*")
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(pattern.Match("production")).To(BeTrue())
+			Expect(pattern.Match("testing")).To(BeFalse())
+		})
+
+		It("should handle negated path patterns", func() {
+			pattern, err := rules.CompilePattern("!*/vendor/*")
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(pattern.Match("src/main.go")).To(BeTrue())
+			Expect(pattern.Match("project/vendor/lib.go")).To(BeFalse())
+		})
+	})
+
+	Describe("IsNegated and StripNegation", func() {
+		It("should detect negated patterns", func() {
+			Expect(rules.IsNegated("!pattern")).To(BeTrue())
+			Expect(rules.IsNegated("pattern")).To(BeFalse())
+			Expect(rules.IsNegated("")).To(BeFalse())
+		})
+
+		It("should strip negation prefix", func() {
+			Expect(rules.StripNegation("!pattern")).To(Equal("pattern"))
+			Expect(rules.StripNegation("pattern")).To(Equal("pattern"))
+			Expect(rules.StripNegation("!!double")).To(Equal("!double"))
+		})
+	})
+
+	Describe("CaseInsensitivePattern", func() {
+		It("should match case-insensitively with glob", func() {
+			pattern, err := rules.NewCaseInsensitiveGlobPattern("*.Md")
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(pattern.Match("README.md")).To(BeTrue())
+			Expect(pattern.Match("README.MD")).To(BeTrue())
+			Expect(pattern.Match("readme.Md")).To(BeTrue())
+			Expect(pattern.Match("file.txt")).To(BeFalse())
+		})
+
+		It("should match case-insensitively with paths", func() {
+			pattern, err := rules.NewCaseInsensitiveGlobPattern("**/Docs/**")
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(pattern.Match("project/docs/readme.md")).To(BeTrue())
+			Expect(pattern.Match("project/DOCS/README.md")).To(BeTrue())
+			Expect(pattern.Match("project/DoCs/file.txt")).To(BeTrue())
+			Expect(pattern.Match("project/src/file.go")).To(BeFalse())
+		})
+	})
+
+	Describe("CompilePatternWithOptions", func() {
+		It("should compile case-insensitive glob patterns", func() {
+			opts := rules.PatternOptions{CaseInsensitive: true}
+			pattern, err := rules.CompilePatternWithOptions("*.Go", opts)
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(pattern.Match("main.go")).To(BeTrue())
+			Expect(pattern.Match("main.GO")).To(BeTrue())
+			Expect(pattern.Match("main.Go")).To(BeTrue())
+		})
+
+		It("should compile case-insensitive regex patterns", func() {
+			opts := rules.PatternOptions{CaseInsensitive: true}
+			pattern, err := rules.CompilePatternWithOptions("^hello", opts)
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(pattern.Match("hello world")).To(BeTrue())
+			Expect(pattern.Match("Hello World")).To(BeTrue())
+			Expect(pattern.Match("HELLO WORLD")).To(BeTrue())
+			Expect(pattern.Match("world hello")).To(BeFalse())
+		})
+
+		It("should compile negated patterns via options", func() {
+			opts := rules.PatternOptions{Negate: true}
+			pattern, err := rules.CompilePatternWithOptions("*.tmp", opts)
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(pattern.Match("file.txt")).To(BeTrue())
+			Expect(pattern.Match("file.tmp")).To(BeFalse())
+		})
+
+		It("should combine negation and case-insensitivity", func() {
+			opts := rules.PatternOptions{CaseInsensitive: true, Negate: true}
+			pattern, err := rules.CompilePatternWithOptions("*.Tmp", opts)
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(pattern.Match("file.txt")).To(BeTrue())
+			Expect(pattern.Match("file.tmp")).To(BeFalse())
+			Expect(pattern.Match("file.TMP")).To(BeFalse())
+		})
+
+		It("should not duplicate (?i) flag for regex", func() {
+			opts := rules.PatternOptions{CaseInsensitive: true}
+			pattern, err := rules.CompilePatternWithOptions("(?i)^test", opts)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Should still work correctly without adding duplicate flag.
+			Expect(pattern.Match("test")).To(BeTrue())
+			Expect(pattern.Match("TEST")).To(BeTrue())
+		})
+	})
+
+	Describe("MultiPattern", func() {
+		It("should match any pattern (OR logic)", func() {
+			patterns := []string{"*.go", "*.ts"}
+			pattern, err := rules.CompileMultiPattern(
+				patterns,
+				rules.MultiPatternAny,
+				rules.PatternOptions{},
+			)
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(pattern.Match("main.go")).To(BeTrue())
+			Expect(pattern.Match("index.ts")).To(BeTrue())
+			Expect(pattern.Match("style.css")).To(BeFalse())
+		})
+
+		It("should match all patterns (AND logic)", func() {
+			// File must contain both "test" AND end with ".go".
+			patterns := []string{"*test*", "*.go"}
+			pattern, err := rules.CompileMultiPattern(
+				patterns,
+				rules.MultiPatternAll,
+				rules.PatternOptions{},
+			)
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(pattern.Match("main_test.go")).To(BeTrue())
+			Expect(pattern.Match("test_utils.go")).To(BeTrue())
+			Expect(pattern.Match("main.go")).To(BeFalse())      // No "test".
+			Expect(pattern.Match("test.js")).To(BeFalse())      // Not .go.
+			Expect(pattern.Match("main_test.js")).To(BeFalse()) // Not .go.
+		})
+
+		It("should return single pattern when only one provided", func() {
+			patterns := []string{"*.go"}
+			pattern, err := rules.CompileMultiPattern(
+				patterns,
+				rules.MultiPatternAny,
+				rules.PatternOptions{},
+			)
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(pattern.Match("main.go")).To(BeTrue())
+			Expect(pattern.Match("main.js")).To(BeFalse())
+		})
+
+		It("should return nil for empty patterns", func() {
+			pattern, err := rules.CompileMultiPattern(
+				[]string{},
+				rules.MultiPatternAny,
+				rules.PatternOptions{},
+			)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(pattern).To(BeNil())
+		})
+
+		It("should apply case-insensitivity to all patterns", func() {
+			patterns := []string{"*.Go", "*.Ts"}
+			pattern, err := rules.CompileMultiPattern(
+				patterns,
+				rules.MultiPatternAny,
+				rules.PatternOptions{CaseInsensitive: true},
+			)
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(pattern.Match("main.go")).To(BeTrue())
+			Expect(pattern.Match("main.GO")).To(BeTrue())
+			Expect(pattern.Match("index.ts")).To(BeTrue())
+			Expect(pattern.Match("index.TS")).To(BeTrue())
+		})
+
+		It("should support negated patterns in multi-pattern", func() {
+			// Match anything except .tmp files.
+			patterns := []string{"*", "!*.tmp"}
+			pattern, err := rules.CompileMultiPattern(
+				patterns,
+				rules.MultiPatternAll,
+				rules.PatternOptions{},
+			)
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(pattern.Match("main.go")).To(BeTrue())
+			Expect(pattern.Match("lib.go")).To(BeTrue())
+			Expect(pattern.Match("cache.tmp")).To(BeFalse())
+		})
+
+		It("should have correct string representation", func() {
+			patterns := []string{"*.go", "*.ts"}
+			pattern, err := rules.CompileMultiPattern(
+				patterns,
+				rules.MultiPatternAny,
+				rules.PatternOptions{},
+			)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(pattern.String()).To(Equal("any(*.go, *.ts)"))
+
+			patternAll, err := rules.CompileMultiPattern(
+				patterns,
+				rules.MultiPatternAll,
+				rules.PatternOptions{},
+			)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(patternAll.String()).To(Equal("all(*.go, *.ts)"))
+		})
+
+		It("should propagate compilation errors", func() {
+			patterns := []string{"*.go", "[invalid"}
+			_, err := rules.CompileMultiPattern(
+				patterns,
+				rules.MultiPatternAny,
+				rules.PatternOptions{},
+			)
+			Expect(err).To(HaveOccurred())
+		})
+	})
+
+	Describe("Pattern Mode Constants", func() {
+		It("should have correct string values", func() {
+			Expect(rules.PatternModeAny).To(Equal("any"))
+			Expect(rules.PatternModeAll).To(Equal("all"))
+		})
+	})
 })

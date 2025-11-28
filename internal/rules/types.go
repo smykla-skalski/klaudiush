@@ -79,26 +79,47 @@ type RuleMatch struct {
 	// RepoPattern matches against the repository root path.
 	RepoPattern string
 
+	// RepoPatterns allows multiple repository patterns.
+	RepoPatterns []string
+
 	// Remote matches against git remote name (exact match).
 	Remote string
 
 	// BranchPattern matches against branch name.
 	BranchPattern string
 
+	// BranchPatterns allows multiple branch patterns.
+	BranchPatterns []string
+
 	// FilePattern matches against file path.
 	FilePattern string
+
+	// FilePatterns allows multiple file patterns.
+	FilePatterns []string
 
 	// ContentPattern matches against file content (regex).
 	ContentPattern string
 
+	// ContentPatterns allows multiple content patterns.
+	ContentPatterns []string
+
 	// CommandPattern matches against bash command.
 	CommandPattern string
+
+	// CommandPatterns allows multiple command patterns.
+	CommandPatterns []string
 
 	// ToolType matches against the hook tool type.
 	ToolType string
 
 	// EventType matches against the hook event type.
 	EventType string
+
+	// CaseInsensitive enables case-insensitive pattern matching.
+	CaseInsensitive bool
+
+	// PatternMode specifies how multiple patterns are combined ("any" or "all").
+	PatternMode string
 }
 
 // RuleAction specifies what happens when a rule matches.
