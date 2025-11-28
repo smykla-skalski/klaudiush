@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/smykla-labs/klaudiush/internal/rules"
 	"github.com/smykla-labs/klaudiush/internal/templates"
 	"github.com/smykla-labs/klaudiush/internal/validator"
 	"github.com/smykla-labs/klaudiush/pkg/config"
@@ -18,14 +19,20 @@ import (
 // BranchValidator validates git branch names.
 type BranchValidator struct {
 	validator.BaseValidator
-	config *config.BranchValidatorConfig
+	config      *config.BranchValidatorConfig
+	ruleAdapter *rules.RuleValidatorAdapter
 }
 
 // NewBranchValidator creates a new BranchValidator.
-func NewBranchValidator(cfg *config.BranchValidatorConfig, log logger.Logger) *BranchValidator {
+func NewBranchValidator(
+	cfg *config.BranchValidatorConfig,
+	log logger.Logger,
+	ruleAdapter *rules.RuleValidatorAdapter,
+) *BranchValidator {
 	return &BranchValidator{
 		BaseValidator: *validator.NewBaseValidator("validate-branch-name", log),
 		config:        cfg,
+		ruleAdapter:   ruleAdapter,
 	}
 }
 
@@ -91,9 +98,16 @@ func (v *BranchValidator) isAllowUppercase() bool {
 }
 
 // Validate validates git branch names.
-func (v *BranchValidator) Validate(_ context.Context, hookCtx *hook.Context) *validator.Result {
+func (v *BranchValidator) Validate(ctx context.Context, hookCtx *hook.Context) *validator.Result {
 	log := v.Logger()
 	log.Debug("validating git branch command")
+
+	// Check rules first if rule adapter is configured
+	if v.ruleAdapter != nil {
+		if result := v.ruleAdapter.CheckRules(ctx, hookCtx); result != nil {
+			return result
+		}
+	}
 
 	bashParser := parser.NewBashParser()
 

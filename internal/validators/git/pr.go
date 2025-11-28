@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/smykla-labs/klaudiush/internal/rules"
 	"github.com/smykla-labs/klaudiush/internal/validator"
 	"github.com/smykla-labs/klaudiush/internal/validators"
 	"github.com/smykla-labs/klaudiush/pkg/config"
@@ -48,14 +49,20 @@ const (
 // PRValidator validates gh pr create commands
 type PRValidator struct {
 	validator.BaseValidator
-	config *config.PRValidatorConfig
+	config      *config.PRValidatorConfig
+	ruleAdapter *rules.RuleValidatorAdapter
 }
 
 // NewPRValidator creates a new PRValidator instance
-func NewPRValidator(cfg *config.PRValidatorConfig, log logger.Logger) *PRValidator {
+func NewPRValidator(
+	cfg *config.PRValidatorConfig,
+	log logger.Logger,
+	ruleAdapter *rules.RuleValidatorAdapter,
+) *PRValidator {
 	return &PRValidator{
 		BaseValidator: *validator.NewBaseValidator("validate-pr", log),
 		config:        cfg,
+		ruleAdapter:   ruleAdapter,
 	}
 }
 
@@ -137,6 +144,13 @@ func (v *PRValidator) getMarkdownDisabledRules() []string {
 func (v *PRValidator) Validate(ctx context.Context, hookCtx *hook.Context) *validator.Result {
 	log := v.Logger()
 	log.Debug("Running PR validation")
+
+	// Check rules first if rule adapter is configured
+	if v.ruleAdapter != nil {
+		if result := v.ruleAdapter.CheckRules(ctx, hookCtx); result != nil {
+			return result
+		}
+	}
 
 	// Parse the command
 	bashParser := parser.NewBashParser()

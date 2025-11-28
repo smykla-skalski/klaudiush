@@ -15,7 +15,7 @@ var _ = Describe("PRValidator", func() {
 	var validator *git.PRValidator
 
 	BeforeEach(func() {
-		validator = git.NewPRValidator(nil, logger.NewNoOpLogger())
+		validator = git.NewPRValidator(nil, logger.NewNoOpLogger(), nil)
 	})
 
 	Describe("Title Validation", func() {
