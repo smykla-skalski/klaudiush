@@ -5,6 +5,27 @@ All notable changes to klaudiush will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0](https://github.com/smykla-labs/klaudiush/compare/v1.1.1...v1.2.0) (2025-11-28)
+
+### Features
+
+* **validator:** add backtick escaping validation ([#46](https://github.com/smykla-labs/klaudiush/issues/46)) ([f2e0968](https://github.com/smykla-labs/klaudiush/commit/f2e0968c38401656de4032d60e133e1d7ad36efc))
+* **validator:** add error refs for validators ([#50](https://github.com/smykla-labs/klaudiush/issues/50)) ([07c8aae](https://github.com/smykla-labs/klaudiush/commit/07c8aae87d8124c83e56147f481514b1f77f2c00))
+* **validator:** validate PR merge commit messages ([#41](https://github.com/smykla-labs/klaudiush/issues/41)) ([d1e0b71](https://github.com/smykla-labs/klaudiush/commit/d1e0b711f6b4cc41a214309f8a67d5ebc04c5c16))
+
+### Bug Fixes
+
+* **linters:** improve markdownlint-cli2 output ([#51](https://github.com/smykla-labs/klaudiush/issues/51)) ([b201e6b](https://github.com/smykla-labs/klaudiush/commit/b201e6b12d0fca99796e9e533cf0e1e8b4d6b5b6))
+* **parser:** fix strict trailer validation errors ([#47](https://github.com/smykla-labs/klaudiush/issues/47)) ([f19e0ec](https://github.com/smykla-labs/klaudiush/commit/f19e0ecff176e5af7f0e1eede4d46252aac2f952))
+* **validator:** prevent markdown validator from treating # in code blocks as headers ([#35](https://github.com/smykla-labs/klaudiush/issues/35)) ([68cb540](https://github.com/smykla-labs/klaudiush/commit/68cb540f290d276e28de757e0b630cc32ec32728))
+* **validator:** trim HEREDOC trailing newlines ([#38](https://github.com/smykla-labs/klaudiush/issues/38)) ([7e67def](https://github.com/smykla-labs/klaudiush/commit/7e67defc12b91f8298a7a8eb7421e5cc97da2ca2))
+* **validator:** use rune count for commit titles ([#45](https://github.com/smykla-labs/klaudiush/issues/45)) ([b9d7339](https://github.com/smykla-labs/klaudiush/commit/b9d7339962e7c8b5d793aba3d516e00529691d8f))
+
+### Code Refactoring
+
+* **errors:** migrate to cockroachdb/errors ([#52](https://github.com/smykla-labs/klaudiush/issues/52)) ([ac30eaf](https://github.com/smykla-labs/klaudiush/commit/ac30eaf17e8156f7bab45537b85d190458d66702))
+* **validator:** unified error reference ([#34](https://github.com/smykla-labs/klaudiush/issues/34)) ([e21a483](https://github.com/smykla-labs/klaudiush/commit/e21a483670ac104b82277f524fea8eb7698b2be8))
+
 ## [1.1.1](https://github.com/smykla-labs/klaudiush/compare/v1.1.0...v1.1.1) (2025-11-27)
 
 ### Bug Fixes
