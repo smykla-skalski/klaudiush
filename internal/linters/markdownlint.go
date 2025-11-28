@@ -220,9 +220,11 @@ func (l *RealMarkdownLinter) findMarkdownlintTool() string {
 }
 
 // buildConfigArgs creates the config arguments for markdownlint command.
+// disableMD041: disable first-line-heading rule (fragment doesn't start at line 0)
+// disableMD047: disable single-trailing-newline rule (fragment doesn't reach EOF)
 func (l *RealMarkdownLinter) buildConfigArgs(
 	markdownlintPath string,
-	needsFragmentConfig, disableMD047 bool,
+	disableMD041, disableMD047 bool,
 ) ([]string, func(), error) {
 	args := []string{}
 	noopCleanup := func() {}
@@ -230,13 +232,16 @@ func (l *RealMarkdownLinter) buildConfigArgs(
 	hasCustomConfig := l.config != nil && l.config.MarkdownlintConfig != ""
 	hasCustomRules := l.config != nil && len(l.config.MarkdownlintRules) > 0
 
+	// Need fragment config if any fragment-specific rule needs disabling
+	needsFragmentConfig := disableMD041 || disableMD047
+
 	switch {
 	case hasCustomConfig:
 		return append(args, "--config", l.config.MarkdownlintConfig), noopCleanup, nil
 	case hasCustomRules:
 		configPath, cleanup, err := l.createTempConfig(
 			markdownlintPath,
-			needsFragmentConfig,
+			disableMD041,
 			disableMD047,
 		)
 		if err != nil {
@@ -257,6 +262,7 @@ func (l *RealMarkdownLinter) buildConfigArgs(
 }
 
 // ProcessMarkdownlintOutput processes the output from markdownlint execution.
+// isFragment indicates whether we're validating a fragment (Edit operation) vs full content (Write).
 func ProcessMarkdownlintOutput(
 	result *execpkg.CommandResult,
 	tempFile string,
@@ -265,6 +271,7 @@ func ProcessMarkdownlintOutput(
 	isCli2 bool,
 	displayPath string,
 	fragmentContent string,
+	isFragment bool,
 ) *LintResult {
 	if result.ExitCode == 0 {
 		return &LintResult{
@@ -276,7 +283,6 @@ func ProcessMarkdownlintOutput(
 	output := result.Stdout + result.Stderr
 
 	// For fragments, use <fragment> path to avoid misleading line numbers
-	isFragment := fragmentStartLine > 0
 	pathToUse := displayPath
 
 	if isFragment {
@@ -340,12 +346,20 @@ func (l *RealMarkdownLinter) runMarkdownlint(
 	}
 	defer cleanup()
 
-	needsFragmentConfig := initialState != nil && initialState.StartLine > 0
-	disableMD047 := needsFragmentConfig && !initialState.EndsAtEOF
+	// Determine if we're validating a fragment (Edit operation) vs full content (Write)
+	// initialState is only set for Edit operations
+	isFragment := initialState != nil
+
+	// MD041 (first-line-heading) should only be disabled if fragment doesn't start at line 0
+	// because if it starts at line 0, the fragment DOES include the first line
+	disableMD041 := isFragment && initialState.StartLine > 0
+
+	// MD047 (single-trailing-newline) should be disabled for any fragment that doesn't reach EOF
+	disableMD047 := isFragment && !initialState.EndsAtEOF
 
 	configArgs, cleanupConfig, err := l.buildConfigArgs(
 		markdownlintPath,
-		needsFragmentConfig,
+		disableMD041,
 		disableMD047,
 	)
 	if err != nil {
@@ -369,7 +383,7 @@ func (l *RealMarkdownLinter) runMarkdownlint(
 		displayPath = originalPath
 	}
 
-	// Extract fragment start line if available (0 if not a fragment)
+	// Extract fragment start line if available (0 if fragment starts at beginning)
 	fragmentStartLine := 0
 	if initialState != nil {
 		fragmentStartLine = initialState.StartLine
@@ -383,6 +397,7 @@ func (l *RealMarkdownLinter) runMarkdownlint(
 		isCli2,
 		displayPath,
 		content,
+		isFragment,
 	)
 }
 

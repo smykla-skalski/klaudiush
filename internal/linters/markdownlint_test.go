@@ -242,6 +242,7 @@ code
 				false,
 				"<file>",
 				"",
+				false, // isFragment
 			)
 			Expect(lintResult.Success).To(BeTrue())
 			Expect(lintResult.RawOut).To(BeEmpty())
@@ -261,6 +262,7 @@ code
 				false,
 				"<file>",
 				"",
+				false, // isFragment
 			)
 			Expect(lintResult.Success).To(BeFalse())
 			Expect(lintResult.RawOut).To(ContainSubstring("<file>:10"))
@@ -281,6 +283,7 @@ code
 				false,
 				"README.md",
 				"",
+				false, // isFragment
 			)
 			Expect(lintResult.Success).To(BeFalse())
 			Expect(lintResult.RawOut).To(ContainSubstring("README.md:10"))
@@ -301,6 +304,7 @@ code
 				false,
 				"<file>",
 				"",
+				false, // isFragment - testing preamble adjustment without fragment enhancement
 			)
 			Expect(lintResult.Success).To(BeFalse())
 			Expect(lintResult.RawOut).To(ContainSubstring("<file>:11"))
@@ -320,6 +324,7 @@ code
 				false,
 				"<file>",
 				"",
+				false, // isFragment - testing line number adjustment only
 			)
 			Expect(lintResult.Success).To(BeFalse())
 			Expect(lintResult.RawOut).To(ContainSubstring("<file>:14"))
@@ -339,6 +344,7 @@ code
 				false,
 				"<file>",
 				"",
+				false, // isFragment - testing preamble error filtering
 			)
 			Expect(lintResult.Success).To(BeFalse())
 			Expect(lintResult.RawOut).NotTo(ContainSubstring("<file>:3"))
@@ -359,6 +365,7 @@ code
 				false,
 				"<file>",
 				"",
+				false, // isFragment
 			)
 			Expect(lintResult.Success).To(BeTrue())
 		})
@@ -377,6 +384,7 @@ code
 				false,
 				"<file>",
 				"",
+				false, // isFragment
 			)
 			Expect(lintResult.Success).To(BeFalse())
 			Expect(lintResult.RawOut).To(ContainSubstring("MD022"))
@@ -401,6 +409,7 @@ Summary: 1 error(s)
 				true,
 				"<file>",
 				"",
+				false, // isFragment
 			)
 			Expect(lintResult.Success).To(BeFalse())
 			Expect(lintResult.RawOut).To(ContainSubstring("<file>:10 MD022"))
@@ -424,6 +433,7 @@ Summary: 1 error(s)
 				false,
 				"<file>",
 				"",
+				false, // isFragment
 			)
 			Expect(lintResult.Success).To(BeFalse())
 			Expect(lintResult.RawOut).To(ContainSubstring("Finding:"))
@@ -443,6 +453,7 @@ Summary: 1 error(s)
 				false,
 				"README.md",
 				"",
+				false, // isFragment
 			)
 			Expect(lintResult.Success).To(BeFalse())
 			Expect(lintResult.RawOut).To(ContainSubstring("README.md:10"))
@@ -464,6 +475,7 @@ Summary: 1 error(s)
 				false,
 				".claude/session.md",
 				"",
+				false, // isFragment
 			)
 			Expect(lintResult.Success).To(BeFalse())
 			Expect(lintResult.RawOut).To(ContainSubstring(".claude/session.md:5"))
@@ -492,6 +504,7 @@ Summary: 1 error(s)
 				false,
 				"progress.md",
 				fragmentContent,
+				true, // isFragment - this is a fragment with content
 			)
 			Expect(lintResult.Success).To(BeFalse())
 			Expect(lintResult.RawOut).To(ContainSubstring("<fragment>"))
@@ -882,6 +895,56 @@ Summary: 1 error(s)
 
 					Expect(result.Success).To(BeTrue())
 				})
+
+				It(
+					"should disable MD047 when StartLine is 0 but fragment doesn't reach EOF",
+					func() {
+						// This is the key fix: when editing near the start of the file,
+						// fragmentStartLine can be 0 (max(0, line-contextLines) where line=2, contextLines=2)
+						// but it's still a fragment that doesn't reach EOF, so MD047 should be disabled
+						useMarkdownlint := true
+						cfg := &config.MarkdownValidatorConfig{
+							UseMarkdownlint: &useMarkdownlint,
+						}
+						linter := linters.NewMarkdownLinterWithDeps(
+							mockRunner,
+							mockToolChecker,
+							mockTempMgr,
+							cfg,
+						)
+
+						mockToolChecker.EXPECT().
+							FindTool("markdownlint-cli2", "markdownlint").
+							Return("/usr/bin/markdownlint")
+
+						// Markdown file creation first
+						mockTempMgr.EXPECT().
+							Create("markdownlint-*.md", gomock.Any()).
+							Return("/tmp/test.md", func() {}, nil)
+
+						// Fragment config should be created with MD047 disabled,
+						// even though StartLine is 0
+						mockTempMgr.EXPECT().
+							Create("markdownlint-fragment-*.json", gomock.Any()).
+							DoAndReturn(func(_, content string) (string, func(), error) {
+								// Should disable MD047 because fragment doesn't reach EOF
+								Expect(content).To(ContainSubstring(`"MD047": false`))
+
+								return "/tmp/fragment-config.json", func() {}, nil
+							})
+
+						mockRunner.EXPECT().
+							Run(gomock.Any(), gomock.Any(), gomock.Any()).
+							Return(execpkg.CommandResult{ExitCode: 0})
+
+						initialState := &validators.MarkdownState{
+							StartLine: 0,     // Fragment starts at beginning of file
+							EndsAtEOF: false, // But doesn't reach EOF (e.g., editing line 3 of a 100-line file)
+						}
+						result := linter.Lint(ctx, "# Test\n", initialState)
+
+						Expect(result.Success).To(BeTrue())
+					})
 			})
 
 			Context("when config creation fails", func() {
