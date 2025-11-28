@@ -732,10 +732,11 @@ func checkTables(content string, result *MarkdownAnalysisResult, widthMode mdtab
 		original := strings.Join(table.RawLines, "\n") + "\n"
 
 		if formatted != original {
-			result.Warnings = append(result.Warnings,
-				fmt.Sprintf("⚠️  Line %d: Markdown table has formatting issues", table.StartLine),
-				"   Table should be properly formatted with consistent column widths",
+			msg := fmt.Sprintf(
+				"Line %d: Markdown table has formatting issues (use consistent column widths)",
+				table.StartLine,
 			)
+			result.Warnings = append(result.Warnings, msg)
 			result.TableSuggested[table.StartLine] = formatted
 		}
 	}
@@ -743,7 +744,7 @@ func checkTables(content string, result *MarkdownAnalysisResult, widthMode mdtab
 	// Add any specific issues from parsing
 	for _, issue := range parseResult.Issues {
 		result.Warnings = append(result.Warnings,
-			fmt.Sprintf("⚠️  Line %d: %s", issue.Line, issue.Message),
+			fmt.Sprintf("Line %d: %s", issue.Line, issue.Message),
 		)
 	}
 }

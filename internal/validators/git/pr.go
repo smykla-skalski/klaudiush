@@ -283,22 +283,22 @@ func (v *PRValidator) validatePR(ctx context.Context, data PRData) *validator.Re
 	// 4. Validate PR body
 	v.validatePRBodyData(data.Body, prType, &allErrors, &allWarnings)
 
-	// 4. Validate markdown formatting
+	// 5. Validate markdown formatting
 	if data.Body != "" {
 		// External markdownlint validation
 		disabledRules := v.getMarkdownDisabledRules()
 		mdResult := ValidatePRMarkdown(ctx, data.Body, disabledRules)
-		allErrors = append(allErrors, mdResult.Errors...)
+		allWarnings = append(allWarnings, mdResult.Errors...)
 
 		// Internal markdown validation (code block indentation, empty lines, etc.)
 		internalMdResult := validators.AnalyzeMarkdown(data.Body, nil)
-		allErrors = append(allErrors, internalMdResult.Warnings...)
+		allWarnings = append(allWarnings, internalMdResult.Warnings...)
 	}
 
-	// 5. Validate base branch labels
+	// 6. Validate base branch labels
 	validateBaseBranchLabels(data, &allErrors)
 
-	// 6. Validate CI label heuristics (if enabled)
+	// 7. Validate CI label heuristics (if enabled)
 	if v.isCheckCILabelsEnabled() && data.Title != "" && data.Body != "" {
 		ciWarnings := v.checkCILabelHeuristics(data, prType)
 		allWarnings = append(allWarnings, ciWarnings...)
@@ -384,19 +384,43 @@ func validateBaseBranchLabels(data PRData, allErrors *[]string) {
 // buildResult builds the final validation result
 func (*PRValidator) buildResult(allErrors, allWarnings []string, title string) *validator.Result {
 	if len(allErrors) > 0 {
-		message := "PR validation failed\n\n" + strings.Join(allErrors, "\n")
-		if len(allWarnings) > 0 {
-			message += "\n\nWarnings:\n" + strings.Join(allWarnings, "\n")
+		// Build message with all errors (used by tests and displayed to user)
+		var message strings.Builder
+
+		message.WriteString("PR validation failed")
+		message.WriteString("\n\n")
+
+		for _, err := range allErrors {
+			message.WriteString(err)
+			message.WriteString("\n")
 		}
 
-		message += "\n\nPR title: " + title
+		if len(allWarnings) > 0 {
+			message.WriteString("\nWarnings:\n")
 
-		return validator.FailWithRef(validator.RefGitPRValidation, message)
+			for _, warn := range allWarnings {
+				message.WriteString(warn)
+				message.WriteString("\n")
+			}
+		}
+
+		message.WriteString("\nPR title: ")
+		message.WriteString(title)
+
+		return validator.FailWithRef(validator.RefGitPRValidation, message.String())
 	}
 
 	if len(allWarnings) > 0 {
-		message := "PR validation passed with warnings:\n\n" + strings.Join(allWarnings, "\n")
-		return validator.WarnWithRef(validator.RefGitPRValidation, message)
+		var message strings.Builder
+
+		message.WriteString("PR validation passed with warnings:\n\n")
+
+		for _, warn := range allWarnings {
+			message.WriteString(warn)
+			message.WriteString("\n")
+		}
+
+		return validator.WarnWithRef(validator.RefGitPRValidation, message.String())
 	}
 
 	return validator.Pass()
