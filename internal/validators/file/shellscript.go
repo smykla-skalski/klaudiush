@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -90,15 +91,9 @@ func (v *ShellScriptValidator) Validate(
 	lintCtx, cancel := context.WithTimeout(ctx, v.getTimeout())
 	defer cancel()
 
-	// Use fragment-specific options to exclude false positives
-	var result *linters.LintResult
-
-	if sc.isFragment {
-		opts := &linters.ShellCheckOptions{ExcludeCodes: fragmentExcludes}
-		result = v.checker.CheckWithOptions(lintCtx, sc.content, opts)
-	} else {
-		result = v.checker.Check(lintCtx, sc.content)
-	}
+	// Build exclude codes from config and fragment-specific excludes
+	opts := v.buildShellCheckOptions(sc.isFragment)
+	result := v.checker.CheckWithOptions(lintCtx, sc.content, opts)
 
 	if result.Success {
 		log.Debug("shellcheck passed")
@@ -301,6 +296,46 @@ func (*ShellScriptValidator) formatShellCheckOutput(output string) string {
 		cleanLines,
 		"\n",
 	) + "\n\nFix these issues before committing."
+}
+
+// buildShellCheckOptions creates ShellCheckOptions with excludes from config and fragment-specific rules.
+func (v *ShellScriptValidator) buildShellCheckOptions(isFragment bool) *linters.ShellCheckOptions {
+	var excludes []int
+
+	// Add config excludes
+	if v.config != nil {
+		excludes = append(excludes, parseExcludeRules(v.config.ExcludeRules)...)
+	}
+
+	// Add fragment-specific excludes for Edit operations
+	if isFragment {
+		excludes = append(excludes, fragmentExcludes...)
+	}
+
+	if len(excludes) == 0 {
+		return nil
+	}
+
+	return &linters.ShellCheckOptions{ExcludeCodes: excludes}
+}
+
+// parseExcludeRules converts string rule codes (e.g., "SC1091") to integers.
+func parseExcludeRules(rules []string) []int {
+	codes := make([]int, 0, len(rules))
+
+	for _, rule := range rules {
+		// Strip "SC" prefix if present
+		numStr := strings.TrimPrefix(rule, "SC")
+
+		code, err := strconv.Atoi(numStr)
+		if err != nil {
+			continue
+		}
+
+		codes = append(codes, code)
+	}
+
+	return codes
 }
 
 // getTimeout returns the configured timeout for shellcheck operations.

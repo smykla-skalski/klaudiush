@@ -12,6 +12,7 @@ import (
 	execpkg "github.com/smykla-labs/klaudiush/internal/exec"
 	"github.com/smykla-labs/klaudiush/internal/linters"
 	"github.com/smykla-labs/klaudiush/internal/validators/file"
+	"github.com/smykla-labs/klaudiush/pkg/config"
 	"github.com/smykla-labs/klaudiush/pkg/hook"
 	"github.com/smykla-labs/klaudiush/pkg/logger"
 )
@@ -263,6 +264,132 @@ process_data "test"
 			ctx.ToolInput.NewString = `local -r data="$1"`
 
 			result := v.Validate(context.Background(), ctx)
+			Expect(result.Passed).To(BeTrue())
+		})
+	})
+
+	Describe("config exclude rules", func() {
+		It("should exclude rules specified in config", func() {
+			// SC2086: Double quote to prevent globbing and word splitting
+			// This script would fail without the exclusion
+			runner := execpkg.NewCommandRunner(10 * time.Second)
+			checker := linters.NewShellChecker(runner)
+			cfg := &config.ShellScriptValidatorConfig{
+				ExcludeRules: []string{"SC2086"},
+			}
+			validator := file.NewShellScriptValidator(logger.NewNoOpLogger(), checker, cfg, nil)
+
+			hookCtx := &hook.Context{
+				EventType: hook.EventTypePreToolUse,
+				ToolName:  hook.ToolTypeWrite,
+				ToolInput: hook.ToolInput{
+					FilePath: "test.sh",
+					Content: `#!/bin/bash
+VAR="hello world"
+echo $VAR
+`,
+				},
+			}
+
+			result := validator.Validate(context.Background(), hookCtx)
+			Expect(result.Passed).To(BeTrue())
+		})
+
+		It("should exclude rules with SC prefix", func() {
+			runner := execpkg.NewCommandRunner(10 * time.Second)
+			checker := linters.NewShellChecker(runner)
+			cfg := &config.ShellScriptValidatorConfig{
+				ExcludeRules: []string{"SC2086", "SC2154"},
+			}
+			validator := file.NewShellScriptValidator(logger.NewNoOpLogger(), checker, cfg, nil)
+
+			hookCtx := &hook.Context{
+				EventType: hook.EventTypePreToolUse,
+				ToolName:  hook.ToolTypeWrite,
+				ToolInput: hook.ToolInput{
+					FilePath: "test.sh",
+					Content: `#!/bin/bash
+echo $UNDEFINED_VAR
+echo $ANOTHER_VAR
+`,
+				},
+			}
+
+			result := validator.Validate(context.Background(), hookCtx)
+			Expect(result.Passed).To(BeTrue())
+		})
+
+		It("should exclude rules without SC prefix", func() {
+			runner := execpkg.NewCommandRunner(10 * time.Second)
+			checker := linters.NewShellChecker(runner)
+			cfg := &config.ShellScriptValidatorConfig{
+				ExcludeRules: []string{"2086"},
+			}
+			validator := file.NewShellScriptValidator(logger.NewNoOpLogger(), checker, cfg, nil)
+
+			hookCtx := &hook.Context{
+				EventType: hook.EventTypePreToolUse,
+				ToolName:  hook.ToolTypeWrite,
+				ToolInput: hook.ToolInput{
+					FilePath: "test.sh",
+					Content: `#!/bin/bash
+VAR="hello world"
+echo $VAR
+`,
+				},
+			}
+
+			result := validator.Validate(context.Background(), hookCtx)
+			Expect(result.Passed).To(BeTrue())
+		})
+
+		It("should still fail for non-excluded rules", func() {
+			runner := execpkg.NewCommandRunner(10 * time.Second)
+			checker := linters.NewShellChecker(runner)
+			cfg := &config.ShellScriptValidatorConfig{
+				ExcludeRules: []string{"SC2086"}, // Only exclude 2086
+			}
+			validator := file.NewShellScriptValidator(logger.NewNoOpLogger(), checker, cfg, nil)
+
+			hookCtx := &hook.Context{
+				EventType: hook.EventTypePreToolUse,
+				ToolName:  hook.ToolTypeWrite,
+				ToolInput: hook.ToolInput{
+					FilePath: "test.sh",
+					Content: `#!/bin/bash
+if [ -f file.txt ]
+  echo "File exists"
+fi
+`,
+				},
+			}
+
+			result := validator.Validate(context.Background(), hookCtx)
+			Expect(result.Passed).To(BeFalse())
+		})
+
+		It("should ignore invalid rule codes", func() {
+			runner := execpkg.NewCommandRunner(10 * time.Second)
+			checker := linters.NewShellChecker(runner)
+			cfg := &config.ShellScriptValidatorConfig{
+				ExcludeRules: []string{"invalid", "SC2086", "notanumber"},
+			}
+			validator := file.NewShellScriptValidator(logger.NewNoOpLogger(), checker, cfg, nil)
+
+			hookCtx := &hook.Context{
+				EventType: hook.EventTypePreToolUse,
+				ToolName:  hook.ToolTypeWrite,
+				ToolInput: hook.ToolInput{
+					FilePath: "test.sh",
+					Content: `#!/bin/bash
+VAR="hello world"
+echo $VAR
+`,
+				},
+			}
+
+			// Should still work with valid rule (SC2086)
+			result := validator.Validate(context.Background(), hookCtx)
 			Expect(result.Passed).To(BeTrue())
 		})
 	})
