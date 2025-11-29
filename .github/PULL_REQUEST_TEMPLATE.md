@@ -16,20 +16,16 @@ Bullet list of key implementation details:
 - Notable patterns or approaches used
 -->
 
-## Test plan
+<!--
+Supporting documentation (optional):
 
-<!-- How was this tested? -->
+Uncomment and use this section when you have relevant links to add.
+Do NOT use placeholder values like "N/A", "none", or "-".
+If there's nothing to link, simply omit this section entirely.
 
 ## Supporting documentation
 
-<!-- Links to relevant issues, discussions, or external documentation -->
-
----
-
-<!--
-Changelog Override (optional):
-
-Default: PR title is used automatically
-Override: > Changelog: type(scope): custom description
-Skip: > Changelog: skip (for trivial/internal changes)
+- [Issue #123](link)
+- [Related discussion](link)
+- [External documentation](link)
 -->
