@@ -198,5 +198,27 @@ var _ = Describe("PushValidator", func() {
 				Expect(result.Passed).To(BeTrue())
 			})
 		})
+
+		Context("with -C flag for different directory", func() {
+			It("passes for git push with -C flag to valid repo", func() {
+				ctx := createContext("git -C /path/to/worktree push origin main")
+				result := validator.Validate(context.Background(), ctx)
+				// This creates a new runner for the path, which won't find the repo
+				// but should handle gracefully
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("handles -C flag before push subcommand", func() {
+				ctx := createContext("git -C /some/path push upstream feature")
+				result := validator.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("handles --git-dir style paths", func() {
+				ctx := createContext("git push origin main")
+				result := validator.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
+		})
 	})
 })

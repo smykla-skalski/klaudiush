@@ -1,6 +1,10 @@
 package git_test
 
 import (
+	"os"
+	"path/filepath"
+
+	"github.com/go-git/go-git/v6"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -226,3 +230,67 @@ func (m *mockRepository) GetRemotes() (map[string]string, error) {
 	m.getRemotesCalled = true
 	return m.remotes, m.remotesErr
 }
+
+var _ = Describe("NewSDKRunnerForPath", func() {
+	var (
+		tempDir string
+		err     error
+	)
+
+	BeforeEach(func() {
+		// Create temporary directory
+		tempDir, err = os.MkdirTemp("", "sdk-runner-path-test-*")
+		Expect(err).NotTo(HaveOccurred())
+
+		// Resolve symlinks (macOS /var -> /private/var)
+		tempDir, err = filepath.EvalSymlinks(tempDir)
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	AfterEach(func() {
+		// Clean up temp directory
+		if tempDir != "" {
+			err := os.RemoveAll(tempDir) //nolint:govet // shadow for cleanup scope
+			Expect(err).NotTo(HaveOccurred())
+		}
+	})
+
+	Context("when path is a valid git repository", func() {
+		BeforeEach(func() {
+			// Initialize git repository
+			_, err = git.PlainInit(tempDir, false)
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("should create a runner for the repository", func() {
+			runner, err := internalgit.NewSDKRunnerForPath(tempDir)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(runner).NotTo(BeNil())
+			Expect(runner.IsInRepo()).To(BeTrue())
+		})
+
+		It("should return correct repo root", func() {
+			runner, err := internalgit.NewSDKRunnerForPath(tempDir)
+			Expect(err).NotTo(HaveOccurred())
+
+			root, err := runner.GetRepoRoot()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(root).To(Equal(tempDir))
+		})
+	})
+
+	Context("when path is not a git repository", func() {
+		It("should return ErrNotRepository", func() {
+			_, err := internalgit.NewSDKRunnerForPath(tempDir)
+			Expect(err).To(MatchError(internalgit.ErrNotRepository))
+		})
+	})
+
+	Context("when path does not exist", func() {
+		It("should return an error", func() {
+			nonExistentPath := filepath.Join(tempDir, "does-not-exist")
+			_, err := internalgit.NewSDKRunnerForPath(nonExistentPath)
+			Expect(err).To(HaveOccurred())
+		})
+	})
+})
