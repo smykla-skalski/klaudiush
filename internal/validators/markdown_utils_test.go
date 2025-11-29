@@ -732,6 +732,61 @@ Content here.
 			})
 		})
 
+		Context("code block context", func() {
+			It("adds opening fence when InCodeBlock is true", func() {
+				state := &validators.MarkdownState{
+					StartLine:   10,
+					InCodeBlock: true,
+				}
+				preamble, lines := validators.GeneratePreamble(state)
+				// Should have basic h1 preamble + opening code fence
+				Expect(preamble).To(ContainSubstring("# Preamble"))
+				Expect(preamble).To(ContainSubstring("```text\n"))
+				Expect(lines).To(Equal(3)) // header + blank + code fence
+			})
+
+			It("adds opening fence after heading hierarchy", func() {
+				state := &validators.MarkdownState{
+					StartLine:        10,
+					LastHeadingLevel: 2,
+					InCodeBlock:      true,
+				}
+				preamble, lines := validators.GeneratePreamble(state)
+				// Should have h1 → h2 hierarchy + code fence
+				Expect(preamble).To(ContainSubstring("# Preamble H1"))
+				Expect(preamble).To(ContainSubstring("## Preamble H2"))
+				Expect(preamble).To(HaveSuffix("```text\n"))
+				Expect(lines).To(Equal(5)) // h1 + blank + h2 + blank + code fence
+			})
+
+			It("adds opening fence after list context", func() {
+				state := &validators.MarkdownState{
+					StartLine:     10,
+					InList:        true,
+					ListItemDepth: 1,
+					InCodeBlock:   true,
+					ListStack: []validators.ListItemInfo{
+						{MarkerIndent: 0, ContentIndent: 2, IsOrdered: false, Marker: "-"},
+					},
+				}
+				preamble, lines := validators.GeneratePreamble(state)
+				// Should have basic preamble + list item + code fence
+				Expect(preamble).To(ContainSubstring("# Preamble"))
+				Expect(preamble).To(ContainSubstring("- Item"))
+				Expect(preamble).To(HaveSuffix("```text\n"))
+				Expect(lines).To(Equal(4)) // header + blank + list item + code fence
+			})
+
+			It("does not add fence when InCodeBlock is false", func() {
+				state := &validators.MarkdownState{
+					StartLine:   10,
+					InCodeBlock: false,
+				}
+				preamble, _ := validators.GeneratePreamble(state)
+				Expect(preamble).NotTo(ContainSubstring("```"))
+			})
+		})
+
 		Context("blank line handling", func() {
 			It("adds blank line when HadBlankLineBeforeFragment with no context", func() {
 				state := &validators.MarkdownState{
