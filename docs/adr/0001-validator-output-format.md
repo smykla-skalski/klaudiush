@@ -4,6 +4,20 @@
 
 Proposed
 
+## About This Document
+
+This ADR follows the **[Markdown Any Decision Records (MADR)][madr]** template format, a lightweight standard for documenting architectural decisions. MADR provides a structured approach to capturing the context, decision, consequences, and alternatives for technical choices.
+
+**Why MADR?**
+- **Lightweight**: Markdown-based, easy to write and review
+- **Structured**: Consistent sections guide complete documentation
+- **Collaborative**: Plain text enables version control and code review
+- **Standard**: Widely adopted in open-source projects
+
+For more details on the MADR template choice, see [ADR 0000: MADR Template Choice][adr-0000].
+
+[adr-0000]: https://github.com/smykla-labs/klaudiush/blob/main/docs/adr/0000-madr-template-choice.md
+
 ## Context
 
 klaudiush validators currently produce inconsistent output formats across different validation types:
@@ -117,18 +131,32 @@ Multiple validator failures:
 
 ### Complete Examples
 
-**Single validator (line-based):**
+These examples demonstrate the format's versatility across different scenarios.
+
+**Example 1: Single validator with errors (line-based)**
+
+```text
+Failed: shellscript
+
+  Line 1 ✖ SC2148: Add a shebang (#!/bin/bash) at the start of the script
+  Line 30 ✖ SC2086: Double quote to prevent word splitting
+
+  Reference: https://klaudiu.sh/FILE001
+```
+
+**Example 2: Mixed severity levels (errors and warnings)**
 
 ```text
 Failed: shellscript
 
   Line 1 ✖ SC2148: Add a shebang (#!/bin/bash) at the start of the script
   Line 30 ⚠ SC2034: PROVIDER_ENV_SETUP_CMD is unused - export it or remove it
+  Line 45 ℹ SC2086: Consider quoting variable for safety
 
   Reference: https://klaudiu.sh/FILE001
 ```
 
-**With suggestion:**
+**Example 3: With copy-pasteable suggestion**
 
 ```text
 Failed: shellscript
@@ -141,23 +169,25 @@ Failed: shellscript
   Reference: https://klaudiu.sh/FILE001
 ```
 
-**Multiple validators:**
+**Example 4: Line ranges (multi-line findings)**
 
 ```text
-Failed: shellscript, markdown
-
-  shellscript
-  Line 1 ✖ SC2148: Add a shebang (#!/bin/bash) at the start of the script
+Failed: markdown, secrets
 
   markdown
   Lines 21-25 ✖ MD055: Align table columns consistently
 
+  secrets
+  Lines 42-47 ⚠ SEC001: Potential API key detected in multi-line string
+    Value matches pattern: [a-zA-Z0-9_-]{32,}
+    Consider using environment variable instead
+
   References:
-  - https://klaudiu.sh/FILE001
   - https://klaudiu.sh/FILE005
+  - https://klaudiu.sh/SEC001
 ```
 
-**Non-line-based (git commit):**
+**Example 5: Non-line-based (command validation)**
 
 ```text
 Failed: commit
@@ -166,6 +196,44 @@ Failed: commit
   ✖ GIT003: Stage files before committing (git add <files>)
 
   Reference: https://klaudiu.sh/GIT010
+```
+
+**Example 6: Info-only output (no errors or warnings)**
+
+```text
+  ℹ Commit message follows conventional commits format
+  ℹ All staged files passed validation
+```
+
+**Example 7: No reference URL (validator without documentation)**
+
+```text
+Failed: custom-plugin
+
+  ✖ CUSTOM001: Configuration file must include required field 'timeout'
+```
+
+**Example 8: Multiple validators with suggestions**
+
+```text
+Failed: shellscript, terraform
+
+  shellscript
+  Line 1 ✖ SC2148: Add a shebang (#!/bin/bash) at the start of the script
+
+  Fix for line 1:
+  #!/bin/bash
+
+  terraform
+  ✖ TF001: Run 'terraform fmt' to format this file
+    Detected formatting issues in resource blocks
+
+  Fix:
+  terraform fmt main.tf
+
+  References:
+  - https://klaudiu.sh/FILE001
+  - https://klaudiu.sh/FILE003
 ```
 
 ### Key Principle
@@ -308,6 +376,76 @@ Update `internal/dispatcher/dispatcher.go` to:
 2. Group by validator
 3. Format using shared output functions
 4. Append references section
+
+## Extensibility and Future-Proofing
+
+The format is designed to accommodate future validator types and finding categories without breaking existing parsers or user expectations.
+
+### Adding New Severity Levels
+
+The severity system uses a fixed set of icons (✖, ⚠, ℹ) that map to error, warning, and info semantics. New severity levels can be added by:
+
+1. **Extending the `Severity` enum** in `internal/output/finding.go`
+2. **Mapping to an appropriate icon** in the format function
+3. **Defining blocking semantics** in `ShouldBlock()`
+
+Example future additions:
+- **Notice** (📌 U+1F4CC): Important information without blocking
+- **Deprecated** (🚫 U+1F6AB): Features scheduled for removal
+
+### Adding New Finding Types
+
+The format supports both line-based and non-line-based findings. New types can be added without format changes:
+
+- **File-level findings**: Use non-line-based format with file context
+- **Range-based findings**: Extend `Finding` struct with column information
+- **Multi-file findings**: Group findings by file under validator section
+
+### Parser Compatibility
+
+The format is designed for stable parsing:
+
+1. **Header line** is always `Failed: {validators}` (comma-separated)
+2. **Indentation** is consistent (2 spaces per level)
+3. **Icon placement** is predictable (after line number or at start)
+4. **Reference section** is always last
+
+Parsers can rely on these invariants even as new finding types are added.
+
+### Configuration Options
+
+Future formatting options can be added via the `Option` pattern:
+
+```go
+// Potential future options
+func WithColorOutput(enabled bool) Option
+func WithCompactMode(enabled bool) Option
+func WithMaxLineLength(n int) Option
+func WithGroupingStrategy(s GroupingStrategy) Option
+```
+
+These options modify presentation without changing the underlying structure.
+
+### Plugin Integration
+
+External validators (Go plugins, exec plugins, gRPC plugins) can return findings in this format by:
+
+1. **Returning `ValidatorResult`** from the plugin interface
+2. **Using severity-based blocking** instead of custom logic
+3. **Following the same icon/reference conventions**
+
+This ensures consistent output regardless of validator implementation.
+
+### Backwards Compatibility Strategy
+
+When format changes are necessary:
+
+1. **Version the format** in output package (`FormatV1`, `FormatV2`)
+2. **Support both versions** during transition period
+3. **Deprecate old version** with clear migration timeline
+4. **Provide format detection** for automated migration
+
+The current design minimizes the need for breaking changes by using flexible internal types.
 
 ## Consequences
 
