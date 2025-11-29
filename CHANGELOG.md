@@ -5,6 +5,27 @@ All notable changes to klaudiush will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0](https://github.com/smykla-labs/klaudiush/compare/v1.4.0...v1.5.0) (2025-11-29)
+
+### Features
+
+* **exceptions:** add bypass workflow ([#92](https://github.com/smykla-labs/klaudiush/issues/92)) ([cb2a575](https://github.com/smykla-labs/klaudiush/commit/cb2a5755eb15ec7b812cc36826fbd07410fbfd88))
+
+### Bug Fixes
+
+* **git:** clear GIT_INDEX_FILE in test isolation ([#90](https://github.com/smykla-labs/klaudiush/issues/90)) ([1bfa84d](https://github.com/smykla-labs/klaudiush/commit/1bfa84d73493da872e6ad43c2e81b0cbab96fdf0))
+* **git:** isolate tests from parent worktree ([#89](https://github.com/smykla-labs/klaudiush/issues/89)) ([5175c4c](https://github.com/smykla-labs/klaudiush/commit/5175c4c5cf7c6e3e7ddbce77e085b67f1d851aeb))
+* **git:** support worktrees in DiscoverRepository ([#83](https://github.com/smykla-labs/klaudiush/issues/83)) ([30e7db1](https://github.com/smykla-labs/klaudiush/commit/30e7db1706b2c8c01d66748ce5847cdbaf4ebe93))
+* **markdown:** disable MD013 for .md/.mdx files ([#81](https://github.com/smykla-labs/klaudiush/issues/81)) ([abd1139](https://github.com/smykla-labs/klaudiush/commit/abd113920111a19f0d342e2dbd190ff473219d74))
+* **shellscript:** apply config exclude_rules ([#87](https://github.com/smykla-labs/klaudiush/issues/87)) ([c14252c](https://github.com/smykla-labs/klaudiush/commit/c14252c30459a594ea0701ebde42d064bf55de16))
+* **shellscript:** handle fragment edits correctly ([#86](https://github.com/smykla-labs/klaudiush/issues/86)) ([f848ec2](https://github.com/smykla-labs/klaudiush/commit/f848ec2a54aaff49bc5a50934295c78a70b63014))
+* **shellscript:** skip parse errors in fragments ([#88](https://github.com/smykla-labs/klaudiush/issues/88)) ([9bcef49](https://github.com/smykla-labs/klaudiush/commit/9bcef493c70bd8ddc148f9bb9597951a418907a6))
+
+### Code Refactoring
+
+* **commit:** use custom conventional parser ([#82](https://github.com/smykla-labs/klaudiush/issues/82)) ([b6c8bb0](https://github.com/smykla-labs/klaudiush/commit/b6c8bb0212e9350a8e542321076649a7843858bf))
+* **deps:** replace go-isatty with x/term ([#85](https://github.com/smykla-labs/klaudiush/issues/85)) ([8ffd19b](https://github.com/smykla-labs/klaudiush/commit/8ffd19b95d849a293ee845eb8e38636b364d3130))
+
 ## [1.4.0](https://github.com/smykla-labs/klaudiush/compare/v1.3.0...v1.4.0) (2025-11-29)
 
 ### Features
