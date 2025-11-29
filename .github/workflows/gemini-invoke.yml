@@ -25,7 +25,7 @@ jobs:
   invoke:
     runs-on: ubuntu-24.04
     permissions:
-      contents: read
+      contents: write
       id-token: write
       issues: write
       pull-requests: write
@@ -37,7 +37,7 @@ jobs:
         with:
           app-id: ${{ vars.SMYKLOT_APP_ID }}
           private-key: ${{ secrets.SMYKLOT_PRIVATE_KEY }}
-          permission-contents: read
+          permission-contents: write
           permission-issues: write
           permission-pull-requests: write
 
