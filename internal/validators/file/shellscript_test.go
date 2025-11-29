@@ -2,6 +2,8 @@ package file_test
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -125,6 +127,141 @@ echo "Hello from Fish"
 		It("should pass for empty content", func() {
 			ctx.ToolInput.FilePath = "test.sh"
 			ctx.ToolInput.Content = ""
+			result := v.Validate(context.Background(), ctx)
+			Expect(result.Passed).To(BeTrue())
+		})
+	})
+
+	Describe("fragment edits", func() {
+		var (
+			tmpDir  string
+			tmpFile string
+		)
+
+		BeforeEach(func() {
+			var err error
+			tmpDir, err = os.MkdirTemp("", "shellscript-test-*")
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		AfterEach(func() {
+			os.RemoveAll(tmpDir)
+		})
+
+		It("should pass when editing middle of bash script (shebang preserved)", func() {
+			// Create a valid shell script file
+			tmpFile = filepath.Join(tmpDir, "script.sh")
+			originalContent := `#!/bin/bash
+
+# Configuration
+MAX_AGE=30
+REGION="us-east-1"
+
+# Main logic
+echo "Starting cleanup..."
+cleanup_resources() {
+    echo "Cleaning up resources older than $MAX_AGE days in $REGION"
+}
+cleanup_resources
+`
+			err := os.WriteFile(tmpFile, []byte(originalContent), 0o644)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Set up Edit operation for a fragment in the middle
+			ctx.ToolName = hook.ToolTypeEdit
+			ctx.ToolInput.FilePath = tmpFile
+			ctx.ToolInput.OldString = `echo "Cleaning up resources older than $MAX_AGE days in $REGION"`
+			ctx.ToolInput.NewString = `echo "Cleaning up resources older than ${MAX_AGE} days in ${REGION}"`
+
+			result := v.Validate(context.Background(), ctx)
+			Expect(result.Passed).To(BeTrue())
+		})
+
+		It("should pass when editing fragment with unused variable (SC2034 excluded)", func() {
+			// Create a script where the edited fragment defines variables used elsewhere
+			tmpFile = filepath.Join(tmpDir, "script.sh")
+			originalContent := `#!/bin/bash
+
+# Configuration section
+CONFIG_DIR="/etc/myapp"
+LOG_LEVEL="debug"
+
+# Later sections use these variables
+main() {
+    setup_logging
+    run_app
+}
+
+main
+`
+			err := os.WriteFile(tmpFile, []byte(originalContent), 0o644)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Edit just the config section - SC2034 would normally fire but should be excluded
+			ctx.ToolName = hook.ToolTypeEdit
+			ctx.ToolInput.FilePath = tmpFile
+			ctx.ToolInput.OldString = `LOG_LEVEL="debug"`
+			ctx.ToolInput.NewString = `LOG_LEVEL="info"`
+
+			result := v.Validate(context.Background(), ctx)
+			Expect(result.Passed).To(BeTrue())
+		})
+
+		It("should still fail for real errors in fragments", func() {
+			// Create a script with valid content
+			tmpFile = filepath.Join(tmpDir, "script.sh")
+			originalContent := `#!/bin/bash
+
+echo "Starting..."
+
+function cleanup() {
+    echo "Cleaning up"
+}
+
+cleanup
+`
+			err := os.WriteFile(tmpFile, []byte(originalContent), 0o644)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Introduce a real syntax error in the fragment
+			ctx.ToolName = hook.ToolTypeEdit
+			ctx.ToolInput.FilePath = tmpFile
+			ctx.ToolInput.OldString = `function cleanup() {
+    echo "Cleaning up"
+}`
+			ctx.ToolInput.NewString = `function cleanup() {
+    if [ -f /tmp/test ]
+        echo "Cleaning up"
+    fi
+}`
+
+			result := v.Validate(context.Background(), ctx)
+			Expect(result.Passed).To(BeFalse())
+			Expect(result.Message).To(ContainSubstring("Shellcheck validation failed"))
+		})
+
+		It("should detect shell type from env shebang", func() {
+			tmpFile = filepath.Join(tmpDir, "script.sh")
+			originalContent := `#!/usr/bin/env bash
+
+readonly MYVAR="value"
+
+process_data() {
+    local data="$1"
+    echo "$data"
+}
+
+process_data "test"
+`
+			err := os.WriteFile(tmpFile, []byte(originalContent), 0o644)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Edit in the middle - should still recognize bash from env shebang
+			ctx.ToolName = hook.ToolTypeEdit
+			ctx.ToolInput.FilePath = tmpFile
+			ctx.ToolInput.OldString = `local data="$1"`
+			ctx.ToolInput.NewString = `local -r data="$1"`
+
 			result := v.Validate(context.Background(), ctx)
 			Expect(result.Passed).To(BeTrue())
 		})

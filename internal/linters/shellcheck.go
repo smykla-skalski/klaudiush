@@ -20,9 +20,16 @@ type shellcheckFinding struct {
 	Message string `json:"message"`
 }
 
+// ShellCheckOptions configures shellcheck behavior
+type ShellCheckOptions struct {
+	// ExcludeCodes are shellcheck codes to exclude (e.g., []int{2034, 2154})
+	ExcludeCodes []int
+}
+
 // ShellChecker validates shell scripts using shellcheck
 type ShellChecker interface {
 	Check(ctx context.Context, content string) *LintResult
+	CheckWithOptions(ctx context.Context, content string, opts *ShellCheckOptions) *LintResult
 }
 
 // RealShellChecker implements ShellChecker using the shellcheck CLI tool
@@ -46,13 +53,31 @@ func NewShellCheckerWithDeps(linter *ContentLinter) *RealShellChecker {
 
 // Check validates shell script content using shellcheck
 func (s *RealShellChecker) Check(ctx context.Context, content string) *LintResult {
+	return s.CheckWithOptions(ctx, content, nil)
+}
+
+// CheckWithOptions validates shell script content with custom options
+func (s *RealShellChecker) CheckWithOptions(
+	ctx context.Context,
+	content string,
+	opts *ShellCheckOptions,
+) *LintResult {
+	args := []string{"--format=json"}
+
+	// Add exclude codes if specified
+	if opts != nil {
+		for _, code := range opts.ExcludeCodes {
+			args = append(args, "--exclude=SC"+strconv.Itoa(code))
+		}
+	}
+
 	return s.linter.LintContent(
 		ctx,
 		"shellcheck",
 		"script-*.sh",
 		content,
 		parseShellcheckOutput,
-		"--format=json",
+		args...,
 	)
 }
 
