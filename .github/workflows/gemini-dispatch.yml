@@ -8,10 +8,6 @@ on:
     types: [created]
   pull_request_review:
     types: [submitted]
-  pull_request:
-    types: [opened]
-  issues:
-    types: [opened, reopened]
   issue_comment:
     types: [created]
 
@@ -41,21 +37,11 @@ jobs:
           env | grep '^DEBUG_'
 
   dispatch:
-    # For PRs: only if not from a fork
-    # For issues: only on open/reopen
-    # For comments: only if user types @gemini and is OWNER/MEMBER/COLLABORATOR
+    # Only if user types @gemini and is OWNER/MEMBER/COLLABORATOR
     if: |
-      (
-        github.event_name == 'pull_request' &&
-        github.event.pull_request.head.repo.fork == false
-      ) || (
-        github.event_name == 'issues' &&
-        contains(fromJSON('["opened", "reopened"]'), github.event.action)
-      ) || (
-        github.event.sender.type == 'User' &&
-        startsWith(github.event.comment.body || github.event.review.body || github.event.issue.body, '@gemini') &&
-        contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association || github.event.review.author_association || github.event.issue.author_association)
-      )
+      github.event.sender.type == 'User' &&
+      startsWith(github.event.comment.body || github.event.review.body, '@gemini') &&
+      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association || github.event.review.author_association)
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -82,19 +68,13 @@ jobs:
         id: extract_command
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
         env:
-          EVENT_TYPE: ${{ github.event_name }}.${{ github.event.action }}
-          REQUEST: ${{ github.event.comment.body || github.event.review.body || github.event.issue.body }}
+          REQUEST: ${{ github.event.comment.body || github.event.review.body }}
         with:
           script: |
-            const eventType = process.env.EVENT_TYPE;
             const request = process.env.REQUEST;
             core.setOutput('request', request);
 
-            if (eventType === 'pull_request.opened') {
-              core.setOutput('command', 'review');
-            } else if (['issues.opened', 'issues.reopened'].includes(eventType)) {
-              core.setOutput('command', 'triage');
-            } else if (request.startsWith("@gemini /review")) {
+            if (request.startsWith("@gemini /review")) {
               core.setOutput('command', 'review');
               const additionalContext = request.replace(/^@gemini \/review/, '').trim();
               core.setOutput('additional_context', additionalContext);
