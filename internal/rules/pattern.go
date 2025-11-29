@@ -5,7 +5,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/gobwas/glob"
+	"github.com/bmatcuk/doublestar/v4"
+	"github.com/cockroachdb/errors"
 )
 
 // PatternType indicates whether a pattern is a glob or regex.
@@ -52,28 +53,23 @@ func DetectPatternType(pattern string) PatternType {
 	return PatternTypeGlob
 }
 
-// GlobPattern wraps a compiled glob pattern.
+// GlobPattern wraps a validated glob pattern.
 type GlobPattern struct {
-	pattern  string
-	compiled glob.Glob
+	pattern string
 }
 
 // NewGlobPattern creates a new GlobPattern from the given pattern string.
 func NewGlobPattern(pattern string) (*GlobPattern, error) {
-	compiled, err := glob.Compile(pattern, '/')
-	if err != nil {
-		return nil, err
+	if !doublestar.ValidatePattern(pattern) {
+		return nil, errors.New("invalid glob pattern: " + pattern)
 	}
 
-	return &GlobPattern{
-		pattern:  pattern,
-		compiled: compiled,
-	}, nil
+	return &GlobPattern{pattern: pattern}, nil
 }
 
 // Match returns true if the string matches the glob pattern.
 func (p *GlobPattern) Match(s string) bool {
-	return p.compiled.Match(s)
+	return doublestar.MatchUnvalidated(p.pattern, s)
 }
 
 // String returns the original pattern string.
@@ -285,15 +281,14 @@ func (p *CaseInsensitivePattern) String() string {
 
 // NewCaseInsensitiveGlobPattern creates a case-insensitive glob pattern.
 func NewCaseInsensitiveGlobPattern(pattern string) (*CaseInsensitivePattern, error) {
-	// Compile the lowercased pattern for case-insensitive matching.
+	// Validate the lowercased pattern for case-insensitive matching.
 	lowerPattern := strings.ToLower(pattern)
 
-	compiled, err := glob.Compile(lowerPattern, '/')
-	if err != nil {
-		return nil, err
+	if !doublestar.ValidatePattern(lowerPattern) {
+		return nil, errors.New("invalid glob pattern: " + pattern)
 	}
 
-	inner := &GlobPattern{pattern: lowerPattern, compiled: compiled}
+	inner := &GlobPattern{pattern: lowerPattern}
 
 	return NewCaseInsensitivePattern(inner, pattern), nil
 }

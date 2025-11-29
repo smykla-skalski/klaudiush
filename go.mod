@@ -4,12 +4,12 @@ go 1.25.4
 
 require (
 	github.com/Masterminds/semver/v3 v3.4.0
+	github.com/bmatcuk/doublestar/v4 v4.9.1
 	github.com/charmbracelet/huh v0.8.0
 	github.com/cockroachdb/errors v1.12.0
 	github.com/dmarkham/enumer v1.6.1
 	github.com/go-git/go-git/v6 v6.0.0-20251125231338-2d242db0996d
 	github.com/go-viper/mapstructure/v2 v2.4.0
-	github.com/gobwas/glob v0.2.3
 	github.com/google/go-github/v79 v79.0.0
 	github.com/knadh/koanf/parsers/toml/v2 v2.2.0
 	github.com/knadh/koanf/providers/confmap v1.0.0
