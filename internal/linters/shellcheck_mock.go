@@ -53,3 +53,17 @@ func (mr *MockShellCheckerMockRecorder) Check(ctx, content any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Check", reflect.TypeOf((*MockShellChecker)(nil).Check), ctx, content)
 }
+
+// CheckWithOptions mocks base method.
+func (m *MockShellChecker) CheckWithOptions(ctx context.Context, content string, opts *ShellCheckOptions) *LintResult {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CheckWithOptions", ctx, content, opts)
+	ret0, _ := ret[0].(*LintResult)
+	return ret0
+}
+
+// CheckWithOptions indicates an expected call of CheckWithOptions.
+func (mr *MockShellCheckerMockRecorder) CheckWithOptions(ctx, content, opts any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckWithOptions", reflect.TypeOf((*MockShellChecker)(nil).CheckWithOptions), ctx, content, opts)
+}
