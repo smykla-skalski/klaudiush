@@ -13,19 +13,43 @@ import (
 	"github.com/smykla-labs/klaudiush/internal/validators/git"
 )
 
+// gitEnvVars lists environment variables that can interfere with git command isolation.
+// These must be cleared during tests to ensure git commands operate on the test
+// repository, not the parent repository (especially important in worktrees).
+var gitEnvVars = []string{
+	"GIT_DIR",
+	"GIT_WORK_TREE",
+	"GIT_COMMON_DIR",
+	"GIT_CONFIG",
+	"GIT_CONFIG_GLOBAL",
+	"GIT_CONFIG_SYSTEM",
+}
+
 var _ = Describe("CLIGitRunnerWithPath", func() {
 	var (
-		tempDir    string
-		repo       *gogit.Repository
-		runner     *git.CLIGitRunnerWithPath
-		err        error
-		testAuthor = &object.Signature{
+		tempDir      string
+		repo         *gogit.Repository
+		runner       *git.CLIGitRunnerWithPath
+		err          error
+		savedGitEnvs map[string]string
+		testAuthor   = &object.Signature{
 			Name:  "Test User",
 			Email: "test@klaudiu.sh",
 		}
 	)
 
 	BeforeEach(func() {
+		// Save and clear git environment variables to ensure test isolation.
+		// This is critical when running from a worktree or when git env vars are set.
+		savedGitEnvs = make(map[string]string)
+
+		for _, envVar := range gitEnvVars {
+			if val, exists := os.LookupEnv(envVar); exists {
+				savedGitEnvs[envVar] = val
+				os.Unsetenv(envVar)
+			}
+		}
+
 		// Create temporary directory
 		tempDir, err = os.MkdirTemp("", "cli-runner-path-test-*")
 		Expect(err).NotTo(HaveOccurred())
@@ -55,6 +79,11 @@ var _ = Describe("CLIGitRunnerWithPath", func() {
 		if tempDir != "" {
 			removeErr := os.RemoveAll(tempDir)
 			Expect(removeErr).NotTo(HaveOccurred())
+		}
+
+		// Restore git environment variables
+		for envVar, val := range savedGitEnvs {
+			os.Setenv(envVar, val)
 		}
 	})
 
@@ -333,11 +362,22 @@ var _ = Describe("CLIGitRunnerWithPath", func() {
 
 var _ = Describe("NewGitRunnerForPath", func() {
 	var (
-		tempDir string
-		err     error
+		tempDir      string
+		err          error
+		savedGitEnvs map[string]string
 	)
 
 	BeforeEach(func() {
+		// Save and clear git environment variables to ensure test isolation.
+		savedGitEnvs = make(map[string]string)
+
+		for _, envVar := range gitEnvVars {
+			if val, exists := os.LookupEnv(envVar); exists {
+				savedGitEnvs[envVar] = val
+				os.Unsetenv(envVar)
+			}
+		}
+
 		// Create temporary directory
 		tempDir, err = os.MkdirTemp("", "git-runner-path-test-*")
 		Expect(err).NotTo(HaveOccurred())
@@ -360,6 +400,11 @@ var _ = Describe("NewGitRunnerForPath", func() {
 
 		// Reset env var
 		os.Unsetenv("KLAUDIUSH_USE_SDK_GIT")
+
+		// Restore git environment variables
+		for envVar, val := range savedGitEnvs {
+			os.Setenv(envVar, val)
+		}
 	})
 
 	It("should return a runner that works for the specified path", func() {
