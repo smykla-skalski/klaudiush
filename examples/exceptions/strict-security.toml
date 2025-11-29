@@ -1,0 +1,71 @@
+# Example: Strict Security Configuration
+#
+# Secure exception configuration for production environments.
+# All exceptions require justification and are heavily rate-limited.
+#
+# Usage:
+#   Copy to ~/.klaudiush/config.toml (global) or .klaudiush/config.toml (project)
+
+[exceptions]
+enabled = true
+token_prefix = "EXC"
+
+# GIT019: Direct push to protected branch
+# Strictly limited for emergency use only
+[exceptions.policies.GIT019]
+enabled = true
+allow_exception = true
+require_reason = true
+min_reason_length = 20
+valid_reasons = [
+    "critical security patch",
+    "production hotfix approved",
+    "emergency rollback",
+    "incident response"
+]
+max_per_hour = 1
+max_per_day = 3
+description = "Emergency push to protected branch (requires approval)"
+
+# SEC001: Secrets detected
+# Only allowed in test directories with specific reasons
+[exceptions.policies.SEC001]
+enabled = true
+allow_exception = true
+require_reason = true
+valid_reasons = [
+    "test fixture",
+    "mock credentials",
+    "example configuration"
+]
+max_per_hour = 5
+max_per_day = 20
+description = "Secrets in test files only"
+
+# SEC003: Private keys detected
+# NEVER allow exceptions - too dangerous
+[exceptions.policies.SEC003]
+enabled = true
+allow_exception = false
+description = "Private keys - no exceptions allowed"
+
+# GIT022: Commit message format
+# Disabled - always require proper commit messages
+[exceptions.policies.GIT022]
+enabled = false
+description = "Commit format violations not allowed"
+
+# Global rate limits - very restrictive
+[exceptions.rate_limit]
+enabled = true
+max_per_hour = 5
+max_per_day = 15
+state_file = "~/.klaudiush/exception_state.json"
+
+# Audit logging - longer retention for compliance
+[exceptions.audit]
+enabled = true
+log_file = "~/.klaudiush/exception_audit.jsonl"
+max_size_mb = 50
+max_age_days = 90
+max_backups = 10

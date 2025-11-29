@@ -1,0 +1,52 @@
+# Example: Basic Exception Configuration
+#
+# Enable exception workflow with default settings.
+# This allows Claude to bypass validation blocks with explicit acknowledgment.
+#
+# Usage:
+#   Copy to ~/.klaudiush/config.toml (global) or .klaudiush/config.toml (project)
+
+[exceptions]
+enabled = true
+
+# GIT019: Direct push to protected branch
+# Allows emergency pushes to main/master with justification
+[exceptions.policies.GIT019]
+enabled = true
+allow_exception = true
+require_reason = true
+min_reason_length = 10
+description = "Exception for direct push to protected branches"
+
+# GIT022: Commit message format violation
+# Allows occasional commits with non-standard messages
+[exceptions.policies.GIT022]
+enabled = true
+allow_exception = true
+require_reason = true
+min_reason_length = 5
+max_per_hour = 3
+max_per_day = 10
+description = "Exception for commit message format"
+
+# SEC001: Secrets detected in file
+# Allows test fixtures and mock data
+[exceptions.policies.SEC001]
+enabled = true
+allow_exception = true
+require_reason = true
+valid_reasons = ["test fixture", "mock data", "example config", "documentation"]
+description = "Exception for secrets in test files"
+
+# Global rate limits
+[exceptions.rate_limit]
+enabled = true
+max_per_hour = 10
+max_per_day = 50
+
+# Audit logging
+[exceptions.audit]
+enabled = true
+max_size_mb = 10
+max_age_days = 30
+max_backups = 3
