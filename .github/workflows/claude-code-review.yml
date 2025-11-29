@@ -1,11 +1,9 @@
 # Claude Code Review workflow
-# Reviews pull requests using Claude - triggered on demand, not automatically
+# Reviews pull requests using Claude - only runs when explicitly requested
 #
 # Triggers:
 #   - Manual: workflow_dispatch from Actions UI
-#   - Comment: "/claude review" command on a PR
-#   - Label: Adding "auto-review" label to a PR
-#   - Ready: PR transitions from draft to ready for review
+#   - Comment: "/claude review" command on a PR (collaborators only)
 
 name: Claude Code Review
 
@@ -21,10 +19,6 @@ on:
   # Comment trigger for "/claude review" command
   issue_comment:
     types: [created]
-
-  # Label trigger when "auto-review" label is added
-  pull_request:
-    types: [labeled, ready_for_review]
 
 permissions: {}
 
@@ -46,12 +40,10 @@ jobs:
         id: check
         env:
           EVENT_NAME: ${{ github.event_name }}
-          EVENT_ACTION: ${{ github.event.action }}
           COMMENT_BODY: ${{ github.event.comment.body }}
           IS_PR_COMMENT: ${{ github.event.issue.pull_request != '' }}
-          LABEL_NAME: ${{ github.event.label.name }}
+          AUTHOR_ASSOCIATION: ${{ github.event.comment.author_association }}
           PR_NUMBER_INPUT: ${{ inputs.pr_number }}
-          PR_NUMBER_EVENT: ${{ github.event.pull_request.number }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
         run: |
           should_run="false"
@@ -64,24 +56,11 @@ jobs:
               echo "Triggered via manual workflow dispatch for PR #$pr_number"
               ;;
             issue_comment)
-              # Check if comment is on a PR and contains "/claude review" command
-              # Pattern matches command at line boundaries to avoid false positives
-              if [[ "$IS_PR_COMMENT" == "true" ]] && grep -qiE '(^|\n)\s*/claude\s+review\s*($|\n)' <<< "$COMMENT_BODY"; then
+              # Check if comment is on a PR, by a collaborator, and contains "/claude review"
+              if [[ "$IS_PR_COMMENT" == "true" ]] && [[ "$AUTHOR_ASSOCIATION" =~ ^(OWNER|MEMBER|COLLABORATOR)$ ]] && grep -qiE '(^|\n)\s*/claude\s+review\s*($|\n)' <<< "$COMMENT_BODY"; then
                 should_run="true"
                 pr_number="$ISSUE_NUMBER"
                 echo "Triggered via /claude review command on PR #$pr_number"
-              fi
-              ;;
-            pull_request)
-              pr_number="$PR_NUMBER_EVENT"
-              # Check if labeled with "auto-review"
-              if [[ "$LABEL_NAME" == "auto-review" ]]; then
-                should_run="true"
-                echo "Triggered via auto-review label on PR #$pr_number"
-              # Check if PR transitioned from draft to ready (event only fires on transition)
-              elif [[ "$EVENT_ACTION" == "ready_for_review" ]]; then
-                should_run="true"
-                echo "Triggered via draft-to-ready transition on PR #$pr_number"
               fi
               ;;
           esac

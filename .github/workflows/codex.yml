@@ -1,0 +1,117 @@
+# Codex assistant workflow
+# Responds to @codex mentions in comments and reviews using the Codex CLI
+
+name: Codex
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  pull_request_review:
+    types: [submitted]
+
+permissions: {}
+
+concurrency:
+  group: codex-${{ github.event.issue.number || github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  codex:
+    if: |
+      (
+        github.event_name == 'issue_comment' &&
+        contains(github.event.comment.body, '@codex') &&
+        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
+      ) || (
+        github.event_name == 'pull_request_review_comment' &&
+        contains(github.event.comment.body, '@codex') &&
+        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
+      ) || (
+        github.event_name == 'pull_request_review' &&
+        contains(github.event.review.body, '@codex') &&
+        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.review.author_association)
+      )
+    runs-on: ubuntu-24.04
+
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      id-token: write
+
+    steps:
+      - name: Mint identity token
+        id: mint_identity_token
+        if: vars.SMYKLOT_APP_ID
+        uses: actions/create-github-app-token@7e473efe3cb98aa54f8d4bac15400b15fad77d94 # v2.2.0
+        with:
+          app-id: ${{ vars.SMYKLOT_APP_ID }}
+          private-key: ${{ secrets.SMYKLOT_PRIVATE_KEY }}
+          permission-contents: read
+          permission-issues: write
+          permission-pull-requests: write
+
+      - name: Checkout repository
+        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+        with:
+          token: ${{ steps.mint_identity_token.outputs.token || secrets.GITHUB_TOKEN || github.token }}
+          fetch-depth: 0
+
+      - name: Capture request text
+        id: capture_request
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          REVIEW_BODY: ${{ github.event.review.body }}
+        run: |
+          request="$COMMENT_BODY$REVIEW_BODY"
+          echo "request<<'REQ'" >> "$GITHUB_OUTPUT"
+          echo "$request" >> "$GITHUB_OUTPUT"
+          echo "REQ" >> "$GITHUB_OUTPUT"
+
+      - name: Run Codex
+        id: run_codex
+        uses: openai/codex-action@086169432f1d2ab2f4057540b1754d550f6a1189 # v1.4
+        env:
+          ACTOR: ${{ github.actor }}
+          EVENT_NAME: ${{ github.event_name }}
+          ISSUE_NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
+          REQUEST: ${{ steps.capture_request.outputs.request }}
+          REPOSITORY: ${{ github.repository }}
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          sandbox: read-only
+          prompt: |
+            You are Codex acting as a GitHub assistant for repository ${{ env.REPOSITORY }}.
+            A user (@${{ env.ACTOR }}) requested help via ${EVENT_NAME}:
+            ---
+            ${{ env.REQUEST }}
+            ---
+
+            Respond concisely in Markdown. Prefer bullet lists when sharing multiple points. Include file paths and line numbers when referencing code. Avoid making irreversible changes; suggest patches instead.
+
+      - name: Post Codex reply
+        if: steps.run_codex.outputs.final-message != ''
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        env:
+          CODEX_FINAL_MESSAGE: ${{ steps.run_codex.outputs['final-message'] }}
+          ISSUE_NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
+        with:
+          github-token: ${{ steps.mint_identity_token.outputs.token || secrets.GITHUB_TOKEN || github.token }}
+          script: |
+            const issueNumber = Number(process.env.ISSUE_NUMBER);
+            const body = process.env.CODEX_FINAL_MESSAGE;
+
+            if (!body || !issueNumber) {
+              core.warning('No final message or issue number; skipping reply.');
+              return;
+            }
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              body,
+            });
