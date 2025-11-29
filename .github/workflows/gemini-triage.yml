@@ -114,7 +114,7 @@ jobs:
       - name: Mint identity token
         id: mint_identity_token
         if: vars.SMYKLOT_APP_ID
-        uses: actions/create-github-app-token@a8d616148505b5069dccd32f177bb87d7f39123b # v2.1.1
+        uses: actions/create-github-app-token@7e473efe3cb98aa54f8d4bac15400b15fad77d94 # v2.2.0
         with:
           app-id: ${{ vars.SMYKLOT_APP_ID }}
           private-key: ${{ secrets.SMYKLOT_PRIVATE_KEY }}
