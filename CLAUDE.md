@@ -23,6 +23,15 @@ Guidance for Claude Code (claude.ai/code) when working with this repository.
 # Debug (inspect configuration)
 ./bin/klaudiush debug rules                       # show all rules
 ./bin/klaudiush debug rules --validator git.push  # filter by validator
+./bin/klaudiush debug exceptions                  # show exception config
+./bin/klaudiush debug exceptions --state          # include rate limit state
+
+# Audit (exception audit log management)
+./bin/klaudiush audit list                        # list all entries
+./bin/klaudiush audit list --error-code GIT019    # filter by code
+./bin/klaudiush audit list --outcome allowed      # filter by outcome
+./bin/klaudiush audit stats                       # show statistics
+./bin/klaudiush audit cleanup                     # remove old entries
 
 # Build & Install
 task build                        # dev build
@@ -107,6 +116,55 @@ Dynamic validation configuration without modifying code. Rules allow users to de
 **Notification** (`internal/validators/notification/`): BellValidator (ASCII 7 to `/dev/tty` for dock bounce)
 
 **Plugins** (`internal/plugin/`): External validators via Go plugins (.so), exec plugins (JSON over stdin/stdout), or gRPC. Predicate-based matching (event/tool/file/command filters), per-plugin config, enable/disable flags. See `docs/PLUGIN_GUIDE.md`, `.claude/session-plugin-system.md`, and `.claude/session-grpc-loader.md`.
+
+### Exception Workflow (`internal/exceptions/`)
+
+Allow bypassing validation blocks with explicit acknowledgment and audit trail.
+
+**Core Components**:
+
+- **Token Parser** (`token.go`): Extracts `EXC:<CODE>:<REASON>` from shell comments or `KLAUDIUSH_ACK` env var
+- **Policy Engine** (`policy.go`, `engine.go`): Per-error-code policies with reason validation
+- **Rate Limiter** (`ratelimit.go`): Global + per-code hourly/daily limits, file-persisted state
+- **Audit Logger** (`audit.go`): JSONL format with rotation and retention
+- **Handler** (`handler.go`): Coordinates all components for exception checking
+
+**Integration Point** (`internal/dispatcher/exception.go`): `ExceptionChecker` interface hooks into dispatcher after validation failure.
+
+**Token Format**: `EXC:<ERROR_CODE>:<URL_ENCODED_REASON>` (e.g., `# EXC:GIT019:Emergency+hotfix`)
+
+**Bypass Flow**:
+
+1. Validator returns blocking error with error code (e.g., `GIT019`)
+2. Dispatcher extracts error code from reference URL
+3. Exception checker looks for token matching the error code
+4. If policy allows + rate limit OK → Block converted to Warning
+5. Audit entry logged, command proceeds
+
+**Usage**: Add exception token to command:
+
+```bash
+# Shell comment (recommended)
+git push origin main  # EXC:GIT019:Emergency+hotfix
+
+# Environment variable
+KLAUDIUSH_ACK="EXC:SEC001:Test+fixture" git commit -sS -m "msg"
+```
+
+**Enabling Exceptions for Error Codes**: Configure in `.klaudiush/config.toml`:
+
+```toml
+[exceptions]
+enabled = true
+
+[exceptions.policies.GIT019]
+enabled = true
+allow_exception = true
+require_reason = true
+min_reason_length = 10
+```
+
+**Documentation**: See `docs/EXCEPTIONS_GUIDE.md` for complete guide. Example configs in `examples/exceptions/`.
 
 ### Linter Abstractions (`internal/linters/`)
 
@@ -236,3 +294,13 @@ Dynamic validation rules guide available in `docs/RULES_GUIDE.md` with example c
 - **advanced-patterns.toml** - Complex pattern matching examples (glob, regex, combined conditions)
 
 Debug rules with: `klaudiush debug rules`
+
+## Exceptions Documentation
+
+Exception workflow guide available in `docs/EXCEPTIONS_GUIDE.md` with example configurations in `examples/exceptions/`:
+
+- **basic.toml** - Standard exception configuration
+- **strict-security.toml** - Production security focused (no exceptions for critical codes)
+- **development.toml** - Relaxed limits for development environments
+
+Debug exceptions with: `klaudiush debug exceptions`

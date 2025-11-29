@@ -60,9 +60,10 @@ func shortName(name string) string {
 
 // Dispatcher orchestrates validation of hook contexts.
 type Dispatcher struct {
-	registry *validator.Registry
-	logger   logger.Logger
-	executor Executor
+	registry         *validator.Registry
+	logger           logger.Logger
+	executor         Executor
+	exceptionChecker ExceptionChecker
 }
 
 // NewDispatcher creates a new Dispatcher with sequential execution.
@@ -85,6 +86,38 @@ func NewDispatcherWithExecutor(
 		logger:   logger,
 		executor: executor,
 	}
+}
+
+// DispatcherOption configures a Dispatcher.
+type DispatcherOption func(*Dispatcher)
+
+// WithExceptionChecker sets the exception checker for the dispatcher.
+func WithExceptionChecker(checker ExceptionChecker) DispatcherOption {
+	return func(d *Dispatcher) {
+		if checker != nil {
+			d.exceptionChecker = checker
+		}
+	}
+}
+
+// NewDispatcherWithOptions creates a new Dispatcher with options.
+func NewDispatcherWithOptions(
+	registry *validator.Registry,
+	log logger.Logger,
+	executor Executor,
+	opts ...DispatcherOption,
+) *Dispatcher {
+	d := &Dispatcher{
+		registry: registry,
+		logger:   log,
+		executor: executor,
+	}
+
+	for _, opt := range opts {
+		opt(d)
+	}
+
+	return d
 }
 
 // Dispatch validates the context using all matching validators.
@@ -127,6 +160,9 @@ func (d *Dispatcher) runValidators(ctx context.Context, hookCtx *hook.Context) [
 	// Use executor to run validators (sequential or parallel)
 	validationErrors := d.executor.Execute(ctx, hookCtx, validators)
 
+	// Apply exception checking to blocking errors
+	validationErrors = d.applyExceptionChecking(hookCtx, validationErrors)
+
 	// Log results
 	for _, verr := range validationErrors {
 		name := shortName(verr.Validator)
@@ -145,6 +181,36 @@ func (d *Dispatcher) runValidators(ctx context.Context, hookCtx *hook.Context) [
 	}
 
 	return validationErrors
+}
+
+// applyExceptionChecking checks for exception tokens in blocking errors.
+func (d *Dispatcher) applyExceptionChecking(
+	hookCtx *hook.Context,
+	errors []*ValidationError,
+) []*ValidationError {
+	if d.exceptionChecker == nil || !d.exceptionChecker.IsEnabled() {
+		return errors
+	}
+
+	result := make([]*ValidationError, 0, len(errors))
+
+	for _, verr := range errors {
+		modifiedErr, bypassed := d.exceptionChecker.CheckException(hookCtx, verr)
+
+		if bypassed {
+			d.logger.Info("validation error bypassed via exception",
+				"validator", verr.Validator,
+				"reference", verr.Reference,
+			)
+		}
+
+		// Include the modified error (nil if completely bypassed, non-blocking if converted to warning)
+		if modifiedErr != nil {
+			result = append(result, modifiedErr)
+		}
+	}
+
+	return result
 }
 
 // validateBashFileWrites parses Bash commands for file writes and validates them

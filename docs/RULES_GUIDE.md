@@ -13,6 +13,7 @@ Configure klaudiush validators dynamically without modifying code.
 - [Configuration Precedence](#configuration-precedence)
 - [Validator Types](#validator-types)
 - [Examples](#examples)
+- [Exceptions Integration](#exceptions-integration)
 - [Troubleshooting](#troubleshooting)
 
 ## Overview
@@ -537,6 +538,62 @@ message = "Organization repos use 'upstream' for main repository. Push to your f
 name = "block-org-origin"
 enabled = false  # Disable this rule
 ```
+
+## Exceptions Integration
+
+Rules work alongside the exception workflow system. When a rule blocks an operation,
+Claude can use an exception token to bypass it (if configured).
+
+### How Rules and Exceptions Interact
+
+1. **Rule evaluates** - If a rule matches, it returns block/warn/allow
+2. **Block triggers exception check** - If blocked, klaudiush checks for exception token
+3. **Exception evaluated** - If token present and valid, block becomes warning
+4. **Audit logged** - Exception usage is logged for compliance
+
+### Allowing Exceptions for Rule Blocks
+
+To allow exceptions for a rule-generated block, ensure the rule includes a `reference`:
+
+```toml
+[[rules.rules]]
+name = "block-main-push"
+priority = 100
+
+[rules.rules.match]
+validator_type = "git.push"
+branch_pattern = "main"
+
+[rules.rules.action]
+type = "block"
+message = "Direct push to main is not allowed"
+reference = "RULE001"  # This enables exception bypass
+```
+
+Then configure an exception policy for that reference:
+
+```toml
+[exceptions.policies.RULE001]
+enabled = true
+allow_exception = true
+require_reason = true
+min_reason_length = 15
+description = "Exception for direct push to main"
+```
+
+### Bypassing with Exception Token
+
+When a rule blocks with a reference, Claude can include an exception token:
+
+```bash
+# In shell comment
+git push origin main  # EXC:RULE001:Emergency+hotfix+approved+by+lead
+
+# Via environment variable
+KLAUDIUSH_ACK="EXC:RULE001:Hotfix+deployment" git push origin main
+```
+
+See [EXCEPTIONS_GUIDE.md](EXCEPTIONS_GUIDE.md) for complete exception configuration.
 
 ## Troubleshooting
 

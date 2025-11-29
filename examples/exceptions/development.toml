@@ -1,0 +1,57 @@
+# Example: Development Environment Configuration
+#
+# Relaxed exception configuration for development and testing.
+# Fewer restrictions, but still maintains audit trail.
+#
+# Usage:
+#   Copy to .klaudiush/config.toml in your development project
+
+[exceptions]
+enabled = true
+
+# GIT019: Direct push to protected branch
+# More lenient for feature branches
+[exceptions.policies.GIT019]
+enabled = true
+allow_exception = true
+require_reason = false
+max_per_hour = 10
+max_per_day = 50
+description = "Development push to protected branches"
+
+# GIT022: Commit message format
+# Allow WIP commits during development
+[exceptions.policies.GIT022]
+enabled = true
+allow_exception = true
+require_reason = false
+description = "WIP commits allowed in development"
+
+# SEC001: Secrets detected
+# More lenient for test data
+[exceptions.policies.SEC001]
+enabled = true
+allow_exception = true
+require_reason = false
+description = "Test fixtures allowed without reason"
+
+# FILE005: Markdown formatting
+# Allow flexibility during drafting
+[exceptions.policies.FILE005]
+enabled = true
+allow_exception = true
+require_reason = false
+description = "Draft documentation allowed"
+
+# Global rate limits - relaxed
+[exceptions.rate_limit]
+enabled = true
+max_per_hour = 20
+max_per_day = 100
+
+# Audit logging - shorter retention
+[exceptions.audit]
+enabled = true
+max_size_mb = 5
+max_age_days = 7
+max_backups = 1
