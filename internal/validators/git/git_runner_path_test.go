@@ -23,6 +23,7 @@ var gitEnvVars = []string{
 	"GIT_CONFIG",
 	"GIT_CONFIG_GLOBAL",
 	"GIT_CONFIG_SYSTEM",
+	"GIT_INDEX_FILE",
 }
 
 var _ = Describe("CLIGitRunnerWithPath", func() {
