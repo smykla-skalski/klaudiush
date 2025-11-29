@@ -14,6 +14,9 @@ type Config struct {
 
 	// Rules contains dynamic validation rule configuration.
 	Rules *RulesConfig `json:"rules,omitempty" koanf:"rules" toml:"rules"`
+
+	// Exceptions contains exception workflow configuration.
+	Exceptions *ExceptionsConfig `json:"exceptions,omitempty" koanf:"exceptions" toml:"exceptions"`
 }
 
 // ValidatorsConfig groups all validator configurations by category.
@@ -153,4 +156,13 @@ func (c *Config) GetRules() *RulesConfig {
 	}
 
 	return c.Rules
+}
+
+// GetExceptions returns the exceptions config, creating it if it doesn't exist.
+func (c *Config) GetExceptions() *ExceptionsConfig {
+	if c.Exceptions == nil {
+		c.Exceptions = &ExceptionsConfig{}
+	}
+
+	return c.Exceptions
 }

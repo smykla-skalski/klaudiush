@@ -53,6 +53,15 @@ const (
 	defaultBodyMaxLineLength = 72
 	defaultBodyLineTolerance = 5
 	defaultContextLines      = 2
+
+	// Exception defaults.
+	defaultExceptionTokenPrefix     = "EXC"
+	defaultExceptionRateLimitPerH   = 10
+	defaultExceptionRateLimitPerD   = 50
+	defaultExceptionAuditMaxSizeMB  = 10
+	defaultExceptionAuditMaxAgeDays = 30
+	defaultExceptionAuditMaxBackups = 3
+	defaultExceptionMinReasonLength = 10
 )
 
 // defaultValidTypes is the list of valid commit types.
@@ -444,6 +453,7 @@ func defaultsToMap() map[string]any {
 		"global":     defaultGlobalMap(),
 		"validators": defaultValidatorsMap(),
 		"rules":      defaultRulesMap(),
+		"exceptions": defaultExceptionsMap(),
 	}
 }
 
@@ -452,6 +462,27 @@ func defaultRulesMap() map[string]any {
 		"enabled":             true,
 		"stop_on_first_match": true,
 		"rules":               []any{},
+	}
+}
+
+func defaultExceptionsMap() map[string]any {
+	return map[string]any{
+		"enabled":      true,
+		"token_prefix": defaultExceptionTokenPrefix,
+		"policies":     map[string]any{},
+		"rate_limit": map[string]any{
+			"enabled":      true,
+			"max_per_hour": defaultExceptionRateLimitPerH,
+			"max_per_day":  defaultExceptionRateLimitPerD,
+			"state_file":   "~/.klaudiush/exception_state.json",
+		},
+		"audit": map[string]any{
+			"enabled":      true,
+			"log_file":     "~/.klaudiush/exception_audit.jsonl",
+			"max_size_mb":  defaultExceptionAuditMaxSizeMB,
+			"max_age_days": defaultExceptionAuditMaxAgeDays,
+			"max_backups":  defaultExceptionAuditMaxBackups,
+		},
 	}
 }
 
