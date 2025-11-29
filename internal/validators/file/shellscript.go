@@ -48,9 +48,13 @@ func NewShellScriptValidator(
 
 // fragmentExcludes are shellcheck codes to exclude when validating fragments.
 // These are false positives due to limited context:
+// - SC1009: The mentioned syntax error was in... (follow-up to parsing errors)
+// - SC1072: Unexpected token (fragment may start mid-statement)
+// - SC1073: Couldn't parse this (incomplete syntax in fragment)
+// - SC1089: Parsing stopped - keywords not matched (fragment contains partial control structure)
 // - SC2034: variable appears unused (may be used elsewhere in the file)
 // - SC2154: variable is referenced but not assigned (may be assigned elsewhere)
-var fragmentExcludes = []int{2034, 2154}
+var fragmentExcludes = []int{1009, 1072, 1073, 1089, 2034, 2154}
 
 // Validate validates shell scripts using shellcheck.
 func (v *ShellScriptValidator) Validate(

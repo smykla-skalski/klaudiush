@@ -266,6 +266,45 @@ process_data "test"
 			result := v.Validate(context.Background(), ctx)
 			Expect(result.Passed).To(BeTrue())
 		})
+
+		It(
+			"should pass when editing fragment with incomplete control structure (SC1089 excluded)",
+			func() {
+				// Create a script with if/else/fi structure
+				tmpFile = filepath.Join(tmpDir, "script.sh")
+				originalContent := `#!/bin/bash
+
+cleanup_resources() {
+    local resource="$1"
+    if [[ -z "$resource" ]]; then
+        echo "No resource specified"
+        return 1
+    else
+        echo "Cleaning up $resource"
+        rm -rf "$resource"
+    fi
+}
+
+cleanup_resources "$@"
+`
+				err := os.WriteFile(tmpFile, []byte(originalContent), 0o644)
+				Expect(err).NotTo(HaveOccurred())
+
+				// Edit just the else block - fragment will contain partial control structure
+				// Without SC1089 exclusion, this would fail with "Parsing stopped here"
+				ctx.ToolName = hook.ToolTypeEdit
+				ctx.ToolInput.FilePath = tmpFile
+				ctx.ToolInput.OldString = `    else
+        echo "Cleaning up $resource"
+        rm -rf "$resource"`
+				ctx.ToolInput.NewString = `    else
+        echo "Cleaning up resource: $resource"
+        rm -rf "$resource"`
+
+				result := v.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			},
+		)
 	})
 
 	Describe("config exclude rules", func() {
