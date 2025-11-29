@@ -38,3 +38,6 @@ tmp/
 
 # Task cache
 .task/
+
+.gemini/
+gha-creds-*.json
