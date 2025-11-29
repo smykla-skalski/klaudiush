@@ -14,6 +14,105 @@ import (
 	internalgit "github.com/smykla-labs/klaudiush/internal/git"
 )
 
+var _ = Describe("OpenRepository", func() {
+	var (
+		tempDir string
+		origDir string
+		err     error
+	)
+
+	BeforeEach(func() {
+		// Save current directory
+		origDir, err = os.Getwd()
+		Expect(err).NotTo(HaveOccurred())
+
+		// Create temporary directory
+		tempDir, err = os.MkdirTemp("", "open-repo-test-*")
+		Expect(err).NotTo(HaveOccurred())
+
+		// Resolve symlinks (macOS /var -> /private/var)
+		tempDir, err = filepath.EvalSymlinks(tempDir)
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	AfterEach(func() {
+		// Restore original directory
+		if origDir != "" {
+			err := os.Chdir(origDir) //nolint:govet // shadow for cleanup scope
+			Expect(err).NotTo(HaveOccurred())
+		}
+
+		// Clean up temp directory
+		if tempDir != "" {
+			err := os.RemoveAll(tempDir) //nolint:govet // shadow for cleanup scope
+			Expect(err).NotTo(HaveOccurred())
+		}
+	})
+
+	Context("when path is a valid git repository", func() {
+		BeforeEach(func() {
+			// Initialize git repository
+			_, err = git.PlainInit(tempDir, false)
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("should open the repository", func() {
+			repo, err := internalgit.OpenRepository(tempDir) //nolint:govet // shadow
+			Expect(err).NotTo(HaveOccurred())
+			Expect(repo).NotTo(BeNil())
+			Expect(repo.IsInRepo()).To(BeTrue())
+		})
+
+		It("should return a working repository", func() {
+			repo, err := internalgit.OpenRepository(tempDir) //nolint:govet // shadow
+			Expect(err).NotTo(HaveOccurred())
+
+			root, err := repo.GetRoot()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(root).To(Equal(tempDir))
+		})
+	})
+
+	Context("when path is not a git repository", func() {
+		It("should return ErrNotRepository", func() {
+			_, err := internalgit.OpenRepository(tempDir) //nolint:govet // shadow
+			Expect(err).To(MatchError(internalgit.ErrNotRepository))
+		})
+	})
+
+	Context("when path does not exist", func() {
+		It("should return an error", func() {
+			nonExistentPath := filepath.Join(tempDir, "does-not-exist")
+			_, err := internalgit.OpenRepository(nonExistentPath) //nolint:govet // shadow
+			Expect(err).To(HaveOccurred())
+		})
+	})
+
+	Context("when opening a subdirectory of a git repository", func() {
+		BeforeEach(func() {
+			// Initialize git repository
+			_, err = git.PlainInit(tempDir, false)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Create a subdirectory
+			subDir := filepath.Join(tempDir, "subdir")
+			err = os.MkdirAll(subDir, 0o755)
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("should discover the parent repository", func() {
+			subDir := filepath.Join(tempDir, "subdir")
+			repo, err := internalgit.OpenRepository(subDir)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(repo).NotTo(BeNil())
+
+			root, err := repo.GetRoot()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(root).To(Equal(tempDir))
+		})
+	})
+})
+
 var _ = Describe("SDKRepository", func() {
 	var (
 		tempDir    string

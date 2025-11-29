@@ -102,29 +102,47 @@ func (v *PushValidator) Validate(ctx context.Context, hookCtx *hook.Context) *va
 func (v *PushValidator) validatePushCommand(gitCmd *parser.GitCommand) *validator.Result {
 	log := v.Logger()
 
-	if !v.gitRunner.IsInRepo() {
+	// Use path-specific runner if -C flag is present
+	runner := v.getRunnerForCommand(gitCmd)
+
+	if !runner.IsInRepo() {
 		log.Debug("not in a git repository, skipping validation")
 		return validator.Pass()
 	}
 
-	remote := v.extractRemote(gitCmd)
+	remote := v.extractRemote(gitCmd, runner)
 	if remote == "" {
 		log.Debug("no remote specified, skipping validation")
 		return validator.Pass()
 	}
 
-	return v.validateRemoteExists(remote)
+	return v.validateRemoteExists(remote, runner)
+}
+
+// getRunnerForCommand returns the appropriate git runner for the command.
+// If the command specifies a working directory with -C, creates a runner for that path.
+// Otherwise, returns the default cached runner.
+//
+//nolint:ireturn // Returns interface for flexibility between cached and path-specific runners
+func (v *PushValidator) getRunnerForCommand(gitCmd *parser.GitCommand) GitRunner {
+	workDir := gitCmd.GetWorkingDirectory()
+	if workDir != "" {
+		v.Logger().Debug("using path-specific runner", "path", workDir)
+		return NewGitRunnerForPath(workDir)
+	}
+
+	return v.gitRunner
 }
 
 // extractRemote extracts the remote name from a git push command
-func (v *PushValidator) extractRemote(gitCmd *parser.GitCommand) string {
+func (*PushValidator) extractRemote(gitCmd *parser.GitCommand, runner GitRunner) string {
 	if len(gitCmd.Args) == 0 {
-		branch, err := v.gitRunner.GetCurrentBranch()
+		branch, err := runner.GetCurrentBranch()
 		if err != nil {
 			return defaultRemote
 		}
 
-		remote, err := v.gitRunner.GetBranchRemote(branch)
+		remote, err := runner.GetBranchRemote(branch)
 		if err != nil {
 			return defaultRemote
 		}
@@ -142,10 +160,10 @@ func (v *PushValidator) extractRemote(gitCmd *parser.GitCommand) string {
 }
 
 // validateRemoteExists checks if the remote exists
-func (v *PushValidator) validateRemoteExists(remote string) *validator.Result {
-	_, err := v.gitRunner.GetRemoteURL(remote)
+func (v *PushValidator) validateRemoteExists(remote string, runner GitRunner) *validator.Result {
+	_, err := runner.GetRemoteURL(remote)
 	if err != nil {
-		remotes, remoteErr := v.gitRunner.GetRemotes()
+		remotes, remoteErr := runner.GetRemotes()
 		if remoteErr != nil {
 			return validator.FailWithRef(
 				validator.RefGitNoRemote,

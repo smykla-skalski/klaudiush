@@ -80,6 +80,31 @@ func DiscoverRepository() (*SDKRepository, error) {
 	return repoInstance, errRepo
 }
 
+// OpenRepository opens a git repository from a specific path (not cached).
+// Use this when you need to operate on a repository in a specific directory,
+// e.g., when processing git commands with -C flag.
+//
+// EnableDotGitCommonDir is set to true to properly support linked worktrees.
+// Linked worktrees have a .git file (not directory) pointing to the main
+// repository's .git/worktrees/<name> directory. This option tells go-git
+// to follow the commondir reference to find the actual repository configuration
+// including remotes. See: https://github.com/go-git/go-git/issues/225
+func OpenRepository(path string) (*SDKRepository, error) {
+	repo, err := git.PlainOpenWithOptions(path, &git.PlainOpenOptions{
+		DetectDotGit:          true,
+		EnableDotGitCommonDir: true,
+	})
+	if err != nil {
+		if errors.Is(err, git.ErrRepositoryNotExists) {
+			return nil, ErrNotRepository
+		}
+
+		return nil, errors.Wrap(err, "failed to open repository")
+	}
+
+	return &SDKRepository{repo: repo}, nil
+}
+
 // IsInRepo checks if we're in a git repository
 func (r *SDKRepository) IsInRepo() bool {
 	return r.repo != nil

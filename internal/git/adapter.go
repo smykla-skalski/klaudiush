@@ -22,6 +22,20 @@ func NewSDKRunner() (Runner, error) {
 	return NewRepositoryAdapter(repo), nil
 }
 
+// NewSDKRunnerForPath creates a Runner for a specific directory path.
+// Use this when operating on a repository in a specific directory,
+// e.g., when processing git commands with -C flag.
+//
+//nolint:ireturn,nolintlint // Factory function intentionally returns interface
+func NewSDKRunnerForPath(path string) (Runner, error) {
+	repo, err := OpenRepository(path)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewRepositoryAdapter(repo), nil
+}
+
 // IsInRepo checks if we're in a git repository
 func (a *RepositoryAdapter) IsInRepo() bool {
 	return a.repo.IsInRepo()
