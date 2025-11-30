@@ -197,11 +197,10 @@ func (v *MarkdownValidator) getContentWithState(
 		state := validators.DetectMarkdownState(string(originalContent), fragmentStartLine)
 		state.StartLine = fragmentStartLine
 
-		// Determine if fragment reaches end of file
-		fragmentLineCount := len(strings.Split(fragment, "\n"))
-		totalLines := len(strings.Split(string(originalContent), "\n"))
-		fragmentEndLine := fragmentStartLine + fragmentLineCount
-		state.EndsAtEOF = fragmentEndLine >= totalLines
+		// Determine if the NEW content (new_string) reaches end of file.
+		// We check if old_string is at or near EOF in the original content.
+		// If old_string ends at EOF, then new_string (which replaces it) also ends at EOF.
+		state.EndsAtEOF = EditReachesEOF(string(originalContent), oldStr)
 
 		log.Debug("fragment initial state",
 			"start_line", fragmentStartLine,
@@ -213,7 +212,7 @@ func (v *MarkdownValidator) getContentWithState(
 			"last_heading_level", state.LastHeadingLevel,
 		)
 
-		log.Debug("validating edit fragment with context", "fragment_lines", fragmentLineCount)
+		log.Debug("validating edit fragment with context")
 
 		return fragment, &state, nil
 	}
