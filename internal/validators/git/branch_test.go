@@ -255,6 +255,176 @@ var _ = Describe("BranchValidator", func() {
 				Expect(result.Passed).To(BeFalse())
 			})
 		})
+
+		Context("with query/list operations", func() {
+			It("should skip validation for --contains with commit SHA", func() {
+				ctx.ToolInput.Command = "git branch -a --contains 847b00e"
+				result := v.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("should skip validation for --contains with full SHA", func() {
+				ctx.ToolInput.Command = "git branch --contains 847b00e1234567890abcdef"
+				result := v.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("should skip validation for -a flag", func() {
+				ctx.ToolInput.Command = "git branch -a"
+				result := v.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("should skip validation for --all flag", func() {
+				ctx.ToolInput.Command = "git branch --all"
+				result := v.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("should skip validation for -r flag", func() {
+				ctx.ToolInput.Command = "git branch -r"
+				result := v.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("should skip validation for --remotes flag", func() {
+				ctx.ToolInput.Command = "git branch --remotes"
+				result := v.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("should skip validation for -l flag", func() {
+				ctx.ToolInput.Command = "git branch -l"
+				result := v.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("should skip validation for --list flag", func() {
+				ctx.ToolInput.Command = "git branch --list"
+				result := v.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("should skip validation for -v flag", func() {
+				ctx.ToolInput.Command = "git branch -v"
+				result := v.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("should skip validation for --verbose flag", func() {
+				ctx.ToolInput.Command = "git branch --verbose"
+				result := v.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("should skip validation for --merged flag", func() {
+				ctx.ToolInput.Command = "git branch --merged"
+				result := v.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("should skip validation for --no-merged flag", func() {
+				ctx.ToolInput.Command = "git branch --no-merged"
+				result := v.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("should skip validation for --points-at flag", func() {
+				ctx.ToolInput.Command = "git branch --points-at HEAD"
+				result := v.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("should skip validation for --show-current flag", func() {
+				ctx.ToolInput.Command = "git branch --show-current"
+				result := v.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("should skip validation for -m flag (rename)", func() {
+				ctx.ToolInput.Command = "git branch -m old-branch new-branch"
+				result := v.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("should skip validation for --move flag", func() {
+				ctx.ToolInput.Command = "git branch --move old-branch new-branch"
+				result := v.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("should skip validation for -M flag (force rename)", func() {
+				ctx.ToolInput.Command = "git branch -M old-branch new-branch"
+				result := v.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("should skip validation for -vv flag (double verbose)", func() {
+				ctx.ToolInput.Command = "git branch -vv"
+				result := v.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("should skip validation for --no-contains flag", func() {
+				ctx.ToolInput.Command = "git branch --no-contains HEAD"
+				result := v.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("should skip validation for --sort flag", func() {
+				ctx.ToolInput.Command = "git branch --sort=-committerdate"
+				result := v.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("should skip validation for --format flag", func() {
+				ctx.ToolInput.Command = "git branch --format='%(refname:short)'"
+				result := v.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("should skip validation for --column flag", func() {
+				ctx.ToolInput.Command = "git branch --column"
+				result := v.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("should skip validation for --no-column flag", func() {
+				ctx.ToolInput.Command = "git branch --no-column"
+				result := v.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("should skip validation for -c flag (copy)", func() {
+				ctx.ToolInput.Command = "git branch -c old-branch new-branch"
+				result := v.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("should skip validation for -C flag (force copy)", func() {
+				ctx.ToolInput.Command = "git branch -C old-branch new-branch"
+				result := v.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("should skip validation for --copy flag", func() {
+				ctx.ToolInput.Command = "git branch --copy old-branch new-branch"
+				result := v.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("should skip validation for combined flags with argument", func() {
+				ctx.ToolInput.Command = "git branch -avv --contains abc123"
+				result := v.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("should skip validation for piped head command", func() {
+				ctx.ToolInput.Command = "git branch -a --contains 847b00e | head -10"
+				result := v.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
+		})
 	})
 
 	Describe("chained commands", func() {
