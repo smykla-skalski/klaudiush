@@ -43,32 +43,37 @@ Adopt a standardized output format with these characteristics:
 ### Header Line
 
 ```text
-Failed: {validator1}, {validator2}, ...
+{Status}: {validator1}, {validator2}, ...
 ```
 
-A single line listing all failing validators, comma-separated.
+A single line listing all validators that produced findings, comma-separated. The status prefix indicates the outcome:
+
+- `Failed:` when any finding has Error severity (blocks operation)
+- `Passed:` when all findings are Warning or Info severity (allows operation)
+
+The header is always present when there are findings, ensuring consistent parsing.
 
 ### Line-Based Findings
 
 For validators that report issues at specific file locations:
 
 ```text
-  Line {N} {severity} {rule}: {actionable message}
-  Lines {N}-{M} {severity} {rule}: {actionable message}
+  {path}:{line} {severity} {rule}: {actionable message}
+  {path}:{startLine}-{endLine} {severity} {rule}: {actionable message}
 ```
 
 Example (single line):
 
 ```text
-  Line 1 ✖ SC2148: Add a shebang (#!/bin/bash) at the start of the script
-  Line 30 ⚠ SC2034: PROVIDER_ENV_SETUP_CMD is unused - export it or remove it
+  script.sh:1 ✖ SC2148: Add a shebang (#!/bin/bash) at the start of the script
+  script.sh:30 ⚠ SC2034: PROVIDER_ENV_SETUP_CMD is unused - export it or remove it
 ```
 
 Example (line range):
 
 ```text
-  Lines 15-20 ✖ MD055: Align table columns consistently
-  Lines 42-47 ⚠ SEC001: Potential API key detected in multi-line string
+  README.md:15-20 ✖ MD055: Align table columns consistently
+  config.yaml:42-47 ⚠ SEC001: Potential API key detected in multi-line string
 ```
 
 ### Non-Line-Based Findings
@@ -99,7 +104,7 @@ Example:
 When a fix can be auto-generated:
 
 ```text
-  Fix for line {N}:
+  Fix for {path}:{line}:
   {suggested content}
 ```
 
@@ -133,52 +138,52 @@ Multiple validator failures:
 
 These examples demonstrate the format's versatility across different scenarios.
 
-**Example 1: Single validator with errors (line-based)**
+#### Example 1: Single validator with errors (line-based)
 
 ```text
 Failed: shellscript
 
-  Line 1 ✖ SC2148: Add a shebang (#!/bin/bash) at the start of the script
-  Line 30 ✖ SC2086: Double quote to prevent word splitting
+  deploy.sh:1 ✖ SC2148: Add a shebang (#!/bin/bash) at the start of the script
+  deploy.sh:30 ✖ SC2086: Double quote to prevent word splitting
 
   Reference: https://klaudiu.sh/FILE001
 ```
 
-**Example 2: Mixed severity levels (errors and warnings)**
+#### Example 2: Mixed severity levels (errors and warnings)
 
 ```text
 Failed: shellscript
 
-  Line 1 ✖ SC2148: Add a shebang (#!/bin/bash) at the start of the script
-  Line 30 ⚠ SC2034: PROVIDER_ENV_SETUP_CMD is unused - export it or remove it
-  Line 45 ℹ SC2086: Consider quoting variable for safety
+  deploy.sh:1 ✖ SC2148: Add a shebang (#!/bin/bash) at the start of the script
+  deploy.sh:30 ⚠ SC2034: PROVIDER_ENV_SETUP_CMD is unused - export it or remove it
+  deploy.sh:45 ℹ SC2086: Consider quoting variable for safety
 
   Reference: https://klaudiu.sh/FILE001
 ```
 
-**Example 3: With copy-pasteable suggestion**
+#### Example 3: With copy-pasteable suggestion
 
 ```text
 Failed: shellscript
 
-  Line 1 ✖ SC2148: Add a shebang (#!/bin/bash) at the start of the script
+  deploy.sh:1 ✖ SC2148: Add a shebang (#!/bin/bash) at the start of the script
 
-  Fix for line 1:
+  Fix for deploy.sh:1:
   #!/bin/bash
 
   Reference: https://klaudiu.sh/FILE001
 ```
 
-**Example 4: Line ranges (multi-line findings)**
+#### Example 4: Line ranges (multi-line findings)
 
 ```text
 Failed: markdown, secrets
 
   markdown
-  Lines 21-25 ✖ MD055: Align table columns consistently
+  README.md:21-25 ✖ MD055: Align table columns consistently
 
   secrets
-  Lines 42-47 ⚠ SEC001: Potential API key detected in multi-line string
+  config.yaml:42-47 ⚠ SEC001: Potential API key detected in multi-line string
     Value matches pattern: [a-zA-Z0-9_-]{32,}
     Consider using environment variable instead
 
@@ -187,7 +192,7 @@ Failed: markdown, secrets
   - https://klaudiu.sh/SEC001
 ```
 
-**Example 5: Non-line-based (command validation)**
+#### Example 5: Non-line-based (command validation)
 
 ```text
 Failed: commit
@@ -198,14 +203,16 @@ Failed: commit
   Reference: https://klaudiu.sh/GIT010
 ```
 
-**Example 6: Info-only output (no errors or warnings)**
+#### Example 6: Info-only output (no errors or warnings)
 
 ```text
+Passed: commit
+
   ℹ Commit message follows conventional commits format
   ℹ All staged files passed validation
 ```
 
-**Example 7: No reference URL (validator without documentation)**
+#### Example 7: No reference URL (validator without documentation)
 
 ```text
 Failed: custom-plugin
@@ -213,15 +220,15 @@ Failed: custom-plugin
   ✖ CUSTOM001: Configuration file must include required field 'timeout'
 ```
 
-**Example 8: Multiple validators with suggestions**
+#### Example 8: Multiple validators with suggestions
 
 ```text
 Failed: shellscript, terraform
 
   shellscript
-  Line 1 ✖ SC2148: Add a shebang (#!/bin/bash) at the start of the script
+  deploy.sh:1 ✖ SC2148: Add a shebang (#!/bin/bash) at the start of the script
 
-  Fix for line 1:
+  Fix for deploy.sh:1:
   #!/bin/bash
 
   terraform
@@ -258,10 +265,35 @@ Continuation lines are indented by 2 spaces relative to the first line:
 ```
 
 ```text
-  Line 42 ✖ SEC001: Potential AWS access key detected
+  config.yaml:42 ✖ SEC001: Potential AWS access key detected
     Value matches pattern: AKIA[0-9A-Z]{16}
     Remove or use environment variable instead
 ```
+
+### File Context Guidelines
+
+File paths and line numbers provide essential context for actionable error messages. However, their applicability depends on the event type:
+
+**PostToolUse events**: File paths and line numbers refer to the actual file on disk after the tool executed. This is the primary use case for file context.
+
+**PreToolUse events**: File paths and line numbers refer to the *proposed content* before execution. Validators MUST NOT include file paths/lines when validating proposed changes because:
+
+1. The content doesn't exist on disk yet
+2. Line numbers in proposed content may not match final file locations
+3. Users cannot navigate to non-existent locations
+
+For PreToolUse validation of file writes, use non-line-based format:
+
+```text
+Failed: shellscript
+
+  ✖ SC2148: Add a shebang (#!/bin/bash) at the start of the script
+  ⚠ SC2034: PROVIDER_ENV_SETUP_CMD is unused - export it or remove it
+
+  Reference: https://klaudiu.sh/FILE001
+```
+
+**Exception**: When validating proposed changes to existing files (Edit tool), validators MAY reference the existing file's line numbers for context, but MUST clearly indicate they refer to the original file, not the proposed changes.
 
 ## Implementation
 
@@ -280,13 +312,16 @@ Create `internal/output/` with types for validators to return and a single forma
 ```go
 // Finding represents a single validation finding
 type Finding struct {
-    Severity   Severity
-    Code       string     // e.g., "GIT010", "SC2148"
-    Message    string     // actionable message
-    Line       int        // 0 if not line-based
-    EndLine    int        // 0 if single line or not line-based
-    Suggestion string     // optional fix content
-    Details    []string   // optional continuation lines
+    Severity  Severity
+    Code      string   // e.g., "GIT010", "SC2148"
+    Message   string   // actionable message
+    File      string   // file path (empty for command-level findings)
+    Line      int      // 0 if not line-based
+    EndLine   int      // 0 if single line or not line-based
+    Column    int      // 0 if not column-specific
+    EndColumn int      // 0 if single column or not column-specific
+    Suggestion string  // optional fix content
+    Details   []string // optional continuation lines
 }
 
 // ValidatorResult is returned by each validator
@@ -405,12 +440,16 @@ The format supports both line-based and non-line-based findings. New types can b
 
 The format is designed for stable parsing:
 
-1. **Header line** is always `Failed: {validators}` (comma-separated)
+1. **Header line** is always present with format `{Status}: {validators}` (comma-separated)
+   - `Failed:` when any finding has Error severity (blocks operation)
+   - `Passed:` when all findings are Warning or Info severity (allows operation)
 2. **Indentation** is consistent (2 spaces per level)
-3. **Icon placement** is predictable (after line number or at start)
-4. **Reference section** is always last
+3. **Icon placement** is predictable (after `path:line` or at start for non-line-based)
+4. **Reference section** is always last (when present)
 
 Parsers can rely on these invariants even as new finding types are added.
+
+**Note:** The header is always emitted, even for info-only output. This ensures consistent parsing and provides validator context regardless of severity.
 
 ### Configuration Options
 
