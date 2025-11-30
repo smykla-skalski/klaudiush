@@ -90,13 +90,14 @@ jobs:
           ref: refs/pull/${{ needs.check-trigger.outputs.pr_number }}/merge
           fetch-depth: 0
 
-      - name: Get PR head SHA
+      - name: Get PR info and diff
         id: pr_info
         env:
           GH_TOKEN: ${{ steps.mint_identity_token.outputs.token || github.token }}
           PR_NUMBER: ${{ needs.check-trigger.outputs.pr_number }}
         run: |
-          pr_info=$(gh pr view "$PR_NUMBER" --json headRefOid,baseRefName,headRefName)
+          # Fetch PR metadata via gh CLI (safe - output goes through jq parsing)
+          pr_info=$(gh pr view "$PR_NUMBER" --json headRefOid,baseRefName,headRefName,title,body)
           head_sha=$(echo "$pr_info" | jq -r '.headRefOid')
           base_ref=$(echo "$pr_info" | jq -r '.baseRefName')
           head_ref=$(echo "$pr_info" | jq -r '.headRefName')
@@ -104,6 +105,13 @@ jobs:
           echo "base_ref=$base_ref" >> "$GITHUB_OUTPUT"
           echo "head_ref=$head_ref" >> "$GITHUB_OUTPUT"
           git fetch --no-tags origin "$base_ref" "+refs/pull/${PR_NUMBER}/head:refs/remotes/origin/pull/${PR_NUMBER}/head"
+
+          # Save PR context to files for Codex to read (sandbox has no network access)
+          # Using jq -r to safely extract and write to files
+          echo "$pr_info" | jq -r '.title' > pr-title.txt
+          echo "$pr_info" | jq -r '.body // ""' > pr-body.txt
+          gh pr diff "$PR_NUMBER" > pr-diff.txt
+          gh pr view "$PR_NUMBER" --json files --jq '.files[].path' > pr-files.txt
 
       - name: Add eyes reaction and post working comment
         id: working_comment
@@ -141,7 +149,6 @@ jobs:
         id: run_codex
         uses: openai/codex-action@086169432f1d2ab2f4057540b1754d550f6a1189 # v1.4
         env:
-          GH_TOKEN: ${{ steps.mint_identity_token.outputs.token || github.token }}
           PR_NUMBER: ${{ needs.check-trigger.outputs.pr_number }}
           REPOSITORY: ${{ github.repository }}
         with:
@@ -191,7 +198,20 @@ jobs:
           prompt: |
             You are Codex performing a code review for PR #${{ env.PR_NUMBER }} in ${{ env.REPOSITORY }}.
 
-            Use `gh pr view` and `gh pr diff` to read the PR details and changes.
+            PR context has been pre-fetched (network is unavailable in sandbox):
+            - pr-title.txt: PR title
+            - pr-body.txt: PR description
+            - pr-diff.txt: Full diff of all changes
+            - pr-files.txt: List of changed file paths
+
+            You have full read access to the entire repository. Use this to understand context,
+            existing patterns, and how the changes fit into the codebase.
+
+            Review process:
+            1. Read pr-diff.txt and pr-files.txt to see what changed
+            2. Read the actual source files to understand the full context
+            3. Explore related files to understand patterns and dependencies
+            4. Identify significant issues
 
             Focus only on significant issues: correctness, security, performance, data races, and maintainability.
             Skip minor style nitpicks. Only report issues you are confident about.
