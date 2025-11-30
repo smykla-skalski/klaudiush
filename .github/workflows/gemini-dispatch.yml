@@ -52,6 +52,7 @@ jobs:
       request: ${{ steps.extract_command.outputs.request }}
       additional_context: ${{ steps.extract_command.outputs.additional_context }}
       issue_number: ${{ github.event.pull_request.number || github.event.issue.number }}
+      working_comment_id: ${{ steps.acknowledge.outputs.comment_id }}
     steps:
       - name: Mint identity token
         id: mint_identity_token
@@ -89,6 +90,7 @@ jobs:
             }
 
       - name: Acknowledge request
+        id: acknowledge
         env:
           GITHUB_TOKEN: ${{ steps.mint_identity_token.outputs.token || secrets.GITHUB_TOKEN || github.token }}
           ISSUE_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
@@ -97,9 +99,12 @@ jobs:
           REPOSITORY: ${{ github.repository }}
         run: |
           MESSAGE="🤖 Hi @${ACTOR}, I've received your request, and I'm working on it now! You can track my progress [in the logs](${LOGS_URL}) for more details."
-          gh issue comment "${ISSUE_NUMBER}" \
+          COMMENT_URL=$(gh issue comment "${ISSUE_NUMBER}" \
             --body "${MESSAGE}" \
-            --repo "${REPOSITORY}"
+            --repo "${REPOSITORY}")
+          # Extract comment ID from URL (format: https://github.com/owner/repo/issues/N#issuecomment-ID)
+          COMMENT_ID=$(echo "${COMMENT_URL}" | grep -oE 'issuecomment-[0-9]+' | cut -d'-' -f2)
+          echo "comment_id=${COMMENT_ID}" >> "$GITHUB_OUTPUT"
 
   review:
     needs: dispatch
@@ -140,6 +145,33 @@ jobs:
       additional_context: ${{ needs.dispatch.outputs.additional_context }}
     secrets: inherit
 
+  cleanup:
+    needs: [dispatch, review, triage, invoke]
+    if: always() && !cancelled() && !failure() && needs.dispatch.outputs.working_comment_id
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Mint identity token
+        id: mint_identity_token
+        if: vars.GEMINI_APP_ID
+        uses: actions/create-github-app-token@7e473efe3cb98aa54f8d4bac15400b15fad77d94 # v2.2.0
+        with:
+          app-id: ${{ vars.GEMINI_APP_ID }}
+          private-key: ${{ secrets.GEMINI_PRIVATE_KEY }}
+          permission-issues: write
+          permission-pull-requests: write
+
+      - name: Delete working comment
+        env:
+          GITHUB_TOKEN: ${{ steps.mint_identity_token.outputs.token || secrets.GITHUB_TOKEN || github.token }}
+          COMMENT_ID: ${{ needs.dispatch.outputs.working_comment_id }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          gh api "repos/${REPOSITORY}/issues/comments/${COMMENT_ID}" -X DELETE || true
+
   fallthrough:
     needs: [dispatch, review, triage, invoke]
     if: always() && !cancelled() && (failure() || needs.dispatch.outputs.command == 'fallthrough')
@@ -160,15 +192,21 @@ jobs:
           permission-issues: write
           permission-pull-requests: write
 
-      - name: Send failure comment
+      - name: Update working comment with failure
         env:
           GITHUB_TOKEN: ${{ steps.mint_identity_token.outputs.token || secrets.GITHUB_TOKEN || github.token }}
+          COMMENT_ID: ${{ needs.dispatch.outputs.working_comment_id }}
           ISSUE_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
           ACTOR: ${{ github.actor }}
           LOGS_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           REPOSITORY: ${{ github.repository }}
         run: |
           MESSAGE="🤖 I'm sorry @${ACTOR}, but I was unable to process your request. Please [see the logs](${LOGS_URL}) for more details."
-          gh issue comment "${ISSUE_NUMBER}" \
-            --body "${MESSAGE}" \
-            --repo "${REPOSITORY}"
+          if [[ -n "${COMMENT_ID}" ]]; then
+            gh api "repos/${REPOSITORY}/issues/comments/${COMMENT_ID}" \
+              -X PATCH \
+              -f body="${MESSAGE}" || \
+            gh issue comment "${ISSUE_NUMBER}" --body "${MESSAGE}" --repo "${REPOSITORY}"
+          else
+            gh issue comment "${ISSUE_NUMBER}" --body "${MESSAGE}" --repo "${REPOSITORY}"
+          fi

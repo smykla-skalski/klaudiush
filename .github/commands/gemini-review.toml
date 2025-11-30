@@ -151,9 +151,16 @@ Apply these severities consistently:
         {{SEVERITY}} {{COMMENT_TEXT}}
         </COMMENT>
 
-3. **Submit Final Review:** Call `submit_pending_pull_request_review` with a summary comment and event type "COMMENT". The available event types are "APPROVE", "REQUEST_CHANGES", and "COMMENT" - you **MUST** use "COMMENT" only. **DO NOT** use "APPROVE" or "REQUEST_CHANGES" event types. The summary comment **MUST** use this exact markdown format:
+3. **Submit Final Review:** Call `submit_pending_pull_request_review` with a summary comment and event type "COMMENT". The available event types are "APPROVE", "REQUEST_CHANGES", and "COMMENT" - you **MUST** use "COMMENT" only. **DO NOT** use "APPROVE" or "REQUEST_CHANGES" event types.
 
-    <SUMMARY>
+    **CRITICAL FORMATTING RULES for the summary comment:**
+    - The summary **MUST** start directly with the `## 📋 Review Summary` header - no leading bullet points, dashes, or other characters
+    - Do NOT prefix headers with `- ` or `* ` - headers must be on their own line starting with `##`
+    - The body parameter must be a plain markdown string, not a list item
+
+    Use this exact markdown format (copy it exactly, starting from the `##`):
+
+    ```markdown
     ## 📋 Review Summary
 
     A brief, high-level assessment of the Pull Request's objective and quality (2-3 sentences).
@@ -162,7 +169,7 @@ Apply these severities consistently:
 
     - A bulleted list of general observations, positive highlights, or recurring patterns not suitable for inline comments.
     - Keep this section concise and do not repeat details already covered in inline comments.
-    </SUMMARY>
+    ```
 
 -----
 
