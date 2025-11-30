@@ -494,3 +494,86 @@ VAR4="value4"`
 		})
 	})
 })
+
+var _ = Describe("EditReachesEOF", func() {
+	Context("when old_string is at EOF", func() {
+		It("returns true when old_string is at exact end of file", func() {
+			content := "start\nmiddle\nlast line"
+			Expect(file.EditReachesEOF(content, "last line")).To(BeTrue())
+		})
+
+		It("returns true when old_string ends with trailing newline at EOF", func() {
+			content := "start\nmiddle\nlast line\n"
+			Expect(file.EditReachesEOF(content, "last line\n")).To(BeTrue())
+		})
+
+		It("returns true when only whitespace follows old_string", func() {
+			content := "start\nmiddle\nlast line\n   \n\n"
+			Expect(file.EditReachesEOF(content, "last line")).To(BeTrue())
+		})
+
+		It("returns true for single-line file", func() {
+			content := "only line"
+			Expect(file.EditReachesEOF(content, "only line")).To(BeTrue())
+		})
+	})
+
+	Context("when old_string is mid-file", func() {
+		It("returns false when content follows old_string", func() {
+			content := "start\nmiddle line\nthird\nfourth"
+			Expect(file.EditReachesEOF(content, "middle line")).To(BeFalse())
+		})
+
+		It("returns false when old_string is at beginning", func() {
+			content := "first line\nsecond\nthird"
+			Expect(file.EditReachesEOF(content, "first line")).To(BeFalse())
+		})
+
+		It("returns false when editing mid-file session log entry", func() {
+			// This is the real-world false positive case from the log
+			content := `## Session Log
+
+### Session 1
+- Did thing A
+
+### Session 2
+- Did thing B
+
+---
+
+## Notes
+- Some note`
+
+			// Editing the session log section (mid-file)
+			oldStr := `### Session 2
+- Did thing B`
+
+			Expect(file.EditReachesEOF(content, oldStr)).To(BeFalse())
+		})
+	})
+
+	Context("edge cases", func() {
+		It("returns false when old_string not found", func() {
+			content := "start\nsecond"
+			Expect(file.EditReachesEOF(content, "not found")).To(BeFalse())
+		})
+
+		It("returns true for empty content", func() {
+			content := ""
+			// Empty string matches at position 0, tail is empty
+			Expect(file.EditReachesEOF(content, "")).To(BeTrue())
+		})
+
+		It("handles partial line matches correctly", func() {
+			content := "line with word\nmore content"
+			// "word" is mid-file, not at EOF
+			Expect(file.EditReachesEOF(content, "word")).To(BeFalse())
+		})
+
+		It("handles edit that spans multiple lines at EOF", func() {
+			content := "start\nsecond\nlast\nline"
+			oldStr := "last\nline"
+			Expect(file.EditReachesEOF(content, oldStr)).To(BeTrue())
+		})
+	})
+})

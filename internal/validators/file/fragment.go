@@ -124,3 +124,29 @@ func getFragmentStartLine(content, oldStr string, contextLines int) int {
 
 	return max(0, startLine-contextLines)
 }
+
+// EditReachesEOF determines if an edit operation reaches the end of file.
+// Returns true if the new_string will end at or near EOF after the replacement.
+//
+// The logic:
+//  1. Find where old_string ends in the original content
+//  2. Check what remains after old_string (the "tail")
+//  3. If tail is empty or only whitespace/newlines, the edit reaches EOF
+//
+// This is used to determine whether MD047 (single-trailing-newline) should be checked.
+// For mid-file edits, we don't want MD047 to complain about fragments not ending with newline.
+func EditReachesEOF(content, oldStr string) bool {
+	idx := strings.Index(content, oldStr)
+	if idx == -1 {
+		return false
+	}
+
+	// Get everything after old_string
+	endIdx := idx + len(oldStr)
+	tail := content[endIdx:]
+
+	// If there's nothing after old_string, or only whitespace/newlines, the edit reaches EOF
+	trimmed := strings.TrimSpace(tail)
+
+	return trimmed == ""
+}
