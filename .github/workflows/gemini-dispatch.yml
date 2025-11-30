@@ -55,11 +55,11 @@ jobs:
     steps:
       - name: Mint identity token
         id: mint_identity_token
-        if: vars.SMYKLOT_APP_ID
+        if: vars.GEMINI_APP_ID
         uses: actions/create-github-app-token@7e473efe3cb98aa54f8d4bac15400b15fad77d94 # v2.2.0
         with:
-          app-id: ${{ vars.SMYKLOT_APP_ID }}
-          private-key: ${{ secrets.SMYKLOT_PRIVATE_KEY }}
+          app-id: ${{ vars.GEMINI_APP_ID }}
+          private-key: ${{ secrets.GEMINI_PRIVATE_KEY }}
           permission-contents: read
           permission-issues: write
           permission-pull-requests: write
@@ -151,11 +151,11 @@ jobs:
     steps:
       - name: Mint identity token
         id: mint_identity_token
-        if: vars.SMYKLOT_APP_ID
+        if: vars.GEMINI_APP_ID
         uses: actions/create-github-app-token@7e473efe3cb98aa54f8d4bac15400b15fad77d94 # v2.2.0
         with:
-          app-id: ${{ vars.SMYKLOT_APP_ID }}
-          private-key: ${{ secrets.SMYKLOT_PRIVATE_KEY }}
+          app-id: ${{ vars.GEMINI_APP_ID }}
+          private-key: ${{ secrets.GEMINI_PRIVATE_KEY }}
           permission-contents: read
           permission-issues: write
           permission-pull-requests: write

@@ -73,6 +73,17 @@ jobs:
       id-token: write
 
     steps:
+      - name: Mint identity token
+        id: mint_identity_token
+        if: vars.CODEX_APP_ID
+        uses: actions/create-github-app-token@7e473efe3cb98aa54f8d4bac15400b15fad77d94 # v2.2.0
+        with:
+          app-id: ${{ vars.CODEX_APP_ID }}
+          private-key: ${{ secrets.CODEX_PRIVATE_KEY }}
+          permission-contents: read
+          permission-issues: write
+          permission-pull-requests: write
+
       - name: Checkout PR merge commit
         uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
         with:
@@ -82,7 +93,7 @@ jobs:
       - name: Get PR head SHA
         id: pr_info
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.mint_identity_token.outputs.token || github.token }}
           PR_NUMBER: ${{ needs.check-trigger.outputs.pr_number }}
         run: |
           pr_info=$(gh pr view "$PR_NUMBER" --json headRefOid,baseRefName,headRefName)
@@ -101,6 +112,7 @@ jobs:
           PR_NUM: ${{ needs.check-trigger.outputs.pr_number }}
           TRIGGER_COMMENT_ID: ${{ github.event.comment.id }}
         with:
+          github-token: ${{ steps.mint_identity_token.outputs.token || github.token }}
           script: |
             const prNumber = Number(process.env.PR_NUM);
             const commentId = process.env.TRIGGER_COMMENT_ID;
@@ -198,6 +210,7 @@ jobs:
           WORKING_COMMENT_ID: ${{ steps.working_comment.outputs.result }}
           TRIGGER_COMMENT_ID: ${{ github.event.comment.id }}
         with:
+          github-token: ${{ steps.mint_identity_token.outputs.token || github.token }}
           script: |
             const fs = require('fs');
             const prNumber = Number(process.env.PR_NUMBER);
@@ -340,6 +353,7 @@ jobs:
           WORKING_COMMENT_ID: ${{ steps.working_comment.outputs.result }}
           TRIGGER_COMMENT_ID: ${{ github.event.comment.id }}
         with:
+          github-token: ${{ steps.mint_identity_token.outputs.token || github.token }}
           script: |
             const prNumber = Number(process.env.PR_NUMBER);
             const workingCommentId = process.env.WORKING_COMMENT_ID;
