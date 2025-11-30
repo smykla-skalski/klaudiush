@@ -85,6 +85,136 @@ var _ = Describe("RuleConfig", func() {
 	})
 })
 
+var _ = Describe("RuleMatchConfig", func() {
+	Describe("IsCaseInsensitive", func() {
+		It("should return false for nil config", func() {
+			var cfg *config.RuleMatchConfig
+			Expect(cfg.IsCaseInsensitive()).To(BeFalse())
+		})
+
+		It("should return false when CaseInsensitive is nil", func() {
+			cfg := &config.RuleMatchConfig{}
+			Expect(cfg.IsCaseInsensitive()).To(BeFalse())
+		})
+
+		It("should return true when CaseInsensitive is true", func() {
+			caseInsensitive := true
+			cfg := &config.RuleMatchConfig{CaseInsensitive: &caseInsensitive}
+			Expect(cfg.IsCaseInsensitive()).To(BeTrue())
+		})
+
+		It("should return false when CaseInsensitive is false", func() {
+			caseInsensitive := false
+			cfg := &config.RuleMatchConfig{CaseInsensitive: &caseInsensitive}
+			Expect(cfg.IsCaseInsensitive()).To(BeFalse())
+		})
+	})
+
+	Describe("GetPatternMode", func() {
+		It("should return 'any' for nil config", func() {
+			var cfg *config.RuleMatchConfig
+			Expect(cfg.GetPatternMode()).To(Equal("any"))
+		})
+
+		It("should return 'any' when PatternMode is empty", func() {
+			cfg := &config.RuleMatchConfig{}
+			Expect(cfg.GetPatternMode()).To(Equal("any"))
+		})
+
+		It("should return 'all' when PatternMode is 'all'", func() {
+			cfg := &config.RuleMatchConfig{PatternMode: "all"}
+			Expect(cfg.GetPatternMode()).To(Equal("all"))
+		})
+
+		It("should return configured pattern mode", func() {
+			cfg := &config.RuleMatchConfig{PatternMode: "any"}
+			Expect(cfg.GetPatternMode()).To(Equal("any"))
+		})
+	})
+
+	Describe("HasMatchConditions", func() {
+		It("should return false for nil config", func() {
+			var cfg *config.RuleMatchConfig
+			Expect(cfg.HasMatchConditions()).To(BeFalse())
+		})
+
+		It("should return false for empty config", func() {
+			cfg := &config.RuleMatchConfig{}
+			Expect(cfg.HasMatchConditions()).To(BeFalse())
+		})
+
+		It("should return true when ValidatorType is set", func() {
+			cfg := &config.RuleMatchConfig{ValidatorType: "git.push"}
+			Expect(cfg.HasMatchConditions()).To(BeTrue())
+		})
+
+		It("should return true when RepoPattern is set", func() {
+			cfg := &config.RuleMatchConfig{RepoPattern: "**/myorg/**"}
+			Expect(cfg.HasMatchConditions()).To(BeTrue())
+		})
+
+		It("should return true when RepoPatterns is set", func() {
+			cfg := &config.RuleMatchConfig{RepoPatterns: []string{"**/myorg/**"}}
+			Expect(cfg.HasMatchConditions()).To(BeTrue())
+		})
+
+		It("should return true when Remote is set", func() {
+			cfg := &config.RuleMatchConfig{Remote: "origin"}
+			Expect(cfg.HasMatchConditions()).To(BeTrue())
+		})
+
+		It("should return true when BranchPattern is set", func() {
+			cfg := &config.RuleMatchConfig{BranchPattern: "feat/*"}
+			Expect(cfg.HasMatchConditions()).To(BeTrue())
+		})
+
+		It("should return true when BranchPatterns is set", func() {
+			cfg := &config.RuleMatchConfig{BranchPatterns: []string{"feat/*", "fix/*"}}
+			Expect(cfg.HasMatchConditions()).To(BeTrue())
+		})
+
+		It("should return true when FilePattern is set", func() {
+			cfg := &config.RuleMatchConfig{FilePattern: "**/*.go"}
+			Expect(cfg.HasMatchConditions()).To(BeTrue())
+		})
+
+		It("should return true when FilePatterns is set", func() {
+			cfg := &config.RuleMatchConfig{FilePatterns: []string{"**/*.go", "**/*.ts"}}
+			Expect(cfg.HasMatchConditions()).To(BeTrue())
+		})
+
+		It("should return true when ContentPattern is set", func() {
+			cfg := &config.RuleMatchConfig{ContentPattern: "TODO"}
+			Expect(cfg.HasMatchConditions()).To(BeTrue())
+		})
+
+		It("should return true when ContentPatterns is set", func() {
+			cfg := &config.RuleMatchConfig{ContentPatterns: []string{"TODO", "FIXME"}}
+			Expect(cfg.HasMatchConditions()).To(BeTrue())
+		})
+
+		It("should return true when CommandPattern is set", func() {
+			cfg := &config.RuleMatchConfig{CommandPattern: "git push*"}
+			Expect(cfg.HasMatchConditions()).To(BeTrue())
+		})
+
+		It("should return true when CommandPatterns is set", func() {
+			cfg := &config.RuleMatchConfig{CommandPatterns: []string{"git push*", "git commit*"}}
+			Expect(cfg.HasMatchConditions()).To(BeTrue())
+		})
+
+		It("should return true when ToolType is set", func() {
+			cfg := &config.RuleMatchConfig{ToolType: "Bash"}
+			Expect(cfg.HasMatchConditions()).To(BeTrue())
+		})
+
+		It("should return true when EventType is set", func() {
+			cfg := &config.RuleMatchConfig{EventType: "PreToolUse"}
+			Expect(cfg.HasMatchConditions()).To(BeTrue())
+		})
+	})
+})
+
 var _ = Describe("RuleActionConfig", func() {
 	Describe("GetActionType", func() {
 		It("should return 'block' when Type is empty", func() {

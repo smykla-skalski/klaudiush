@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/cockroachdb/errors"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"go.uber.org/mock/gomock"
@@ -191,6 +192,72 @@ var _ = Describe("ProjectChecker", func() {
 				Expect(result.Severity).To(Equal(doctor.SeverityError))
 				Expect(result.Message).To(ContainSubstring("Insecure file permissions"))
 				Expect(result.FixID).To(Equal("fix_config_permissions"))
+			})
+		})
+
+		Context("when config has rules validation error", func() {
+			It("should return error with fix ID for ErrEmptyMatchConditions", func() {
+				mockLoader.EXPECT().HasProjectConfig().Return(true)
+				mockLoader.EXPECT().Load(nil).Return(nil, internalconfig.ErrEmptyMatchConditions)
+
+				result := checker.Check(ctx)
+
+				Expect(result.Status).To(Equal(doctor.StatusFail))
+				Expect(result.Severity).To(Equal(doctor.SeverityError))
+				Expect(result.Message).To(ContainSubstring("Invalid rules configuration"))
+				Expect(result.FixID).To(Equal("fix_invalid_rules"))
+			})
+
+			It("should return error with fix ID for ErrInvalidRule", func() {
+				mockLoader.EXPECT().HasProjectConfig().Return(true)
+				mockLoader.EXPECT().Load(nil).Return(nil, internalconfig.ErrInvalidRule)
+
+				result := checker.Check(ctx)
+
+				Expect(result.Status).To(Equal(doctor.StatusFail))
+				Expect(result.Severity).To(Equal(doctor.SeverityError))
+				Expect(result.Message).To(ContainSubstring("Invalid rules configuration"))
+				Expect(result.FixID).To(Equal("fix_invalid_rules"))
+			})
+
+			It("should return error with fix ID for generic rule error message", func() {
+				err := errors.New("rule has invalid match condition")
+				mockLoader.EXPECT().HasProjectConfig().Return(true)
+				mockLoader.EXPECT().Load(nil).Return(nil, err)
+
+				result := checker.Check(ctx)
+
+				Expect(result.Status).To(Equal(doctor.StatusFail))
+				Expect(result.Severity).To(Equal(doctor.SeverityError))
+				Expect(result.Message).To(ContainSubstring("Invalid rules configuration"))
+				Expect(result.FixID).To(Equal("fix_invalid_rules"))
+			})
+
+			It("should return error with fix ID for empty rule match error", func() {
+				err := errors.New("rule has empty match section")
+				mockLoader.EXPECT().HasProjectConfig().Return(true)
+				mockLoader.EXPECT().Load(nil).Return(nil, err)
+
+				result := checker.Check(ctx)
+
+				Expect(result.Status).To(Equal(doctor.StatusFail))
+				Expect(result.Message).To(ContainSubstring("Invalid rules configuration"))
+				Expect(result.FixID).To(Equal("fix_invalid_rules"))
+			})
+		})
+
+		Context("when config has generic load error", func() {
+			It("should return error without fix ID", func() {
+				err := errors.New("some generic error")
+				mockLoader.EXPECT().HasProjectConfig().Return(true)
+				mockLoader.EXPECT().Load(nil).Return(nil, err)
+
+				result := checker.Check(ctx)
+
+				Expect(result.Status).To(Equal(doctor.StatusFail))
+				Expect(result.Severity).To(Equal(doctor.SeverityError))
+				Expect(result.Message).To(ContainSubstring("Failed to load"))
+				Expect(result.FixID).To(BeEmpty())
 			})
 		})
 	})
