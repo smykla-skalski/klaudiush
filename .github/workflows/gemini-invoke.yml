@@ -32,11 +32,11 @@ jobs:
     steps:
       - name: Mint identity token
         id: mint_identity_token
-        if: vars.SMYKLOT_APP_ID
+        if: vars.GEMINI_APP_ID
         uses: actions/create-github-app-token@7e473efe3cb98aa54f8d4bac15400b15fad77d94 # v2.2.0
         with:
-          app-id: ${{ vars.SMYKLOT_APP_ID }}
-          private-key: ${{ secrets.SMYKLOT_PRIVATE_KEY }}
+          app-id: ${{ vars.GEMINI_APP_ID }}
+          private-key: ${{ secrets.GEMINI_PRIVATE_KEY }}
           permission-contents: write
           permission-issues: write
           permission-pull-requests: write
@@ -44,7 +44,7 @@ jobs:
       - name: Run Gemini CLI
         id: run_gemini
         # Cannot pin by digest: preview action with frequent updates
-        uses: google-github-actions/run-gemini-cli@6f116f01b6bfaf784e5dd71abd1f322f20e03e38 # v0
+        uses: google-github-actions/run-gemini-cli@6f116f01b6bfaf784e5dd71abd1f322f20e03e38 # v0.1.4
         env:
           TITLE: ${{ github.event.pull_request.title || github.event.issue.title }}
           DESCRIPTION: ${{ github.event.pull_request.body || github.event.issue.body }}
