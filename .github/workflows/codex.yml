@@ -62,14 +62,17 @@ jobs:
       - name: Capture request text
         id: capture_request
         env:
-          EVENT_NAME: ${{ github.event_name }}
           COMMENT_BODY: ${{ github.event.comment.body }}
           REVIEW_BODY: ${{ github.event.review.body }}
         run: |
           request="$COMMENT_BODY$REVIEW_BODY"
-          echo "request<<'REQ'" >> "$GITHUB_OUTPUT"
-          echo "$request" >> "$GITHUB_OUTPUT"
-          echo "REQ" >> "$GITHUB_OUTPUT"
+          # Use random delimiter to avoid collision with user content
+          delim=$(openssl rand -hex 16)
+          {
+            echo "request<<$delim"
+            echo "$request"
+            echo "$delim"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Run Codex
         id: run_codex
