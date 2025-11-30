@@ -2,12 +2,41 @@
 package git
 
 import (
+	"os"
 	"sync"
 
 	"github.com/cockroachdb/errors"
 	"github.com/go-git/go-git/v6"
 	"github.com/go-git/go-git/v6/plumbing"
 )
+
+// gitEnvVarsToUnset lists git environment variables that must be cleared before
+// using go-git SDK to prevent index corruption when running as a hook.
+//
+// When klaudiush runs as a pre-commit hook, it inherits GIT_INDEX_FILE from the
+// parent git process. If go-git reads or writes to this shared index file while
+// the parent git process is modifying it, index corruption occurs, causing errors
+// like "invalid object 100644<sha>" and "Error building trees".
+//
+// By clearing these variables, go-git will discover and use the correct index
+// file for the worktree, avoiding conflicts with the parent process.
+//
+// See: https://github.com/pre-commit/pre-commit/issues/1849
+var gitEnvVarsToUnset = []string{
+	"GIT_INDEX_FILE",
+}
+
+func init() {
+	clearGitEnvVars()
+}
+
+// clearGitEnvVars removes git environment variables that can cause index
+// corruption when using go-git SDK in hook contexts.
+func clearGitEnvVars() {
+	for _, envVar := range gitEnvVarsToUnset {
+		_ = os.Unsetenv(envVar)
+	}
+}
 
 // Repository defines the interface for git repository operations
 type Repository interface {
