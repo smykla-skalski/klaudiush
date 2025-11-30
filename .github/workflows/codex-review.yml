@@ -141,6 +141,7 @@ jobs:
         id: run_codex
         uses: openai/codex-action@086169432f1d2ab2f4057540b1754d550f6a1189 # v1.4
         env:
+          GH_TOKEN: ${{ steps.mint_identity_token.outputs.token || github.token }}
           PR_NUMBER: ${{ needs.check-trigger.outputs.pr_number }}
           REPOSITORY: ${{ github.repository }}
         with:
