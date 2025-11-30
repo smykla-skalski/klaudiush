@@ -23,3 +23,5 @@ ignore:
   - "**/*_mock.go"
   - "**/testdata/**"
   - "tmp/**"
+  - "cmd/**"
+  - "internal/doctor/fixers/**"

@@ -1,8 +1,97 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
+
+	"github.com/cockroachdb/errors"
 )
+
+func TestRun(t *testing.T) {
+	t.Run("returns error when no arguments provided", func(t *testing.T) {
+		err := run([]string{"enumerfix"})
+
+		if !errors.Is(err, ErrUsage) {
+			t.Errorf("run() error = %v, want %v", err, ErrUsage)
+		}
+	})
+
+	t.Run("returns error when file does not exist", func(t *testing.T) {
+		err := run([]string{"enumerfix", "/nonexistent/file.go"})
+		if err == nil {
+			t.Error("run() expected error for nonexistent file")
+		}
+
+		if !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("run() error should wrap os.ErrNotExist, got %v", err)
+		}
+	})
+
+	t.Run("successfully processes file", func(t *testing.T) {
+		// Create temp directory
+		tmpDir := t.TempDir()
+		testFile := filepath.Join(tmpDir, "test.go")
+
+		input := `package test
+
+import "fmt"
+
+func foo() error {
+	return fmt.Errorf("error")
+}
+`
+		if err := os.WriteFile(testFile, []byte(input), 0o644); err != nil {
+			t.Fatalf("failed to create test file: %v", err)
+		}
+
+		err := run([]string{"enumerfix", testFile})
+		if err != nil {
+			t.Errorf("run() unexpected error = %v", err)
+		}
+
+		// Verify the file was modified
+		content, err := os.ReadFile(testFile)
+		if err != nil {
+			t.Fatalf("failed to read result file: %v", err)
+		}
+
+		expected := `package test
+
+import "github.com/cockroachdb/errors"
+
+func foo() error {
+	return errors.Newf("error")
+}
+`
+		if string(content) != expected {
+			t.Errorf("run() file content = %q, want %q", string(content), expected)
+		}
+	})
+
+	t.Run("returns error when file is not writable", func(t *testing.T) {
+		// Create temp directory
+		tmpDir := t.TempDir()
+		testFile := filepath.Join(tmpDir, "readonly.go")
+
+		input := `package test
+
+import "fmt"
+
+func foo() error {
+	return fmt.Errorf("error")
+}
+`
+		if err := os.WriteFile(testFile, []byte(input), 0o444); err != nil {
+			t.Fatalf("failed to create test file: %v", err)
+		}
+
+		err := run([]string{"enumerfix", testFile})
+		if err == nil {
+			t.Error("run() expected error for readonly file")
+		}
+	})
+}
 
 func TestFixEnumerFile(t *testing.T) {
 	tests := []struct {

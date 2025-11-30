@@ -6,6 +6,8 @@ import (
 	"os"
 	"regexp"
 	"strings"
+
+	"github.com/cockroachdb/errors"
 )
 
 const (
@@ -13,27 +15,37 @@ const (
 	filePermissions = 0o644
 )
 
+// ErrUsage indicates incorrect usage of the tool.
+var ErrUsage = errors.New("usage: enumerfix <file>")
+
 func main() {
-	if len(os.Args) < minArgs {
-		fmt.Fprintln(os.Stderr, "Usage: enumerfix <file>")
+	if err := run(os.Args); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
+}
 
-	filename := os.Args[1]
+// run executes the enumerfix logic with the given arguments.
+func run(args []string) error {
+	if len(args) < minArgs {
+		return ErrUsage
+	}
+
+	filename := args[1]
 
 	//nolint:gosec // G304: File path from CLI argument is expected
 	content, err := os.ReadFile(filename)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error reading file: %v\n", err)
-		os.Exit(1)
+		return errors.Wrap(err, "reading file")
 	}
 
 	fixed := fixEnumerFile(content)
 
 	if err := os.WriteFile(filename, fixed, filePermissions); err != nil {
-		fmt.Fprintf(os.Stderr, "Error writing file: %v\n", err)
-		os.Exit(1)
+		return errors.Wrap(err, "writing file")
 	}
+
+	return nil
 }
 
 func fixEnumerFile(content []byte) []byte {
