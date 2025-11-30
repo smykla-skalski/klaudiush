@@ -3,8 +3,9 @@ package exec
 //go:generate mockgen -source=tempfile.go -destination=tempfile_mock.go -package=exec
 
 import (
-	"fmt"
 	"os"
+
+	"github.com/cockroachdb/errors"
 )
 
 // TempFileManager manages temporary files.
@@ -26,7 +27,7 @@ func NewTempFileManager() *tempFileManager {
 func (*tempFileManager) Create(pattern, content string) (string, func(), error) {
 	tmpFile, err := os.CreateTemp("", pattern)
 	if err != nil {
-		return "", nil, fmt.Errorf("creating temp file: %w", err)
+		return "", nil, errors.Wrap(err, "creating temp file")
 	}
 
 	filePath := tmpFile.Name()
@@ -36,13 +37,13 @@ func (*tempFileManager) Create(pattern, content string) (string, func(), error) 
 		_ = tmpFile.Close()
 		_ = os.Remove(filePath)
 
-		return "", nil, fmt.Errorf("writing to temp file: %w", err)
+		return "", nil, errors.Wrap(err, "writing to temp file")
 	}
 
 	// Close file
 	if err := tmpFile.Close(); err != nil {
 		_ = os.Remove(filePath)
-		return "", nil, fmt.Errorf("closing temp file: %w", err)
+		return "", nil, errors.Wrap(err, "closing temp file")
 	}
 
 	// Return cleanup function

@@ -21,6 +21,7 @@ linters:
 
     # Dependency Management
     - depguard       # Enforce package import restrictions
+    - forbidigo      # Forbid specific function calls
 
     # Code Quality
     - gocyclo        # Cyclomatic complexity
@@ -234,6 +235,12 @@ linters:
               desc: "use github.com/cockroachdb/errors instead"
             - pkg: "github.com/pkg/errors"
               desc: "use github.com/cockroachdb/errors instead"
+
+    forbidigo:
+      forbid:
+        - pattern: 'fmt\.Errorf'
+          msg: "use errors.New, errors.Wrap, or errors.Wrapf from github.com/cockroachdb/errors instead"
+      analyze-types: true
 
 formatters:
   enable:

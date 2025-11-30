@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/exec"
 
+	"github.com/cockroachdb/errors"
+
 	"github.com/smykla-labs/klaudiush/internal/config"
 	"github.com/smykla-labs/klaudiush/internal/doctor"
 	"github.com/smykla-labs/klaudiush/internal/prompt"
@@ -64,7 +66,7 @@ func (f *PermissionsFixer) fixBinaryPermissions(interactive bool) error {
 
 	info, err := os.Stat(path)
 	if err != nil {
-		return fmt.Errorf("failed to stat binary: %w", err)
+		return errors.Wrap(err, "failed to stat binary")
 	}
 
 	actualPerms := info.Mode().Perm()
@@ -78,7 +80,7 @@ func (f *PermissionsFixer) fixBinaryPermissions(interactive bool) error {
 
 		confirmed, err := f.prompter.Confirm(msg, true)
 		if err != nil {
-			return fmt.Errorf("failed to get confirmation: %w", err)
+			return errors.Wrap(err, "failed to get confirmation")
 		}
 
 		if !confirmed {
@@ -87,7 +89,7 @@ func (f *PermissionsFixer) fixBinaryPermissions(interactive bool) error {
 	}
 
 	if err := os.Chmod(path, binaryPermissions); err != nil {
-		return fmt.Errorf("failed to change binary permissions: %w", err)
+		return errors.Wrap(err, "failed to change binary permissions")
 	}
 
 	return nil
@@ -100,7 +102,7 @@ func (f *PermissionsFixer) fixConfigPermissions(interactive bool) error {
 	if loader.HasGlobalConfig() {
 		path := loader.GlobalConfigPath()
 		if err := f.fixSingleConfigFile(path, interactive); err != nil {
-			return fmt.Errorf("failed to fix global config permissions: %w", err)
+			return errors.Wrap(err, "failed to fix global config permissions")
 		}
 	}
 
@@ -110,7 +112,7 @@ func (f *PermissionsFixer) fixConfigPermissions(interactive bool) error {
 		for _, path := range paths {
 			if _, err := os.Stat(path); err == nil {
 				if err := f.fixSingleConfigFile(path, interactive); err != nil {
-					return fmt.Errorf("failed to fix project config permissions: %w", err)
+					return errors.Wrap(err, "failed to fix project config permissions")
 				}
 
 				break
@@ -124,7 +126,7 @@ func (f *PermissionsFixer) fixConfigPermissions(interactive bool) error {
 func (f *PermissionsFixer) fixSingleConfigFile(path string, interactive bool) error {
 	info, err := os.Stat(path)
 	if err != nil {
-		return fmt.Errorf("failed to stat config file: %w", err)
+		return errors.Wrap(err, "failed to stat config file")
 	}
 
 	actualPerms := info.Mode().Perm()
@@ -145,7 +147,7 @@ func (f *PermissionsFixer) fixSingleConfigFile(path string, interactive bool) er
 
 		confirmed, err := f.prompter.Confirm(msg, true)
 		if err != nil {
-			return fmt.Errorf("failed to get confirmation: %w", err)
+			return errors.Wrap(err, "failed to get confirmation")
 		}
 
 		if !confirmed {
@@ -154,7 +156,7 @@ func (f *PermissionsFixer) fixSingleConfigFile(path string, interactive bool) er
 	}
 
 	if err := os.Chmod(path, configPermissions); err != nil {
-		return fmt.Errorf("failed to change config permissions: %w", err)
+		return errors.Wrap(err, "failed to change config permissions")
 	}
 
 	return nil

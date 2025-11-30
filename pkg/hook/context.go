@@ -4,7 +4,9 @@ package hook
 import "encoding/json"
 
 //go:generate enumer -type=EventType -trimprefix=EventType -json -text -yaml -sql
+//go:generate go run github.com/smykla-labs/klaudiush/tools/enumerfix eventtype_enumer.go
 //go:generate enumer -type=ToolType -trimprefix=ToolType -json -text -yaml -sql
+//go:generate go run github.com/smykla-labs/klaudiush/tools/enumerfix tooltype_enumer.go
 
 // EventType represents the type of hook event.
 type EventType int

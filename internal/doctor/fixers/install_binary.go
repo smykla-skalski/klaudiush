@@ -2,7 +2,6 @@ package fixers
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -52,9 +51,9 @@ func (f *InstallBinaryFixer) CanFix(result doctor.CheckResult) bool {
 func (f *InstallBinaryFixer) Fix(ctx context.Context, interactive bool) error {
 	// Check if we're in the klaudiush repository
 	if !f.isInKlaudiushRepo() {
-		return fmt.Errorf(
-			"%w: not in klaudiush repository. Please install manually with: task install",
+		return errors.WithMessage(
 			ErrBinaryInstallNotSupported,
+			"not in klaudiush repository. Please install manually with: task install",
 		)
 	}
 
@@ -63,7 +62,7 @@ func (f *InstallBinaryFixer) Fix(ctx context.Context, interactive bool) error {
 
 		confirmed, err := f.prompter.Confirm(msg, true)
 		if err != nil {
-			return fmt.Errorf("failed to get confirmation: %w", err)
+			return errors.Wrap(err, "failed to get confirmation")
 		}
 
 		if !confirmed {
@@ -82,7 +81,7 @@ func (f *InstallBinaryFixer) Fix(ctx context.Context, interactive bool) error {
 	cmd.Stderr = os.Stderr
 
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to run 'task install': %w", err)
+		return errors.Wrap(err, "failed to run 'task install'")
 	}
 
 	return nil

@@ -94,12 +94,12 @@ type KoanfLoader struct {
 func NewKoanfLoader() (*KoanfLoader, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get home directory: %w", err)
+		return nil, errors.Wrap(err, "failed to get home directory")
 	}
 
 	workDir, err := os.Getwd()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get working directory: %w", err)
+		return nil, errors.Wrap(err, "failed to get working directory")
 	}
 
 	return NewKoanfLoaderWithDirs(homeDir, workDir)
@@ -138,13 +138,13 @@ func (l *KoanfLoader) Load(flags map[string]any) (*config.Config, error) {
 	// 1. Load defaults first (lowest priority)
 	defaults := defaultsToMap()
 	if err := l.k.Load(confmap.Provider(defaults, "."), nil); err != nil {
-		return nil, fmt.Errorf("failed to load defaults: %w", err)
+		return nil, errors.Wrap(err, "failed to load defaults")
 	}
 
 	// 2. Global config: ~/.klaudiush/config.toml
 	globalPath := l.GlobalConfigPath()
 	if err := l.loadTOMLFile(globalPath); err != nil && !os.IsNotExist(err) {
-		return nil, fmt.Errorf("failed to load global config: %w", err)
+		return nil, errors.Wrap(err, "failed to load global config")
 	} else if err == nil {
 		globalRules = l.extractRules()
 	}
@@ -153,7 +153,7 @@ func (l *KoanfLoader) Load(flags map[string]any) (*config.Config, error) {
 	projectPath := l.findProjectConfig()
 	if projectPath != "" {
 		if err := l.loadTOMLFile(projectPath); err != nil {
-			return nil, fmt.Errorf("failed to load project config: %w", err)
+			return nil, errors.Wrap(err, "failed to load project config")
 		}
 
 		projectRules = l.extractRules()
@@ -166,21 +166,21 @@ func (l *KoanfLoader) Load(flags map[string]any) (*config.Config, error) {
 	}
 
 	if err := l.k.Load(env.Provider(".", envOpt), nil); err != nil {
-		return nil, fmt.Errorf("failed to load env vars: %w", err)
+		return nil, errors.Wrap(err, "failed to load env vars")
 	}
 
 	// 5. CLI flags (highest priority)
 	if len(flags) > 0 {
 		flagConfig := l.flagsToConfig(flags)
 		if err := l.k.Load(confmap.Provider(flagConfig, "."), nil); err != nil {
-			return nil, fmt.Errorf("failed to load flags: %w", err)
+			return nil, errors.Wrap(err, "failed to load flags")
 		}
 	}
 
 	// Unmarshal into config struct
 	var cfg config.Config
 	if err := l.k.UnmarshalWithConf("", &cfg, l.tomlOpts); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
+		return nil, errors.Wrap(err, "failed to unmarshal config")
 	}
 
 	// Merge rules: project overrides global by name, different names are combined
@@ -195,7 +195,7 @@ func (l *KoanfLoader) Load(flags map[string]any) (*config.Config, error) {
 	// Validate
 	validator := NewValidator()
 	if err := validator.Validate(&cfg); err != nil {
-		return nil, fmt.Errorf("invalid config: %w", err)
+		return nil, errors.Wrap(err, "invalid config")
 	}
 
 	return &cfg, nil
@@ -314,9 +314,9 @@ func (l *KoanfLoader) loadTOMLFile(path string) error {
 
 	// Security check: reject world-writable files
 	if info.Mode().Perm()&0o002 != 0 {
-		return fmt.Errorf(
-			"%w: %s is world-writable (mode: %s)",
+		return errors.Wrapf(
 			ErrInvalidPermissions,
+			"%s is world-writable (mode: %s)",
 			path,
 			info.Mode().Perm(),
 		)

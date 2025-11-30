@@ -89,14 +89,14 @@ func run(_ *cobra.Command, _ []string) error {
 	// Setup logger
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		return fmt.Errorf("failed to get home directory: %w", err)
+		return errors.Wrap(err, "failed to get home directory")
 	}
 
 	logFile := filepath.Join(homeDir, ".claude", "hooks", "dispatcher.log")
 
 	log, err := logger.NewFileLogger(logFile, debugMode, traceMode)
 	if err != nil {
-		return fmt.Errorf("failed to create logger: %w", err)
+		return errors.Wrap(err, "failed to create logger")
 	}
 
 	// Determine event type using enumer-generated function
@@ -114,7 +114,7 @@ func run(_ *cobra.Command, _ []string) error {
 	// Load configuration
 	cfg, err := loadConfig(log)
 	if err != nil {
-		return fmt.Errorf("failed to load configuration: %w", err)
+		return errors.Wrap(err, "failed to load configuration")
 	}
 
 	// Parse JSON input
@@ -128,7 +128,7 @@ func run(_ *cobra.Command, _ []string) error {
 			return nil
 		}
 
-		return fmt.Errorf("failed to parse input: %w", err)
+		return errors.Wrap(err, "failed to parse input")
 	}
 
 	log.Info("context parsed",
@@ -182,13 +182,13 @@ func loadConfig(log logger.Logger) (*config.Config, error) {
 	// Create koanf loader
 	loader, err := internalconfig.NewKoanfLoader()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create config loader: %w", err)
+		return nil, errors.Wrap(err, "failed to create config loader")
 	}
 
 	// Load configuration
 	cfg, err := loader.Load(flags)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load config: %w", err)
+		return nil, errors.Wrap(err, "failed to load config")
 	}
 
 	log.Debug("configuration loaded")

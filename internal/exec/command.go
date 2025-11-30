@@ -6,7 +6,6 @@ package exec
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"io"
 	"os/exec"
 	"time"
@@ -89,7 +88,7 @@ func (*commandRunner) Run(
 		result.ExitCode = exitErr.ExitCode()
 		result.Err = err
 	} else if err != nil {
-		result.Err = fmt.Errorf("executing %s: %w", name, err)
+		result.Err = errors.Wrapf(err, "executing %s", name)
 	}
 
 	return result
@@ -122,7 +121,7 @@ func (*commandRunner) RunWithStdin(
 		result.ExitCode = exitErr.ExitCode()
 		result.Err = err
 	} else if err != nil {
-		result.Err = fmt.Errorf("executing %s: %w", name, err)
+		result.Err = errors.Wrapf(err, "executing %s", name)
 	}
 
 	return result

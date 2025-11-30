@@ -239,7 +239,7 @@ func (v *WorkflowValidator) getContent(ctx *hook.Context) (string, error) {
 		//nolint:gosec // filePath is from Claude Code tool context, not user input
 		content, err := os.ReadFile(filePath)
 		if err != nil {
-			return "", fmt.Errorf("reading file: %w", err)
+			return "", errors.Wrap(err, "reading file")
 		}
 
 		return string(content), nil

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"github.com/cockroachdb/errors"
 )
 
 const _SeverityName = "unknownerrorwarning"
@@ -58,7 +59,7 @@ func SeverityString(s string) (Severity, error) {
 	if val, ok := _SeverityNameToValueMap[strings.ToLower(s)]; ok {
 		return val, nil
 	}
-	return 0, fmt.Errorf("%s does not belong to Severity values", s)
+	return 0, errors.Newf("%s does not belong to Severity values", s)
 }
 
 // SeverityValues returns all values of the enum
@@ -92,7 +93,7 @@ func (i Severity) MarshalJSON() ([]byte, error) {
 func (i *Severity) UnmarshalJSON(data []byte) error {
 	var s string
 	if err := json.Unmarshal(data, &s); err != nil {
-		return fmt.Errorf("Severity should be a string, got %s", data)
+		return errors.Newf("Severity should be a string, got %s", data)
 	}
 
 	var err error
@@ -147,7 +148,7 @@ func (i *Severity) Scan(value interface{}) error {
 	case fmt.Stringer:
 		str = v.String()
 	default:
-		return fmt.Errorf("invalid value of Severity: %[1]T(%[1]v)", value)
+		return errors.Newf("invalid value of Severity: %[1]T(%[1]v)", value)
 	}
 
 	val, err := SeverityString(str)

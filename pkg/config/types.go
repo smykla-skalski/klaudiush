@@ -2,13 +2,13 @@
 package config
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/cockroachdb/errors"
 )
 
 //go:generate enumer -type=Severity -trimprefix=Severity -transform=lower -json -text -yaml -sql
+//go:generate go run github.com/smykla-labs/klaudiush/tools/enumerfix severity_enumer.go
 
 var (
 	// ErrInvalidSeverity is returned when an invalid severity value is provided.
@@ -42,9 +42,9 @@ func ParseSeverity(s string) (Severity, error) {
 	severity, err := SeverityString(s)
 	if err != nil {
 		return SeverityUnknown,
-			fmt.Errorf(
-				"%w: %q, must be %q or %q",
+			errors.Wrapf(
 				ErrInvalidSeverity,
+				"%q, must be %q or %q",
 				s,
 				SeverityError.String(),
 				SeverityWarning.String(),
@@ -61,11 +61,11 @@ type Duration time.Duration
 func (d *Duration) UnmarshalText(text []byte) error {
 	dur, err := time.ParseDuration(string(text))
 	if err != nil {
-		return fmt.Errorf("invalid duration: %w", err)
+		return errors.Wrap(err, "invalid duration")
 	}
 
 	if dur < 0 {
-		return fmt.Errorf("%w: got %s", ErrNegativeDuration, dur)
+		return errors.Wrapf(ErrNegativeDuration, "got %s", dur)
 	}
 
 	*d = Duration(dur)

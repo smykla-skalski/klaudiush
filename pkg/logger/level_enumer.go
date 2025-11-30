@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"github.com/cockroachdb/errors"
 )
 
 const _LevelName = "DEBUGINFOERROR"
@@ -58,7 +59,7 @@ func LevelString(s string) (Level, error) {
 	if val, ok := _LevelNameToValueMap[strings.ToLower(s)]; ok {
 		return val, nil
 	}
-	return 0, fmt.Errorf("%s does not belong to Level values", s)
+	return 0, errors.Newf("%s does not belong to Level values", s)
 }
 
 // LevelValues returns all values of the enum
@@ -92,7 +93,7 @@ func (i Level) MarshalJSON() ([]byte, error) {
 func (i *Level) UnmarshalJSON(data []byte) error {
 	var s string
 	if err := json.Unmarshal(data, &s); err != nil {
-		return fmt.Errorf("Level should be a string, got %s", data)
+		return errors.Newf("Level should be a string, got %s", data)
 	}
 
 	var err error
@@ -147,7 +148,7 @@ func (i *Level) Scan(value interface{}) error {
 	case fmt.Stringer:
 		str = v.String()
 	default:
-		return fmt.Errorf("invalid value of Level: %[1]T(%[1]v)", value)
+		return errors.Newf("invalid value of Level: %[1]T(%[1]v)", value)
 	}
 
 	val, err := LevelString(str)

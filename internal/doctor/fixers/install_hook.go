@@ -53,7 +53,7 @@ func (f *InstallHookFixer) Fix(_ context.Context, interactive bool) error {
 	// Get binary path
 	binaryPath, err := exec.LookPath("klaudiush")
 	if err != nil {
-		return fmt.Errorf("klaudiush binary not found in PATH: %w", err)
+		return errors.Wrap(err, "klaudiush binary not found in PATH")
 	}
 
 	// Determine which settings file to update
@@ -64,7 +64,7 @@ func (f *InstallHookFixer) Fix(_ context.Context, interactive bool) error {
 
 		confirmed, promptErr := f.prompter.Confirm(msg, true)
 		if promptErr != nil {
-			return fmt.Errorf("failed to get confirmation: %w", promptErr)
+			return errors.Wrap(promptErr, "failed to get confirmation")
 		}
 
 		if !confirmed {
@@ -77,7 +77,7 @@ func (f *InstallHookFixer) Fix(_ context.Context, interactive bool) error {
 
 	claudeSettings, err := parser.Parse()
 	if err != nil && !errors.Is(err, settings.ErrSettingsNotFound) {
-		return fmt.Errorf("failed to parse existing settings: %w", err)
+		return errors.Wrap(err, "failed to parse existing settings")
 	}
 
 	if claudeSettings == nil {
@@ -113,7 +113,7 @@ func (f *InstallHookFixer) Fix(_ context.Context, interactive bool) error {
 	// Marshal to JSON with indentation
 	data, err := json.MarshalIndent(claudeSettings, "", "  ")
 	if err != nil {
-		return fmt.Errorf("failed to marshal settings: %w", err)
+		return errors.Wrap(err, "failed to marshal settings")
 	}
 
 	// Add newline at end of file
@@ -121,7 +121,7 @@ func (f *InstallHookFixer) Fix(_ context.Context, interactive bool) error {
 
 	// Write atomically with backup
 	if err := AtomicWriteFile(settingsPath, data, true); err != nil {
-		return fmt.Errorf("failed to write settings file: %w", err)
+		return errors.Wrap(err, "failed to write settings file")
 	}
 
 	return nil

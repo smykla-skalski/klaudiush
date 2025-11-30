@@ -6,6 +6,8 @@ import (
 	"os"
 	"strings"
 
+	"github.com/cockroachdb/errors"
+
 	"github.com/smykla-labs/klaudiush/internal/rules"
 	"github.com/smykla-labs/klaudiush/internal/templates"
 	"github.com/smykla-labs/klaudiush/internal/validator"
@@ -297,7 +299,7 @@ func (v *CommitValidator) extractCommitMessage(gitCmd *parser.GitCommand) (strin
 			filePath,
 		) //#nosec G304 -- file path is user-provided from git commit -F flag
 		if err != nil {
-			return "", fmt.Errorf("failed to read commit message file %s: %w", filePath, err)
+			return "", errors.Wrapf(err, "failed to read commit message file %s", filePath)
 		}
 
 		return strings.TrimSpace(string(content)), nil

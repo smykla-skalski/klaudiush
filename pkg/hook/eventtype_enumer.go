@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"github.com/cockroachdb/errors"
 )
 
 const _EventTypeName = "UnknownPreToolUsePostToolUseNotification"
@@ -62,7 +63,7 @@ func EventTypeString(s string) (EventType, error) {
 	if val, ok := _EventTypeNameToValueMap[strings.ToLower(s)]; ok {
 		return val, nil
 	}
-	return 0, fmt.Errorf("%s does not belong to EventType values", s)
+	return 0, errors.Newf("%s does not belong to EventType values", s)
 }
 
 // EventTypeValues returns all values of the enum
@@ -96,7 +97,7 @@ func (i EventType) MarshalJSON() ([]byte, error) {
 func (i *EventType) UnmarshalJSON(data []byte) error {
 	var s string
 	if err := json.Unmarshal(data, &s); err != nil {
-		return fmt.Errorf("EventType should be a string, got %s", data)
+		return errors.Newf("EventType should be a string, got %s", data)
 	}
 
 	var err error
@@ -151,7 +152,7 @@ func (i *EventType) Scan(value interface{}) error {
 	case fmt.Stringer:
 		str = v.String()
 	default:
-		return fmt.Errorf("invalid value of EventType: %[1]T(%[1]v)", value)
+		return errors.Newf("invalid value of EventType: %[1]T(%[1]v)", value)
 	}
 
 	val, err := EventTypeString(str)

@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/cockroachdb/errors"
 )
 
 const (
@@ -20,7 +22,7 @@ func AtomicWriteFile(path string, data []byte, createBackup bool) error {
 	// Ensure parent directory exists
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, defaultDirPermissions); err != nil {
-		return fmt.Errorf("failed to create directory: %w", err)
+		return errors.Wrap(err, "failed to create directory")
 	}
 
 	// Get existing file permissions, or use 0600 for new files
@@ -34,7 +36,7 @@ func AtomicWriteFile(path string, data []byte, createBackup bool) error {
 		if _, err := os.Stat(path); err == nil {
 			backupPath := fmt.Sprintf("%s.backup.%d", path, time.Now().Unix())
 			if err := copyFile(path, backupPath); err != nil {
-				return fmt.Errorf("failed to create backup: %w", err)
+				return errors.Wrap(err, "failed to create backup")
 			}
 		}
 	}
@@ -42,13 +44,13 @@ func AtomicWriteFile(path string, data []byte, createBackup bool) error {
 	// Write to temporary file
 	tmpFile := path + ".tmp"
 	if err := os.WriteFile(tmpFile, data, perm); err != nil {
-		return fmt.Errorf("failed to write temp file: %w", err)
+		return errors.Wrap(err, "failed to write temp file")
 	}
 
 	// Atomic rename
 	if err := os.Rename(tmpFile, path); err != nil {
 		_ = os.Remove(tmpFile)
-		return fmt.Errorf("failed to rename temp file: %w", err)
+		return errors.Wrap(err, "failed to rename temp file")
 	}
 
 	return nil
@@ -58,16 +60,16 @@ func AtomicWriteFile(path string, data []byte, createBackup bool) error {
 func copyFile(src, dst string) error {
 	data, err := os.ReadFile(src) //nolint:gosec // src is controlled by caller
 	if err != nil {
-		return fmt.Errorf("failed to read source file: %w", err)
+		return errors.Wrap(err, "failed to read source file")
 	}
 
 	info, err := os.Stat(src)
 	if err != nil {
-		return fmt.Errorf("failed to stat source file: %w", err)
+		return errors.Wrap(err, "failed to stat source file")
 	}
 
 	if err := os.WriteFile(dst, data, info.Mode()); err != nil {
-		return fmt.Errorf("failed to write destination file: %w", err)
+		return errors.Wrap(err, "failed to write destination file")
 	}
 
 	return nil

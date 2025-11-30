@@ -3,7 +3,6 @@ package settings
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -61,14 +60,14 @@ func (p *SettingsParser) Parse() (*ClaudeSettings, error) {
 	data, err := os.ReadFile(p.settingsPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("%w: %s", ErrSettingsNotFound, p.settingsPath)
+			return nil, errors.WithMessage(ErrSettingsNotFound, p.settingsPath)
 		}
 
 		if os.IsPermission(err) {
-			return nil, fmt.Errorf("%w: %s", ErrPermissionDenied, p.settingsPath)
+			return nil, errors.WithMessage(ErrPermissionDenied, p.settingsPath)
 		}
 
-		return nil, fmt.Errorf("failed to read settings file: %w", err)
+		return nil, errors.Wrap(err, "failed to read settings file")
 	}
 
 	if len(data) == 0 {
@@ -77,7 +76,10 @@ func (p *SettingsParser) Parse() (*ClaudeSettings, error) {
 
 	var settings ClaudeSettings
 	if err := json.Unmarshal(data, &settings); err != nil {
-		return nil, fmt.Errorf("%w in %s: %w", ErrInvalidJSON, p.settingsPath, err)
+		return nil, errors.WithSecondaryError(
+			errors.WithMessage(ErrInvalidJSON, "in "+p.settingsPath),
+			err,
+		)
 	}
 
 	if settings.Hooks == nil {

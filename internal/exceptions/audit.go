@@ -464,13 +464,13 @@ func (*AuditLogger) filterEntries(file *os.File, cutoff time.Time) ([][]byte, in
 
 		if unmarshalErr := json.Unmarshal(line, &entry); unmarshalErr != nil {
 			// Keep malformed entries to avoid data loss
-			validEntries = append(validEntries, append([]byte(nil), line...))
+			validEntries = append(validEntries, slices.Clone(line))
 
 			continue
 		}
 
 		if entry.Timestamp.After(cutoff) {
-			validEntries = append(validEntries, append([]byte(nil), line...))
+			validEntries = append(validEntries, slices.Clone(line))
 		}
 	}
 

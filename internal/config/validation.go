@@ -2,9 +2,7 @@
 package config
 
 import (
-	"fmt"
 	"slices"
-	"strings"
 
 	"github.com/cockroachdb/errors"
 
@@ -40,7 +38,7 @@ func NewValidator() *Validator {
 // Returns an error describing all validation failures.
 func (v *Validator) Validate(cfg *config.Config) error {
 	if cfg == nil {
-		return fmt.Errorf("%w: config is nil", ErrInvalidConfig)
+		return errors.WithMessage(ErrInvalidConfig, "config is nil")
 	}
 
 	var validationErrors []error
@@ -60,10 +58,12 @@ func (v *Validator) Validate(cfg *config.Config) error {
 	}
 
 	if len(validationErrors) > 0 {
-		return fmt.Errorf(
-			"%w: validation failed with %d error(s): %w",
-			ErrInvalidConfig,
-			len(validationErrors),
+		return errors.WithSecondaryError(
+			errors.Wrapf(
+				ErrInvalidConfig,
+				"validation failed with %d error(s)",
+				len(validationErrors),
+			),
 			combineErrors(validationErrors),
 		)
 	}
@@ -114,26 +114,26 @@ func (v *Validator) validateGitConfig(cfg *config.GitConfig) error {
 		if err := v.validateCommitConfig(cfg.Commit); err != nil {
 			validationErrors = append(
 				validationErrors,
-				fmt.Errorf("validators.git.commit: %w", err),
+				errors.Wrap(err, "validators.git.commit"),
 			)
 		}
 	}
 
 	if cfg.Push != nil {
 		if err := v.validatePushConfig(cfg.Push); err != nil {
-			validationErrors = append(validationErrors, fmt.Errorf("validators.git.push: %w", err))
+			validationErrors = append(validationErrors, errors.Wrap(err, "validators.git.push"))
 		}
 	}
 
 	if cfg.Add != nil {
 		if err := v.validateAddConfig(cfg.Add); err != nil {
-			validationErrors = append(validationErrors, fmt.Errorf("validators.git.add: %w", err))
+			validationErrors = append(validationErrors, errors.Wrap(err, "validators.git.add"))
 		}
 	}
 
 	if cfg.PR != nil {
 		if err := v.validatePRConfig(cfg.PR); err != nil {
-			validationErrors = append(validationErrors, fmt.Errorf("validators.git.pr: %w", err))
+			validationErrors = append(validationErrors, errors.Wrap(err, "validators.git.pr"))
 		}
 	}
 
@@ -141,7 +141,7 @@ func (v *Validator) validateGitConfig(cfg *config.GitConfig) error {
 		if err := v.validateBranchConfig(cfg.Branch); err != nil {
 			validationErrors = append(
 				validationErrors,
-				fmt.Errorf("validators.git.branch: %w", err),
+				errors.Wrap(err, "validators.git.branch"),
 			)
 		}
 	}
@@ -150,7 +150,7 @@ func (v *Validator) validateGitConfig(cfg *config.GitConfig) error {
 		if err := v.validateBaseConfig(&cfg.NoVerify.ValidatorConfig); err != nil {
 			validationErrors = append(
 				validationErrors,
-				fmt.Errorf("validators.git.no_verify: %w", err),
+				errors.Wrap(err, "validators.git.no_verify"),
 			)
 		}
 	}
@@ -170,7 +170,7 @@ func (v *Validator) validateFileConfig(cfg *config.FileConfig) error {
 		if err := v.validateMarkdownConfig(cfg.Markdown); err != nil {
 			validationErrors = append(
 				validationErrors,
-				fmt.Errorf("validators.file.markdown: %w", err),
+				errors.Wrap(err, "validators.file.markdown"),
 			)
 		}
 	}
@@ -179,7 +179,7 @@ func (v *Validator) validateFileConfig(cfg *config.FileConfig) error {
 		if err := v.validateShellScriptConfig(cfg.ShellScript); err != nil {
 			validationErrors = append(
 				validationErrors,
-				fmt.Errorf("validators.file.shellscript: %w", err),
+				errors.Wrap(err, "validators.file.shellscript"),
 			)
 		}
 	}
@@ -188,7 +188,7 @@ func (v *Validator) validateFileConfig(cfg *config.FileConfig) error {
 		if err := v.validateTerraformConfig(cfg.Terraform); err != nil {
 			validationErrors = append(
 				validationErrors,
-				fmt.Errorf("validators.file.terraform: %w", err),
+				errors.Wrap(err, "validators.file.terraform"),
 			)
 		}
 	}
@@ -197,7 +197,7 @@ func (v *Validator) validateFileConfig(cfg *config.FileConfig) error {
 		if err := v.validateWorkflowConfig(cfg.Workflow); err != nil {
 			validationErrors = append(
 				validationErrors,
-				fmt.Errorf("validators.file.workflow: %w", err),
+				errors.Wrap(err, "validators.file.workflow"),
 			)
 		}
 	}
@@ -213,7 +213,7 @@ func (v *Validator) validateFileConfig(cfg *config.FileConfig) error {
 func (v *Validator) validateNotificationConfig(cfg *config.NotificationConfig) error {
 	if cfg.Bell != nil {
 		if err := v.validateBaseConfig(&cfg.Bell.ValidatorConfig); err != nil {
-			return fmt.Errorf("validators.notification.bell: %w", err)
+			return errors.Wrap(err, "validators.notification.bell")
 		}
 	}
 
@@ -228,7 +228,7 @@ func (v *Validator) validateCommitConfig(cfg *config.CommitValidatorConfig) erro
 
 	if cfg.Message != nil {
 		if err := v.validateCommitMessageConfig(cfg.Message); err != nil {
-			return fmt.Errorf("message: %w", err)
+			return errors.Wrap(err, "message")
 		}
 	}
 
@@ -242,9 +242,9 @@ func (*Validator) validateCommitMessageConfig(cfg *config.CommitMessageConfig) e
 	if cfg.TitleMaxLength != nil && *cfg.TitleMaxLength <= 0 {
 		validationErrors = append(
 			validationErrors,
-			fmt.Errorf(
-				"%w: title_max_length must be positive, got %d",
+			errors.Wrapf(
 				ErrInvalidLength,
+				"title_max_length must be positive, got %d",
 				*cfg.TitleMaxLength,
 			),
 		)
@@ -253,9 +253,9 @@ func (*Validator) validateCommitMessageConfig(cfg *config.CommitMessageConfig) e
 	if cfg.BodyMaxLineLength != nil && *cfg.BodyMaxLineLength <= 0 {
 		validationErrors = append(
 			validationErrors,
-			fmt.Errorf(
-				"%w: body_max_line_length must be positive, got %d",
+			errors.Wrapf(
 				ErrInvalidLength,
+				"body_max_line_length must be positive, got %d",
 				*cfg.BodyMaxLineLength,
 			),
 		)
@@ -264,9 +264,9 @@ func (*Validator) validateCommitMessageConfig(cfg *config.CommitMessageConfig) e
 	if cfg.BodyLineTolerance != nil && *cfg.BodyLineTolerance < 0 {
 		validationErrors = append(
 			validationErrors,
-			fmt.Errorf(
-				"%w: body_line_tolerance must be non-negative, got %d",
+			errors.Wrapf(
 				ErrInvalidLength,
+				"body_line_tolerance must be non-negative, got %d",
 				*cfg.BodyLineTolerance,
 			),
 		)
@@ -276,7 +276,7 @@ func (*Validator) validateCommitMessageConfig(cfg *config.CommitMessageConfig) e
 		if slices.Contains(cfg.ValidTypes, "") {
 			validationErrors = append(
 				validationErrors,
-				fmt.Errorf("%w: valid_types", ErrEmptyValue),
+				errors.WithMessage(ErrEmptyValue, "valid_types"),
 			)
 		}
 	}
@@ -309,9 +309,9 @@ func (v *Validator) validatePRConfig(cfg *config.PRValidatorConfig) error {
 	if cfg.TitleMaxLength != nil && *cfg.TitleMaxLength <= 0 {
 		validationErrors = append(
 			validationErrors,
-			fmt.Errorf(
-				"%w: title_max_length must be positive, got %d",
+			errors.Wrapf(
 				ErrInvalidLength,
+				"title_max_length must be positive, got %d",
 				*cfg.TitleMaxLength,
 			),
 		)
@@ -321,7 +321,7 @@ func (v *Validator) validatePRConfig(cfg *config.PRValidatorConfig) error {
 		if slices.Contains(cfg.ValidTypes, "") {
 			validationErrors = append(
 				validationErrors,
-				fmt.Errorf("%w: valid_types", ErrEmptyValue),
+				errors.WithMessage(ErrEmptyValue, "valid_types"),
 			)
 		}
 	}
@@ -341,7 +341,7 @@ func (v *Validator) validateBranchConfig(cfg *config.BranchValidatorConfig) erro
 
 	if len(cfg.ValidTypes) > 0 {
 		if slices.Contains(cfg.ValidTypes, "") {
-			return fmt.Errorf("%w: valid_types", ErrEmptyValue)
+			return errors.WithMessage(ErrEmptyValue, "valid_types")
 		}
 	}
 
@@ -355,9 +355,9 @@ func (v *Validator) validateMarkdownConfig(cfg *config.MarkdownValidatorConfig) 
 	}
 
 	if cfg.ContextLines != nil && *cfg.ContextLines < 0 {
-		return fmt.Errorf(
-			"%w: context_lines must be non-negative, got %d",
+		return errors.Wrapf(
 			ErrInvalidLength,
+			"context_lines must be non-negative, got %d",
 			*cfg.ContextLines,
 		)
 	}
@@ -372,9 +372,9 @@ func (v *Validator) validateShellScriptConfig(cfg *config.ShellScriptValidatorCo
 	}
 
 	if cfg.ContextLines != nil && *cfg.ContextLines < 0 {
-		return fmt.Errorf(
-			"%w: context_lines must be non-negative, got %d",
+		return errors.Wrapf(
 			ErrInvalidLength,
+			"context_lines must be non-negative, got %d",
 			*cfg.ContextLines,
 		)
 	}
@@ -386,9 +386,9 @@ func (v *Validator) validateShellScriptConfig(cfg *config.ShellScriptValidatorCo
 		valid := slices.Contains(validSeverities, cfg.ShellcheckSeverity)
 
 		if !valid {
-			return fmt.Errorf(
-				"%w: shellcheck_severity must be one of %v, got %q",
+			return errors.Wrapf(
 				ErrInvalidOption,
+				"shellcheck_severity must be one of %v, got %q",
 				validSeverities,
 				cfg.ShellcheckSeverity,
 			)
@@ -405,9 +405,9 @@ func (v *Validator) validateTerraformConfig(cfg *config.TerraformValidatorConfig
 	}
 
 	if cfg.ContextLines != nil && *cfg.ContextLines < 0 {
-		return fmt.Errorf(
-			"%w: context_lines must be non-negative, got %d",
+		return errors.Wrapf(
 			ErrInvalidLength,
+			"context_lines must be non-negative, got %d",
 			*cfg.ContextLines,
 		)
 	}
@@ -419,9 +419,9 @@ func (v *Validator) validateTerraformConfig(cfg *config.TerraformValidatorConfig
 		valid := slices.Contains(validPreferences, cfg.ToolPreference)
 
 		if !valid {
-			return fmt.Errorf(
-				"%w: tool_preference must be one of %v, got %q",
+			return errors.Wrapf(
 				ErrInvalidOption,
+				"tool_preference must be one of %v, got %q",
 				validPreferences,
 				cfg.ToolPreference,
 			)
@@ -439,9 +439,9 @@ func (v *Validator) validateWorkflowConfig(cfg *config.WorkflowValidatorConfig) 
 // validateBaseConfig validates the base validator configuration.
 func (*Validator) validateBaseConfig(cfg *config.ValidatorConfig) error {
 	if cfg.Severity != config.SeverityUnknown && !cfg.Severity.IsASeverity() {
-		return fmt.Errorf(
-			"%w: must be %q or %q, got %q",
+		return errors.Wrapf(
 			ErrInvalidSeverity,
+			"must be %q or %q, got %q",
 			config.SeverityError.String(),
 			config.SeverityWarning.String(),
 			cfg.Severity.String(),
@@ -461,13 +461,5 @@ func combineErrors(errs []error) error {
 		return errs[0]
 	}
 
-	var sb strings.Builder
-	sb.WriteString(errs[0].Error())
-
-	for _, err := range errs[1:] {
-		sb.WriteString("; ")
-		sb.WriteString(err.Error())
-	}
-
-	return fmt.Errorf("%w: %s", ErrInvalidConfig, sb.String())
+	return errors.Join(errs...)
 }

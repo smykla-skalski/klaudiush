@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/cockroachdb/errors"
+
 	"github.com/smykla-labs/klaudiush/internal/config"
 	"github.com/smykla-labs/klaudiush/internal/doctor"
 	"github.com/smykla-labs/klaudiush/internal/prompt"
@@ -47,13 +49,13 @@ func (f *ConfigFixer) Fix(_ context.Context, interactive bool) error {
 
 	if needsGlobal {
 		if err := f.createGlobalConfig(interactive); err != nil {
-			return fmt.Errorf("failed to create global config: %w", err)
+			return errors.Wrap(err, "failed to create global config")
 		}
 	}
 
 	if needsProject {
 		if err := f.createProjectConfig(interactive); err != nil {
-			return fmt.Errorf("failed to create project config: %w", err)
+			return errors.Wrap(err, "failed to create project config")
 		}
 	}
 
@@ -68,7 +70,7 @@ func (f *ConfigFixer) createGlobalConfig(interactive bool) error {
 
 		confirmed, err := f.prompter.Confirm(msg, true)
 		if err != nil {
-			return fmt.Errorf("failed to get confirmation: %w", err)
+			return errors.Wrap(err, "failed to get confirmation")
 		}
 
 		if !confirmed {
@@ -81,7 +83,7 @@ func (f *ConfigFixer) createGlobalConfig(interactive bool) error {
 
 	// Write to global location
 	if err := f.writer.WriteGlobal(cfg); err != nil {
-		return fmt.Errorf("failed to write global config: %w", err)
+		return errors.Wrap(err, "failed to write global config")
 	}
 
 	return nil
@@ -95,7 +97,7 @@ func (f *ConfigFixer) createProjectConfig(interactive bool) error {
 
 		confirmed, err := f.prompter.Confirm(msg, true)
 		if err != nil {
-			return fmt.Errorf("failed to get confirmation: %w", err)
+			return errors.Wrap(err, "failed to get confirmation")
 		}
 
 		if !confirmed {
@@ -108,7 +110,7 @@ func (f *ConfigFixer) createProjectConfig(interactive bool) error {
 
 	// Write to project location
 	if err := f.writer.WriteProject(cfg); err != nil {
-		return fmt.Errorf("failed to write project config: %w", err)
+		return errors.Wrap(err, "failed to write project config")
 	}
 
 	return nil

@@ -3,7 +3,6 @@ package parser
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
 	"os"
 
@@ -46,7 +45,7 @@ func (p *JSONParser) Parse(eventType hook.EventType) (*hook.Context, error) {
 	// Try reading from stdin
 	jsonBytes, err := io.ReadAll(p.reader)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read input: %w", err)
+		return nil, errors.Wrap(err, "failed to read input")
 	}
 
 	// If stdin is empty, try environment variable
@@ -63,7 +62,7 @@ func (p *JSONParser) Parse(eventType hook.EventType) (*hook.Context, error) {
 	var input JSONInput
 
 	if unmarshalErr := json.Unmarshal(jsonBytes, &input); unmarshalErr != nil {
-		return nil, fmt.Errorf("%w: %w", ErrInvalidJSON, unmarshalErr)
+		return nil, errors.CombineErrors(ErrInvalidJSON, unmarshalErr)
 	}
 
 	// Extract tool name

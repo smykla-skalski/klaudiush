@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"github.com/cockroachdb/errors"
 )
 
 const _ToolTypeName = "UnknownBashWriteEditMultiEditGrepReadGlob"
@@ -78,7 +79,7 @@ func ToolTypeString(s string) (ToolType, error) {
 	if val, ok := _ToolTypeNameToValueMap[strings.ToLower(s)]; ok {
 		return val, nil
 	}
-	return 0, fmt.Errorf("%s does not belong to ToolType values", s)
+	return 0, errors.Newf("%s does not belong to ToolType values", s)
 }
 
 // ToolTypeValues returns all values of the enum
@@ -112,7 +113,7 @@ func (i ToolType) MarshalJSON() ([]byte, error) {
 func (i *ToolType) UnmarshalJSON(data []byte) error {
 	var s string
 	if err := json.Unmarshal(data, &s); err != nil {
-		return fmt.Errorf("ToolType should be a string, got %s", data)
+		return errors.Newf("ToolType should be a string, got %s", data)
 	}
 
 	var err error
@@ -167,7 +168,7 @@ func (i *ToolType) Scan(value interface{}) error {
 	case fmt.Stringer:
 		str = v.String()
 	default:
-		return fmt.Errorf("invalid value of ToolType: %[1]T(%[1]v)", value)
+		return errors.Newf("invalid value of ToolType: %[1]T(%[1]v)", value)
 	}
 
 	val, err := ToolTypeString(str)
