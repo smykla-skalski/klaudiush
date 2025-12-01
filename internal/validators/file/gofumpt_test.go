@@ -223,7 +223,7 @@ require (
 )
 `
 				goModPath := filepath.Join(testDir, "go.mod")
-				err := os.WriteFile(goModPath, []byte(goModContent), 0600)
+				err := os.WriteFile(goModPath, []byte(goModContent), 0o600)
 				Expect(err).NotTo(HaveOccurred())
 
 				goCode := "package main\n\nfunc main() {}\n"
@@ -254,12 +254,12 @@ require (
 go 1.20
 `
 				goModPath := filepath.Join(testDir, "go.mod")
-				err := os.WriteFile(goModPath, []byte(goModContent), 0600)
+				err := os.WriteFile(goModPath, []byte(goModContent), 0o600)
 				Expect(err).NotTo(HaveOccurred())
 
 				// Create subdirectory
 				subDir := filepath.Join(testDir, "pkg", "subpkg")
-				err = os.MkdirAll(subDir, 0755)
+				err = os.MkdirAll(subDir, 0o755)
 				Expect(err).NotTo(HaveOccurred())
 
 				// File in subdirectory
@@ -314,7 +314,7 @@ go 1.20
 go 1.21
 `
 				goModPath := filepath.Join(testDir, "go.mod")
-				err := os.WriteFile(goModPath, []byte(goModContent), 0600)
+				err := os.WriteFile(goModPath, []byte(goModContent), 0o600)
 				Expect(err).NotTo(HaveOccurred())
 
 				goCode := "package main\n\nfunc main() {}\n"

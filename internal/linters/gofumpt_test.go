@@ -186,7 +186,8 @@ var _ = Describe("GofumptChecker", func() {
 				mockToolChecker.EXPECT().IsAvailable("gofumpt").Return(true)
 				mockTempManager.EXPECT().Create("code-*.go", goCode).
 					Return("/tmp/code-123.go", func() {}, nil)
-				mockRunner.EXPECT().Run(ctx, "gofumpt", "-l", "-d", "-lang", "go1.21", "/tmp/code-123.go").
+				mockRunner.EXPECT().
+					Run(ctx, "gofumpt", "-l", "-d", "-lang", "go1.21", "/tmp/code-123.go").
 					Return(execpkg.CommandResult{
 						Stdout:   "",
 						Stderr:   "",
@@ -209,7 +210,8 @@ var _ = Describe("GofumptChecker", func() {
 				mockToolChecker.EXPECT().IsAvailable("gofumpt").Return(true)
 				mockTempManager.EXPECT().Create("code-*.go", goCode).
 					Return("/tmp/code-123.go", func() {}, nil)
-				mockRunner.EXPECT().Run(ctx, "gofumpt", "-l", "-d", "-modpath", "github.com/example/repo", "/tmp/code-123.go").
+				mockRunner.EXPECT().
+					Run(ctx, "gofumpt", "-l", "-d", "-modpath", "github.com/example/repo", "/tmp/code-123.go").
 					Return(execpkg.CommandResult{
 						Stdout:   "",
 						Stderr:   "",
@@ -236,7 +238,8 @@ var _ = Describe("GofumptChecker", func() {
 				mockToolChecker.EXPECT().IsAvailable("gofumpt").Return(true)
 				mockTempManager.EXPECT().Create("code-*.go", goCode).
 					Return("/tmp/code-123.go", func() {}, nil)
-				mockRunner.EXPECT().Run(ctx, "gofumpt", "-l", "-d", "-extra", "-lang", "go1.21", "-modpath", "github.com/example/repo", "/tmp/code-123.go").
+				mockRunner.EXPECT().
+					Run(ctx, "gofumpt", "-l", "-d", "-extra", "-lang", "go1.21", "-modpath", "github.com/example/repo", "/tmp/code-123.go").
 					Return(execpkg.CommandResult{
 						Stdout:   "",
 						Stderr:   "",

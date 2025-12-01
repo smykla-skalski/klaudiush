@@ -153,19 +153,14 @@ func (v *GofumptValidator) buildGofumptOptions(filePath string) *linters.Gofumpt
 
 	// Auto-detect from go.mod if not configured
 	if lang == "" || modpath == "" {
-		goModPath := v.findGoMod(filePath)
-		if goModPath != "" {
-			detectedLang, detectedModPath, err := v.parseGoMod(goModPath)
-			if err == nil {
-				if lang == "" && detectedLang != "" {
-					lang = detectedLang
-					v.Logger().Debug("auto-detected Go version", "lang", lang, "go_mod", goModPath)
-				}
-				if modpath == "" && detectedModPath != "" {
-					modpath = detectedModPath
-					v.Logger().Debug("auto-detected module path", "modpath", modpath, "go_mod", goModPath)
-				}
-			}
+		detectedLang, detectedModPath := v.autoDetectGoModSettings(filePath)
+
+		if lang == "" && detectedLang != "" {
+			lang = detectedLang
+		}
+
+		if modpath == "" && detectedModPath != "" {
+			modpath = detectedModPath
 		}
 	}
 
@@ -175,12 +170,36 @@ func (v *GofumptValidator) buildGofumptOptions(filePath string) *linters.Gofumpt
 	return opts
 }
 
+// autoDetectGoModSettings attempts to auto-detect Go version and module path from go.mod
+func (v *GofumptValidator) autoDetectGoModSettings(filePath string) (lang, modpath string) {
+	goModPath := v.findGoMod(filePath)
+	if goModPath == "" {
+		return "", ""
+	}
+
+	detectedLang, detectedModPath, err := v.parseGoMod(goModPath)
+	if err != nil {
+		return "", ""
+	}
+
+	if detectedLang != "" {
+		v.Logger().Debug("auto-detected Go version", "lang", detectedLang, "go_mod", goModPath)
+	}
+
+	if detectedModPath != "" {
+		v.Logger().
+			Debug("auto-detected module path", "modpath", detectedModPath, "go_mod", goModPath)
+	}
+
+	return detectedLang, detectedModPath
+}
+
 // findGoMod walks up the directory tree to find go.mod
-func (v *GofumptValidator) findGoMod(startPath string) string {
+func (*GofumptValidator) findGoMod(startPath string) string {
 	dir := filepath.Dir(startPath)
 
 	// Walk up to 10 levels max
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		goModPath := filepath.Join(dir, "go.mod")
 		if _, err := os.Stat(goModPath); err == nil {
 			return goModPath
@@ -192,6 +211,7 @@ func (v *GofumptValidator) findGoMod(startPath string) string {
 			// Reached root
 			break
 		}
+
 		dir = parent
 	}
 
@@ -199,7 +219,7 @@ func (v *GofumptValidator) findGoMod(startPath string) string {
 }
 
 // parseGoMod extracts Go version and module path from go.mod
-func (v *GofumptValidator) parseGoMod(goModPath string) (lang, modpath string, err error) {
+func (*GofumptValidator) parseGoMod(goModPath string) (lang, modpath string, err error) {
 	data, err := os.ReadFile(goModPath) //nolint:gosec // goModPath is from findGoMod
 	if err != nil {
 		return "", "", err

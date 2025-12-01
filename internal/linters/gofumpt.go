@@ -65,9 +65,11 @@ func (g *RealGofumptChecker) CheckWithOptions(
 		if opts.ExtraRules {
 			args = append(args, "-extra")
 		}
+
 		if opts.Lang != "" {
 			args = append(args, "-lang", opts.Lang)
 		}
+
 		if opts.ModPath != "" {
 			args = append(args, "-modpath", opts.ModPath)
 		}
@@ -92,6 +94,7 @@ func parseGofumptOutput(output string) []LintFinding {
 	// gofumpt outputs a unified diff when there are formatting issues
 	// We'll create a single finding with the diff as the message
 	lines := strings.Split(output, "\n")
+
 	var diffLines []string
 
 	for _, line := range lines {
