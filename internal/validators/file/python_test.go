@@ -11,6 +11,7 @@ import (
 
 	execpkg "github.com/smykla-labs/klaudiush/internal/exec"
 	"github.com/smykla-labs/klaudiush/internal/linters"
+	"github.com/smykla-labs/klaudiush/internal/validator"
 	"github.com/smykla-labs/klaudiush/internal/validators/file"
 	"github.com/smykla-labs/klaudiush/pkg/config"
 	"github.com/smykla-labs/klaudiush/pkg/hook"
@@ -153,6 +154,203 @@ if __name__ == "__main__":
 
 			result := v.Validate(context.Background(), ctx)
 			Expect(result.Passed).To(BeTrue())
+		})
+	})
+
+	Describe("configuration options", func() {
+		Context("isUseRuff", func() {
+			It("should return true by default", func() {
+				runner := execpkg.NewCommandRunner(10 * time.Second)
+				checker := linters.NewRuffChecker(runner)
+				v = file.NewPythonValidator(logger.NewNoOpLogger(), checker, nil, nil)
+
+				ctx.ToolInput.FilePath = "test.py"
+				ctx.ToolInput.Content = "print('hello')"
+				result := v.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("should respect UseRuff config when disabled", func() {
+				useRuff := false
+				cfg := &config.PythonValidatorConfig{
+					UseRuff: &useRuff,
+				}
+				runner := execpkg.NewCommandRunner(10 * time.Second)
+				checker := linters.NewRuffChecker(runner)
+				v = file.NewPythonValidator(logger.NewNoOpLogger(), checker, cfg, nil)
+
+				ctx.ToolInput.FilePath = "test.py"
+				ctx.ToolInput.Content = "import os"
+				result := v.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("should respect UseRuff config when enabled", func() {
+				useRuff := true
+				cfg := &config.PythonValidatorConfig{
+					UseRuff: &useRuff,
+				}
+				runner := execpkg.NewCommandRunner(10 * time.Second)
+				checker := linters.NewRuffChecker(runner)
+				v = file.NewPythonValidator(logger.NewNoOpLogger(), checker, cfg, nil)
+
+				ctx.ToolInput.FilePath = "test.py"
+				ctx.ToolInput.Content = "print('hello')"
+				result := v.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
+		})
+
+		Context("timeout", func() {
+			It("should use custom timeout from config", func() {
+				cfg := &config.PythonValidatorConfig{
+					Timeout: config.Duration(30 * time.Second),
+				}
+				runner := execpkg.NewCommandRunner(30 * time.Second)
+				checker := linters.NewRuffChecker(runner)
+				v = file.NewPythonValidator(logger.NewNoOpLogger(), checker, cfg, nil)
+
+				ctx.ToolInput.FilePath = "test.py"
+				ctx.ToolInput.Content = "print('hello')"
+				result := v.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
+		})
+
+		Context("context lines", func() {
+			It("should use custom context lines from config", func() {
+				contextLines := 5
+				cfg := &config.PythonValidatorConfig{
+					ContextLines: &contextLines,
+				}
+				runner := execpkg.NewCommandRunner(10 * time.Second)
+				checker := linters.NewRuffChecker(runner)
+				v = file.NewPythonValidator(logger.NewNoOpLogger(), checker, cfg, nil)
+
+				ctx.ToolInput.FilePath = "test.py"
+				ctx.ToolInput.Content = "print('hello')"
+				result := v.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
+		})
+
+		Context("ruff config path", func() {
+			It("should accept custom ruff config path", func() {
+				cfg := &config.PythonValidatorConfig{
+					RuffConfig: "/path/to/ruff.toml",
+				}
+				runner := execpkg.NewCommandRunner(10 * time.Second)
+				checker := linters.NewRuffChecker(runner)
+				v = file.NewPythonValidator(logger.NewNoOpLogger(), checker, cfg, nil)
+
+				// Just verify validator is created with config
+				Expect(v).NotTo(BeNil())
+			})
+		})
+	})
+
+	Describe("Category", func() {
+		It("should return CategoryIO", func() {
+			Expect(v.Category()).To(Equal(validator.CategoryIO))
+		})
+	})
+
+	Describe("file operations", func() {
+		var tempFile string
+
+		BeforeEach(func() {
+			tmpDir := GinkgoT().TempDir()
+			tempFile = filepath.Join(tmpDir, "test.py")
+		})
+
+		Context("when file exists", func() {
+			It("should read and validate file content", func() {
+				content := `print("Hello, World!")
+`
+				err := os.WriteFile(tempFile, []byte(content), 0o600)
+				Expect(err).NotTo(HaveOccurred())
+
+				ctx.ToolInput.FilePath = tempFile
+				ctx.ToolInput.Content = ""
+
+				result := v.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
+		})
+
+		Context("when file does not exist", func() {
+			It("should pass gracefully", func() {
+				ctx.ToolInput.FilePath = filepath.Join(GinkgoT().TempDir(), "nonexistent.py")
+				ctx.ToolInput.Content = ""
+
+				result := v.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
+		})
+
+		Context("when edit operation has missing strings", func() {
+			It("should pass when old_string is missing", func() {
+				content := `print("Hello, World!")
+`
+				err := os.WriteFile(tempFile, []byte(content), 0o600)
+				Expect(err).NotTo(HaveOccurred())
+
+				ctx.EventType = hook.EventTypePreToolUse
+				ctx.ToolName = hook.ToolTypeEdit
+				ctx.ToolInput.FilePath = tempFile
+				ctx.ToolInput.OldString = ""
+				ctx.ToolInput.NewString = "print('Hi')"
+
+				result := v.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("should pass when new_string is missing", func() {
+				content := `print("Hello, World!")
+`
+				err := os.WriteFile(tempFile, []byte(content), 0o600)
+				Expect(err).NotTo(HaveOccurred())
+
+				ctx.EventType = hook.EventTypePreToolUse
+				ctx.ToolName = hook.ToolTypeEdit
+				ctx.ToolInput.FilePath = tempFile
+				ctx.ToolInput.OldString = "print('Hello')"
+				ctx.ToolInput.NewString = ""
+
+				result := v.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
+		})
+
+		Context("when edit file cannot be read", func() {
+			It("should pass gracefully", func() {
+				ctx.EventType = hook.EventTypePreToolUse
+				ctx.ToolName = hook.ToolTypeEdit
+				ctx.ToolInput.FilePath = filepath.Join(GinkgoT().TempDir(), "nonexistent.py")
+				ctx.ToolInput.OldString = "old"
+				ctx.ToolInput.NewString = "new"
+
+				result := v.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
+		})
+
+		Context("when fragment cannot be extracted", func() {
+			It("should pass gracefully", func() {
+				content := `print("Hello, World!")
+`
+				err := os.WriteFile(tempFile, []byte(content), 0o600)
+				Expect(err).NotTo(HaveOccurred())
+
+				ctx.EventType = hook.EventTypePreToolUse
+				ctx.ToolName = hook.ToolTypeEdit
+				ctx.ToolInput.FilePath = tempFile
+				ctx.ToolInput.OldString = "nonexistent_code"
+				ctx.ToolInput.NewString = "new_code"
+
+				result := v.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
 		})
 	})
 })

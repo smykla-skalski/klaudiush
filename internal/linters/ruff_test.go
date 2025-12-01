@@ -180,5 +180,58 @@ var _ = Describe("RuffChecker", func() {
 				Expect(result.Success).To(BeTrue())
 			})
 		})
+
+		Context("when using custom config path", func() {
+			It("should pass config path to ruff", func() {
+				scriptContent := "print('hello')"
+				opts := &linters.RuffCheckOptions{
+					ConfigPath: "/path/to/ruff.toml",
+				}
+
+				mockToolChecker.EXPECT().IsAvailable("ruff").Return(true)
+				mockTempManager.EXPECT().Create("script-*.py", scriptContent).
+					Return("/tmp/script-123.py", func() {}, nil)
+				mockRunner.EXPECT().
+					Run(ctx, "ruff", "check", "--output-format=json", "--config=/path/to/ruff.toml", "/tmp/script-123.py").
+					Return(execpkg.CommandResult{
+						Stdout:   "[]",
+						Stderr:   "",
+						ExitCode: 0,
+						Err:      nil,
+					})
+
+				result := checker.CheckWithOptions(ctx, scriptContent, opts)
+
+				Expect(result).NotTo(BeNil())
+				Expect(result.Success).To(BeTrue())
+			})
+		})
+
+		Context("when using both config path and exclude rules", func() {
+			It("should pass both options to ruff", func() {
+				scriptContent := "import os\nprint('hello')"
+				opts := &linters.RuffCheckOptions{
+					ConfigPath:   "/path/to/ruff.toml",
+					ExcludeRules: []string{"F401"},
+				}
+
+				mockToolChecker.EXPECT().IsAvailable("ruff").Return(true)
+				mockTempManager.EXPECT().Create("script-*.py", scriptContent).
+					Return("/tmp/script-123.py", func() {}, nil)
+				mockRunner.EXPECT().
+					Run(ctx, "ruff", "check", "--output-format=json", "--config=/path/to/ruff.toml", "--ignore=F401", "/tmp/script-123.py").
+					Return(execpkg.CommandResult{
+						Stdout:   "[]",
+						Stderr:   "",
+						ExitCode: 0,
+						Err:      nil,
+					})
+
+				result := checker.CheckWithOptions(ctx, scriptContent, opts)
+
+				Expect(result).NotTo(BeNil())
+				Expect(result.Success).To(BeTrue())
+			})
+		})
 	})
 })
