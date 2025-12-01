@@ -116,6 +116,8 @@ type shellContent struct {
 }
 
 // getContent extracts shell script content from context
+//
+//nolint:dupl // Similar pattern to PythonValidator.getContent, acceptable duplication
 func (v *ShellScriptValidator) getContent(
 	ctx *hook.Context,
 	filePath string,

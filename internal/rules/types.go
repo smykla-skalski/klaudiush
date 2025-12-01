@@ -46,6 +46,7 @@ const (
 	ValidatorFileTerraform ValidatorType = "file.terraform"
 	ValidatorFileWorkflow  ValidatorType = "file.workflow"
 	ValidatorFileGofumpt   ValidatorType = "file.gofumpt"
+	ValidatorFilePython    ValidatorType = "file.python"
 	ValidatorFileAll       ValidatorType = "file.*"
 	ValidatorSecrets       ValidatorType = "secrets.secrets"
 	ValidatorShellBacktick ValidatorType = "shell.backtick"

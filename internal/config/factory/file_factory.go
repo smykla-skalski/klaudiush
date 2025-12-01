@@ -52,6 +52,7 @@ func (f *FileValidatorFactory) CreateValidators(cfg *config.Config) []ValidatorW
 	tfLinter := linters.NewTfLinter(runner)
 	actionLinter := linters.NewActionLinter(runner)
 	gofumptChecker := linters.NewGofumptChecker(runner)
+	ruffChecker := linters.NewRuffChecker(runner)
 	githubClient := githubpkg.NewClient()
 
 	if cfg.Validators.File.Markdown != nil && cfg.Validators.File.Markdown.IsEnabled() {
@@ -85,6 +86,13 @@ func (f *FileValidatorFactory) CreateValidators(cfg *config.Config) []ValidatorW
 		validators = append(
 			validators,
 			f.createGofumptValidator(cfg.Validators.File.Gofumpt, gofumptChecker),
+		)
+	}
+
+	if cfg.Validators.File.Python != nil && cfg.Validators.File.Python.IsEnabled() {
+		validators = append(
+			validators,
+			f.createPythonValidator(cfg.Validators.File.Python, ruffChecker),
 		)
 	}
 
@@ -216,6 +224,29 @@ func (f *FileValidatorFactory) createGofumptValidator(
 			validator.EventTypeIs(hook.EventTypePreToolUse),
 			validator.ToolTypeIn(hook.ToolTypeWrite),
 			validator.FileExtensionIs(".go"),
+		),
+	}
+}
+
+func (f *FileValidatorFactory) createPythonValidator(
+	cfg *config.PythonValidatorConfig,
+	checker linters.RuffChecker,
+) ValidatorWithPredicate {
+	var ruleAdapter *rules.RuleValidatorAdapter
+	if f.ruleEngine != nil {
+		ruleAdapter = rules.NewRuleValidatorAdapter(
+			f.ruleEngine,
+			rules.ValidatorFilePython,
+			rules.WithAdapterLogger(f.log),
+		)
+	}
+
+	return ValidatorWithPredicate{
+		Validator: filevalidators.NewPythonValidator(f.log, checker, cfg, ruleAdapter),
+		Predicate: validator.And(
+			validator.EventTypeIs(hook.EventTypePreToolUse),
+			validator.ToolTypeIn(hook.ToolTypeWrite, hook.ToolTypeEdit, hook.ToolTypeMultiEdit),
+			validator.FileExtensionIs(".py"),
 		),
 	}
 }
