@@ -1,0 +1,47 @@
+# JavaScript/TypeScript Validator Configuration Examples
+# This file demonstrates various configurations for the JavaScript validator
+# which uses oxlint for code quality checking.
+
+# Minimal configuration - uses all defaults
+[validators.file.javascript]
+enabled = true
+
+# Development environment - relaxed rules, warnings only
+# [validators.file.javascript]
+# enabled = true
+# severity = "warning"  # Don't block, just warn
+# exclude_rules = ["no-console", "no-debugger"]  # Allow console/debugger in dev
+
+# Production environment - strict rules, blocks commits
+# [validators.file.javascript]
+# enabled = true
+# severity = "error"  # Block on errors (default)
+# timeout = "15s"  # Increase timeout for large projects
+# use_oxlint = true  # Enable oxlint (default)
+# oxlint_config = ".oxlintrc.json"  # Use custom config
+
+# Disable JavaScript validation entirely
+# [validators.file.javascript]
+# enabled = false
+
+# Custom rules exclusion
+# [validators.file.javascript]
+# enabled = true
+# exclude_rules = [
+#     "no-unused-vars",  # Allow unused variables
+#     "no-undef",        # Allow undefined variables
+#     "no-console",      # Allow console statements
+#     "no-debugger",     # Allow debugger statements
+# ]
+
+# Custom binary path (useful if oxlint is not in PATH)
+# [validators.file.javascript]
+# enabled = true
+# oxlint_path = "/custom/path/to/oxlint"
+
+# Context lines for edit validation
+# When using the Edit tool, this controls how many lines of context
+# are included around the edit for validation
+# [validators.file.javascript]
+# enabled = true
+# context_lines = 5  # Default: 2
