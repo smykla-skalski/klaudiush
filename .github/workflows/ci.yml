@@ -37,7 +37,7 @@ jobs:
           python-version: '3.13'
 
       - name: Install ruff
-        run: pip install ruff==0.14.7
+        run: pip install --require-hashes -r .github/workflows/requirements.txt
 
       - name: Download dependencies
         run: go mod download
