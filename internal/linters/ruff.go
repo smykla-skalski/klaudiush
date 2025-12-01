@@ -28,6 +28,8 @@ type ruffLocation struct {
 type RuffCheckOptions struct {
 	// ExcludeRules are ruff codes to exclude (e.g., []string{"F401", "E501"})
 	ExcludeRules []string
+	// ConfigPath is the path to a ruff configuration file (pyproject.toml or ruff.toml)
+	ConfigPath string
 }
 
 // RuffChecker validates Python code using ruff
@@ -67,6 +69,11 @@ func (r *RealRuffChecker) CheckWithOptions(
 	opts *RuffCheckOptions,
 ) *LintResult {
 	args := []string{"check", "--output-format=json"}
+
+	// Add config path if specified
+	if opts != nil && opts.ConfigPath != "" {
+		args = append(args, "--config="+opts.ConfigPath)
+	}
 
 	// Add exclude rules if specified
 	if opts != nil {

@@ -2,6 +2,7 @@ package file
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strings"
 	"time"
@@ -65,6 +66,12 @@ func (v *PythonValidator) Validate(
 		}
 	}
 
+	// Check if ruff is enabled
+	if !v.isUseRuff() {
+		log.Debug("ruff is disabled, skipping validation")
+		return validator.Pass()
+	}
+
 	// Get the file path
 	filePath := hookCtx.GetFilePath()
 	if filePath == "" {
@@ -94,7 +101,7 @@ func (v *PythonValidator) Validate(
 
 	log.Debug("ruff failed", "output", result.RawOut)
 
-	return validator.FailWithRef(validator.RefRuffCheck, v.formatRuffOutput(result.RawOut))
+	return validator.FailWithRef(validator.RefRuffCheck, v.formatRuffOutput(result))
 }
 
 // pythonContent holds Python script content and metadata for validation
@@ -104,6 +111,8 @@ type pythonContent struct {
 }
 
 // getContent extracts Python script content from context
+//
+//nolint:dupl // Similar pattern to ShellScriptValidator.getContent, acceptable duplication
 func (v *PythonValidator) getContent(
 	ctx *hook.Context,
 	filePath string,
@@ -188,32 +197,52 @@ func (v *PythonValidator) getEditContent(
 	return fragment, nil
 }
 
-// formatRuffOutput formats ruff output for display.
-func (*PythonValidator) formatRuffOutput(output string) string {
-	// Clean up the output - remove empty lines
-	lines := strings.Split(output, "\n")
+// formatRuffOutput formats ruff findings into human-readable text.
+func (*PythonValidator) formatRuffOutput(result *linters.LintResult) string {
+	if len(result.Findings) == 0 {
+		// Fallback to raw output if no findings parsed
+		lines := strings.Split(result.RawOut, "\n")
 
-	var cleanLines []string
+		var cleanLines []string
 
-	for _, line := range lines {
-		if strings.TrimSpace(line) != "" {
-			cleanLines = append(cleanLines, line)
+		for _, line := range lines {
+			if strings.TrimSpace(line) != "" {
+				cleanLines = append(cleanLines, line)
+			}
 		}
+
+		return "Ruff validation failed\n\n" + strings.Join(cleanLines, "\n") +
+			"\n\nFix these issues before committing."
 	}
 
-	return "Ruff validation failed\n\n" + strings.Join(
-		cleanLines,
-		"\n",
-	) + "\n\nFix these issues before committing."
+	lines := make([]string, 0, len(result.Findings))
+
+	for _, f := range result.Findings {
+		// Format: file:line:col: message (rule)
+		line := fmt.Sprintf("%s:%d:%d: %s", f.File, f.Line, f.Column, f.Message)
+		if f.Rule != "" {
+			line += " (" + f.Rule + ")"
+		}
+
+		lines = append(lines, line)
+	}
+
+	return "Ruff validation failed\n\n" + strings.Join(lines, "\n") +
+		"\n\nFix these issues before committing."
 }
 
 // buildRuffOptions creates RuffCheckOptions with excludes from config and fragment-specific rules.
 func (v *PythonValidator) buildRuffOptions(isFragment bool) *linters.RuffCheckOptions {
-	var excludes []string
+	var (
+		excludes   []string
+		configPath string
+	)
 
-	// Add config excludes
+	// Add config excludes and config path
+
 	if v.config != nil {
 		excludes = append(excludes, v.config.ExcludeRules...)
+		configPath = v.config.RuffConfig
 	}
 
 	// Add fragment-specific excludes for Edit operations
@@ -221,11 +250,14 @@ func (v *PythonValidator) buildRuffOptions(isFragment bool) *linters.RuffCheckOp
 		excludes = append(excludes, pythonFragmentExcludes...)
 	}
 
-	if len(excludes) == 0 {
+	if len(excludes) == 0 && configPath == "" {
 		return nil
 	}
 
-	return &linters.RuffCheckOptions{ExcludeRules: excludes}
+	return &linters.RuffCheckOptions{
+		ExcludeRules: excludes,
+		ConfigPath:   configPath,
+	}
 }
 
 // getTimeout returns the configured timeout for ruff operations.
@@ -250,4 +282,13 @@ func (v *PythonValidator) getContextLines() int {
 // PythonValidator uses CategoryIO because it invokes ruff.
 func (*PythonValidator) Category() validator.ValidatorCategory {
 	return validator.CategoryIO
+}
+
+// isUseRuff returns whether ruff integration is enabled.
+func (v *PythonValidator) isUseRuff() bool {
+	if v.config != nil && v.config.UseRuff != nil {
+		return *v.config.UseRuff
+	}
+
+	return true
 }

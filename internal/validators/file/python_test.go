@@ -114,7 +114,7 @@ print("Hello, World!")
 if __name__ == "__main__":
     greet("World")
 `
-			err := os.WriteFile(tempFile, []byte(content), 0600)
+			err := os.WriteFile(tempFile, []byte(content), 0o600)
 			Expect(err).NotTo(HaveOccurred())
 		})
 

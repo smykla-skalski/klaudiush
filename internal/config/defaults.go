@@ -106,6 +106,7 @@ func DefaultFileConfig() *config.FileConfig {
 		ShellScript: DefaultShellScriptValidatorConfig(),
 		Terraform:   DefaultTerraformValidatorConfig(),
 		Workflow:    DefaultWorkflowValidatorConfig(),
+		Python:      DefaultPythonValidatorConfig(),
 	}
 }
 
@@ -378,6 +379,26 @@ func DefaultWorkflowValidatorConfig() *config.WorkflowValidatorConfig {
 		CheckLatestVersion:    &checkLatestVersion,
 		UseActionlint:         &useActionlint,
 		ActionlintPath:        "",
+	}
+}
+
+// DefaultPythonValidatorConfig returns the default Python validator configuration.
+func DefaultPythonValidatorConfig() *config.PythonValidatorConfig {
+	enabled := true
+	contextLines := 2
+	useRuff := true
+
+	return &config.PythonValidatorConfig{
+		ValidatorConfig: config.ValidatorConfig{
+			Enabled:  &enabled,
+			Severity: config.SeverityError,
+		},
+		Timeout:      config.Duration(DefaultTimeout),
+		ContextLines: &contextLines,
+		UseRuff:      &useRuff,
+		RuffPath:     "",
+		ExcludeRules: []string{},
+		RuffConfig:   "",
 	}
 }
 

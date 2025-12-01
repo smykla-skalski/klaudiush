@@ -66,7 +66,8 @@ var _ = Describe("RuffChecker", func() {
 				mockToolChecker.EXPECT().IsAvailable("ruff").Return(true)
 				mockTempManager.EXPECT().Create("script-*.py", scriptContent).
 					Return("/tmp/script-123.py", func() {}, nil)
-				mockRunner.EXPECT().Run(ctx, "ruff", "check", "--output-format=json", "/tmp/script-123.py").
+				mockRunner.EXPECT().
+					Run(ctx, "ruff", "check", "--output-format=json", "/tmp/script-123.py").
 					Return(execpkg.CommandResult{
 						Stdout:   "[]",
 						Stderr:   "",
@@ -90,7 +91,8 @@ var _ = Describe("RuffChecker", func() {
 				mockToolChecker.EXPECT().IsAvailable("ruff").Return(true)
 				mockTempManager.EXPECT().Create("script-*.py", scriptContent).
 					Return("/tmp/script-123.py", func() {}, nil)
-				mockRunner.EXPECT().Run(ctx, "ruff", "check", "--output-format=json", "/tmp/script-123.py").
+				mockRunner.EXPECT().
+					Run(ctx, "ruff", "check", "--output-format=json", "/tmp/script-123.py").
 					Return(execpkg.CommandResult{
 						Stdout:   ruffOutput,
 						Stderr:   "",
@@ -118,7 +120,8 @@ var _ = Describe("RuffChecker", func() {
 				mockToolChecker.EXPECT().IsAvailable("ruff").Return(true)
 				mockTempManager.EXPECT().Create("script-*.py", scriptContent).
 					Return("/tmp/script-123.py", func() {}, nil)
-				mockRunner.EXPECT().Run(ctx, "ruff", "check", "--output-format=json", "/tmp/script-123.py").
+				mockRunner.EXPECT().
+					Run(ctx, "ruff", "check", "--output-format=json", "/tmp/script-123.py").
 					Return(execpkg.CommandResult{
 						Stdout:   "",
 						Stderr:   stderrOutput,
@@ -162,7 +165,8 @@ var _ = Describe("RuffChecker", func() {
 				mockToolChecker.EXPECT().IsAvailable("ruff").Return(true)
 				mockTempManager.EXPECT().Create("script-*.py", scriptContent).
 					Return("/tmp/script-123.py", func() {}, nil)
-				mockRunner.EXPECT().Run(ctx, "ruff", "check", "--output-format=json", "--ignore=F401", "--ignore=E501", "/tmp/script-123.py").
+				mockRunner.EXPECT().
+					Run(ctx, "ruff", "check", "--output-format=json", "--ignore=F401", "--ignore=E501", "/tmp/script-123.py").
 					Return(execpkg.CommandResult{
 						Stdout:   "[]",
 						Stderr:   "",
