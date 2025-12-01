@@ -83,7 +83,7 @@ Represents tool invocations: `EventType` (PreToolUse/PostToolUse/Notification), 
 
 **Creating**: 1) Embed `BaseValidator`, 2) Implement `Validate(ctx *hook.Context)`, 3) Register in `main.go:registerValidators()`
 
-**Error Format Policy**: Validators return errors with structured format including error codes (GIT001-GIT024, FILE001-FILE006, SEC001-SEC005, SHELL001-SHELL005), automatic fix hints from suggestions registry, and documentation URLs (`https://klaudiu.sh/{CODE}`). Use `FailWithRef(ref, msg)` to auto-populate fix hints - NEVER set `FixHint` manually. Error priority determines which reference is shown when multiple rules fail. See `.claude/validator-error-format-policy.md` for comprehensive guide.
+**Error Format Policy**: Validators return errors with structured format including error codes (GIT001-GIT024, FILE001-FILE007, SEC001-SEC005, SHELL001-SHELL005), automatic fix hints from suggestions registry, and documentation URLs (`https://klaudiu.sh/{CODE}`). Use `FailWithRef(ref, msg)` to auto-populate fix hints - NEVER set `FixHint` manually. Error priority determines which reference is shown when multiple rules fail. See `.claude/validator-error-format-policy.md` for comprehensive guide.
 
 ### Rule Engine (`internal/rules/`)
 
@@ -107,7 +107,7 @@ Dynamic validation configuration without modifying code. Rules allow users to de
 
 **Commit Message** (`commit_message.go`): Conventional commits `type(scope): description`, title ≤50 chars, body ≤72 chars, blocks `feat(ci)`/`fix(test)` (use `ci(...)`/`test(...)` instead), no PR refs/Claude attribution
 
-**File** (`internal/validators/file/`): MarkdownValidator, ShellScriptValidator (shellcheck), TerraformValidator (tofu/terraform fmt+tflint), WorkflowValidator (actionlint), PythonValidator (ruff)
+**File** (`internal/validators/file/`): MarkdownValidator, ShellScriptValidator (shellcheck), TerraformValidator (tofu/terraform fmt+tflint), WorkflowValidator (actionlint), GofumptValidator (gofumpt with go.mod auto-detection), PythonValidator (ruff)
 
 **Secrets** (`internal/validators/secrets/`): SecretsValidator (25+ regex patterns for AWS/GitHub/private keys/connection strings, optional gitleaks integration, configurable allow lists)
 
@@ -168,7 +168,7 @@ min_reason_length = 10
 
 ### Linter Abstractions (`internal/linters/`)
 
-Type-safe interfaces for external tools: **ShellChecker** (shellcheck), **TerraformFormatter** (tofu/terraform fmt), **TfLinter** (tflint), **ActionLinter** (actionlint), **MarkdownLinter** (custom rules), **RuffChecker** (ruff), **GitleaksChecker** (gitleaks)
+Type-safe interfaces for external tools: **ShellChecker** (shellcheck), **TerraformFormatter** (tofu/terraform fmt), **TfLinter** (tflint), **ActionLinter** (actionlint), **MarkdownLinter** (custom rules), **GofumptChecker** (gofumpt), **RuffChecker** (ruff), **GitleaksChecker** (gitleaks)
 
 **Common Types** (`result.go`): `LintResult` (success/findings), `LintFinding` (file/line/message), `LintSeverity` (Error/Warning/Info)
 
@@ -263,7 +263,7 @@ Valid reasons: `used_in_tests`, `false_positive`, `will_fix_later`
 
 Additional implementation details and policies are in `.claude/` files:
 
-- `validator-error-format-policy.md` - Comprehensive guide for validator error formatting, reference system (GIT001-GIT024, FILE001-FILE006, SEC001-SEC005), suggestions registry, FailWithRef pattern, error display format, best practices
+- `validator-error-format-policy.md` - Comprehensive guide for validator error formatting, reference system (GIT001-GIT024, FILE001-FILE007, SEC001-SEC005), suggestions registry, FailWithRef pattern, error display format, best practices
 - `session-parallel-execution.md` - Parallel validator execution, category-specific worker pools, race detection testing
 - `session-error-reporting.md` - Error codes, suggestions/doc links registries, FailWithCode pattern, cognitive complexity refactoring
 - `session-secrets-detection.md` - Secrets validator with 25+ regex patterns, two-tier detection (patterns + gitleaks), configuration schema for allow lists/custom patterns

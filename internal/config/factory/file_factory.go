@@ -51,6 +51,7 @@ func (f *FileValidatorFactory) CreateValidators(cfg *config.Config) []ValidatorW
 	terraformFormatter := linters.NewTerraformFormatter(runner)
 	tfLinter := linters.NewTfLinter(runner)
 	actionLinter := linters.NewActionLinter(runner)
+	gofumptChecker := linters.NewGofumptChecker(runner)
 	ruffChecker := linters.NewRuffChecker(runner)
 	githubClient := githubpkg.NewClient()
 
@@ -79,6 +80,13 @@ func (f *FileValidatorFactory) CreateValidators(cfg *config.Config) []ValidatorW
 	if cfg.Validators.File.Workflow != nil && cfg.Validators.File.Workflow.IsEnabled() {
 		validators = append(validators, f.createWorkflowValidator(
 			cfg.Validators.File.Workflow, actionLinter, githubClient))
+	}
+
+	if cfg.Validators.File.Gofumpt != nil && cfg.Validators.File.Gofumpt.IsEnabled() {
+		validators = append(
+			validators,
+			f.createGofumptValidator(cfg.Validators.File.Gofumpt, gofumptChecker),
+		)
 	}
 
 	if cfg.Validators.File.Python != nil && cfg.Validators.File.Python.IsEnabled() {
@@ -193,6 +201,29 @@ func (f *FileValidatorFactory) createWorkflowValidator(
 				validator.FileExtensionIs(".yml"),
 				validator.FileExtensionIs(".yaml"),
 			),
+		),
+	}
+}
+
+func (f *FileValidatorFactory) createGofumptValidator(
+	cfg *config.GofumptValidatorConfig,
+	checker linters.GofumptChecker,
+) ValidatorWithPredicate {
+	var ruleAdapter *rules.RuleValidatorAdapter
+	if f.ruleEngine != nil {
+		ruleAdapter = rules.NewRuleValidatorAdapter(
+			f.ruleEngine,
+			rules.ValidatorFileGofumpt,
+			rules.WithAdapterLogger(f.log),
+		)
+	}
+
+	return ValidatorWithPredicate{
+		Validator: filevalidators.NewGofumptValidator(f.log, checker, cfg, ruleAdapter),
+		Predicate: validator.And(
+			validator.EventTypeIs(hook.EventTypePreToolUse),
+			validator.ToolTypeIn(hook.ToolTypeWrite),
+			validator.FileExtensionIs(".go"),
 		),
 	}
 }

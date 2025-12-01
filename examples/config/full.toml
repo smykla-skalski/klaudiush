@@ -141,6 +141,16 @@ require_version_comment = true
 check_latest_version = true
 use_actionlint = true
 
+# Go Code Formatter Validator
+[validators.file.gofumpt]
+enabled = true
+severity = "error"
+timeout = "10s"
+extra_rules = false  # Enable -extra flag for stricter rules
+lang = ""            # Go version (e.g., "go1.21", auto-detected from go.mod if empty)
+modpath = ""         # Module path (auto-detected from go.mod if empty)
+# gofumpt_path = ""  # Custom gofumpt binary path
+
 # Notification Validators
 [validators.notification]
 

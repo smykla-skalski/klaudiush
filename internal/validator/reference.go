@@ -101,8 +101,11 @@ const (
 	// RefMarkdownLint indicates markdown linting failure.
 	RefMarkdownLint Reference = ReferenceBaseURL + "/FILE005"
 
+	// RefGofumpt indicates gofumpt formatting failure.
+	RefGofumpt Reference = ReferenceBaseURL + "/FILE006"
+
 	// RefRuffCheck indicates ruff Python validation failure.
-	RefRuffCheck Reference = ReferenceBaseURL + "/FILE006"
+	RefRuffCheck Reference = ReferenceBaseURL + "/FILE007"
 )
 
 // Security-related references (SEC001-SEC005).
