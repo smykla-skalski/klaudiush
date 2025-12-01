@@ -203,25 +203,28 @@ if (require.main === module) {
 			Expect(result.Passed).To(BeTrue())
 		})
 
-		It("should exclude no-unused-vars, no-undef, and import/no-unresolved for fragments", func() {
-			// These rules should be excluded for fragments
-			ctx.EventType = hook.EventTypePreToolUse
-			ctx.ToolName = hook.ToolTypeEdit
-			ctx.ToolInput.FilePath = tempFile
-			ctx.ToolInput.OldString = `    // Say hello to someone
+		It(
+			"should exclude no-unused-vars, no-undef, and import/no-unresolved for fragments",
+			func() {
+				// These rules should be excluded for fragments
+				ctx.EventType = hook.EventTypePreToolUse
+				ctx.ToolName = hook.ToolTypeEdit
+				ctx.ToolInput.FilePath = tempFile
+				ctx.ToolInput.OldString = `    // Say hello to someone
     console.log('Hello, ' + name + '!');`
-			ctx.ToolInput.NewString = `    // Say hello to someone
+				ctx.ToolInput.NewString = `    // Say hello to someone
     const newVar = 42;  // This would normally trigger no-unused-vars
     console.log('Hello, ' + name + '!');`
 
-			mockChecker.EXPECT().
-				CheckWithOptions(gomock.Any(), gomock.Any(), gomock.Any()).
-				Return(&linters.LintResult{Success: true})
+				mockChecker.EXPECT().
+					CheckWithOptions(gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(&linters.LintResult{Success: true})
 
-			result := v.Validate(context.Background(), ctx)
-			// Should pass because no-unused-vars is excluded for fragments
-			Expect(result.Passed).To(BeTrue())
-		})
+				result := v.Validate(context.Background(), ctx)
+				// Should pass because no-unused-vars is excluded for fragments
+				Expect(result.Passed).To(BeTrue())
+			},
+		)
 	})
 
 	Describe("no file path", func() {
