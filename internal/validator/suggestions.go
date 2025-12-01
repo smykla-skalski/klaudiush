@@ -37,6 +37,7 @@ var DefaultSuggestions = map[Reference]string{
 	RefMarkdownLint: "Check markdown formatting and structure",
 	RefGofumpt:      "Run 'gofumpt -w <file>' to auto-fix formatting",
 	RefRuffCheck:    "Run 'ruff check <file>' to see Python code quality issues",
+	RefOxlintCheck:  "Run 'oxlint <file>' to see JavaScript/TypeScript code quality issues",
 
 	// Security suggestions
 	RefSecretsAPIKey:     "Remove API key and use environment variables or secret management",

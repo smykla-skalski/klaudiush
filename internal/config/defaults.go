@@ -107,6 +107,7 @@ func DefaultFileConfig() *config.FileConfig {
 		Terraform:   DefaultTerraformValidatorConfig(),
 		Workflow:    DefaultWorkflowValidatorConfig(),
 		Python:      DefaultPythonValidatorConfig(),
+		JavaScript:  DefaultJavaScriptValidatorConfig(),
 	}
 }
 
@@ -399,6 +400,26 @@ func DefaultPythonValidatorConfig() *config.PythonValidatorConfig {
 		RuffPath:     "",
 		ExcludeRules: []string{},
 		RuffConfig:   "",
+	}
+}
+
+// DefaultJavaScriptValidatorConfig returns the default JavaScript validator configuration.
+func DefaultJavaScriptValidatorConfig() *config.JavaScriptValidatorConfig {
+	enabled := true
+	contextLines := 2
+	useOxlint := true
+
+	return &config.JavaScriptValidatorConfig{
+		ValidatorConfig: config.ValidatorConfig{
+			Enabled:  &enabled,
+			Severity: config.SeverityError,
+		},
+		Timeout:      config.Duration(DefaultTimeout),
+		ContextLines: &contextLines,
+		UseOxlint:    &useOxlint,
+		OxlintPath:   "",
+		ExcludeRules: []string{},
+		OxlintConfig: "",
 	}
 }
 

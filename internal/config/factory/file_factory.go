@@ -53,6 +53,7 @@ func (f *FileValidatorFactory) CreateValidators(cfg *config.Config) []ValidatorW
 	actionLinter := linters.NewActionLinter(runner)
 	gofumptChecker := linters.NewGofumptChecker(runner)
 	ruffChecker := linters.NewRuffChecker(runner)
+	oxlintChecker := linters.NewOxlintChecker(runner)
 	githubClient := githubpkg.NewClient()
 
 	if cfg.Validators.File.Markdown != nil && cfg.Validators.File.Markdown.IsEnabled() {
@@ -93,6 +94,13 @@ func (f *FileValidatorFactory) CreateValidators(cfg *config.Config) []ValidatorW
 		validators = append(
 			validators,
 			f.createPythonValidator(cfg.Validators.File.Python, ruffChecker),
+		)
+	}
+
+	if cfg.Validators.File.JavaScript != nil && cfg.Validators.File.JavaScript.IsEnabled() {
+		validators = append(
+			validators,
+			f.createJavaScriptValidator(cfg.Validators.File.JavaScript, oxlintChecker),
 		)
 	}
 
@@ -247,6 +255,34 @@ func (f *FileValidatorFactory) createPythonValidator(
 			validator.EventTypeIs(hook.EventTypePreToolUse),
 			validator.ToolTypeIn(hook.ToolTypeWrite, hook.ToolTypeEdit, hook.ToolTypeMultiEdit),
 			validator.FileExtensionIs(".py"),
+		),
+	}
+}
+
+func (f *FileValidatorFactory) createJavaScriptValidator(
+	cfg *config.JavaScriptValidatorConfig,
+	checker linters.OxlintChecker,
+) ValidatorWithPredicate {
+	var ruleAdapter *rules.RuleValidatorAdapter
+	if f.ruleEngine != nil {
+		ruleAdapter = rules.NewRuleValidatorAdapter(
+			f.ruleEngine,
+			rules.ValidatorFileJavaScript,
+			rules.WithAdapterLogger(f.log),
+		)
+	}
+
+	return ValidatorWithPredicate{
+		Validator: filevalidators.NewJavaScriptValidator(f.log, checker, cfg, ruleAdapter),
+		Predicate: validator.And(
+			validator.EventTypeIs(hook.EventTypePreToolUse),
+			validator.ToolTypeIn(hook.ToolTypeWrite, hook.ToolTypeEdit, hook.ToolTypeMultiEdit),
+			validator.Or(
+				validator.FileExtensionIs(".js"),
+				validator.FileExtensionIs(".ts"),
+				validator.FileExtensionIs(".jsx"),
+				validator.FileExtensionIs(".tsx"),
+			),
 		),
 	}
 }

@@ -20,6 +20,9 @@ type FileConfig struct {
 
 	// Python validator configuration
 	Python *PythonValidatorConfig `json:"python,omitempty" koanf:"python" toml:"python"`
+
+	// JavaScript validator configuration
+	JavaScript *JavaScriptValidatorConfig `json:"javascript,omitempty" koanf:"javascript" toml:"javascript"`
 }
 
 // MarkdownValidatorConfig configures the Markdown file validator.
@@ -238,4 +241,33 @@ type PythonValidatorConfig struct {
 	// RuffConfig is the path to a ruff configuration file (pyproject.toml or ruff.toml).
 	// Default: "" (use ruff defaults)
 	RuffConfig string `json:"ruff_config,omitempty" koanf:"ruff_config" toml:"ruff_config"`
+}
+
+// JavaScriptValidatorConfig configures the JavaScript/TypeScript file validator.
+type JavaScriptValidatorConfig struct {
+	ValidatorConfig
+
+	// Timeout is the maximum time allowed for oxlint operations.
+	// Default: "10s"
+	Timeout Duration `json:"timeout,omitempty" koanf:"timeout" toml:"timeout"`
+
+	// ContextLines is the number of lines before/after an edit to include for validation.
+	// Default: 2
+	ContextLines *int `json:"context_lines,omitempty" koanf:"context_lines" toml:"context_lines"`
+
+	// UseOxlint enables oxlint integration if available.
+	// Default: true
+	UseOxlint *bool `json:"use_oxlint,omitempty" koanf:"use_oxlint" toml:"use_oxlint"`
+
+	// OxlintPath is the path to the oxlint binary.
+	// Default: "" (use PATH)
+	OxlintPath string `json:"oxlint_path,omitempty" koanf:"oxlint_path" toml:"oxlint_path"`
+
+	// ExcludeRules is a list of oxlint rules to exclude (e.g., ["no-unused-vars", "no-console"]).
+	// Default: []
+	ExcludeRules []string `json:"exclude_rules,omitempty" koanf:"exclude_rules" toml:"exclude_rules"`
+
+	// OxlintConfig is the path to an oxlint configuration file (.oxlintrc.json).
+	// Default: "" (use oxlint defaults)
+	OxlintConfig string `json:"oxlint_config,omitempty" koanf:"oxlint_config" toml:"oxlint_config"`
 }
