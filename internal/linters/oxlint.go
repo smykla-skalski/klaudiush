@@ -11,8 +11,8 @@ import (
 
 // oxlintFinding represents a single file's findings from oxlint JSON output
 type oxlintFinding struct {
-	FilePath string           `json:"filePath"`
-	Messages []oxlintMessage  `json:"messages"`
+	FilePath string          `json:"filePath"`
+	Messages []oxlintMessage `json:"messages"`
 }
 
 // oxlintMessage represents a single finding message
