@@ -1,0 +1,35 @@
+# Basic Backup Configuration
+#
+# This is a standard backup configuration suitable for most use cases.
+# Provides balanced settings between storage efficiency and version history.
+
+[backup]
+# Enable the backup system
+enabled = true
+
+# Automatically backup before config writes
+auto_backup = true
+
+# Keep maximum 10 snapshots per config directory
+# Oldest snapshots deleted first when limit exceeded
+max_backups = 10
+
+# Keep snapshots for 30 days (720 hours)
+# Snapshots older than this are deleted
+max_age = "720h"
+
+# Maximum total storage: 50MB (52428800 bytes)
+# Oldest snapshots deleted when limit exceeded
+max_size = 52428800
+
+# Use async backups (non-blocking, faster)
+# Set to false for critical operations requiring guaranteed backup
+async_backup = true
+
+# Delta compression settings (future use)
+[backup.delta]
+# Create full snapshot every 10 backups
+full_snapshot_interval = 10
+
+# Create full snapshot if last full snapshot is older than 7 days
+full_snapshot_max_age = "168h"

@@ -17,6 +17,9 @@ type Config struct {
 
 	// Exceptions contains exception workflow configuration.
 	Exceptions *ExceptionsConfig `json:"exceptions,omitempty" koanf:"exceptions" toml:"exceptions"`
+
+	// Backup contains configuration for the backup system.
+	Backup *BackupConfig `json:"backup,omitempty" koanf:"backup" toml:"backup"`
 }
 
 // ValidatorsConfig groups all validator configurations by category.
@@ -165,4 +168,13 @@ func (c *Config) GetExceptions() *ExceptionsConfig {
 	}
 
 	return c.Exceptions
+}
+
+// GetBackup returns the backup config, creating it if it doesn't exist.
+func (c *Config) GetBackup() *BackupConfig {
+	if c.Backup == nil {
+		c.Backup = &BackupConfig{}
+	}
+
+	return c.Backup
 }

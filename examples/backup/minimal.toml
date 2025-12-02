@@ -1,0 +1,20 @@
+# Minimal Backup Configuration
+#
+# Minimal configuration with conservative storage limits.
+# Suitable for systems with limited disk space or short-term version history needs.
+
+[backup]
+enabled = true
+auto_backup = true
+
+# Keep only 5 most recent snapshots
+max_backups = 5
+
+# Keep snapshots for 7 days only
+max_age = "168h"
+
+# Maximum storage: 10MB
+max_size = 10485760
+
+# Async backups for better performance
+async_backup = true

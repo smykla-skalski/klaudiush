@@ -1,0 +1,27 @@
+# Development Backup Configuration
+#
+# Development-focused configuration with extended retention but smaller max backups.
+# Optimized for frequent config changes during development with good version history.
+
+[backup]
+enabled = true
+auto_backup = true
+
+# Keep fewer snapshots (config changes frequently during dev)
+max_backups = 15
+
+# Keep snapshots for 14 days (good for development cycles)
+max_age = "336h"
+
+# Moderate storage limit
+max_size = 52428800  # 50MB
+
+# Async backups for minimal impact on development workflow
+async_backup = true
+
+[backup.delta]
+# Standard full snapshot interval
+full_snapshot_interval = 10
+
+# Full snapshot every 7 days
+full_snapshot_max_age = "168h"

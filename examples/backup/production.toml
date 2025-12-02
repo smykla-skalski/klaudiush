@@ -1,0 +1,28 @@
+# Production Backup Configuration
+#
+# Production-focused configuration with extended retention and sync backups.
+# Ensures maximum reliability and longer version history at the cost of storage.
+
+[backup]
+enabled = true
+auto_backup = true
+
+# Keep more snapshots in production
+max_backups = 20
+
+# Keep snapshots for 90 days
+max_age = "2160h"
+
+# Allow larger storage for production
+max_size = 104857600  # 100MB
+
+# Use sync backups to guarantee completion before proceeding
+# Critical for production environments where backup integrity is paramount
+async_backup = false
+
+[backup.delta]
+# Create full snapshot every 15 backups (more frequent full snapshots)
+full_snapshot_interval = 15
+
+# Create full snapshot every 3 days to ensure recovery points
+full_snapshot_max_age = "72h"

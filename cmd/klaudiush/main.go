@@ -10,6 +10,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/spf13/cobra"
 
+	"github.com/smykla-labs/klaudiush/internal/backup"
 	internalconfig "github.com/smykla-labs/klaudiush/internal/config"
 	"github.com/smykla-labs/klaudiush/internal/config/factory"
 	"github.com/smykla-labs/klaudiush/internal/dispatcher"
@@ -25,6 +26,9 @@ const (
 
 	// ExitCodeBlock indicates the operation should be blocked.
 	ExitCodeBlock = 2
+
+	// MigrationMarkerFile is used to track if first-run migration has completed.
+	MigrationMarkerFile = ".migration_v1"
 )
 
 var (
@@ -97,6 +101,11 @@ func run(_ *cobra.Command, _ []string) error {
 	log, err := logger.NewFileLogger(logFile, debugMode, traceMode)
 	if err != nil {
 		return errors.Wrap(err, "failed to create logger")
+	}
+
+	// Perform first-run migration if needed
+	if migErr := performFirstRunMigration(homeDir, log); migErr != nil {
+		log.Error("first-run migration failed", "error", migErr)
 	}
 
 	// Determine event type using enumer-generated function
@@ -213,4 +222,116 @@ func buildFlagsMap() map[string]any {
 	}
 
 	return flags
+}
+
+// performFirstRunMigration creates initial backups for existing configs on first run.
+func performFirstRunMigration(homeDir string, log logger.Logger) error {
+	// Check if migration already completed
+	markerPath := filepath.Join(homeDir, internalconfig.GlobalConfigDir, MigrationMarkerFile)
+	if _, err := os.Stat(markerPath); err == nil {
+		// Migration already completed
+		return nil
+	}
+
+	log.Info("performing first-run migration")
+
+	// Backup global config if it exists
+	globalConfigPath := filepath.Join(
+		homeDir,
+		internalconfig.GlobalConfigDir,
+		internalconfig.GlobalConfigFile,
+	)
+
+	if err := backupConfigIfExists(
+		globalConfigPath,
+		backup.ConfigTypeGlobal,
+		"",
+		homeDir,
+		log,
+	); err != nil {
+		log.Error("failed to backup global config", "error", err)
+	}
+
+	// Backup project config if it exists
+	workDir, err := os.Getwd()
+	if err != nil {
+		log.Error("failed to get working directory", "error", err)
+	} else {
+		projectConfigPath := filepath.Join(workDir, internalconfig.ProjectConfigDir, internalconfig.ProjectConfigFile)
+
+		if err := backupConfigIfExists(
+			projectConfigPath,
+			backup.ConfigTypeProject,
+			workDir,
+			homeDir,
+			log,
+		); err != nil {
+			log.Error("failed to backup project config", "error", err)
+		}
+	}
+
+	// Create migration marker file
+	configDir := filepath.Join(homeDir, internalconfig.GlobalConfigDir)
+	if err := os.MkdirAll(configDir, internalconfig.ConfigDirMode); err != nil {
+		return errors.Wrap(err, "failed to create config directory")
+	}
+
+	if err := os.WriteFile(markerPath, []byte("v1"), internalconfig.ConfigFileMode); err != nil {
+		return errors.Wrap(err, "failed to create migration marker")
+	}
+
+	log.Info("first-run migration completed")
+
+	return nil
+}
+
+// backupConfigIfExists creates a backup of a config file if it exists.
+func backupConfigIfExists(
+	configPath string,
+	configType backup.ConfigType,
+	projectPath string,
+	homeDir string,
+	log logger.Logger,
+) error {
+	// Check if config exists
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		return nil
+	}
+
+	// Create storage
+	baseDir := filepath.Join(homeDir, internalconfig.GlobalConfigDir)
+
+	storage, err := backup.NewFilesystemStorage(baseDir, configType, projectPath)
+	if err != nil {
+		return errors.Wrap(err, "failed to create backup storage")
+	}
+
+	// Create backup manager with default config
+	backupCfg := &config.BackupConfig{}
+
+	manager, err := backup.NewManager(storage, backupCfg)
+	if err != nil {
+		return errors.Wrap(err, "failed to create backup manager")
+	}
+
+	// Create backup
+	opts := backup.CreateBackupOptions{
+		ConfigPath: configPath,
+		Trigger:    backup.TriggerMigration,
+		Metadata: backup.SnapshotMetadata{
+			Command: "first-run migration",
+		},
+	}
+
+	snapshot, err := manager.CreateBackup(opts)
+	if err != nil {
+		return errors.Wrap(err, "backup creation failed")
+	}
+
+	log.Info("created migration backup",
+		"config", configPath,
+		"snapshot", snapshot.ID,
+	)
+
+	return nil
 }

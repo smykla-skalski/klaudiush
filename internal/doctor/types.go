@@ -41,6 +41,8 @@ const (
 	CategoryConfig Category = "config"
 	// CategoryTools checks for optional tool dependencies
 	CategoryTools Category = "tools"
+	// CategoryBackup checks for backup system health
+	CategoryBackup Category = "backup"
 )
 
 // CheckResult represents the result of a health check

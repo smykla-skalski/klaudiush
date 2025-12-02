@@ -9,6 +9,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/pelletier/go-toml/v2"
 
+	"github.com/smykla-labs/klaudiush/internal/backup"
 	"github.com/smykla-labs/klaudiush/pkg/config"
 )
 
@@ -27,6 +28,9 @@ type Writer struct {
 
 	// workDir is the current working directory (for testing).
 	workDir string
+
+	// backupManager handles automatic backups before config changes (optional).
+	backupManager *backup.Manager
 }
 
 // NewWriter creates a new Writer with default directories.
@@ -37,11 +41,29 @@ func NewWriter() *Writer {
 	}
 }
 
+// NewWriterWithBackup creates a new Writer with default directories and a backup manager.
+func NewWriterWithBackup(backupMgr *backup.Manager) *Writer {
+	return &Writer{
+		homeDir:       os.Getenv("HOME"),
+		workDir:       mustGetwd(),
+		backupManager: backupMgr,
+	}
+}
+
 // NewWriterWithDirs creates a new Writer with custom directories (for testing).
 func NewWriterWithDirs(homeDir, workDir string) *Writer {
 	return &Writer{
 		homeDir: homeDir,
 		workDir: workDir,
+	}
+}
+
+// NewWriterWithDirsAndBackup creates a new Writer with custom directories and backup manager (for testing).
+func NewWriterWithDirsAndBackup(homeDir, workDir string, backupMgr *backup.Manager) *Writer {
+	return &Writer{
+		homeDir:       homeDir,
+		workDir:       workDir,
+		backupManager: backupMgr,
 	}
 }
 
@@ -61,9 +83,14 @@ func (w *Writer) WriteProject(cfg *config.Config) error {
 }
 
 // WriteFile writes the configuration to the given path.
-func (*Writer) WriteFile(path string, cfg *config.Config) error {
+func (w *Writer) WriteFile(path string, cfg *config.Config) error {
 	if cfg == nil {
 		return errors.Wrap(ErrInvalidConfig, "config is nil")
+	}
+
+	// Backup existing config if enabled
+	if err := w.backupBeforeWrite(path, cfg); err != nil {
+		return errors.Wrap(err, "failed to backup config before write")
 	}
 
 	// Create directory if it doesn't exist
@@ -85,6 +112,46 @@ func (*Writer) WriteFile(path string, cfg *config.Config) error {
 	// Write to file with secure permissions
 	if err := os.WriteFile(path, buf.Bytes(), ConfigFileMode); err != nil {
 		return errors.Wrapf(err, "failed to write config file %s", path)
+	}
+
+	return nil
+}
+
+// backupBeforeWrite creates a backup of the config file before writing if enabled.
+func (w *Writer) backupBeforeWrite(path string, cfg *config.Config) error {
+	// Skip if no backup manager
+	if w.backupManager == nil {
+		return nil
+	}
+
+	// Skip if backup is disabled or auto_backup is disabled
+	if cfg.Backup == nil || !cfg.Backup.IsEnabled() || !cfg.Backup.IsAutoBackupEnabled() {
+		return nil
+	}
+
+	// Skip if file doesn't exist (nothing to backup)
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return nil
+	}
+
+	// Prepare backup options
+	opts := backup.CreateBackupOptions{
+		ConfigPath: path,
+		Trigger:    backup.TriggerAutomatic,
+		Metadata:   backup.SnapshotMetadata{},
+	}
+
+	// Create backup (async or sync based on config)
+	if cfg.Backup.IsAsyncBackupEnabled() {
+		// Async: run in background, don't wait for completion
+		go func() {
+			_, _ = w.backupManager.CreateBackup(opts)
+		}()
+	} else {
+		// Sync: wait for completion
+		if _, err := w.backupManager.CreateBackup(opts); err != nil {
+			return errors.Wrap(err, "backup failed")
+		}
 	}
 
 	return nil

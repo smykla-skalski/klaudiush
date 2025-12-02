@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/smykla-labs/klaudiush/internal/doctor"
+	backupchecker "github.com/smykla-labs/klaudiush/internal/doctor/checkers/backup"
 	"github.com/smykla-labs/klaudiush/internal/doctor/checkers/binary"
 	configchecker "github.com/smykla-labs/klaudiush/internal/doctor/checkers/config"
 	"github.com/smykla-labs/klaudiush/internal/doctor/checkers/hook"
@@ -37,6 +38,7 @@ Checks:
 - Binary availability and permissions
 - Hook registration in Claude settings
 - Configuration file validity
+- Backup system health
 - Optional tool dependencies (shellcheck, terraform, etc.)
 
 Examples:
@@ -69,7 +71,7 @@ func init() {
 		&categoryFlag,
 		"category",
 		[]string{},
-		"Filter checks by category (binary, hook, config, tools)",
+		"Filter checks by category (binary, hook, config, tools, backup)",
 	)
 }
 
@@ -168,6 +170,11 @@ func buildDoctorRegistry() *doctor.Registry {
 	registry.RegisterChecker(tools.NewActionlintChecker())
 	registry.RegisterChecker(tools.NewMarkdownlintChecker())
 
+	// Register backup checkers
+	registry.RegisterChecker(backupchecker.NewDirectoryChecker())
+	registry.RegisterChecker(backupchecker.NewMetadataChecker())
+	registry.RegisterChecker(backupchecker.NewIntegrityChecker())
+
 	return registry
 }
 
@@ -178,6 +185,7 @@ func registerFixers(registry *doctor.Registry, prompter prompt.Prompter) {
 	registry.RegisterFixer(fixers.NewConfigFixer(prompter))
 	registry.RegisterFixer(fixers.NewInstallBinaryFixer(prompter))
 	registry.RegisterFixer(fixers.NewRulesFixer(prompter))
+	registry.RegisterFixer(fixers.NewBackupFixer(prompter))
 }
 
 // parseCategories converts string category names to Category types.
@@ -191,6 +199,7 @@ func parseCategories(names []string) []doctor.Category {
 		"hook":   doctor.CategoryHook,
 		"config": doctor.CategoryConfig,
 		"tools":  doctor.CategoryTools,
+		"backup": doctor.CategoryBackup,
 	}
 
 	var categories []doctor.Category

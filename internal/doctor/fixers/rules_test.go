@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -13,11 +12,6 @@ import (
 	"github.com/smykla-labs/klaudiush/internal/doctor"
 	"github.com/smykla-labs/klaudiush/internal/prompt"
 )
-
-func TestRulesFixer(t *testing.T) {
-	RegisterFailHandler(Fail)
-	RunSpecs(t, "Rules Fixer Suite")
-}
 
 var _ = Describe("RulesFixer", func() {
 	var (

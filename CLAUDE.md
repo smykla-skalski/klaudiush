@@ -274,6 +274,7 @@ Additional implementation details and policies are in `.claude/` files:
 - `session-github-quality.md` - OSSF Scorecard, branch rulesets API, Renovate version sync (customManagers:githubActionsVersions), smyklot bot workflows
 - `session-codeql-regex-security.md` - CodeQL regex anchor fixes (CWE-020), URL pattern anchoring with `(?:^|://|[^/a-zA-Z0-9])`, bounded quantifiers for ReDoS, prefix consumption in matches, GitHub push protection bypass for test secrets, PR review thread resolution
 - `session-rule-engine.md` - Rule engine implementation details (covered more comprehensively in `docs/RULES_GUIDE.md`)
+- `session-backup-system.md` - Backup system Phase 1-8 implementation (snapshot types, storage, manager, deduplication, retention policies, restore operations, writer integration, CLI commands, audit logging, doctor checks, comprehensive documentation), centralized storage architecture, interface-based design, security
 
 ## Plugin Documentation
 
@@ -304,3 +305,26 @@ Exception workflow guide available in `docs/EXCEPTIONS_GUIDE.md` with example co
 - **development.toml** - Relaxed limits for development environments
 
 Debug exceptions with: `klaudiush debug exceptions`
+
+## Backup Documentation
+
+Configuration backup system guide available in `docs/BACKUP_GUIDE.md` with example configurations in `examples/backup/`:
+
+- **basic.toml** - Standard configuration (10 snapshots, 30 days, 50MB, async backups)
+- **minimal.toml** - Conservative for limited storage (5 snapshots, 7 days, 10MB)
+- **production.toml** - Extended retention (20 snapshots, 90 days, 100MB, sync backups)
+- **development.toml** - Development-optimized (15 snapshots, 14 days, 50MB)
+
+Commands:
+
+```bash
+klaudiush backup list [--project PATH | --global | --all]
+klaudiush backup create [--tag TAG --description DESC]
+klaudiush backup restore SNAPSHOT_ID [--dry-run] [--force]
+klaudiush backup delete SNAPSHOT_ID...
+klaudiush backup prune [--dry-run]
+klaudiush backup status
+klaudiush backup audit [--operation OP --since TIME --snapshot ID]
+```
+
+Doctor integration: `klaudiush doctor --category backup [--fix]`
