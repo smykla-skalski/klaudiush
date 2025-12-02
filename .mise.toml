@@ -3,7 +3,7 @@
 
 [tools]
 # Go language
-go = "1.25.4"
+go = "1.25.5"
 
 # Go linting tool with comprehensive checks
 # https://golangci-lint.run/
@@ -31,7 +31,7 @@ task = "3.45.5"
 
 # Git hooks manager
 # https://github.com/evilmartians/lefthook
-lefthook = "2.0.4"
+lefthook = "2.0.5"
 
 # Protocol buffer tooling
 # https://buf.build/
