@@ -98,13 +98,145 @@ Test patterns:
 - Comprehensive edge case coverage
 - Test safety mechanisms (backup-before-restore, validation)
 
-## Integration Points (Future Phases)
+## Phase 4: Integration Implementation
 
-**Writer** (`internal/config/writer.go`): Will add BackupManager field, call CreateBackup() before writing config
+### Writer Integration (`internal/config/writer.go`)
 
-**Init** (`internal/initcmd/init.go`): Will create backup with TriggerBeforeInit when using --force flag
+**Backup Manager Field**: Added optional `backupManager *backup.Manager` field to Writer struct:
 
-**Main** (`cmd/klaudiush/main.go`): Will instantiate manager, perform first-run migration
+- `NewWriterWithBackup()`: Creates writer with backup manager
+- `NewWriterWithDirsAndBackup()`: For testing with custom directories and backup
+- Maintains backward compatibility with existing `NewWriter()` and `NewWriterWithDirs()`
+
+**Automatic Backups**: `WriteFile()` method updated with `backupBeforeWrite()` helper:
+
+- Checks if backupManager is configured (nil = no backups)
+- Validates backup is enabled via `cfg.Backup.IsEnabled()`
+- Validates auto_backup is enabled via `cfg.Backup.IsAutoBackupEnabled()`
+- Only backs up if target file exists (nothing to backup on first write)
+- Supports async backups: `cfg.Backup.IsAsyncBackupEnabled()` runs backup in goroutine
+- Supports sync backups: Waits for completion, returns error if backup fails
+- Uses `TriggerAutomatic` trigger for all automatic backups
+
+**Integration Pattern**:
+
+```go
+// With backup manager
+writer := config.NewWriterWithBackup(backupMgr)
+err := writer.WriteFile(path, cfg) // Automatically backs up before write
+
+// Without backup manager (backward compatible)
+writer := config.NewWriter()
+err := writer.WriteFile(path, cfg) // No backup
+```
+
+### Init Command Integration (`cmd/klaudiush/init.go`)
+
+**Backup Before Force**: `backupBeforeForce()` function creates backup when `--force` flag used:
+
+- Detects first-run by checking if config already exists
+- Creates appropriate storage for global or project config
+- Uses `TriggerBeforeInit` trigger
+- Includes "init --force" in snapshot metadata
+- Logs backup snapshot ID on success
+- Non-blocking: Logs warning on failure but continues with init
+
+**Modified Flow**:
+
+1. Check if config exists (`checkExistingConfig()` now returns existence flag)
+2. If `--force` and config exists, call `backupBeforeForce()`
+3. Continue with normal init flow (TUI, write config)
+
+### Main Entry Point Integration (`cmd/klaudiush/main.go`)
+
+**First-Run Migration**: `performFirstRunMigration()` creates initial backups for existing users:
+
+- Uses marker file `~/.klaudiush/.migration_v1` to track completion
+- Runs once on first execution after upgrade
+- Backs up both global and project configs if they exist
+- Uses `TriggerMigration` trigger
+- Includes "first-run migration" in snapshot metadata
+- Non-blocking: Logs errors but continues execution
+- Creates marker file after successful migration
+
+**Migration Flow**:
+
+1. Check for migration marker file
+2. If not exists, backup global config (if present)
+3. Backup project config in current directory (if present)
+4. Create marker file to prevent re-running
+5. Log completion
+
+**Helper Function**: `backupConfigIfExists()` handles individual config backup:
+
+- Checks if config file exists
+- Creates appropriate storage (global or project)
+- Creates backup manager with default config
+- Uses `TriggerMigration` trigger
+- Logs snapshot ID on success
+
+### Testing
+
+**Writer Integration Tests** (`internal/config/writer_test.go`):
+
+- WriteFile without backup manager (backward compatibility)
+- WriteFile with no existing file (no backup created)
+- WriteFile with existing file and sync backup (backup created with TriggerAutomatic)
+- WriteFile with existing file and async backup (non-blocking)
+- WriteFile with backup disabled (no backup created)
+- WriteFile with auto_backup disabled (no backup created)
+- WriteGlobal with backup (integration test)
+- WriteProject with backup (integration test)
+
+Coverage: 75.0% for internal/config package (added ~11% from Phase 4 integration)
+
+### Integration Patterns
+
+**Automatic Backups on Config Changes**:
+
+```go
+// Setup
+storage, _ := backup.NewFilesystemStorage(baseDir, configType, projectPath)
+manager, _ := backup.NewManager(storage, &config.BackupConfig{})
+writer := config.NewWriterWithBackup(manager)
+
+// Write triggers automatic backup
+cfg := &config.Config{Backup: &config.BackupConfig{}}
+writer.WriteFile(path, cfg) // Backs up existing file, then writes
+```
+
+**Manual Backup Before Risky Operations**:
+
+```go
+// Init with --force
+if forceFlag && configExists {
+    backupBeforeForce(configPath) // Explicit backup
+}
+runInitForm() // Then proceed with overwrite
+```
+
+**First-Run Migration for Existing Users**:
+
+```go
+// On first execution after upgrade
+performFirstRunMigration(homeDir, log)
+// Creates backups of existing configs
+// Marker prevents re-running
+```
+
+### Error Handling
+
+- Async backup errors: Silently ignored (background operation)
+- Sync backup errors: Returned to caller, prevents write
+- Init backup errors: Logged as warning, init continues
+- Migration errors: Logged, dispatcher continues
+
+### Backward Compatibility
+
+- All existing code works without changes
+- BackupManager is optional (nil = no backups)
+- Writers without backup manager behave identically to before
+- New constructors added, old ones unchanged
 
 ## Linter Fixes Applied
 

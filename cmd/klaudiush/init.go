@@ -9,6 +9,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/spf13/cobra"
 
+	"github.com/smykla-labs/klaudiush/internal/backup"
 	"github.com/smykla-labs/klaudiush/internal/config"
 	"github.com/smykla-labs/klaudiush/internal/git"
 	"github.com/smykla-labs/klaudiush/internal/tui"
@@ -69,9 +70,21 @@ func runInit(_ *cobra.Command, _ []string) error {
 	writer := config.NewWriter()
 
 	// Check if config already exists
-	configPath, err := checkExistingConfig(writer)
+	configPath, existingConfig, err := checkExistingConfig(writer)
 	if err != nil {
 		return err
+	}
+
+	// If --force and config exists, create backup before overwriting
+	if forceFlag && existingConfig {
+		if backupErr := backupBeforeForce(configPath); backupErr != nil {
+			// Log warning but don't fail
+			fmt.Fprintf(
+				os.Stderr,
+				"⚠️  Warning: failed to backup existing config: %v\n",
+				backupErr,
+			)
+		}
 	}
 
 	// Get default signoff from git config
@@ -117,8 +130,8 @@ func runInit(_ *cobra.Command, _ []string) error {
 	return nil
 }
 
-// checkExistingConfig checks if config already exists and returns the path.
-func checkExistingConfig(writer *config.Writer) (string, error) {
+// checkExistingConfig checks if config already exists and returns the path and existence flag.
+func checkExistingConfig(writer *config.Writer) (string, bool, error) {
 	var (
 		configPath   string
 		configExists bool
@@ -133,13 +146,73 @@ func checkExistingConfig(writer *config.Writer) (string, error) {
 	}
 
 	if configExists && !forceFlag {
-		return "", errors.Errorf(
+		return "", false, errors.Errorf(
 			"configuration file already exists: %s\nUse --force to overwrite",
 			configPath,
 		)
 	}
 
-	return configPath, nil
+	return configPath, configExists, nil
+}
+
+// backupBeforeForce creates a backup before overwriting config with --force.
+func backupBeforeForce(configPath string) error {
+	// Get home directory for backup storage
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return errors.Wrap(err, "failed to get home directory")
+	}
+
+	// Determine config type
+	var configType backup.ConfigType
+
+	if globalFlag {
+		configType = backup.ConfigTypeGlobal
+	} else {
+		configType = backup.ConfigTypeProject
+	}
+
+	// Create storage
+	baseDir := filepath.Join(homeDir, config.GlobalConfigDir)
+	projectPath := ""
+
+	if !globalFlag {
+		projectPath, err = os.Getwd()
+		if err != nil {
+			return errors.Wrap(err, "failed to get working directory")
+		}
+	}
+
+	storage, err := backup.NewFilesystemStorage(baseDir, configType, projectPath)
+	if err != nil {
+		return errors.Wrap(err, "failed to create backup storage")
+	}
+
+	// Create backup manager with default config
+	backupCfg := &pkgConfig.BackupConfig{}
+
+	manager, err := backup.NewManager(storage, backupCfg)
+	if err != nil {
+		return errors.Wrap(err, "failed to create backup manager")
+	}
+
+	// Create backup
+	opts := backup.CreateBackupOptions{
+		ConfigPath: configPath,
+		Trigger:    backup.TriggerBeforeInit,
+		Metadata: backup.SnapshotMetadata{
+			Command: "init --force",
+		},
+	}
+
+	snapshot, err := manager.CreateBackup(opts)
+	if err != nil {
+		return errors.Wrap(err, "backup creation failed")
+	}
+
+	fmt.Printf("✅ Backed up existing config: %s\n", snapshot.ID)
+
+	return nil
 }
 
 // getDefaultSignoff gets the default signoff from git config.
