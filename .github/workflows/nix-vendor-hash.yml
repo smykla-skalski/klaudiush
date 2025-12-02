@@ -71,9 +71,13 @@ jobs:
 
       - name: Commit changes
         if: steps.calc-hash.outputs.changed == 'true'
+        env:
+          NEW_HASH: ${{ steps.calc-hash.outputs.new_hash }}
         run: |
+          # Extract short hash (first 12 chars after sha256-)
+          SHORT_HASH=$(echo "$NEW_HASH" | sed 's/sha256-//' | cut -c1-12)
           git config user.name "smyklot[bot]"
           git config user.email "205507218+smyklot[bot]@users.noreply.github.com"
           git add nix/package.nix
-          git commit -sS -m "build(nix): update vendorHash for dependency changes"
+          git commit -sS -m "build(nix): update vendorHash to ${SHORT_HASH}"
           git push
