@@ -73,11 +73,28 @@ jobs:
         if: steps.calc-hash.outputs.changed == 'true'
         env:
           NEW_HASH: ${{ steps.calc-hash.outputs.new_hash }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           # Extract short hash (first 12 chars after sha256-)
           SHORT_HASH=$(echo "$NEW_HASH" | sed 's/sha256-//' | cut -c1-12)
-          git config user.name "smyklot[bot]"
-          git config user.email "205507218+smyklot[bot]@users.noreply.github.com"
-          git add nix/package.nix
-          git commit -sS -m "build(nix): update vendorHash to ${SHORT_HASH}"
-          git push
+          COMMIT_MSG="build(nix): update vendorHash to ${SHORT_HASH}"
+
+          # Get current file SHA from GitHub
+          FILE_SHA=$(gh api repos/${{ github.repository }}/contents/nix/package.nix \
+            --jq '.sha' \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            -f ref=${{ github.head_ref }})
+
+          # Base64 encode the updated file content
+          CONTENT=$(base64 -w 0 nix/package.nix)
+
+          # Update file via GitHub API (creates verified commit)
+          gh api repos/${{ github.repository }}/contents/nix/package.nix \
+            --method PUT \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            -f message="$COMMIT_MSG" \
+            -f content="$CONTENT" \
+            -f sha="$FILE_SHA" \
+            -f branch=${{ github.head_ref }}
