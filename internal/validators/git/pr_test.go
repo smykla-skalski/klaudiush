@@ -312,6 +312,93 @@ New feature
 			},
 		)
 
+		It(
+			"should error on N/A with trailing comments in supporting documentation",
+			func() {
+				testCases := []struct {
+					name  string
+					value string
+				}{
+					{
+						name:  "N/A with dash and explanation",
+						value: "N/A - Repository migration following standard process",
+					},
+					{
+						name:  "n/a with colon",
+						value: "n/a: not applicable for this change",
+					},
+					{
+						name:  "None with explanation",
+						value: "None - internal refactoring only",
+					},
+					{
+						name:  "NOTHING with parentheses",
+						value: "NOTHING (emergency hotfix)",
+					},
+					{
+						name:  "empty with comma",
+						value: "empty, see motivation section",
+					},
+					{
+						name:  "TBD with note",
+						value: "TBD will add after review",
+					},
+					{
+						name:  "todo with task",
+						value: "todo: create documentation",
+					},
+					{
+						name:  "N/A with multiple separators",
+						value: "N/A - see issue #123 for context",
+					},
+				}
+
+				for _, tc := range testCases {
+					body := `## Motivation
+New feature
+
+## Implementation information
+- Added endpoint
+
+## Supporting documentation
+` + tc.value
+
+					result := git.ValidatePRBody(body, "feat")
+					Expect(
+						result.Errors,
+					).To(ContainElement(ContainSubstring("placeholder value")),
+						"Expected error for case: "+tc.name)
+				}
+			},
+		)
+
+		It(
+			"should NOT error on valid list items in supporting documentation",
+			func() {
+				validCases := []string{
+					"- Link to RFC: https://example.com/rfc",
+					"- See issue #123",
+					"- Documentation: https://docs.example.com",
+					"* Related PR: #456",
+				}
+
+				for _, validCase := range validCases {
+					body := `## Motivation
+New feature
+
+## Implementation information
+- Added endpoint
+
+## Supporting documentation
+` + validCase
+
+					result := git.ValidatePRBody(body, "feat")
+					Expect(result.Errors).To(BeEmpty(),
+						"Should not error on valid list item: "+validCase)
+				}
+			},
+		)
+
 		It("should ignore HTML comments in supporting documentation", func() {
 			body := `## Motivation
 New feature

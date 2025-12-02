@@ -21,9 +21,16 @@ var (
 	formalWordsRegex     = regexp.MustCompile(`(?i)\b(utilize|leverage|facilitate|implement)\b`)
 	htmlCommentRegex     = regexp.MustCompile(`<!--[\s\S]*?-->`)
 
-	// emptyDocsPatterns matches common placeholder values that indicate empty documentation
-	emptyDocsPatterns = regexp.MustCompile(
-		`(?i)^\s*(n/?a|none|nothing|empty|-|—|–|\.{2,}|tbd|todo)\s*$`,
+	// textPlaceholders matches text-based placeholders at the start of a line,
+	// even if followed by additional content (e.g., "N/A - explanation")
+	textPlaceholders = regexp.MustCompile(
+		`(?i)^\s*(n/?a|none|nothing|empty|tbd|todo)\b`,
+	)
+
+	// symbolPlaceholders matches symbol-based placeholders that must be standalone
+	// (prevents matching Markdown list items like "- Link")
+	symbolPlaceholders = regexp.MustCompile(
+		`^\s*(-|—|–|\.{2,})\s*$`,
 	)
 )
 
@@ -228,7 +235,8 @@ func checkSupportingDocs(body string, result *PRBodyValidationResult) {
 			continue
 		}
 
-		if emptyDocsPatterns.MatchString(trimmed) {
+		// Check both text placeholders (can have trailing content) and symbol placeholders (must be standalone)
+		if textPlaceholders.MatchString(trimmed) || symbolPlaceholders.MatchString(trimmed) {
 			result.Errors = append(
 				result.Errors,
 				"Supporting documentation section contains placeholder value: "+trimmed,
