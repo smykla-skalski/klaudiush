@@ -110,8 +110,17 @@ type PushValidatorConfig struct {
 	ValidatorConfig
 
 	// BlockedRemotes is a list of remote names that are not allowed for push operations.
+	// When Claude Code tries to push to a blocked remote, the operation will be rejected
+	// with a clear error message showing available alternatives from AllowedRemotePriority.
 	// Default: []
 	BlockedRemotes []string `json:"blocked_remotes,omitempty" koanf:"blocked_remotes" toml:"blocked_remotes"`
+
+	// AllowedRemotePriority defines the priority order of remotes to suggest when a blocked
+	// remote is used or when "origin" doesn't exist. The validator will suggest the first
+	// remote from this list that exists in the repository.
+	// Example: ["origin", "upstream", "fork"] means suggest "origin" first, then "upstream", etc.
+	// Default: ["origin", "upstream"]
+	AllowedRemotePriority []string `json:"allowed_remote_priority,omitempty" koanf:"allowed_remote_priority" toml:"allowed_remote_priority"`
 
 	// RequireTracking requires branches to have remote tracking configured before push.
 	// Default: true

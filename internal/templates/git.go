@@ -112,6 +112,19 @@ The --no-verify flag bypasses pre-commit hooks and validation.
 All commits must go through proper validation.
 
 Use: git commit -sS -m "message"`)
+
+	// PushBlockedRemoteTemplate formats error for push to blocked remote
+	PushBlockedRemoteTemplate = Parse(
+		"push_blocked_remote",
+		`❌ Remote '{{.Remote}}' is blocked for push operations
+
+Blocked remotes: [{{.BlockedRemotesStr}}]
+{{- if .SuggestedRemotesStr}}
+Suggested alternatives: [{{.SuggestedRemotesStr}}]
+{{- else if .AvailableRemotesStr}}
+Available remotes: [{{.AvailableRemotesStr}}]
+{{- end}}`,
+	)
 )
 
 // GitAddTmpFilesData holds data for GitAddTmpFilesTemplate
@@ -162,4 +175,12 @@ type PushRemoteNotFoundData struct {
 type RemoteInfo struct {
 	Name string
 	URL  string
+}
+
+// PushBlockedRemoteData holds data for PushBlockedRemoteTemplate
+type PushBlockedRemoteData struct {
+	Remote              string
+	BlockedRemotesStr   string
+	SuggestedRemotesStr string
+	AvailableRemotesStr string
 }

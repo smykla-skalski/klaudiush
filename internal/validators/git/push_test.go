@@ -9,6 +9,7 @@ import (
 	gitpkg "github.com/smykla-labs/klaudiush/internal/git"
 	validatorpkg "github.com/smykla-labs/klaudiush/internal/validator"
 	"github.com/smykla-labs/klaudiush/internal/validators/git"
+	"github.com/smykla-labs/klaudiush/pkg/config"
 	"github.com/smykla-labs/klaudiush/pkg/hook"
 	"github.com/smykla-labs/klaudiush/pkg/logger"
 )
@@ -196,6 +197,152 @@ var _ = Describe("PushValidator", func() {
 				ctx := createContext("git push upstream main")
 				result := validator.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeTrue())
+			})
+		})
+
+		Context("blocked remotes", func() {
+			It("blocks push to configured blocked remote", func() {
+				cfg := &config.PushValidatorConfig{}
+				cfg.BlockedRemotes = []string{"upstream"}
+				validator = git.NewPushValidator(log, fakeGit, cfg, nil)
+
+				ctx := createContext("git push upstream main")
+				result := validator.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeFalse())
+				Expect(result.Message).To(ContainSubstring("Remote 'upstream' is blocked"))
+				Expect(result.Message).To(ContainSubstring("Blocked remotes: [upstream]"))
+			})
+
+			It("allows push to non-blocked remote", func() {
+				cfg := &config.PushValidatorConfig{}
+				cfg.BlockedRemotes = []string{"upstream"}
+				validator = git.NewPushValidator(log, fakeGit, cfg, nil)
+
+				ctx := createContext("git push origin main")
+				result := validator.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("suggests alternatives from allowed priority list", func() {
+				cfg := &config.PushValidatorConfig{}
+				cfg.BlockedRemotes = []string{"upstream"}
+				cfg.AllowedRemotePriority = []string{"origin", "fork"}
+				validator = git.NewPushValidator(log, fakeGit, cfg, nil)
+
+				ctx := createContext("git push upstream main")
+				result := validator.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeFalse())
+				Expect(result.Message).To(ContainSubstring("Suggested alternatives: [origin]"))
+			})
+
+			It("shows all available remotes if no priority matches", func() {
+				cfg := &config.PushValidatorConfig{}
+				cfg.BlockedRemotes = []string{"origin"}
+				cfg.AllowedRemotePriority = []string{"nonexistent"}
+				validator = git.NewPushValidator(log, fakeGit, cfg, nil)
+
+				ctx := createContext("git push origin main")
+				result := validator.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeFalse())
+				Expect(result.Message).To(ContainSubstring("Available remotes: [upstream]"))
+			})
+
+			It("uses default priority list when not configured", func() {
+				cfg := &config.PushValidatorConfig{}
+				cfg.BlockedRemotes = []string{"fork"}
+				// AllowedRemotePriority not set, should default to ["origin", "upstream"]
+				validator = git.NewPushValidator(log, fakeGit, cfg, nil)
+
+				ctx := createContext("git push fork main")
+				result := validator.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeFalse())
+				Expect(
+					result.Message,
+				).To(ContainSubstring("Suggested alternatives: [origin, upstream]"))
+			})
+
+			It("does not suggest blocked remotes in alternatives", func() {
+				// Add fork remote to the fake git runner
+				fakeGit.Remotes["fork"] = "git@github.com:user/fork.git"
+
+				cfg := &config.PushValidatorConfig{}
+				cfg.BlockedRemotes = []string{"origin", "upstream"}
+				cfg.AllowedRemotePriority = []string{"origin", "upstream", "fork"}
+				validator = git.NewPushValidator(log, fakeGit, cfg, nil)
+
+				ctx := createContext("git push origin main")
+				result := validator.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeFalse())
+				// Should suggest fork since it's in priority list and not blocked
+				Expect(result.Message).To(ContainSubstring("Suggested alternatives: [fork]"))
+				// Blocked remotes are shown inline
+				Expect(result.Message).To(ContainSubstring("Blocked remotes: [origin, upstream]"))
+			})
+
+			It("passes when no blocked remotes configured", func() {
+				cfg := &config.PushValidatorConfig{}
+				// BlockedRemotes is empty
+				validator = git.NewPushValidator(log, fakeGit, cfg, nil)
+
+				ctx := createContext("git push upstream main")
+				result := validator.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("passes when config is nil", func() {
+				validator = git.NewPushValidator(log, fakeGit, nil, nil)
+
+				ctx := createContext("git push upstream main")
+				result := validator.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("handles error getting remotes gracefully", func() {
+				cfg := &config.PushValidatorConfig{}
+				cfg.BlockedRemotes = []string{"upstream"}
+				validator = git.NewPushValidator(log, fakeGit, cfg, nil)
+
+				// Make GetRemotes return an error
+				fakeGit.Err = &gitpkg.FakeRunnerError{Msg: "failed to get remotes"}
+
+				ctx := createContext("git push upstream main")
+				result := validator.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeFalse())
+				Expect(result.Message).To(ContainSubstring("Remote 'upstream' is blocked"))
+				Expect(result.Message).To(ContainSubstring("Blocked remotes: [upstream]"))
+				// Should not have suggestions when we can't get remotes
+				Expect(result.Message).NotTo(ContainSubstring("Suggested alternatives"))
+				Expect(result.Message).NotTo(ContainSubstring("Available remotes"))
+			})
+
+			It("shows no alternatives when all remotes are blocked", func() {
+				cfg := &config.PushValidatorConfig{}
+				cfg.BlockedRemotes = []string{"origin", "upstream"}
+				cfg.AllowedRemotePriority = []string{"origin", "upstream"}
+				validator = git.NewPushValidator(log, fakeGit, cfg, nil)
+
+				ctx := createContext("git push origin main")
+				result := validator.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeFalse())
+				Expect(result.Message).To(ContainSubstring("Blocked remotes: [origin, upstream]"))
+				// No available remotes since both are blocked
+				Expect(result.Message).NotTo(ContainSubstring("Suggested alternatives"))
+				Expect(result.Message).NotTo(ContainSubstring("Available remotes"))
+			})
+
+			It("handles multiple blocked remotes in message", func() {
+				cfg := &config.PushValidatorConfig{}
+				cfg.BlockedRemotes = []string{"bad1", "bad2", "bad3"}
+				validator = git.NewPushValidator(log, fakeGit, cfg, nil)
+
+				ctx := createContext("git push bad2 main")
+				result := validator.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeFalse())
+				Expect(result.Message).To(ContainSubstring("Blocked remotes: [bad1, bad2, bad3]"))
+				// Should suggest origin and upstream as they're not blocked
+				Expect(
+					result.Message,
+				).To(ContainSubstring("Suggested alternatives: [origin, upstream]"))
 			})
 		})
 

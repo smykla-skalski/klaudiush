@@ -2,9 +2,11 @@ package git
 
 import (
 	"context"
+	"slices"
 	"strings"
 
 	"github.com/smykla-labs/klaudiush/internal/rules"
+	"github.com/smykla-labs/klaudiush/internal/templates"
 	"github.com/smykla-labs/klaudiush/internal/validator"
 	"github.com/smykla-labs/klaudiush/pkg/config"
 	"github.com/smykla-labs/klaudiush/pkg/hook"
@@ -78,6 +80,11 @@ func (v *PushValidator) validatePushCommand(gitCmd *parser.GitCommand) *validato
 		return validator.Pass()
 	}
 
+	// Check if remote is blocked (before checking if it exists)
+	if result := v.validateNotBlockedRemote(remote, runner); !result.Passed {
+		return result
+	}
+
 	return v.validateRemoteExists(remote, runner)
 }
 
@@ -119,6 +126,84 @@ func (*PushValidator) extractRemote(gitCmd *parser.GitCommand, runner GitRunner)
 	}
 
 	return ""
+}
+
+// validateNotBlockedRemote checks if the remote is blocked
+func (v *PushValidator) validateNotBlockedRemote(
+	remote string,
+	runner GitRunner,
+) *validator.Result {
+	// No config or no blocked remotes means all remotes are allowed
+	if v.config == nil || len(v.config.BlockedRemotes) == 0 {
+		return validator.Pass()
+	}
+
+	// Check if remote is in blocked list
+	if !slices.Contains(v.config.BlockedRemotes, remote) {
+		return validator.Pass()
+	}
+
+	// Format blocked remotes as comma-separated string
+	blockedRemotesStr := strings.Join(v.config.BlockedRemotes, ", ")
+
+	// Remote is blocked - get all available remotes
+	allRemotes, err := runner.GetRemotes()
+	if err != nil {
+		// If we can't get remotes, just show blocked list without suggestions
+		return validator.FailWithRef(
+			validator.RefGitBlockedRemote,
+			templates.MustExecute(
+				templates.PushBlockedRemoteTemplate,
+				templates.PushBlockedRemoteData{
+					Remote:            remote,
+					BlockedRemotesStr: blockedRemotesStr,
+				},
+			),
+		)
+	}
+
+	// Get allowed remote priority list (default: ["origin", "upstream"])
+	allowedPriority := v.config.AllowedRemotePriority
+	if len(allowedPriority) == 0 {
+		allowedPriority = []string{"origin", "upstream"}
+	}
+
+	// Find suggested remotes based on priority list
+	var suggestedRemoteNames []string
+
+	for _, priorityRemote := range allowedPriority {
+		if _, exists := allRemotes[priorityRemote]; exists {
+			// Don't suggest blocked remotes
+			if !slices.Contains(v.config.BlockedRemotes, priorityRemote) {
+				suggestedRemoteNames = append(suggestedRemoteNames, priorityRemote)
+			}
+		}
+	}
+
+	// If no suggested remotes from priority list, show all available remotes
+	var availableRemoteNames []string
+
+	if len(suggestedRemoteNames) == 0 {
+		for name := range allRemotes {
+			// Don't show blocked remotes
+			if !slices.Contains(v.config.BlockedRemotes, name) {
+				availableRemoteNames = append(availableRemoteNames, name)
+			}
+		}
+	}
+
+	return validator.FailWithRef(
+		validator.RefGitBlockedRemote,
+		templates.MustExecute(
+			templates.PushBlockedRemoteTemplate,
+			templates.PushBlockedRemoteData{
+				Remote:              remote,
+				BlockedRemotesStr:   blockedRemotesStr,
+				SuggestedRemotesStr: strings.Join(suggestedRemoteNames, ", "),
+				AvailableRemotesStr: strings.Join(availableRemoteNames, ", "),
+			},
+		),
+	)
 }
 
 // validateRemoteExists checks if the remote exists

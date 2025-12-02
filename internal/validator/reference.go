@@ -9,7 +9,7 @@ type Reference string
 // ReferenceBaseURL is the base URL for error references.
 const ReferenceBaseURL = "https://klaudiu.sh"
 
-// Git-related references (GIT001-GIT023).
+// Git-related references (GIT001-GIT025).
 const (
 	// RefGitNoSignoff indicates missing -s/--signoff flag.
 	RefGitNoSignoff Reference = ReferenceBaseURL + "/GIT001"
@@ -82,6 +82,9 @@ const (
 
 	// RefGitFetchNoRemote indicates remote does not exist for git fetch.
 	RefGitFetchNoRemote Reference = ReferenceBaseURL + "/GIT024"
+
+	// RefGitBlockedRemote indicates push to a blocked remote.
+	RefGitBlockedRemote Reference = ReferenceBaseURL + "/GIT025"
 )
 
 // File-related references (FILE001-FILE009).

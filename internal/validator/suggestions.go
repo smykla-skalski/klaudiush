@@ -28,6 +28,7 @@ var DefaultSuggestions = map[Reference]string{
 	RefGitKongOrgPush:        "Push to 'upstream' remote instead: git push upstream <branch>",
 	RefGitPRValidation:       "Fix PR title, body, markdown formatting, or labels per validation errors",
 	RefGitFetchNoRemote:      "Specify valid remote: git fetch <remote> (use 'git remote -v' to list remotes)",
+	RefGitBlockedRemote:      "Use an allowed remote instead (see error message for suggested alternatives)",
 
 	// File suggestions
 	RefShellcheck:   "Run 'shellcheck <file>' to see detailed errors",
