@@ -1,0 +1,79 @@
+# Updates nix/package.nix vendorHash when Go dependencies change
+# Runs on PRs that modify go.mod or go.sum
+
+name: Update Nix vendorHash
+
+on:
+  pull_request:
+    paths:
+      - 'go.mod'
+      - 'go.sum'
+
+permissions: {}
+
+jobs:
+  update-vendor-hash:
+    name: Update vendorHash
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Generate App Token
+        id: app-token
+        uses: actions/create-github-app-token@7e473efe3cb98aa54f8d4bac15400b15fad77d94 # v2.2.0
+        with:
+          app-id: ${{ vars.SMYKLOT_APP_ID }}
+          private-key: ${{ secrets.SMYKLOT_PRIVATE_KEY }}
+
+      - name: Checkout
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          ref: ${{ github.head_ref }}
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@0b0e072294b088b73964f1d72dfdac0951439dbd # v31.4.0
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+
+      - name: Calculate new vendorHash
+        id: calc-hash
+        run: |
+          # Build with fake hash to get the correct one
+          cd nix
+          OUTPUT=$(nix build .#klaudiush --no-write-lock-file 2>&1 || true)
+          NEW_HASH=$(echo "$OUTPUT" | grep -oP 'got:\s+\Ksha256-[A-Za-z0-9+/=]+' || echo "")
+
+          if [ -z "$NEW_HASH" ]; then
+            echo "Build succeeded or no hash mismatch found"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "New vendorHash: $NEW_HASH"
+            echo "new_hash=$NEW_HASH" >> "$GITHUB_OUTPUT"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Update package.nix
+        if: steps.calc-hash.outputs.changed == 'true'
+        env:
+          NEW_HASH: ${{ steps.calc-hash.outputs.new_hash }}
+        run: |
+          sed -i "s|vendorHash = \"sha256-[^\"]*\";|vendorHash = \"$NEW_HASH\";|" nix/package.nix
+          echo "Updated nix/package.nix with new vendorHash"
+
+      - name: Verify build
+        if: steps.calc-hash.outputs.changed == 'true'
+        run: |
+          cd nix
+          nix build .#klaudiush --no-write-lock-file
+
+      - name: Commit changes
+        if: steps.calc-hash.outputs.changed == 'true'
+        run: |
+          git config user.name "smyklot[bot]"
+          git config user.email "205507218+smyklot[bot]@users.noreply.github.com"
+          git add nix/package.nix
+          git commit -sS -m "build(nix): update vendorHash for dependency changes"
+          git push

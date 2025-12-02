@@ -42,3 +42,5 @@ tmp/
 .gemini/
 gha-creds-*.json
 .gemini-clipboard
+
+result
