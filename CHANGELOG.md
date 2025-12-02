@@ -5,6 +5,18 @@ All notable changes to klaudiush will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0](https://github.com/smykla-labs/klaudiush/compare/v1.8.1...v1.9.0) (2025-12-02)
+
+### Features
+
+* **git:** add blocked remotes configuration ([#136](https://github.com/smykla-labs/klaudiush/issues/136)) ([dfb01ca](https://github.com/smykla-labs/klaudiush/commit/dfb01ca2639270e17cdf3ec23f84ad31ef1e7c70))
+* **nix:** add Nix flake and Home-Manager module ([#140](https://github.com/smykla-labs/klaudiush/issues/140)) ([3fba39f](https://github.com/smykla-labs/klaudiush/commit/3fba39f36e9dedc4b714f27e6efe27e3ff1421ad))
+* **validators:** accept branch version comments ([#134](https://github.com/smykla-labs/klaudiush/issues/134)) ([c2ab7f5](https://github.com/smykla-labs/klaudiush/commit/c2ab7f5cad9a72a9fd0054f51b4eabc94851cbf3))
+
+### Bug Fixes
+
+* **validators:** reject N/A with trailing text ([#135](https://github.com/smykla-labs/klaudiush/issues/135)) ([a8c2548](https://github.com/smykla-labs/klaudiush/commit/a8c25485f757b59e6be7e16b7a14a227e488677d))
+
 ## [1.8.1](https://github.com/smykla-labs/klaudiush/compare/v1.8.0...v1.8.1) (2025-12-02)
 
 ### Bug Fixes
