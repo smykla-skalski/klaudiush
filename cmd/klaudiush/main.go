@@ -55,7 +55,8 @@ before they are executed by Claude Code.`,
 	PersistentPreRun: func(_ *cobra.Command, _ []string) {
 		checkVersionFlag()
 	},
-	RunE: run,
+	RunE:              run,
+	CompletionOptions: cobra.CompletionOptions{DisableDefaultCmd: true},
 }
 
 func init() {

@@ -9,6 +9,12 @@ Guidance for Claude Code (claude.ai/code) when working with this repository.
 ## Commands
 
 ```bash
+# Completion (shell completion scripts)
+klaudiush completion bash         # generate bash completion
+klaudiush completion fish         # generate fish completion
+klaudiush completion zsh          # generate zsh completion
+klaudiush completion powershell   # generate powershell completion
+
 # Init (interactive setup wizard, creates config.toml)
 ./bin/klaudiush init              # project config
 ./bin/klaudiush init --global     # global config

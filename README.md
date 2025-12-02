@@ -262,6 +262,32 @@ Warnings (`ShouldBlock=false`) print to stderr but allow operation (exit 0).
 
 Klaudiush supports flexible configuration through multiple sources with a clear precedence hierarchy. All validators are fully configurable - you can enable/disable them, change severity levels, and customize individual rules.
 
+### Shell Completion
+
+Klaudiush supports shell completion for bash, zsh, fish, and PowerShell:
+
+```bash
+# Generate completion script for your shell
+klaudiush completion bash        # Bash
+klaudiush completion zsh         # Zsh
+klaudiush completion fish        # Fish
+klaudiush completion powershell  # PowerShell
+
+# Quick setup for Fish (recommended)
+klaudiush completion fish > ~/.config/fish/completions/klaudiush.fish
+
+# Quick setup for Bash
+klaudiush completion bash > $(brew --prefix)/etc/bash_completion.d/klaudiush  # macOS
+klaudiush completion bash > /etc/bash_completion.d/klaudiush                  # Linux
+
+# Quick setup for Zsh
+klaudiush completion zsh > "${fpath[1]}/_klaudiush"
+```
+
+Run `klaudiush completion --help` for detailed installation instructions for each shell.
+
+**Note**: When using the Nix Home-Manager module, completions are automatically installed and configured.
+
 ### Interactive Setup
 
 The quickest way to get started is using the interactive `init` command:

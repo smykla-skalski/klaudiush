@@ -1,4 +1,4 @@
-{ lib, buildGoModule, rev ? "unknown", shortRev ? "unknown", lastModifiedDate ? "unknown" }:
+{ lib, buildGoModule, installShellFiles, rev ? "unknown", shortRev ? "unknown", lastModifiedDate ? "unknown" }:
 
 buildGoModule rec {
   pname = "klaudiush";
@@ -10,6 +10,8 @@ buildGoModule rec {
 
   subPackages = [ "cmd/klaudiush" ];
 
+  nativeBuildInputs = [ installShellFiles ];
+
   ldflags = [
     "-s"
     "-w"
@@ -17,6 +19,14 @@ buildGoModule rec {
     "-X main.commit=${shortRev}"
     "-X main.date=${lastModifiedDate}"
   ];
+
+  postInstall = ''
+    # Generate shell completions
+    installShellCompletion --cmd klaudiush \
+      --bash <($out/bin/klaudiush completion bash) \
+      --fish <($out/bin/klaudiush completion fish) \
+      --zsh <($out/bin/klaudiush completion zsh)
+  '';
 
   doCheck = false;
 
