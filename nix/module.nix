@@ -3,7 +3,6 @@
 let
   cfg = config.programs.klaudiush;
   klaudiushDir = "${config.home.homeDirectory}/.klaudiush";
-  claudeHooksDir = "${config.home.homeDirectory}/.claude/hooks";
 in
 {
   options.programs.klaudiush = {
@@ -42,22 +41,6 @@ in
         These will persist across rebuilds.
       '';
     };
-
-    installHook = lib.mkOption {
-      type = lib.types.bool;
-      default = true;
-      description = ''
-        Whether to install klaudiush as a Claude Code hook dispatcher.
-        Creates a symlink at hookSymlinkPath pointing to the klaudiush binary.
-      '';
-    };
-
-    hookSymlinkPath = lib.mkOption {
-      type = lib.types.str;
-      default = "${claudeHooksDir}/dispatcher";
-      defaultText = lib.literalExpression ''"''${config.home.homeDirectory}/.claude/hooks/dispatcher"'';
-      description = "Path where the hook symlink should be created.";
-    };
   };
 
   config = lib.mkIf cfg.enable {
@@ -83,12 +66,6 @@ in
       ${lib.optionalString (cfg.configFile != null) ''
         # Symlink config file
         run ln -sf "${cfg.configFile}" "${klaudiushDir}/config.toml"
-      ''}
-
-      ${lib.optionalString cfg.installHook ''
-        # Create Claude hooks directory and symlink dispatcher
-        run mkdir -p "${claudeHooksDir}"
-        run ln -sf "${cfg.package}/bin/klaudiush" "${cfg.hookSymlinkPath}"
       ''}
     '';
   };
