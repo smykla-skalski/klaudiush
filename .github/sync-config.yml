@@ -1,0 +1,7 @@
+---
+# Unified Sync Configuration
+# Enable label removal to keep labels in sync with central config
+
+sync:
+  labels:
+    allow_removal: true
