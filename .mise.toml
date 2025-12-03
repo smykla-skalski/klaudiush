@@ -31,7 +31,7 @@ task = "3.45.5"
 
 # Git hooks manager
 # https://github.com/evilmartians/lefthook
-lefthook = "2.0.5"
+lefthook = "2.0.7"
 
 # Protocol buffer tooling
 # https://buf.build/
