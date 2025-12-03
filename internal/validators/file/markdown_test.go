@@ -74,14 +74,28 @@ More text.
 				Expect(result.Passed).To(BeTrue())
 			})
 
-			It("passes for list after header", func() {
+			It("passes for list after header with blank line", func() {
 				content := `## Features
+
 - Feature 1
 - Feature 2
 `
 				ctx.ToolInput.Content = content
 				result := v.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("fails for list directly after header without blank line", func() {
+				content := `## Features
+- Feature 1
+- Feature 2
+`
+				ctx.ToolInput.Content = content
+				result := v.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeFalse())
+				Expect(result.Details["errors"]).To(
+					ContainSubstring("Header should have empty line after it"),
+				)
 			})
 
 			It("passes for consecutive headers", func() {

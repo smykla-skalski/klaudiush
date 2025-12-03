@@ -655,13 +655,13 @@ func checkHeader(line, prevLine string, lineNum int, warnings *[]string) {
 	}
 }
 
-// shouldWarnAboutHeaderSpacing determines if content after a header needs spacing
+// shouldWarnAboutHeaderSpacing determines if content after a header needs spacing.
+// Per MD022, blank lines are required around ALL headings, including before lists.
 func shouldWarnAboutHeaderSpacing(line string) bool {
 	return line != "" &&
 		!isEmptyLine(line) &&
 		!isHeader(line) &&
-		!isComment(line) &&
-		!isListItem(line)
+		!isComment(line)
 }
 
 // getListIndent calculates the required indentation for list item content
