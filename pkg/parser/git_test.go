@@ -68,6 +68,27 @@ var _ = Describe("GitCommand", func() {
 				Expect(gitCmd.ExtractCommitMessage()).To(Equal("fix: bug fix"))
 			})
 
+			It("uses first -m flag as commit message when multiple -m flags provided", func() {
+				// git commit -m "title" -m "body" should use "title" as the message
+				cmd := parser.Command{
+					Name: "git",
+					Args: []string{
+						"commit",
+						"-sS",
+						"-m",
+						"feat: short title",
+						"-m",
+						"This is a longer body paragraph",
+					},
+				}
+
+				gitCmd, err := parser.ParseGitCommand(cmd)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(gitCmd.ExtractCommitMessage()).To(Equal("feat: short title"))
+				// Both -m flags should be in Flags list
+				Expect(gitCmd.Flags).To(ContainElements("-s", "-S", "-m", "-m"))
+			})
+
 			It("extracts heredoc from command substitution in commit message", func() {
 				cmdStr := `git commit -sS -m "$(cat <<'EOF'
 feat(validators): add new validator

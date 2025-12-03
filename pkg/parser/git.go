@@ -171,14 +171,20 @@ func parseGlobalOptions(args []string, gitCmd *GitCommand) int {
 	return i
 }
 
-// addFlag adds a flag to the GitCommand and optionally captures its value
+// addFlag adds a flag to the GitCommand and optionally captures its value.
+// For flags that can appear multiple times (like -m), only the first value is stored
+// in FlagMap since the first -m is the commit title which is validated.
 func addFlag(flag string, args []string, idx int, gitCmd *GitCommand) int {
 	gitCmd.Flags = append(gitCmd.Flags, flag)
 
 	// Check if this flag takes a value
 	if takesValue, exists := flagsWithValues[flag]; exists && takesValue {
 		if idx+1 < len(args) {
-			gitCmd.FlagMap[flag] = args[idx+1]
+			// Only store the first value for flags that can repeat (e.g., -m for title)
+			if _, alreadySet := gitCmd.FlagMap[flag]; !alreadySet {
+				gitCmd.FlagMap[flag] = args[idx+1]
+			}
+
 			return skipFlagAndValue
 		}
 	}
