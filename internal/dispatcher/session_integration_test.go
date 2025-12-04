@@ -547,3 +547,301 @@ func (*mockWarningValidator) Validate(_ context.Context, _ *hook.Context) *valid
 func (*mockWarningValidator) Category() validator.ValidatorCategory {
 	return validator.CategoryCPU
 }
+
+var _ = Describe("ValidationError", func() {
+	Describe("Error", func() {
+		It("returns formatted error with message", func() {
+			err := &dispatcher.ValidationError{
+				Validator: "test-validator",
+				Message:   "validation failed",
+			}
+			Expect(err.Error()).To(Equal("test-validator: validation failed"))
+		})
+
+		It("returns just validator name when no message", func() {
+			err := &dispatcher.ValidationError{
+				Validator: "test-validator",
+				Message:   "",
+			}
+			Expect(err.Error()).To(Equal("test-validator"))
+		})
+	})
+})
+
+var _ = Describe("FormatErrors", func() {
+	It("formats errors with fix hints", func() {
+		errs := []*dispatcher.ValidationError{
+			{
+				Validator:   "test-validator",
+				Message:     "Something went wrong",
+				ShouldBlock: true,
+				FixHint:     "Try doing X instead",
+				Reference:   "https://klaudiu.sh/GIT001",
+			},
+		}
+
+		result := dispatcher.FormatErrors(errs)
+		Expect(result).To(ContainSubstring("Something went wrong"))
+		Expect(result).To(ContainSubstring("Fix: Try doing X instead"))
+		Expect(result).To(ContainSubstring("Reference: https://klaudiu.sh/GIT001"))
+	})
+
+	It("formats errors with details", func() {
+		errs := []*dispatcher.ValidationError{
+			{
+				Validator:   "test-validator",
+				Message:     "Validation error",
+				ShouldBlock: true,
+				Details: map[string]string{
+					"detail1": "first detail\nsecond line",
+				},
+			},
+		}
+
+		result := dispatcher.FormatErrors(errs)
+		Expect(result).To(ContainSubstring("Validation error"))
+		Expect(result).To(ContainSubstring("first detail"))
+		Expect(result).To(ContainSubstring("second line"))
+	})
+
+	It("separates blocking errors and warnings", func() {
+		errs := []*dispatcher.ValidationError{
+			{
+				Validator:   "blocker",
+				Message:     "Blocking error",
+				ShouldBlock: true,
+			},
+			{
+				Validator:   "warner",
+				Message:     "Warning message",
+				ShouldBlock: false,
+			},
+		}
+
+		result := dispatcher.FormatErrors(errs)
+		Expect(result).To(ContainSubstring("Validation Failed:"))
+		Expect(result).To(ContainSubstring("blocker"))
+		Expect(result).To(ContainSubstring("Warnings:"))
+		Expect(result).To(ContainSubstring("warner"))
+	})
+
+	It("returns empty string for no errors", func() {
+		result := dispatcher.FormatErrors([]*dispatcher.ValidationError{})
+		Expect(result).To(BeEmpty())
+	})
+})
+
+var _ = Describe("Dispatcher constructors", func() {
+	var (
+		reg *validator.Registry
+		log logger.Logger
+	)
+
+	BeforeEach(func() {
+		reg = validator.NewRegistry()
+		log = logger.NewNoOpLogger()
+	})
+
+	Describe("NewDispatcherWithExecutor", func() {
+		It("creates dispatcher with custom executor", func() {
+			executor := dispatcher.NewSequentialExecutor(log)
+			d := dispatcher.NewDispatcherWithExecutor(reg, log, executor)
+			Expect(d).NotTo(BeNil())
+		})
+	})
+
+	Describe("WithSessionAuditLogger", func() {
+		It("sets session audit logger", func() {
+			mockAuditLogger := &mockSessionAuditLogger{}
+			d := dispatcher.NewDispatcherWithOptions(
+				reg,
+				log,
+				dispatcher.NewSequentialExecutor(log),
+				dispatcher.WithSessionAuditLogger(mockAuditLogger),
+			)
+			Expect(d).NotTo(BeNil())
+		})
+
+		It("ignores nil audit logger", func() {
+			d := dispatcher.NewDispatcherWithOptions(
+				reg,
+				log,
+				dispatcher.NewSequentialExecutor(log),
+				dispatcher.WithSessionAuditLogger(nil),
+			)
+			Expect(d).NotTo(BeNil())
+		})
+	})
+})
+
+var _ = Describe("Dispatcher with Session Audit Logger", func() {
+	var (
+		disp        *dispatcher.Dispatcher
+		reg         *validator.Registry
+		tracker     *session.Tracker
+		auditLogger *mockSessionAuditLogger
+		log         logger.Logger
+		ctx         context.Context
+	)
+
+	BeforeEach(func() {
+		log = logger.NewNoOpLogger()
+		reg = validator.NewRegistry()
+		ctx = context.Background()
+
+		// Create session tracker
+		cfg := &config.SessionConfig{}
+		enabled := true
+		cfg.Enabled = &enabled
+		tracker = session.NewTracker(cfg, session.WithLogger(log))
+
+		// Create mock audit logger
+		auditLogger = &mockSessionAuditLogger{enabled: true}
+	})
+
+	It("logs audit entry on session poison", func() {
+		// Register a blocking validator
+		reg.Register(
+			&mockBlockingValidator{
+				name:      "test-blocker",
+				reference: validator.RefGitNoSignoff,
+			},
+			validator.And(
+				validator.EventTypeIs(hook.EventTypePreToolUse),
+				validator.ToolTypeIs(hook.ToolTypeBash),
+			),
+		)
+
+		disp = dispatcher.NewDispatcherWithOptions(
+			reg,
+			log,
+			dispatcher.NewSequentialExecutor(log),
+			dispatcher.WithSessionTracker(tracker),
+			dispatcher.WithSessionAuditLogger(auditLogger),
+		)
+
+		hookCtx := &hook.Context{
+			EventType: hook.EventTypePreToolUse,
+			ToolName:  hook.ToolTypeBash,
+			SessionID: "audit-test-1",
+			ToolInput: hook.ToolInput{
+				Command: "git commit",
+			},
+		}
+
+		disp.Dispatch(ctx, hookCtx)
+
+		// Should have logged a poison entry
+		Expect(auditLogger.entries).To(HaveLen(1))
+		Expect(auditLogger.entries[0].Action).To(Equal(session.AuditActionPoison))
+	})
+
+	It("logs audit entry on session unpoison", func() {
+		// Register a blocking validator for git commit only
+		reg.Register(
+			&mockBlockingValidator{
+				name:      "test-blocker",
+				reference: validator.RefGitNoSignoff,
+			},
+			validator.And(
+				validator.EventTypeIs(hook.EventTypePreToolUse),
+				validator.ToolTypeIs(hook.ToolTypeBash),
+				validator.CommandContains("git commit"),
+			),
+		)
+
+		disp = dispatcher.NewDispatcherWithOptions(
+			reg,
+			log,
+			dispatcher.NewSequentialExecutor(log),
+			dispatcher.WithSessionTracker(tracker),
+			dispatcher.WithSessionAuditLogger(auditLogger),
+		)
+
+		sessionID := "audit-test-2"
+
+		// Poison the session
+		hookCtx1 := &hook.Context{
+			EventType: hook.EventTypePreToolUse,
+			ToolName:  hook.ToolTypeBash,
+			SessionID: sessionID,
+			ToolInput: hook.ToolInput{
+				Command: "git commit",
+			},
+		}
+		disp.Dispatch(ctx, hookCtx1)
+
+		// Clear entries to check unpoison
+		auditLogger.entries = nil
+
+		// Unpoison the session
+		hookCtx2 := &hook.Context{
+			EventType: hook.EventTypePreToolUse,
+			ToolName:  hook.ToolTypeBash,
+			SessionID: sessionID,
+			ToolInput: hook.ToolInput{
+				Command: `KLACK="SESS:GIT001" echo unpoison`,
+			},
+		}
+		disp.Dispatch(ctx, hookCtx2)
+
+		// Should have logged an unpoison entry
+		Expect(auditLogger.entries).To(HaveLen(1))
+		Expect(auditLogger.entries[0].Action).To(Equal(session.AuditActionUnpoison))
+	})
+
+	It("does not log when audit logger is disabled", func() {
+		auditLogger.enabled = false
+
+		reg.Register(
+			&mockBlockingValidator{
+				name:      "test-blocker",
+				reference: validator.RefGitNoSignoff,
+			},
+			validator.And(
+				validator.EventTypeIs(hook.EventTypePreToolUse),
+				validator.ToolTypeIs(hook.ToolTypeBash),
+			),
+		)
+
+		disp = dispatcher.NewDispatcherWithOptions(
+			reg,
+			log,
+			dispatcher.NewSequentialExecutor(log),
+			dispatcher.WithSessionTracker(tracker),
+			dispatcher.WithSessionAuditLogger(auditLogger),
+		)
+
+		hookCtx := &hook.Context{
+			EventType: hook.EventTypePreToolUse,
+			ToolName:  hook.ToolTypeBash,
+			SessionID: "audit-test-3",
+			ToolInput: hook.ToolInput{
+				Command: "git commit",
+			},
+		}
+
+		disp.Dispatch(ctx, hookCtx)
+
+		// Should not have logged anything
+		Expect(auditLogger.entries).To(BeEmpty())
+	})
+})
+
+// mockSessionAuditLogger is a mock implementation of SessionAuditLogger.
+type mockSessionAuditLogger struct {
+	entries []*session.AuditEntry
+	enabled bool
+}
+
+func (m *mockSessionAuditLogger) Log(entry *session.AuditEntry) error {
+	if m.enabled {
+		m.entries = append(m.entries, entry)
+	}
+
+	return nil
+}
+
+func (m *mockSessionAuditLogger) IsEnabled() bool {
+	return m.enabled
+}

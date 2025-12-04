@@ -471,3 +471,216 @@ var _ = Describe("AuditAction", func() {
 		})
 	})
 })
+
+var _ = Describe("AuditStats", func() {
+	Describe("FormatSize", func() {
+		It("formats bytes to MB", func() {
+			stats := &session.AuditStats{SizeBytes: 1024 * 1024}
+			Expect(stats.FormatSize()).To(Equal("1.00 MB"))
+		})
+
+		It("formats partial MB", func() {
+			stats := &session.AuditStats{SizeBytes: 512 * 1024}
+			Expect(stats.FormatSize()).To(Equal("0.50 MB"))
+		})
+
+		It("formats zero bytes", func() {
+			stats := &session.AuditStats{SizeBytes: 0}
+			Expect(stats.FormatSize()).To(Equal("0.00 MB"))
+		})
+	})
+})
+
+var _ = Describe("AuditLogger additional coverage", func() {
+	var (
+		tempDir  string
+		logFile  string
+		timeFunc func() time.Time
+	)
+
+	BeforeEach(func() {
+		var err error
+		tempDir, err = os.MkdirTemp("", "session-audit-test-*")
+		Expect(err).NotTo(HaveOccurred())
+
+		logFile = filepath.Join(tempDir, "session_audit.jsonl")
+		currentTime := time.Date(2025, 12, 4, 10, 30, 0, 0, time.UTC)
+		timeFunc = func() time.Time { return currentTime }
+	})
+
+	AfterEach(func() {
+		if tempDir != "" {
+			_ = os.RemoveAll(tempDir)
+		}
+	})
+
+	Describe("WithAuditLoggerLogger", func() {
+		It("sets custom logger", func() {
+			// Just verify the option doesn't panic
+			logger := session.NewAuditLogger(
+				nil,
+				session.WithAuditFile(logFile),
+				session.WithAuditLoggerLogger(nil), // nil should be ignored
+			)
+			Expect(logger).NotTo(BeNil())
+		})
+	})
+
+	Describe("resolveLogPath with tilde", func() {
+		It("expands tilde in path", func() {
+			logger := session.NewAuditLogger(
+				nil,
+				session.WithAuditFile("~/test/audit.jsonl"),
+			)
+
+			path := logger.GetLogPath()
+			Expect(path).NotTo(HavePrefix("~"))
+			Expect(path).To(ContainSubstring("test/audit.jsonl"))
+		})
+
+		It("does not expand non-tilde paths", func() {
+			logger := session.NewAuditLogger(
+				nil,
+				session.WithAuditFile("/absolute/path/audit.jsonl"),
+			)
+
+			path := logger.GetLogPath()
+			Expect(path).To(Equal("/absolute/path/audit.jsonl"))
+		})
+	})
+
+	Describe("cleanup with excess backups", func() {
+		It("removes excess backup files", func() {
+			cfg := &config.SessionAuditConfig{
+				MaxBackups: 2, // Keep only 2 backups
+			}
+			logger := session.NewAuditLogger(
+				cfg,
+				session.WithAuditFile(logFile),
+				session.WithAuditTimeFunc(timeFunc),
+			)
+
+			// Create the main log file
+			entry := &session.AuditEntry{
+				Timestamp:   time.Now(),
+				Action:      session.AuditActionPoison,
+				SessionID:   "test",
+				PoisonCodes: []string{"GIT001"},
+			}
+			Expect(logger.Log(entry)).To(Succeed())
+
+			// Create multiple backup files manually
+			base := filepath.Join(tempDir, "session_audit")
+			for i := range 5 {
+				ts := time.Now().Add(-time.Duration(i) * time.Hour).Format("20060102-150405")
+				backupName := base + "." + ts + ".jsonl"
+				Expect(os.WriteFile(backupName, []byte("{}"), 0o600)).To(Succeed())
+			}
+
+			// Run cleanup
+			Expect(logger.Cleanup()).To(Succeed())
+
+			// Count remaining backups
+			files, readErr := os.ReadDir(tempDir)
+			Expect(readErr).NotTo(HaveOccurred())
+
+			backupCount := 0
+			for _, f := range files {
+				if f.Name() != "session_audit.jsonl" {
+					backupCount++
+				}
+			}
+			Expect(backupCount).To(BeNumerically("<=", 2))
+		})
+	})
+
+	Describe("Stats with backups", func() {
+		It("counts backup files correctly", func() {
+			logger := session.NewAuditLogger(
+				nil,
+				session.WithAuditFile(logFile),
+				session.WithAuditTimeFunc(timeFunc),
+			)
+
+			// Create entries
+			entry := &session.AuditEntry{
+				Timestamp:   time.Now(),
+				Action:      session.AuditActionPoison,
+				SessionID:   "test",
+				PoisonCodes: []string{"GIT001"},
+			}
+			Expect(logger.Log(entry)).To(Succeed())
+
+			// Create backup files
+			base := filepath.Join(tempDir, "session_audit")
+			for i := 1; i <= 3; i++ {
+				ts := time.Now().Add(-time.Duration(i) * time.Hour).Format("20060102-150405")
+				backupName := base + "." + ts + ".jsonl"
+				Expect(os.WriteFile(backupName, []byte("{}"), 0o600)).To(Succeed())
+			}
+
+			stats, statsErr := logger.Stats()
+			Expect(statsErr).NotTo(HaveOccurred())
+			Expect(stats.BackupCount).To(Equal(3))
+		})
+	})
+
+	Describe("config methods with nil config", func() {
+		It("returns defaults for nil config", func() {
+			// Create logger with nil config
+			logger := session.NewAuditLogger(nil, session.WithAuditFile(logFile))
+
+			// These methods should return defaults when config is nil
+			Expect(logger.IsEnabled()).To(BeTrue())
+		})
+	})
+
+	Describe("Read with scanner error", func() {
+		It("handles empty lines gracefully", func() {
+			logger := session.NewAuditLogger(
+				nil,
+				session.WithAuditFile(logFile),
+			)
+
+			// Write file with empty lines
+			content := "\n\n{\"action\":\"Poison\",\"session_id\":\"test\"}\n\n"
+			err := os.WriteFile(logFile, []byte(content), 0o600)
+			Expect(err).NotTo(HaveOccurred())
+
+			entries, err := logger.Read()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(entries).To(HaveLen(1))
+		})
+	})
+
+	Describe("Cleanup with no entries to remove", func() {
+		It("handles no changes gracefully", func() {
+			cfg := &config.SessionAuditConfig{
+				MaxAgeDays: 365, // Very long retention
+			}
+			logger := session.NewAuditLogger(
+				cfg,
+				session.WithAuditFile(logFile),
+				session.WithAuditTimeFunc(timeFunc),
+			)
+
+			// Write recent entry
+			entry := &session.AuditEntry{
+				Timestamp:   time.Now(),
+				Action:      session.AuditActionPoison,
+				SessionID:   "test",
+				PoisonCodes: []string{"GIT001"},
+			}
+			err := logger.Log(entry)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Cleanup should do nothing
+			err = logger.Cleanup()
+			Expect(err).NotTo(HaveOccurred())
+
+			entries, err := logger.Read()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(entries).To(HaveLen(1))
+		})
+	})
+})

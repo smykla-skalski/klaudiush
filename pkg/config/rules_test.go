@@ -1,18 +1,11 @@
 package config_test
 
 import (
-	"testing"
-
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	"github.com/smykla-labs/klaudiush/pkg/config"
 )
-
-func TestConfigRules(t *testing.T) {
-	RegisterFailHandler(Fail)
-	RunSpecs(t, "Config Rules Suite")
-}
 
 var _ = Describe("RulesConfig", func() {
 	Describe("IsEnabled", func() {
