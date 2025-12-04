@@ -42,7 +42,7 @@ Please allow time for the vulnerability to be fixed before public disclosure.
 
 ## Security Best Practices
 
-When contributing to smykla-labs projects:
+When contributing to Smykla Labs projects:
 
 - Keep dependencies up to date
 - Never commit secrets, credentials, or API keys
