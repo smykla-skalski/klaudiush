@@ -11,7 +11,8 @@
 # When false, only validates git commit, gh pr create, gh issue create
 check_all_commands = true
 
-# Detect unquoted backticks (default: true in comprehensive mode)
+# Detect unquoted backticks (default: true)
+# Only applies when check_all_commands = true (comprehensive mode)
 # Examples:
 #   echo `date`           # Blocked
 #   ls `pwd`/files        # Blocked

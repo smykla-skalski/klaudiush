@@ -211,6 +211,7 @@ func hasUnquotedBackticks(word *syntax.Word) bool {
 }
 
 // analyzeBacktickContext analyzes the quoting context and variables in a word.
+// It finds the first CmdSubst (backtick or $()) and returns its quoting context.
 func analyzeBacktickContext(word *syntax.Word) *BacktickLocation {
 	if word == nil {
 		return nil
@@ -221,41 +222,66 @@ func analyzeBacktickContext(word *syntax.Word) *BacktickLocation {
 	}
 
 	for _, part := range word.Parts {
-		switch p := part.(type) {
-		case *syntax.SglQuoted:
-			// Single quotes prevent command substitution
-			location.Context = QuotingContextSingleQuoted
-			return location
-
-		case *syntax.DblQuoted:
-			location.Context = QuotingContextDoubleQuoted
-
-			for _, dqPart := range p.Parts {
-				switch dqPart.(type) {
-				case *syntax.CmdSubst:
-					// Backticks or $() in double quotes
-					// Note: In bash AST, escaped backticks appear as Lit, not CmdSubst
-					location.IsEscaped = false
-
-				case *syntax.ParamExp, *syntax.ArithmExp:
-					location.HasVariables = true
-				}
-			}
-
-			// Suggest single quotes if no variables and has backticks
-			if !location.HasVariables && hasDoubleQuotedBackticks(word) {
-				location.SuggestSingle = true
-			}
-
-		case *syntax.CmdSubst:
-			// Unquoted command substitution
-			location.Context = QuotingContextUnquoted
-			location.IsEscaped = false
-
-		case *syntax.ParamExp, *syntax.ArithmExp:
-			location.HasVariables = true
+		if result := analyzeWordPart(part, location); result != nil {
+			return result
 		}
 	}
+
+	return location
+}
+
+// analyzeWordPart analyzes a single part of a word for backtick context.
+// Returns a BacktickLocation if a CmdSubst was found, nil otherwise.
+func analyzeWordPart(part syntax.WordPart, location *BacktickLocation) *BacktickLocation {
+	switch p := part.(type) {
+	case *syntax.SglQuoted:
+		// Single quotes prevent command substitution
+		location.Context = QuotingContextSingleQuoted
+
+		return location
+
+	case *syntax.DblQuoted:
+		return analyzeDoubleQuoted(p, location)
+
+	case *syntax.CmdSubst:
+		// Unquoted command substitution
+		location.Context = QuotingContextUnquoted
+		location.IsEscaped = false
+
+		return location
+
+	case *syntax.ParamExp, *syntax.ArithmExp:
+		// Track variables at the top level (unquoted context)
+		location.HasVariables = true
+	}
+
+	return nil
+}
+
+// analyzeDoubleQuoted analyzes a double-quoted section for backticks and variables.
+func analyzeDoubleQuoted(dq *syntax.DblQuoted, location *BacktickLocation) *BacktickLocation {
+	hasCmdSubst := false
+	hasVars := false
+
+	for _, dqPart := range dq.Parts {
+		switch dqPart.(type) {
+		case *syntax.CmdSubst:
+			hasCmdSubst = true
+
+		case *syntax.ParamExp, *syntax.ArithmExp:
+			hasVars = true
+		}
+	}
+
+	if !hasCmdSubst {
+		return nil
+	}
+
+	// Found backticks in double quotes
+	location.Context = QuotingContextDoubleQuoted
+	location.HasVariables = hasVars
+	location.IsEscaped = false
+	location.SuggestSingle = !hasVars
 
 	return location
 }

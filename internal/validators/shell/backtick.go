@@ -150,7 +150,7 @@ func (v *BacktickValidator) filterByConfig(
 ) []parser.BacktickLocation {
 	filtered := make([]parser.BacktickLocation, 0, len(locations))
 
-	checkUnquoted := v.config == nil || v.config.CheckUnquoted
+	checkUnquoted := v.config.CheckUnquotedOrDefault()
 
 	for _, loc := range locations {
 		// Skip unquoted backticks if disabled
@@ -443,7 +443,7 @@ func (v *BacktickValidator) appendSuggestSingleQuotesMessage(
 		return
 	}
 
-	suggestSingleQuotes := v.config == nil || v.config.SuggestSingleQuotes
+	suggestSingleQuotes := v.config.SuggestSingleQuotesOrDefault()
 	if suggestSingleQuotes {
 		sb.WriteString("Backticks in double quotes without variables:\n")
 

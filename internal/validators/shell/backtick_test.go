@@ -261,10 +261,12 @@ var _ = Describe("BacktickValidator", func() {
 
 	Describe("Comprehensive mode", func() {
 		BeforeEach(func() {
+			checkUnquoted := true
+			suggestSingleQuotes := true
 			cfg = &config.BacktickValidatorConfig{
 				CheckAllCommands:    true,
-				CheckUnquoted:       true,
-				SuggestSingleQuotes: true,
+				CheckUnquoted:       &checkUnquoted,
+				SuggestSingleQuotes: &suggestSingleQuotes,
 			}
 			v = shell.NewBacktickValidator(log, cfg, nil)
 		})
@@ -287,7 +289,8 @@ var _ = Describe("BacktickValidator", func() {
 			})
 
 			It("allows unquoted backticks when CheckUnquoted is disabled", func() {
-				cfg.CheckUnquoted = false
+				checkUnquoted := false
+				cfg.CheckUnquoted = &checkUnquoted
 				v = shell.NewBacktickValidator(log, cfg, nil)
 
 				hookCtx := &hook.Context{
@@ -339,7 +342,8 @@ var _ = Describe("BacktickValidator", func() {
 			})
 
 			It("doesn't suggest single quotes when disabled", func() {
-				cfg.SuggestSingleQuotes = false
+				suggestSingleQuotes := false
+				cfg.SuggestSingleQuotes = &suggestSingleQuotes
 				v = shell.NewBacktickValidator(log, cfg, nil)
 
 				hookCtx := &hook.Context{
