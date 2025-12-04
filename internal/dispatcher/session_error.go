@@ -14,7 +14,8 @@ const (
 )
 
 // createPoisonedSessionError creates a validation error for a poisoned session.
-// This error references the original blocking error that poisoned the session.
+// This error references the original blocking error that poisoned the session
+// and includes machine-parseable unpoison instructions.
 func createPoisonedSessionError(info *session.SessionInfo) *ValidationError {
 	if info == nil || !info.IsPoisoned() {
 		return nil
@@ -26,17 +27,34 @@ func createPoisonedSessionError(info *session.SessionInfo) *ValidationError {
 		timestamp = info.PoisonedAt.Format("2006-01-02 15:04:05")
 	}
 
-	// Format codes for display
-	codes := strings.Join(info.PoisonCodes, ", ")
+	// Format codes for display (comma-separated with spaces)
+	codesDisplay := strings.Join(info.PoisonCodes, ", ")
+
+	// Format codes for token (comma-separated without spaces)
+	codesToken := strings.Join(info.PoisonCodes, ",")
 
 	// Build error message with "Blocked:" prefix to match documentation
-	msg := fmt.Sprintf("Blocked: session poisoned by %s at %s", codes, timestamp)
+	msg := fmt.Sprintf("Blocked: session poisoned by %s at %s", codesDisplay, timestamp)
 
-	// Create details with original error
+	// Create details with original error and unpoison instructions
 	details := make(map[string]string)
+
 	if info.PoisonMessage != "" {
 		details["original_error"] = "Original error: " + info.PoisonMessage
 	}
+
+	// Add machine-parseable unpoison instructions
+	details["unpoison"] = fmt.Sprintf(
+		"To unpoison: KLACK=\"SESS:%s\" command  # or comment: # SESS:%s",
+		codesToken,
+		codesToken,
+	)
+
+	// Build fix hint with unpoison instructions
+	fixHint := fmt.Sprintf(
+		"Acknowledge violations to unpoison: KLACK=\"SESS:%s\" your_command",
+		codesToken,
+	)
 
 	return &ValidationError{
 		Validator:   poisonedSessionValidator,
@@ -44,7 +62,7 @@ func createPoisonedSessionError(info *session.SessionInfo) *ValidationError {
 		Details:     details,
 		ShouldBlock: true,
 		Reference:   validator.RefSessionPoisoned,
-		FixHint:     "Resolve the original error before continuing",
+		FixHint:     fixHint,
 	}
 }
 
