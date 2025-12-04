@@ -191,21 +191,28 @@ Fast-fail mechanism preventing subsequent commands from executing after a blocki
 
 - **Tracker** (`tracker.go`): Main session tracking logic with thread-safe state management
   - `IsPoisoned(sessionID)` - Check if session is poisoned
-  - `Poison(sessionID, code, message)` - Mark session as poisoned
+  - `Poison(sessionID, codes []string, message)` - Mark session as poisoned with multiple codes
+  - `Unpoison(sessionID)` - Clear poisoned state, return to clean
   - `RecordCommand(sessionID)` - Increment command count
   - `CleanupExpired()` - Remove sessions older than max age
 
 - **State** (`state.go`): Session state types
   - `SessionInfo` - Per-session metadata (status, poison info, command count, timestamps)
+  - `PoisonCodes []string` - All error codes that caused poisoning
   - `Status` enum - Clean/Poisoned (enumer generated)
   - `SessionState` - Global state container with sessions map
+
+- **Unpoison Parser** (`unpoison.go`): Parse unpoison tokens from commands
+  - Token format: `SESS:<CODE1>[,<CODE2>,...]`
+  - Sources: `KLACK` env var or shell comment
+  - `CheckUnpoisonAcknowledgment()` - Check if all poison codes are acknowledged
 
 - **Persistence** (`persistence.go`): Atomic file I/O with proper permissions
   - JSON serialization to `~/.klaudiush/session_state.json`
   - Atomic writes (tmp + rename), file permissions 0600, dir permissions 0700
   - Home directory expansion for `~` in paths
 
-**Integration**: Dispatcher checks session state before validation. If poisoned, returns `SESS001` error with reference to original blocking error. On validation failure with `ShouldBlock=true`, dispatcher poisons the session.
+**Integration**: Dispatcher checks session state before validation. If poisoned, checks for unpoison token; if all codes acknowledged, unpoisons and continues to validators. Otherwise returns `SESS001` error with unpoison instructions. On validation failure with `ShouldBlock=true`, dispatcher poisons the session with all blocking error codes.
 
 **Configuration** (`pkg/config/session.go`):
 

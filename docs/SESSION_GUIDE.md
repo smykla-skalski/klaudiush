@@ -83,21 +83,18 @@ Expired sessions are automatically removed:
 When a session is poisoned, subsequent commands receive error `SESS001`:
 
 ```text
-Blocked: session poisoned by GIT001 at 2025-12-04 10:30:05
-
-This Claude Code session was marked as failed after a blocking error.
-
-Original error: GIT001 - git commit -sS flag missing
+Blocked: session poisoned by GIT001, GIT002 at 2025-12-04 10:30:05
 
 Details:
-  Session ID: d267099c-6c3a-45ed-997c-2fa4c8ec9b39
-  Poisoned at: 2025-12-04 10:30:05
-  Command count: 3
+  original_error: git commit -sS flag missing
+  unpoison: To unpoison: KLACK="SESS:GIT001,GIT002" command  # or comment: # SESS:GIT001,GIT002
 
-Fix: Address the original error (GIT001) first. Start a new Claude Code session to reset.
+Fix: Acknowledge violations to unpoison: KLACK="SESS:GIT001,GIT002" your_command
 
 Documentation: https://klaudiu.sh/SESS001
 ```
+
+The error includes machine-parseable unpoison instructions in the `unpoison` field that Claude Code can use to automatically acknowledge violations.
 
 ## Session Lifecycle
 
@@ -126,13 +123,25 @@ When a validator returns a blocking error:
 ```text
 Session: abc-123
 Status: Poisoned
-Poison code: GIT001
+Poison codes: GIT001, GIT002
 Poison message: git commit -sS flag missing
 Poisoned at: 2025-12-04 10:30:05
 Commands executed: 3
 ```
 
 All subsequent commands in this session immediately fail with `SESS001`.
+
+### Unpoisoned State
+
+When you acknowledge the violations, the session returns to clean state:
+
+```text
+Session: abc-123
+Status: Clean (unpoisoned)
+Commands executed: 4
+```
+
+The session can now proceed with normal validation.
 
 ### Session Expiry
 
@@ -151,7 +160,15 @@ If Claude Code resumes an expired session, it starts fresh in a clean state.
 
 **Problem**: Fixed the original error but still getting `SESS001`.
 
-**Solution**: Start a new Claude Code session. Session state persists across klaudiush invocations but is tied to the Claude Code session ID.
+**Solutions**:
+
+1. **Unpoison the session** (recommended): Add unpoison token to your next command:
+
+   ```bash
+   KLACK="SESS:GIT001" git commit -sS -m "fix"
+   ```
+
+2. **Start new session**: Start a new Claude Code session. Session state persists across klaudiush invocations but is tied to the Claude Code session ID.
 
 ### Session State File Corrupted
 
@@ -209,6 +226,78 @@ Corrupted state files are logged but don't block operation.
 
 If Claude Code doesn't provide `session_id`, klaudiush gracefully degrades to original behavior (no session tracking). This ensures compatibility with older Claude Code versions.
 
+## Unpoisoning a Session
+
+When a session is poisoned, you can acknowledge the violations to unpoison it and continue working. This is useful when you've understood the error and want to proceed with a fix.
+
+### Token Format
+
+Unpoison tokens use the format `SESS:<CODE1>[,<CODE2>,...]`:
+
+**Environment Variable** (recommended):
+
+```bash
+KLACK="SESS:GIT001" git commit -sS -m "fix"
+```
+
+**Shell Comment**:
+
+```bash
+git commit -sS -m "fix"  # SESS:GIT001
+```
+
+### Multiple Codes
+
+When a session is poisoned by multiple violations, you must acknowledge ALL codes:
+
+```bash
+# Session poisoned by GIT001 and GIT002
+KLACK="SESS:GIT001,GIT002" git push origin feature
+```
+
+Partial acknowledgment (only some codes) is not accepted - the session remains poisoned.
+
+### How It Works
+
+1. Session is poisoned with one or more error codes (e.g., `GIT001`, `GIT002`)
+2. User adds unpoison token to next command
+3. Dispatcher checks if all poison codes are acknowledged
+4. If all codes match → session unpoisoned, command proceeds to validation
+5. If partial match → session remains poisoned, error shows unacknowledged codes
+
+### Example Workflow
+
+```text
+# Step 1: Command blocked, session poisoned
+$ git commit -m "fix"  # Missing -sS
+Error: Blocked - git commit -sS flag missing
+
+# Step 2: Next command fails immediately (session poisoned)
+$ git status
+Error: Blocked: session poisoned by GIT001 at 2025-12-04 10:30:05
+       To unpoison: KLACK="SESS:GIT001" command
+
+# Step 3: Acknowledge and fix
+$ KLACK="SESS:GIT001" git commit -sS -m "fix"
+# Session unpoisoned, command proceeds to validation
+```
+
+### Error Message with Unpoison Instructions
+
+When a session is poisoned, the error includes machine-parseable unpoison instructions:
+
+```text
+Blocked: session poisoned by GIT001, GIT002 at 2025-12-04 10:30:05
+
+Details:
+  original_error: git commit -sS flag missing
+  unpoison: To unpoison: KLACK="SESS:GIT001,GIT002" command  # or comment: # SESS:GIT001,GIT002
+
+Fix: Acknowledge violations to unpoison: KLACK="SESS:GIT001,GIT002" your_command
+```
+
+Claude Code can parse the `unpoison` field to automatically add the token to the next command attempt.
+
 ## Implementation Details
 
 ### Session Context Fields
@@ -251,7 +340,7 @@ State file example:
       "session_id": "abc-123",
       "status": "Poisoned",
       "poisoned_at": "2025-12-04T10:30:05Z",
-      "poison_code": "GIT001",
+      "poison_codes": ["GIT001", "GIT002"],
       "poison_message": "git commit -sS flag missing",
       "command_count": 3,
       "last_activity": "2025-12-04T10:30:05Z"
@@ -269,11 +358,13 @@ Session tracking integrates with the dispatcher flow:
 1. Hook JSON → Parser → Context (with session fields)
 2. Dispatcher.Dispatch(ctx)
 3. Check: IsPoisoned(ctx.SessionID)?
-   - Yes → Return SESS001 error (exit 2)
+   - Yes → Check for unpoison token in command
+     - Token valid (all codes acked) → Unpoison(sessionID), continue to validators
+     - Token invalid/partial → Return SESS001 error with unpoison instructions (exit 2)
    - No → Continue to validators
 4. Run validators
 5. If blocking error:
-   - Poison(ctx.SessionID, code, message)
+   - Poison(ctx.SessionID, codes, message)  # codes is []string
    - Return blocking error (exit 2)
 6. RecordCommand(ctx.SessionID) on success/warning
 ```
