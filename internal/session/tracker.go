@@ -54,7 +54,9 @@ func WithLogger(log logger.Logger) TrackerOption {
 // WithStateFile sets a custom state file path.
 func WithStateFile(path string) TrackerOption {
 	return func(t *Tracker) {
-		t.stateFile = path
+		if path != "" {
+			t.stateFile = path
+		}
 	}
 }
 
