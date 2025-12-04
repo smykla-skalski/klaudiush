@@ -165,6 +165,12 @@ const (
 	RefPluginDangerousChars Reference = ReferenceBaseURL + "/PLUG005"
 )
 
+// Session-related references (SESS001-SESS005).
+const (
+	// RefSessionPoisoned indicates the session has been poisoned by a previous blocking error.
+	RefSessionPoisoned Reference = ReferenceBaseURL + "/SESS001"
+)
+
 // minCodeLength is the minimum length for a valid reference code.
 const minCodeLength = 3
 

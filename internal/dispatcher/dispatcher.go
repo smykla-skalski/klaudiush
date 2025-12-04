@@ -8,6 +8,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 
+	"github.com/smykla-labs/klaudiush/internal/session"
 	"github.com/smykla-labs/klaudiush/internal/validator"
 	"github.com/smykla-labs/klaudiush/pkg/hook"
 	"github.com/smykla-labs/klaudiush/pkg/logger"
@@ -21,6 +22,21 @@ var (
 	// ErrNoValidators is returned when no validators match the context.
 	ErrNoValidators = errors.New("no validators found")
 )
+
+// SessionTracker manages session state for fast-fail behavior.
+type SessionTracker interface {
+	// IsPoisoned checks if a session is poisoned.
+	IsPoisoned(sessionID string) (bool, *session.SessionInfo)
+
+	// Poison marks a session as poisoned with the given error code and message.
+	Poison(sessionID, code, message string)
+
+	// RecordCommand increments the command count for a session.
+	RecordCommand(sessionID string)
+
+	// IsEnabled returns true if session tracking is enabled.
+	IsEnabled() bool
+}
 
 // ValidationError represents a validation failure.
 type ValidationError struct {
@@ -64,6 +80,7 @@ type Dispatcher struct {
 	logger           logger.Logger
 	executor         Executor
 	exceptionChecker ExceptionChecker
+	sessionTracker   SessionTracker
 }
 
 // NewDispatcher creates a new Dispatcher with sequential execution.
@@ -100,6 +117,15 @@ func WithExceptionChecker(checker ExceptionChecker) DispatcherOption {
 	}
 }
 
+// WithSessionTracker sets the session tracker for the dispatcher.
+func WithSessionTracker(tracker SessionTracker) DispatcherOption {
+	return func(d *Dispatcher) {
+		if tracker != nil {
+			d.sessionTracker = tracker
+		}
+	}
+}
+
 // NewDispatcherWithOptions creates a new Dispatcher with options.
 func NewDispatcherWithOptions(
 	registry *validator.Registry,
@@ -128,6 +154,21 @@ func (d *Dispatcher) Dispatch(ctx context.Context, hookCtx *hook.Context) []*Val
 		"tool", hookCtx.ToolName,
 	)
 
+	// Check if session tracking is enabled and session is poisoned
+	if d.sessionTracker != nil && d.sessionTracker.IsEnabled() && hookCtx.HasSessionID() {
+		if poisoned, info := d.sessionTracker.IsPoisoned(hookCtx.GetSessionID()); poisoned {
+			d.logger.Info("session is poisoned",
+				"session_id", hookCtx.GetSessionID(),
+				"poison_code", info.PoisonCode,
+			)
+
+			return []*ValidationError{createPoisonedSessionError(info)}
+		}
+
+		// Record command for clean session
+		d.sessionTracker.RecordCommand(hookCtx.GetSessionID())
+	}
+
 	// Run validators on the main context
 	validationErrors := d.runValidators(ctx, hookCtx)
 
@@ -135,6 +176,21 @@ func (d *Dispatcher) Dispatch(ctx context.Context, hookCtx *hook.Context) []*Val
 	if hookCtx.EventType == hook.EventTypePreToolUse && hookCtx.ToolName == hook.ToolTypeBash {
 		syntheticErrors := d.validateBashFileWrites(ctx, hookCtx)
 		validationErrors = append(validationErrors, syntheticErrors...)
+	}
+
+	// Poison session if there are blocking errors
+	if d.sessionTracker != nil && d.sessionTracker.IsEnabled() && hookCtx.HasSessionID() {
+		if hasBlockingError(validationErrors) {
+			code := extractSessionPoisonCode(validationErrors)
+			message := extractSessionPoisonMessage(validationErrors)
+
+			d.logger.Info("poisoning session due to blocking error",
+				"session_id", hookCtx.GetSessionID(),
+				"error_code", code,
+			)
+
+			d.sessionTracker.Poison(hookCtx.GetSessionID(), code, message)
+		}
 	}
 
 	return validationErrors
