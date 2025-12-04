@@ -132,8 +132,8 @@ func (t *Tracker) IsPoisoned(sessionID string) (bool, *SessionInfo) {
 	return info.IsPoisoned(), info
 }
 
-// Poison marks a session as poisoned with the given error code and message.
-func (t *Tracker) Poison(sessionID, code, message string) {
+// Poison marks a session as poisoned with the given error codes and message.
+func (t *Tracker) Poison(sessionID string, codes []string, message string) {
 	if sessionID == "" {
 		t.logger.Debug("cannot poison session with empty ID")
 
@@ -158,15 +158,48 @@ func (t *Tracker) Poison(sessionID, code, message string) {
 
 	info.Status = StatusPoisoned
 	info.PoisonedAt = &now
-	info.PoisonCode = code
+	info.PoisonCodes = codes
 	info.PoisonMessage = message
 	info.LastActivity = now
 	t.state.LastUpdated = now
 
 	t.logger.Debug("session poisoned",
 		"session_id", sessionID,
-		"code", code,
+		"codes", codes,
 		"message", message,
+	)
+}
+
+// Unpoison clears the poisoned state of a session, allowing it to continue.
+// This is typically called when the user acknowledges all blocking error codes.
+func (t *Tracker) Unpoison(sessionID string) {
+	if sessionID == "" {
+		t.logger.Debug("cannot unpoison session with empty ID")
+
+		return
+	}
+
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	info, exists := t.state.Sessions[sessionID]
+	if !exists {
+		t.logger.Debug("cannot unpoison non-existent session",
+			"session_id", sessionID,
+		)
+
+		return
+	}
+
+	info.Status = StatusClean
+	info.PoisonedAt = nil
+	info.PoisonCodes = nil
+	info.PoisonMessage = ""
+	info.LastActivity = t.now()
+	t.state.LastUpdated = t.now()
+
+	t.logger.Debug("session unpoisoned",
+		"session_id", sessionID,
 	)
 }
 
@@ -196,7 +229,7 @@ func (t *Tracker) RecordCommand(sessionID string) {
 	if t.isExpiredLocked(info) {
 		info.Status = StatusClean
 		info.PoisonedAt = nil
-		info.PoisonCode = ""
+		info.PoisonCodes = nil
 		info.PoisonMessage = ""
 		info.CommandCount = 0
 	}

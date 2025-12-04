@@ -105,12 +105,12 @@ var _ = Describe("Tracker", func() {
 		})
 
 		It("returns true for poisoned session", func() {
-			tracker.Poison("session-1", "GIT001", "blocked commit")
+			tracker.Poison("session-1", []string{"GIT001"}, "blocked commit")
 
 			poisoned, info := tracker.IsPoisoned("session-1")
 			Expect(poisoned).To(BeTrue())
 			Expect(info).NotTo(BeNil())
-			Expect(info.PoisonCode).To(Equal("GIT001"))
+			Expect(info.PoisonCodes).To(Equal([]string{"GIT001"}))
 			Expect(info.PoisonMessage).To(Equal("blocked commit"))
 		})
 	})
@@ -125,12 +125,12 @@ var _ = Describe("Tracker", func() {
 		})
 
 		It("poisons new session", func() {
-			tracker.Poison("session-1", "GIT022", "force push blocked")
+			tracker.Poison("session-1", []string{"GIT022"}, "force push blocked")
 
 			info := tracker.GetInfo("session-1")
 			Expect(info).NotTo(BeNil())
 			Expect(info.Status).To(Equal(session.StatusPoisoned))
-			Expect(info.PoisonCode).To(Equal("GIT022"))
+			Expect(info.PoisonCodes).To(Equal([]string{"GIT022"}))
 			Expect(info.PoisonMessage).To(Equal("force push blocked"))
 			Expect(info.PoisonedAt).NotTo(BeNil())
 			Expect(*info.PoisonedAt).To(Equal(currentTime))
@@ -138,7 +138,7 @@ var _ = Describe("Tracker", func() {
 
 		It("poisons existing clean session", func() {
 			tracker.RecordCommand("session-1")
-			tracker.Poison("session-1", "SEC001", "secrets detected")
+			tracker.Poison("session-1", []string{"SEC001"}, "secrets detected")
 
 			info := tracker.GetInfo("session-1")
 			Expect(info.Status).To(Equal(session.StatusPoisoned))
@@ -146,17 +146,101 @@ var _ = Describe("Tracker", func() {
 		})
 
 		It("ignores empty session ID", func() {
-			tracker.Poison("", "GIT001", "test")
+			tracker.Poison("", []string{"GIT001"}, "test")
 
 			state := tracker.GetState()
 			Expect(state.Sessions).To(BeEmpty())
 		})
 
 		It("updates last activity time", func() {
-			tracker.Poison("session-1", "GIT001", "test")
+			tracker.Poison("session-1", []string{"GIT001"}, "test")
 
 			info := tracker.GetInfo("session-1")
 			Expect(info.LastActivity).To(Equal(currentTime))
+		})
+
+		It("stores multiple poison codes", func() {
+			tracker.Poison(
+				"session-1",
+				[]string{"GIT001", "GIT002", "SEC001"},
+				"multiple violations",
+			)
+
+			info := tracker.GetInfo("session-1")
+			Expect(info.PoisonCodes).To(Equal([]string{"GIT001", "GIT002", "SEC001"}))
+			Expect(info.PoisonMessage).To(Equal("multiple violations"))
+		})
+	})
+
+	Describe("Unpoison", func() {
+		BeforeEach(func() {
+			tracker = session.NewTracker(
+				nil,
+				session.WithStateFile(stateFile),
+				session.WithTimeFunc(timeFunc),
+			)
+		})
+
+		It("clears poisoned session state", func() {
+			tracker.Poison("session-1", []string{"GIT001"}, "blocked commit")
+			tracker.Unpoison("session-1")
+
+			info := tracker.GetInfo("session-1")
+			Expect(info).NotTo(BeNil())
+			Expect(info.Status).To(Equal(session.StatusClean))
+			Expect(info.PoisonCodes).To(BeNil())
+			Expect(info.PoisonMessage).To(BeEmpty())
+			Expect(info.PoisonedAt).To(BeNil())
+		})
+
+		It("clears session with multiple poison codes", func() {
+			tracker.Poison(
+				"session-1",
+				[]string{"GIT001", "GIT002", "SEC001"},
+				"multiple violations",
+			)
+			tracker.Unpoison("session-1")
+
+			info := tracker.GetInfo("session-1")
+			Expect(info.Status).To(Equal(session.StatusClean))
+			Expect(info.PoisonCodes).To(BeNil())
+		})
+
+		It("ignores empty session ID", func() {
+			tracker.Poison("session-1", []string{"GIT001"}, "test")
+			tracker.Unpoison("")
+
+			// session-1 should still be poisoned
+			poisoned, _ := tracker.IsPoisoned("session-1")
+			Expect(poisoned).To(BeTrue())
+		})
+
+		It("ignores non-existent session", func() {
+			// Should not panic
+			tracker.Unpoison("non-existent")
+		})
+
+		It("updates last activity time", func() {
+			tracker.Poison("session-1", []string{"GIT001"}, "test")
+
+			// Advance time
+			currentTime = currentTime.Add(1 * time.Hour)
+
+			tracker.Unpoison("session-1")
+
+			info := tracker.GetInfo("session-1")
+			Expect(info.LastActivity).To(Equal(currentTime))
+		})
+
+		It("allows session to be poisoned again after unpoison", func() {
+			tracker.Poison("session-1", []string{"GIT001"}, "first poison")
+			tracker.Unpoison("session-1")
+			tracker.Poison("session-1", []string{"SEC001", "SEC002"}, "second poison")
+
+			info := tracker.GetInfo("session-1")
+			Expect(info.Status).To(Equal(session.StatusPoisoned))
+			Expect(info.PoisonCodes).To(Equal([]string{"SEC001", "SEC002"}))
+			Expect(info.PoisonMessage).To(Equal("second poison"))
 		})
 	})
 
@@ -301,7 +385,7 @@ var _ = Describe("Tracker", func() {
 		It("clears all sessions", func() {
 			tracker.RecordCommand("session-1")
 			tracker.RecordCommand("session-2")
-			tracker.Poison("session-3", "GIT001", "test")
+			tracker.Poison("session-3", []string{"GIT001"}, "test")
 
 			tracker.Reset()
 
@@ -329,7 +413,7 @@ var _ = Describe("Tracker", func() {
 
 		It("saves state to file", func() {
 			tracker.RecordCommand("session-1")
-			tracker.Poison("session-2", "GIT001", "test")
+			tracker.Poison("session-2", []string{"GIT001"}, "test")
 
 			err := tracker.Save()
 			Expect(err).NotTo(HaveOccurred())
@@ -341,7 +425,7 @@ var _ = Describe("Tracker", func() {
 		It("loads previously saved state", func() {
 			tracker.RecordCommand("session-1")
 			tracker.RecordCommand("session-1")
-			tracker.Poison("session-2", "GIT001", "test")
+			tracker.Poison("session-2", []string{"GIT001"}, "test")
 
 			err := tracker.Save()
 			Expect(err).NotTo(HaveOccurred())
@@ -363,7 +447,7 @@ var _ = Describe("Tracker", func() {
 			info2 := tracker2.GetInfo("session-2")
 			Expect(info2).NotTo(BeNil())
 			Expect(info2.Status).To(Equal(session.StatusPoisoned))
-			Expect(info2.PoisonCode).To(Equal("GIT001"))
+			Expect(info2.PoisonCodes).To(Equal([]string{"GIT001"}))
 		})
 
 		It("handles corrupted state file gracefully", func() {
@@ -426,7 +510,7 @@ var _ = Describe("Tracker", func() {
 		})
 
 		It("resets expired session on record command", func() {
-			tracker.Poison("session-1", "GIT001", "test")
+			tracker.Poison("session-1", []string{"GIT001"}, "test")
 
 			// Advance time past max age
 			currentTime = currentTime.Add(2 * time.Hour)
@@ -596,7 +680,7 @@ var _ = Describe("Tracker", func() {
 
 			for range count {
 				go func() {
-					tracker.Poison("session-1", "GIT001", "test")
+					tracker.Poison("session-1", []string{"GIT001"}, "test")
 					done <- true
 				}()
 			}
@@ -610,7 +694,7 @@ var _ = Describe("Tracker", func() {
 		})
 
 		It("handles concurrent IsPoisoned calls safely", func() {
-			tracker.Poison("session-1", "GIT001", "test")
+			tracker.Poison("session-1", []string{"GIT001"}, "test")
 
 			done := make(chan bool)
 			count := 100
@@ -660,7 +744,7 @@ var _ = Describe("Tracker", func() {
 			)
 
 			tracker.RecordCommand("session-1")
-			tracker.Poison("session-2", "GIT001", "test")
+			tracker.Poison("session-2", []string{"GIT001"}, "test")
 
 			info1 := tracker.GetInfo("session-1")
 			Expect(info1.IsPoisoned()).To(BeFalse())

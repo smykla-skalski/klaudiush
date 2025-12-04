@@ -28,8 +28,11 @@ type SessionTracker interface {
 	// IsPoisoned checks if a session is poisoned.
 	IsPoisoned(sessionID string) (bool, *session.SessionInfo)
 
-	// Poison marks a session as poisoned with the given error code and message.
-	Poison(sessionID, code, message string)
+	// Poison marks a session as poisoned with the given error codes and message.
+	Poison(sessionID string, codes []string, message string)
+
+	// Unpoison clears the poisoned state of a session.
+	Unpoison(sessionID string)
 
 	// RecordCommand increments the command count for a session.
 	RecordCommand(sessionID string)
@@ -159,7 +162,7 @@ func (d *Dispatcher) Dispatch(ctx context.Context, hookCtx *hook.Context) []*Val
 		if poisoned, info := d.sessionTracker.IsPoisoned(hookCtx.SessionID); poisoned {
 			d.logger.Info("session is poisoned",
 				"session_id", hookCtx.SessionID,
-				"poison_code", info.PoisonCode,
+				"poison_codes", info.PoisonCodes,
 			)
 
 			return []*ValidationError{createPoisonedSessionError(info)}
@@ -178,15 +181,15 @@ func (d *Dispatcher) Dispatch(ctx context.Context, hookCtx *hook.Context) []*Val
 	// Poison session if there are blocking errors, otherwise record command
 	if d.sessionTracker != nil && d.sessionTracker.IsEnabled() && hookCtx.HasSessionID() {
 		if ShouldBlock(validationErrors) {
-			code := extractSessionPoisonCode(validationErrors)
+			codes := extractSessionPoisonCodes(validationErrors)
 			message := extractSessionPoisonMessage(validationErrors)
 
 			d.logger.Info("poisoning session due to blocking error",
 				"session_id", hookCtx.SessionID,
-				"error_code", code,
+				"error_codes", codes,
 			)
 
-			d.sessionTracker.Poison(hookCtx.SessionID, code, message)
+			d.sessionTracker.Poison(hookCtx.SessionID, codes, message)
 		} else {
 			// Record command when validation passes or only has warnings (no blocking errors)
 			d.sessionTracker.RecordCommand(hookCtx.SessionID)

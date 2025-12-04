@@ -2,6 +2,7 @@ package dispatcher
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/smykla-labs/klaudiush/internal/session"
 	"github.com/smykla-labs/klaudiush/internal/validator"
@@ -25,8 +26,11 @@ func createPoisonedSessionError(info *session.SessionInfo) *ValidationError {
 		timestamp = info.PoisonedAt.Format("2006-01-02 15:04:05")
 	}
 
+	// Format codes for display
+	codes := strings.Join(info.PoisonCodes, ", ")
+
 	// Build error message with "Blocked:" prefix to match documentation
-	msg := fmt.Sprintf("Blocked: session poisoned by %s at %s", info.PoisonCode, timestamp)
+	msg := fmt.Sprintf("Blocked: session poisoned by %s at %s", codes, timestamp)
 
 	// Create details with original error
 	details := make(map[string]string)
@@ -44,16 +48,18 @@ func createPoisonedSessionError(info *session.SessionInfo) *ValidationError {
 	}
 }
 
-// extractSessionPoisonCode extracts the error code from validation errors for session poisoning.
-// Returns the code from the first blocking error with a reference.
-func extractSessionPoisonCode(errors []*ValidationError) string {
+// extractSessionPoisonCodes extracts all error codes from blocking validation errors.
+// Returns a slice of codes from all blocking errors with references.
+func extractSessionPoisonCodes(errors []*ValidationError) []string {
+	var codes []string
+
 	for _, err := range errors {
 		if err.ShouldBlock && err.Reference != "" {
-			return err.Reference.Code()
+			codes = append(codes, err.Reference.Code())
 		}
 	}
 
-	return ""
+	return codes
 }
 
 // extractSessionPoisonMessage extracts the error message from validation errors for session poisoning.

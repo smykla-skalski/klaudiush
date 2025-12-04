@@ -117,7 +117,7 @@ var _ = Describe("Dispatcher Session Integration", func() {
 			// Verify session is poisoned
 			poisoned, info := tracker.IsPoisoned("test-session-3")
 			Expect(poisoned).To(BeTrue())
-			Expect(info.PoisonCode).To(Equal("GIT001"))
+			Expect(info.PoisonCodes).To(Equal([]string{"GIT001"}))
 		})
 
 		It("should block subsequent commands with poisoned session error", func() {

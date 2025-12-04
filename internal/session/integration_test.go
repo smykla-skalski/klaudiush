@@ -51,7 +51,7 @@ var _ = Describe("Integration Tests", func() {
 			Expect(info.CommandCount).To(Equal(2))
 
 			// Poison the session
-			tracker1.Poison(sessionID, "GIT001", "blocked commit")
+			tracker1.Poison(sessionID, []string{"GIT001"}, "blocked commit")
 
 			// Save state
 			err := tracker1.Save()
@@ -73,7 +73,7 @@ var _ = Describe("Integration Tests", func() {
 			poisoned, info = tracker2.IsPoisoned(sessionID)
 			Expect(poisoned).To(BeTrue())
 			Expect(info).NotTo(BeNil())
-			Expect(info.PoisonCode).To(Equal("GIT001"))
+			Expect(info.PoisonCodes).To(Equal([]string{"GIT001"}))
 			Expect(info.PoisonMessage).To(Equal("blocked commit"))
 			Expect(info.CommandCount).To(Equal(2))
 		})
@@ -94,11 +94,11 @@ var _ = Describe("Integration Tests", func() {
 			tracker.RecordCommand(session1)
 
 			// Session 2: Poisoned
-			tracker.Poison(session2, "SEC001", "secrets detected")
+			tracker.Poison(session2, []string{"SEC001"}, "secrets detected")
 
 			// Session 3: Poisoned after commands
 			tracker.RecordCommand(session3)
-			tracker.Poison(session3, "GIT022", "force push blocked")
+			tracker.Poison(session3, []string{"GIT022"}, "force push blocked")
 
 			// Save and reload
 			err := tracker.Save()
@@ -119,12 +119,12 @@ var _ = Describe("Integration Tests", func() {
 			// Verify session 2 is poisoned
 			poisoned2, info2 := tracker2.IsPoisoned(session2)
 			Expect(poisoned2).To(BeTrue())
-			Expect(info2.PoisonCode).To(Equal("SEC001"))
+			Expect(info2.PoisonCodes).To(Equal([]string{"SEC001"}))
 
 			// Verify session 3 is poisoned
 			poisoned3, info3 := tracker2.IsPoisoned(session3)
 			Expect(poisoned3).To(BeTrue())
-			Expect(info3.PoisonCode).To(Equal("GIT022"))
+			Expect(info3.PoisonCodes).To(Equal([]string{"GIT022"}))
 			Expect(info3.CommandCount).To(Equal(1))
 		})
 
@@ -170,7 +170,7 @@ var _ = Describe("Integration Tests", func() {
 			)
 
 			tracker.RecordCommand("session-1")
-			tracker.Poison("session-2", "GIT001", "test")
+			tracker.Poison("session-2", []string{"GIT001"}, "test")
 			tracker.RecordCommand("session-3")
 
 			// Reset all

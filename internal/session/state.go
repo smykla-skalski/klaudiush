@@ -33,8 +33,8 @@ type SessionInfo struct {
 	// PoisonedAt is when the session was poisoned (nil if clean).
 	PoisonedAt *time.Time `json:"poisoned_at,omitempty"`
 
-	// PoisonCode is the error code that poisoned the session (e.g., "GIT001").
-	PoisonCode string `json:"poison_code,omitempty"`
+	// PoisonCodes is the list of error codes that poisoned the session (e.g., ["GIT001", "GIT002"]).
+	PoisonCodes []string `json:"poison_codes,omitempty"`
 
 	// PoisonMessage is the original error message that caused the poisoning.
 	PoisonMessage string `json:"poison_message,omitempty"`
