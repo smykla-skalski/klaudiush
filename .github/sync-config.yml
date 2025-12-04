@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/smykla-labs/.github/main/schemas/sync-config.schema.json
 ---
 # Unified Sync Configuration
 # Enable label removal to keep labels in sync with central config
