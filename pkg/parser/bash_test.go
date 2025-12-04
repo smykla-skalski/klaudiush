@@ -360,6 +360,65 @@ EOF`
 		})
 	})
 
+	Describe("CmdType String", func() {
+		It("returns Simple for CmdTypeSimple", func() {
+			Expect(parser.CmdTypeSimple.String()).To(Equal("Simple"))
+		})
+
+		It("returns Pipe for CmdTypePipe", func() {
+			Expect(parser.CmdTypePipe.String()).To(Equal("Pipe"))
+		})
+
+		It("returns Subshell for CmdTypeSubshell", func() {
+			Expect(parser.CmdTypeSubshell.String()).To(Equal("Subshell"))
+		})
+
+		It("returns CmdSubst for CmdTypeCmdSubst", func() {
+			Expect(parser.CmdTypeCmdSubst.String()).To(Equal("CmdSubst"))
+		})
+
+		It("returns Chain for CmdTypeChain", func() {
+			Expect(parser.CmdTypeChain.String()).To(Equal("Chain"))
+		})
+
+		It("returns Unknown for undefined CmdType", func() {
+			unknownType := parser.CmdType(99)
+			Expect(unknownType.String()).To(Equal("Unknown"))
+		})
+	})
+
+	Describe("Command methods", func() {
+		Context("String", func() {
+			It("returns just name when no args", func() {
+				cmd := &parser.Command{Name: "ls"}
+				Expect(cmd.String()).To(Equal("ls"))
+			})
+
+			It("returns name with args joined", func() {
+				cmd := &parser.Command{
+					Name: "git",
+					Args: []string{"commit", "-m", "message"},
+				}
+				Expect(cmd.String()).To(Equal("git commit -m message"))
+			})
+		})
+
+		Context("FullCommand", func() {
+			It("returns slice with name only when no args", func() {
+				cmd := &parser.Command{Name: "ls"}
+				Expect(cmd.FullCommand()).To(Equal([]string{"ls"}))
+			})
+
+			It("returns slice with name and all args", func() {
+				cmd := &parser.Command{
+					Name: "git",
+					Args: []string{"commit", "-m", "message"},
+				}
+				Expect(cmd.FullCommand()).To(Equal([]string{"git", "commit", "-m", "message"}))
+			})
+		})
+	})
+
 	Describe("FindDoubleQuotedBackticks", func() {
 		Context("with backticks in double quotes", func() {
 			It("detects backticks in git commit message", func() {
@@ -470,6 +529,135 @@ EOF`
 			It("returns error for malformed command", func() {
 				_, err := p.FindDoubleQuotedBackticks("git commit -m \"unclosed")
 				Expect(err).To(HaveOccurred())
+			})
+		})
+	})
+
+	Describe("FindAllBacktickIssues", func() {
+		Context("with unquoted backticks", func() {
+			It("detects unquoted backticks", func() {
+				locations, err := p.FindAllBacktickIssues("echo `date`")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(locations).To(HaveLen(1))
+				Expect(locations[0].Context).To(Equal(parser.QuotingContextUnquoted))
+			})
+
+			It("detects multiple unquoted backticks", func() {
+				locations, err := p.FindAllBacktickIssues("echo `date` `hostname`")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(locations).To(HaveLen(2))
+			})
+		})
+
+		Context("with double-quoted backticks", func() {
+			It("detects backticks in double quotes", func() {
+				locations, err := p.FindAllBacktickIssues("echo \"Fix `parser`\"")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(locations).To(HaveLen(1))
+				Expect(locations[0].Context).To(Equal(parser.QuotingContextDoubleQuoted))
+			})
+
+			It("sets SuggestSingle when no variables present", func() {
+				locations, err := p.FindAllBacktickIssues("echo \"Fix `parser`\"")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(locations).To(HaveLen(1))
+				Expect(locations[0].SuggestSingle).To(BeTrue())
+				Expect(locations[0].HasVariables).To(BeFalse())
+			})
+
+			It("sets HasVariables when variables present", func() {
+				locations, err := p.FindAllBacktickIssues("echo \"Fix `parser` for $VERSION\"")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(locations).To(HaveLen(1))
+				Expect(locations[0].HasVariables).To(BeTrue())
+				Expect(locations[0].SuggestSingle).To(BeFalse())
+			})
+		})
+
+		Context("with single-quoted backticks", func() {
+			It("does not detect backticks in single quotes", func() {
+				// Single quotes prevent command substitution at shell level
+				// The parser should not find any issues
+				locations, err := p.FindAllBacktickIssues("echo 'Fix `parser`'")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(locations).To(BeEmpty())
+			})
+		})
+
+		Context("with mixed quoting", func() {
+			It("detects multiple contexts in one command", func() {
+				// Unquoted and double-quoted backticks
+				locations, err := p.FindAllBacktickIssues("command `arg1` \"arg2 `test`\"")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(locations).To(HaveLen(2))
+			})
+
+			It("handles complex command with variables", func() {
+				locations, err := p.FindAllBacktickIssues(
+					"command \"arg1 `test`\" `arg2` \"arg3 `foo` with $VAR\"",
+				)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(locations).To(HaveLen(3))
+
+				// Check that the one with $VAR has HasVariables=true
+				var varLocation *parser.BacktickLocation
+				for i := range locations {
+					if locations[i].HasVariables {
+						varLocation = &locations[i]
+
+						break
+					}
+				}
+				Expect(varLocation).NotTo(BeNil())
+				Expect(varLocation.SuggestSingle).To(BeFalse())
+			})
+		})
+
+		Context("with empty command", func() {
+			It("returns error for empty string", func() {
+				_, err := p.FindAllBacktickIssues("")
+				Expect(err).To(MatchError(parser.ErrEmptyCommand))
+			})
+
+			It("returns error for whitespace-only", func() {
+				_, err := p.FindAllBacktickIssues("   ")
+				Expect(err).To(MatchError(parser.ErrEmptyCommand))
+			})
+		})
+
+		Context("with invalid syntax", func() {
+			It("returns error for malformed command", func() {
+				_, err := p.FindAllBacktickIssues("echo \"unclosed")
+				Expect(err).To(HaveOccurred())
+			})
+		})
+
+		Context("with no backticks", func() {
+			It("returns empty for normal commands", func() {
+				locations, err := p.FindAllBacktickIssues("echo hello world")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(locations).To(BeEmpty())
+			})
+
+			It("returns empty for double-quoted strings without backticks", func() {
+				locations, err := p.FindAllBacktickIssues("echo \"hello world\"")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(locations).To(BeEmpty())
+			})
+		})
+
+		Context("with $() command substitution", func() {
+			It("detects $() in double quotes as backtick issue", func() {
+				locations, err := p.FindAllBacktickIssues("echo \"$(date)\"")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(locations).To(HaveLen(1))
+			})
+
+			It("detects unquoted $()", func() {
+				locations, err := p.FindAllBacktickIssues("echo $(date)")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(locations).To(HaveLen(1))
+				Expect(locations[0].Context).To(Equal(parser.QuotingContextUnquoted))
 			})
 		})
 	})

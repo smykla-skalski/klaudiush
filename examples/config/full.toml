@@ -151,6 +151,18 @@ lang = ""            # Go version (e.g., "go1.21", auto-detected from go.mod if 
 modpath = ""         # Module path (auto-detected from go.mod if empty)
 # gofumpt_path = ""  # Custom gofumpt binary path
 
+# Shell Validators
+[validators.shell]
+
+# Backtick Validator
+[validators.shell.backtick]
+enabled = true
+severity = "error"
+# check_all_commands = false    # Default: only validates git commit, gh pr/issue create
+                                # Set to true for comprehensive mode (all Bash commands)
+# check_unquoted = true          # Detect unquoted backticks (e.g., echo `date`)
+# suggest_single_quotes = true   # Suggest single quotes when no variables present
+
 # Notification Validators
 [validators.notification]
 

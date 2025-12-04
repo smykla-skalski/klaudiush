@@ -1,0 +1,43 @@
+# Comprehensive Backtick Validation Configuration
+#
+# This configuration enables comprehensive backtick validation for all Bash commands.
+# By default, klaudiush only checks backticks in git commit, gh pr create, and gh issue create.
+# Comprehensive mode extends this to ALL Bash commands and provides enhanced analysis.
+#
+# Use this configuration when you want strict shell safety across your entire workflow.
+
+[validators.shell.backtick]
+# Enable comprehensive backtick checking for all Bash commands (default: false)
+# When false, only validates git commit, gh pr create, gh issue create
+check_all_commands = true
+
+# Detect unquoted backticks (default: true)
+# Only applies when check_all_commands = true (comprehensive mode)
+# Examples:
+#   echo `date`           # Blocked
+#   ls `pwd`/files        # Blocked
+check_unquoted = true
+
+# Suggest single quotes when no variables are present (default: true)
+# Examples:
+#   echo "Fix `parser`"   # Blocked, suggests: echo 'Fix `parser`'
+#   echo "Fix `parser` for $VERSION"  # Blocked, suggests escaping (variables present)
+suggest_single_quotes = true
+
+# Example scenarios this catches:
+#
+# 1. Unquoted backticks (dangerous):
+#    curl https://api.example.com/`whoami`
+#    → Suggests: curl 'https://api.example.com/`whoami`'
+#
+# 2. Backticks in double quotes without variables (unnecessary risk):
+#    git commit -m "Update `config.toml` handling"
+#    → Suggests: git commit -m 'Update `config.toml` handling'
+#
+# 3. Backticks in double quotes with variables (needs escaping):
+#    echo "Fix `parser` for version $VERSION"
+#    → Suggests: echo "Fix \`parser\` for version $VERSION"
+#
+# 4. Multiple issues in one command:
+#    command "arg1 `test`" `arg2` "arg3 `foo` with $VAR"
+#    → Reports all three issues with context-specific suggestions

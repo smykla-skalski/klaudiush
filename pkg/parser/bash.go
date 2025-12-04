@@ -140,3 +140,41 @@ func (p *BashParser) FindDoubleQuotedBackticks(command string) ([]BacktickIssue,
 
 	return issues, nil
 }
+
+// FindAllBacktickIssues performs comprehensive analysis of backticks in all contexts.
+// It detects unquoted backticks, backticks in double quotes, and analyzes whether
+// single quotes should be suggested (when no variables are present).
+func (p *BashParser) FindAllBacktickIssues(command string) ([]BacktickLocation, error) {
+	command = strings.TrimSpace(command)
+	if command == "" {
+		return nil, ErrEmptyCommand
+	}
+
+	// Parse the command into an AST
+	file, err := p.parser.Parse(strings.NewReader(command), "")
+	if err != nil {
+		return nil, errors.Wrap(ErrParseFailed, err.Error())
+	}
+
+	var locations []BacktickLocation
+
+	// Walk the AST looking for CallExpr nodes
+	syntax.Walk(file, func(node syntax.Node) bool {
+		if call, ok := node.(*syntax.CallExpr); ok {
+			// Check each argument (index 0 is command name)
+			for i, arg := range call.Args {
+				// Check for any backticks (quoted or unquoted)
+				if hasDoubleQuotedBackticks(arg) || hasUnquotedBackticks(arg) {
+					if analysis := analyzeBacktickContext(arg); analysis != nil {
+						analysis.ArgIndex = i
+						locations = append(locations, *analysis)
+					}
+				}
+			}
+		}
+
+		return true
+	})
+
+	return locations, nil
+}

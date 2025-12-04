@@ -258,4 +258,372 @@ var _ = Describe("BacktickValidator", func() {
 			Expect(v.Category()).To(Equal(validator.CategoryCPU))
 		})
 	})
+
+	Describe("Comprehensive mode", func() {
+		BeforeEach(func() {
+			checkUnquoted := true
+			suggestSingleQuotes := true
+			cfg = &config.BacktickValidatorConfig{
+				CheckAllCommands:    true,
+				CheckUnquoted:       &checkUnquoted,
+				SuggestSingleQuotes: &suggestSingleQuotes,
+			}
+			v = shell.NewBacktickValidator(log, cfg, nil)
+		})
+
+		Context("with unquoted backticks", func() {
+			It("blocks unquoted backticks in any command", func() {
+				hookCtx := &hook.Context{
+					EventType: hook.EventTypePreToolUse,
+					ToolName:  hook.ToolTypeBash,
+					ToolInput: hook.ToolInput{
+						Command: "echo `date`",
+					},
+				}
+
+				result := v.Validate(ctx, hookCtx)
+
+				Expect(result.Passed).To(BeFalse())
+				Expect(result.ShouldBlock).To(BeTrue())
+				Expect(result.Details["help"]).To(ContainSubstring("Unquoted backticks"))
+			})
+
+			It("allows unquoted backticks when CheckUnquoted is disabled", func() {
+				checkUnquoted := false
+				cfg.CheckUnquoted = &checkUnquoted
+				v = shell.NewBacktickValidator(log, cfg, nil)
+
+				hookCtx := &hook.Context{
+					EventType: hook.EventTypePreToolUse,
+					ToolName:  hook.ToolTypeBash,
+					ToolInput: hook.ToolInput{
+						Command: "echo `date`",
+					},
+				}
+
+				result := v.Validate(ctx, hookCtx)
+
+				Expect(result.Passed).To(BeTrue())
+			})
+		})
+
+		Context("with backticks in double quotes", func() {
+			It("blocks backticks without variables and suggests single quotes", func() {
+				hookCtx := &hook.Context{
+					EventType: hook.EventTypePreToolUse,
+					ToolName:  hook.ToolTypeBash,
+					ToolInput: hook.ToolInput{
+						Command: "echo \"Fix bug in `parser` module\"",
+					},
+				}
+
+				result := v.Validate(ctx, hookCtx)
+
+				Expect(result.Passed).To(BeFalse())
+				Expect(result.ShouldBlock).To(BeTrue())
+				Expect(result.Details["help"]).To(ContainSubstring("Use single quotes instead"))
+			})
+
+			It("blocks backticks with variables but doesn't suggest single quotes", func() {
+				hookCtx := &hook.Context{
+					EventType: hook.EventTypePreToolUse,
+					ToolName:  hook.ToolTypeBash,
+					ToolInput: hook.ToolInput{
+						Command: "echo \"Fix `parser` for $VERSION\"",
+					},
+				}
+
+				result := v.Validate(ctx, hookCtx)
+
+				Expect(result.Passed).To(BeFalse())
+				Expect(result.ShouldBlock).To(BeTrue())
+				Expect(result.Details["help"]).To(ContainSubstring("has variables: true"))
+				Expect(result.Details["help"]).NotTo(ContainSubstring("Use single quotes instead"))
+			})
+
+			It("doesn't suggest single quotes when disabled", func() {
+				suggestSingleQuotes := false
+				cfg.SuggestSingleQuotes = &suggestSingleQuotes
+				v = shell.NewBacktickValidator(log, cfg, nil)
+
+				hookCtx := &hook.Context{
+					EventType: hook.EventTypePreToolUse,
+					ToolName:  hook.ToolTypeBash,
+					ToolInput: hook.ToolInput{
+						Command: "echo \"Fix bug in `parser` module\"",
+					},
+				}
+
+				result := v.Validate(ctx, hookCtx)
+
+				Expect(result.Passed).To(BeFalse())
+				Expect(result.Details["help"]).NotTo(ContainSubstring("Use single quotes instead"))
+				Expect(result.Details["help"]).To(ContainSubstring("Escape backticks"))
+			})
+		})
+
+		Context("with any command type", func() {
+			It("blocks backticks in non-git/gh commands", func() {
+				hookCtx := &hook.Context{
+					EventType: hook.EventTypePreToolUse,
+					ToolName:  hook.ToolTypeBash,
+					ToolInput: hook.ToolInput{
+						Command: "curl -d \"Testing `API`\" https://example.com",
+					},
+				}
+
+				result := v.Validate(ctx, hookCtx)
+
+				Expect(result.Passed).To(BeFalse())
+				Expect(result.ShouldBlock).To(BeTrue())
+			})
+
+			It("blocks backticks in ls command", func() {
+				hookCtx := &hook.Context{
+					EventType: hook.EventTypePreToolUse,
+					ToolName:  hook.ToolTypeBash,
+					ToolInput: hook.ToolInput{
+						Command: "ls \"`pwd`/files\"",
+					},
+				}
+
+				result := v.Validate(ctx, hookCtx)
+
+				Expect(result.Passed).To(BeFalse())
+				Expect(result.ShouldBlock).To(BeTrue())
+			})
+		})
+
+		Context("edge cases", func() {
+			It("allows single-quoted backticks", func() {
+				hookCtx := &hook.Context{
+					EventType: hook.EventTypePreToolUse,
+					ToolName:  hook.ToolTypeBash,
+					ToolInput: hook.ToolInput{
+						Command: "echo 'Backticks `are` safe here'",
+					},
+				}
+
+				result := v.Validate(ctx, hookCtx)
+
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("allows commands without backticks", func() {
+				hookCtx := &hook.Context{
+					EventType: hook.EventTypePreToolUse,
+					ToolName:  hook.ToolTypeBash,
+					ToolInput: hook.ToolInput{
+						Command: "echo \"Normal string\"",
+					},
+				}
+
+				result := v.Validate(ctx, hookCtx)
+
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("handles multiple backtick issues in one command", func() {
+				hookCtx := &hook.Context{
+					EventType: hook.EventTypePreToolUse,
+					ToolName:  hook.ToolTypeBash,
+					ToolInput: hook.ToolInput{
+						Command: "command \"arg1 `test`\" `arg2` \"arg3 `foo` with $VAR\"",
+					},
+				}
+
+				result := v.Validate(ctx, hookCtx)
+
+				Expect(result.Passed).To(BeFalse())
+				Expect(result.Details["help"]).To(ContainSubstring("Unquoted backticks"))
+				Expect(result.Details["help"]).To(ContainSubstring("Backticks in double quotes"))
+			})
+		})
+	})
+
+	Describe("Legacy mode (default)", func() {
+		BeforeEach(func() {
+			cfg = &config.BacktickValidatorConfig{
+				CheckAllCommands: false, // Legacy mode
+			}
+			v = shell.NewBacktickValidator(log, cfg, nil)
+		})
+
+		It("ignores backticks in non-git/gh commands", func() {
+			hookCtx := &hook.Context{
+				EventType: hook.EventTypePreToolUse,
+				ToolName:  hook.ToolTypeBash,
+				ToolInput: hook.ToolInput{
+					Command: "echo \"Testing `API`\"",
+				},
+			}
+
+			result := v.Validate(ctx, hookCtx)
+
+			Expect(result.Passed).To(BeTrue())
+		})
+
+		It("still blocks backticks in git commit", func() {
+			hookCtx := &hook.Context{
+				EventType: hook.EventTypePreToolUse,
+				ToolName:  hook.ToolTypeBash,
+				ToolInput: hook.ToolInput{
+					Command: "git commit -m \"Fix `parser`\"",
+				},
+			}
+
+			result := v.Validate(ctx, hookCtx)
+
+			Expect(result.Passed).To(BeFalse())
+			Expect(result.ShouldBlock).To(BeTrue())
+		})
+
+		Context("edge cases for git commands", func() {
+			It("ignores git command with no subcommand", func() {
+				hookCtx := &hook.Context{
+					EventType: hook.EventTypePreToolUse,
+					ToolName:  hook.ToolTypeBash,
+					ToolInput: hook.ToolInput{
+						Command: "git",
+					},
+				}
+
+				result := v.Validate(ctx, hookCtx)
+
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("ignores git non-commit subcommands", func() {
+				hookCtx := &hook.Context{
+					EventType: hook.EventTypePreToolUse,
+					ToolName:  hook.ToolTypeBash,
+					ToolInput: hook.ToolInput{
+						Command: "git log --oneline \"$(echo test)\"",
+					},
+				}
+
+				result := v.Validate(ctx, hookCtx)
+
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("ignores backticks at wrong argument index for git commit", func() {
+				// Backticks not in -m value position
+				hookCtx := &hook.Context{
+					EventType: hook.EventTypePreToolUse,
+					ToolName:  hook.ToolTypeBash,
+					ToolInput: hook.ToolInput{
+						Command: "git \"commit\" -m 'safe message'",
+					},
+				}
+
+				result := v.Validate(ctx, hookCtx)
+
+				Expect(result.Passed).To(BeTrue())
+			})
+		})
+
+		Context("edge cases for gh commands", func() {
+			It("ignores gh command with only one arg", func() {
+				hookCtx := &hook.Context{
+					EventType: hook.EventTypePreToolUse,
+					ToolName:  hook.ToolTypeBash,
+					ToolInput: hook.ToolInput{
+						Command: "gh pr",
+					},
+				}
+
+				result := v.Validate(ctx, hookCtx)
+
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("ignores gh pr view (not create)", func() {
+				hookCtx := &hook.Context{
+					EventType: hook.EventTypePreToolUse,
+					ToolName:  hook.ToolTypeBash,
+					ToolInput: hook.ToolInput{
+						Command: "gh pr view --json \"body with `backticks`\"",
+					},
+				}
+
+				result := v.Validate(ctx, hookCtx)
+
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("ignores gh issue view (not create)", func() {
+				hookCtx := &hook.Context{
+					EventType: hook.EventTypePreToolUse,
+					ToolName:  hook.ToolTypeBash,
+					ToolInput: hook.ToolInput{
+						Command: "gh issue view --json \"body with `backticks`\"",
+					},
+				}
+
+				result := v.Validate(ctx, hookCtx)
+
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("ignores gh repo create (different subcommand)", func() {
+				hookCtx := &hook.Context{
+					EventType: hook.EventTypePreToolUse,
+					ToolName:  hook.ToolTypeBash,
+					ToolInput: hook.ToolInput{
+						Command: "gh repo create --description \"test `repo`\"",
+					},
+				}
+
+				result := v.Validate(ctx, hookCtx)
+
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("blocks backticks in --body= form", func() {
+				hookCtx := &hook.Context{
+					EventType: hook.EventTypePreToolUse,
+					ToolName:  hook.ToolTypeBash,
+					ToolInput: hook.ToolInput{
+						Command: "gh pr create --body=\"Fix `parser`\"",
+					},
+				}
+
+				result := v.Validate(ctx, hookCtx)
+
+				Expect(result.Passed).To(BeFalse())
+				Expect(result.ShouldBlock).To(BeTrue())
+			})
+
+			It("blocks backticks in --title= form", func() {
+				hookCtx := &hook.Context{
+					EventType: hook.EventTypePreToolUse,
+					ToolName:  hook.ToolTypeBash,
+					ToolInput: hook.ToolInput{
+						Command: "gh issue create --title=\"Bug in `validate`\"",
+					},
+				}
+
+				result := v.Validate(ctx, hookCtx)
+
+				Expect(result.Passed).To(BeFalse())
+				Expect(result.ShouldBlock).To(BeTrue())
+			})
+
+			It("ignores backticks at wrong argument position", func() {
+				// Backticks in --json flag, not --body or --title
+				hookCtx := &hook.Context{
+					EventType: hook.EventTypePreToolUse,
+					ToolName:  hook.ToolTypeBash,
+					ToolInput: hook.ToolInput{
+						Command: "gh pr create --json \"$(echo test)\" --body 'safe body'",
+					},
+				}
+
+				result := v.Validate(ctx, hookCtx)
+
+				Expect(result.Passed).To(BeTrue())
+			})
+		})
+	})
 })

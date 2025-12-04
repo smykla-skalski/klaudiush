@@ -52,6 +52,24 @@ func (v *BacktickValidator) Validate(ctx context.Context, hookCtx *hook.Context)
 		return validator.Pass()
 	}
 
+	// Use comprehensive mode if enabled
+	if v.shouldUseComprehensiveMode() {
+		return v.validateComprehensive(ctx, command)
+	}
+
+	// Use legacy mode (specific commands only)
+	return v.validateLegacy(ctx, command)
+}
+
+// shouldUseComprehensiveMode determines if comprehensive checking is enabled.
+func (v *BacktickValidator) shouldUseComprehensiveMode() bool {
+	return v.config != nil && v.config.CheckAllCommands
+}
+
+// validateLegacy performs the original validation for specific commands only.
+func (v *BacktickValidator) validateLegacy(_ context.Context, command string) *validator.Result {
+	log := v.Logger()
+
 	// Parse the command to detect backticks
 	bashParser := parser.NewBashParser()
 
@@ -87,6 +105,63 @@ func (v *BacktickValidator) Validate(ctx context.Context, hookCtx *hook.Context)
 		validator.RefShellBackticks,
 		"Command substitution detected in double-quoted strings",
 	).AddDetail("help", message)
+}
+
+// validateComprehensive performs comprehensive backtick validation for all commands.
+func (v *BacktickValidator) validateComprehensive(
+	_ context.Context,
+	command string,
+) *validator.Result {
+	log := v.Logger()
+
+	// Parse the command with comprehensive analysis
+	bashParser := parser.NewBashParser()
+
+	locations, err := bashParser.FindAllBacktickIssues(command)
+	if err != nil {
+		log.Debug("Failed to parse command for comprehensive backtick detection", "error", err)
+		return validator.Pass()
+	}
+
+	if len(locations) == 0 {
+		log.Debug("No backtick issues found (comprehensive)")
+		return validator.Pass()
+	}
+
+	// Filter based on configuration
+	filteredLocations := v.filterByConfig(locations)
+	if len(filteredLocations) == 0 {
+		log.Debug("Backtick issues filtered out by configuration")
+		return validator.Pass()
+	}
+
+	// Build comprehensive error message
+	message := v.buildComprehensiveErrorMessage(filteredLocations)
+
+	return validator.FailWithRef(
+		validator.RefShellBackticks,
+		"Command substitution detected",
+	).AddDetail("help", message)
+}
+
+// filterByConfig filters backtick locations based on configuration options.
+func (v *BacktickValidator) filterByConfig(
+	locations []parser.BacktickLocation,
+) []parser.BacktickLocation {
+	filtered := make([]parser.BacktickLocation, 0, len(locations))
+
+	checkUnquoted := v.config.CheckUnquotedOrDefault()
+
+	for _, loc := range locations {
+		// Skip unquoted backticks if disabled
+		if loc.Context == parser.QuotingContextUnquoted && !checkUnquoted {
+			continue
+		}
+
+		filtered = append(filtered, loc)
+	}
+
+	return filtered
 }
 
 // filterRelevantIssues filters backtick issues to only those in relevant commands.
@@ -265,6 +340,132 @@ func (*BacktickValidator) buildErrorMessage(
 	sb.WriteString("   git commit -m \"Fix bug in \\`parser\\` module\"\n")
 
 	return sb.String()
+}
+
+// buildComprehensiveErrorMessage creates detailed error messages for comprehensive mode.
+func (v *BacktickValidator) buildComprehensiveErrorMessage(
+	locations []parser.BacktickLocation,
+) string {
+	var sb strings.Builder
+
+	sb.WriteString(
+		"Command substitution (backticks or $()) detected in command arguments.\n\n",
+	)
+
+	// Group by context
+	unquoted, doubleQuoted, suggestSingle := v.groupLocationsByContext(locations)
+
+	// Report unquoted backticks
+	v.appendUnquotedBackticksMessage(&sb, unquoted)
+
+	// Report double-quoted with variables
+	v.appendDoubleQuotedMessage(&sb, doubleQuoted)
+
+	// Report double-quoted without variables
+	v.appendSuggestSingleQuotesMessage(&sb, suggestSingle)
+
+	sb.WriteString("Additional options:\n")
+	sb.WriteString("- Use HEREDOC with single-quoted delimiter for multi-line text\n")
+	sb.WriteString("- Use file-based input (e.g., git commit -F file.txt)\n")
+
+	return sb.String()
+}
+
+// groupLocationsByContext groups backtick locations by their quoting context.
+func (*BacktickValidator) groupLocationsByContext(
+	locations []parser.BacktickLocation,
+) (unquoted, doubleQuoted, suggestSingle []parser.BacktickLocation) {
+	for _, loc := range locations {
+		switch loc.Context {
+		case parser.QuotingContextUnquoted:
+			unquoted = append(unquoted, loc)
+		case parser.QuotingContextDoubleQuoted:
+			if loc.SuggestSingle {
+				suggestSingle = append(suggestSingle, loc)
+			} else {
+				doubleQuoted = append(doubleQuoted, loc)
+			}
+		case parser.QuotingContextSingleQuoted:
+			// Single quotes prevent command substitution, should not reach here
+			continue
+		}
+	}
+
+	return unquoted, doubleQuoted, suggestSingle
+}
+
+// appendUnquotedBackticksMessage appends message for unquoted backticks.
+func (*BacktickValidator) appendUnquotedBackticksMessage(
+	sb *strings.Builder,
+	unquoted []parser.BacktickLocation,
+) {
+	if len(unquoted) == 0 {
+		return
+	}
+
+	sb.WriteString("Unquoted backticks found:\n")
+
+	for _, loc := range unquoted {
+		fmt.Fprintf(sb, "- Argument at index %d\n", loc.ArgIndex)
+	}
+
+	sb.WriteString("\nEscape or quote the backticks:\n")
+	sb.WriteString("   command \\`backticked-arg\\`     # Escape\n")
+	sb.WriteString("   command '`backticked-arg`'    # Single quotes\n\n")
+}
+
+// appendDoubleQuotedMessage appends message for double-quoted backticks with variables.
+func (*BacktickValidator) appendDoubleQuotedMessage(
+	sb *strings.Builder,
+	doubleQuoted []parser.BacktickLocation,
+) {
+	if len(doubleQuoted) == 0 {
+		return
+	}
+
+	sb.WriteString("Backticks in double-quoted strings:\n")
+
+	for _, loc := range doubleQuoted {
+		fmt.Fprintf(sb, "- Argument at index %d (has variables: %t)\n",
+			loc.ArgIndex, loc.HasVariables)
+	}
+
+	sb.WriteString("\nEscape backticks in double quotes:\n")
+	sb.WriteString("   command \"Fix \\`parser\\` for $VERSION\"\n\n")
+}
+
+// appendSuggestSingleQuotesMessage appends message for double-quoted without variables.
+func (v *BacktickValidator) appendSuggestSingleQuotesMessage(
+	sb *strings.Builder,
+	suggestSingle []parser.BacktickLocation,
+) {
+	if len(suggestSingle) == 0 {
+		return
+	}
+
+	suggestSingleQuotes := v.config.SuggestSingleQuotesOrDefault()
+	if suggestSingleQuotes {
+		sb.WriteString("Backticks in double quotes without variables:\n")
+
+		for _, loc := range suggestSingle {
+			fmt.Fprintf(sb, "- Argument at index %d\n", loc.ArgIndex)
+		}
+
+		sb.WriteString("\nUse single quotes instead (recommended):\n")
+		sb.WriteString("   command 'Fix bug in `parser` module'\n\n")
+		sb.WriteString("Or escape backticks:\n")
+		sb.WriteString("   command \"Fix bug in \\`parser\\` module\"\n\n")
+	} else {
+		// If suggestion disabled, treat as regular double-quoted
+		sb.WriteString("Backticks in double-quoted strings:\n")
+
+		for _, loc := range suggestSingle {
+			fmt.Fprintf(sb, "- Argument at index %d\n", loc.ArgIndex)
+		}
+
+		sb.WriteString("\nEscape backticks:\n")
+		sb.WriteString("   command \"Fix bug in \\`parser\\` module\"\n\n")
+	}
 }
 
 // Category returns the validator category for parallel execution.
