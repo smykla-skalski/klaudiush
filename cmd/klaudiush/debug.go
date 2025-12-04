@@ -46,7 +46,8 @@ var debugCmd = &cobra.Command{
 Subcommands:
   config      Show loaded configuration
   rules       Show loaded validation rules
-  exceptions  Show exception workflow configuration`,
+  exceptions  Show exception workflow configuration
+  crash       Manage crash dumps`,
 }
 
 var debugRulesCmd = &cobra.Command{
@@ -99,6 +100,12 @@ func init() {
 	debugCmd.AddCommand(debugConfigCmd)
 	debugCmd.AddCommand(debugRulesCmd)
 	debugCmd.AddCommand(debugExceptionsCmd)
+	debugCmd.AddCommand(debugCrashCmd)
+
+	// Add crash subcommands
+	debugCrashCmd.AddCommand(debugCrashListCmd)
+	debugCrashCmd.AddCommand(debugCrashViewCmd)
+	debugCrashCmd.AddCommand(debugCrashCleanCmd)
 
 	debugConfigCmd.Flags().StringVar(
 		&validatorFilter,
