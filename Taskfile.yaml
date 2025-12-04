@@ -25,16 +25,6 @@ tasks:
     cmds:
       - task --list
 
-  vendor:
-    desc: Sync vendor directory with go.mod
-    cmds:
-      - mise exec -- go mod vendor
-    sources:
-      - go.mod
-      - go.sum
-    generates:
-      - vendor/modules.txt
-
   generate:
     desc: Run all code generation (enums and mocks)
     cmds:
@@ -82,7 +72,6 @@ tasks:
   build:
     desc: Build the binary (without signoff validation)
     deps:
-      - vendor
       - generate
     cmds:
       - mise exec -- go build -o bin/{{.BINARY_NAME}} ./cmd/klaudiush
