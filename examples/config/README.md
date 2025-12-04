@@ -28,6 +28,38 @@ Example showing how project-specific configuration overrides global settings.
 
 **Location**: `.klaudiush/config.toml` or `klaudiush.toml` (project root)
 
+### comprehensive-backticks.toml
+
+Comprehensive backtick validation configuration for all Bash commands.
+
+**Use case**: Strict shell safety across your entire workflow, catching command substitution issues in all Bash commands (not just git/gh).
+
+**Location**: `~/.klaudiush/config.toml` (global) or `.klaudiush/config.toml` (project)
+
+**Features**:
+
+- Validates ALL Bash commands (not just git commit, gh pr/issue create)
+- Detects unquoted backticks (e.g., `echo \`date\``)
+- Detects backticks in double quotes
+- Suggests single quotes when no variables are present
+- Provides context-specific fix suggestions
+
+### javascript.toml
+
+JavaScript/TypeScript project configuration with oxlint validation.
+
+**Use case**: JavaScript and TypeScript projects.
+
+**Location**: `.klaudiush/config.toml` (project)
+
+### rust.toml
+
+Rust project configuration with rustfmt validation.
+
+**Use case**: Rust projects.
+
+**Location**: `.klaudiush/config.toml` (project)
+
 ## Configuration Hierarchy
 
 Configuration is loaded from multiple sources with the following precedence (highest to lowest):

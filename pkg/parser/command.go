@@ -171,3 +171,91 @@ func hasDoubleQuotedBackticks(word *syntax.Word) bool {
 
 	return false
 }
+
+// QuotingContext represents the quoting context of a backtick or variable.
+type QuotingContext int
+
+const (
+	// QuotingContextUnquoted means the content is not quoted.
+	QuotingContextUnquoted QuotingContext = iota
+	// QuotingContextSingleQuoted means the content is in single quotes.
+	QuotingContextSingleQuoted
+	// QuotingContextDoubleQuoted means the content is in double quotes.
+	QuotingContextDoubleQuoted
+)
+
+// BacktickLocation represents the location and context of a backtick.
+type BacktickLocation struct {
+	ArgIndex      int            // Index of the argument
+	Context       QuotingContext // Quoting context
+	HasVariables  bool           // Whether the string contains variables
+	IsEscaped     bool           // Whether backticks are escaped
+	RawValue      string         // Raw value of the argument
+	SuggestSingle bool           // Whether single quotes should be suggested
+}
+
+// hasUnquotedBackticks checks if a word contains unquoted backticks.
+func hasUnquotedBackticks(word *syntax.Word) bool {
+	if word == nil {
+		return false
+	}
+
+	for _, part := range word.Parts {
+		// Check for command substitution that's not inside quotes
+		if _, isCmdSubst := part.(*syntax.CmdSubst); isCmdSubst {
+			return true
+		}
+	}
+
+	return false
+}
+
+// analyzeBacktickContext analyzes the quoting context and variables in a word.
+func analyzeBacktickContext(word *syntax.Word) *BacktickLocation {
+	if word == nil {
+		return nil
+	}
+
+	location := &BacktickLocation{
+		RawValue: wordToString(word),
+	}
+
+	for _, part := range word.Parts {
+		switch p := part.(type) {
+		case *syntax.SglQuoted:
+			// Single quotes prevent command substitution
+			location.Context = QuotingContextSingleQuoted
+			return location
+
+		case *syntax.DblQuoted:
+			location.Context = QuotingContextDoubleQuoted
+
+			for _, dqPart := range p.Parts {
+				switch dqPart.(type) {
+				case *syntax.CmdSubst:
+					// Backticks or $() in double quotes
+					// Note: In bash AST, escaped backticks appear as Lit, not CmdSubst
+					location.IsEscaped = false
+
+				case *syntax.ParamExp, *syntax.ArithmExp:
+					location.HasVariables = true
+				}
+			}
+
+			// Suggest single quotes if no variables and has backticks
+			if !location.HasVariables && hasDoubleQuotedBackticks(word) {
+				location.SuggestSingle = true
+			}
+
+		case *syntax.CmdSubst:
+			// Unquoted command substitution
+			location.Context = QuotingContextUnquoted
+			location.IsEscaped = false
+
+		case *syntax.ParamExp, *syntax.ArithmExp:
+			location.HasVariables = true
+		}
+	}
+
+	return location
+}

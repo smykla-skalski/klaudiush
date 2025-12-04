@@ -217,13 +217,13 @@ func checkLineBreaks(body string, result *PRBodyValidationResult) {
 
 // checkSupportingDocs checks if Supporting documentation section has N/A or empty placeholder values
 func checkSupportingDocs(body string, result *PRBodyValidationResult) {
-	idx := strings.Index(body, supportingDocsHeader)
-	if idx == -1 {
+	_, after, found := strings.Cut(body, supportingDocsHeader)
+	if !found {
 		return
 	}
 
 	// Extract the section content
-	sectionContent := extractSectionContent(body[idx+len(supportingDocsHeader):])
+	sectionContent := extractSectionContent(after)
 
 	// Strip HTML comments from the content
 	sectionContent = htmlCommentRegex.ReplaceAllString(sectionContent, "")

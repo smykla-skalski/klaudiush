@@ -117,7 +117,14 @@ Dynamic validation configuration without modifying code. Rules allow users to de
 
 **Secrets** (`internal/validators/secrets/`): SecretsValidator (25+ regex patterns for AWS/GitHub/private keys/connection strings, optional gitleaks integration, configurable allow lists)
 
-**Shell** (`internal/validators/shell/`): BacktickValidator (detects command substitution in double-quoted strings for git commit, gh pr create, gh issue create)
+**Shell** (`internal/validators/shell/`): BacktickValidator (detects command substitution in strings)
+
+- **Legacy mode** (default): Validates backticks only in git commit, gh pr create, gh issue create commands
+- **Comprehensive mode** (opt-in via config): Validates all Bash commands for:
+  - Unquoted backticks (e.g., `echo \`date\``)
+  - Backticks in double quotes (e.g., `echo "Fix \`parser\`"`)
+  - Variable analysis: suggests single quotes when no variables present
+  - Configurable via `check_all_commands`, `check_unquoted`, `suggest_single_quotes` options
 
 **Notification** (`internal/validators/notification/`): BellValidator (ASCII 7 to `/dev/tty` for dock bounce)
 
