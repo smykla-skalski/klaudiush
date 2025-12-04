@@ -473,5 +473,153 @@ var _ = Describe("BacktickValidator", func() {
 			Expect(result.Passed).To(BeFalse())
 			Expect(result.ShouldBlock).To(BeTrue())
 		})
+
+		Context("edge cases for git commands", func() {
+			It("ignores git command with no subcommand", func() {
+				hookCtx := &hook.Context{
+					EventType: hook.EventTypePreToolUse,
+					ToolName:  hook.ToolTypeBash,
+					ToolInput: hook.ToolInput{
+						Command: "git",
+					},
+				}
+
+				result := v.Validate(ctx, hookCtx)
+
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("ignores git non-commit subcommands", func() {
+				hookCtx := &hook.Context{
+					EventType: hook.EventTypePreToolUse,
+					ToolName:  hook.ToolTypeBash,
+					ToolInput: hook.ToolInput{
+						Command: "git log --oneline \"$(echo test)\"",
+					},
+				}
+
+				result := v.Validate(ctx, hookCtx)
+
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("ignores backticks at wrong argument index for git commit", func() {
+				// Backticks not in -m value position
+				hookCtx := &hook.Context{
+					EventType: hook.EventTypePreToolUse,
+					ToolName:  hook.ToolTypeBash,
+					ToolInput: hook.ToolInput{
+						Command: "git \"commit\" -m 'safe message'",
+					},
+				}
+
+				result := v.Validate(ctx, hookCtx)
+
+				Expect(result.Passed).To(BeTrue())
+			})
+		})
+
+		Context("edge cases for gh commands", func() {
+			It("ignores gh command with only one arg", func() {
+				hookCtx := &hook.Context{
+					EventType: hook.EventTypePreToolUse,
+					ToolName:  hook.ToolTypeBash,
+					ToolInput: hook.ToolInput{
+						Command: "gh pr",
+					},
+				}
+
+				result := v.Validate(ctx, hookCtx)
+
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("ignores gh pr view (not create)", func() {
+				hookCtx := &hook.Context{
+					EventType: hook.EventTypePreToolUse,
+					ToolName:  hook.ToolTypeBash,
+					ToolInput: hook.ToolInput{
+						Command: "gh pr view --json \"body with `backticks`\"",
+					},
+				}
+
+				result := v.Validate(ctx, hookCtx)
+
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("ignores gh issue view (not create)", func() {
+				hookCtx := &hook.Context{
+					EventType: hook.EventTypePreToolUse,
+					ToolName:  hook.ToolTypeBash,
+					ToolInput: hook.ToolInput{
+						Command: "gh issue view --json \"body with `backticks`\"",
+					},
+				}
+
+				result := v.Validate(ctx, hookCtx)
+
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("ignores gh repo create (different subcommand)", func() {
+				hookCtx := &hook.Context{
+					EventType: hook.EventTypePreToolUse,
+					ToolName:  hook.ToolTypeBash,
+					ToolInput: hook.ToolInput{
+						Command: "gh repo create --description \"test `repo`\"",
+					},
+				}
+
+				result := v.Validate(ctx, hookCtx)
+
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("blocks backticks in --body= form", func() {
+				hookCtx := &hook.Context{
+					EventType: hook.EventTypePreToolUse,
+					ToolName:  hook.ToolTypeBash,
+					ToolInput: hook.ToolInput{
+						Command: "gh pr create --body=\"Fix `parser`\"",
+					},
+				}
+
+				result := v.Validate(ctx, hookCtx)
+
+				Expect(result.Passed).To(BeFalse())
+				Expect(result.ShouldBlock).To(BeTrue())
+			})
+
+			It("blocks backticks in --title= form", func() {
+				hookCtx := &hook.Context{
+					EventType: hook.EventTypePreToolUse,
+					ToolName:  hook.ToolTypeBash,
+					ToolInput: hook.ToolInput{
+						Command: "gh issue create --title=\"Bug in `validate`\"",
+					},
+				}
+
+				result := v.Validate(ctx, hookCtx)
+
+				Expect(result.Passed).To(BeFalse())
+				Expect(result.ShouldBlock).To(BeTrue())
+			})
+
+			It("ignores backticks at wrong argument position", func() {
+				// Backticks in --json flag, not --body or --title
+				hookCtx := &hook.Context{
+					EventType: hook.EventTypePreToolUse,
+					ToolName:  hook.ToolTypeBash,
+					ToolInput: hook.ToolInput{
+						Command: "gh pr create --json \"$(echo test)\" --body 'safe body'",
+					},
+				}
+
+				result := v.Validate(ctx, hookCtx)
+
+				Expect(result.Passed).To(BeTrue())
+			})
+		})
 	})
 })
