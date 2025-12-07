@@ -9,7 +9,7 @@ require (
 	github.com/cockroachdb/errors v1.12.0
 	github.com/dmarkham/enumer v1.6.1
 	github.com/dustin/go-humanize v1.0.1
-	github.com/go-git/go-git/v6 v6.0.0-20251205085321-f9b6d05055e2
+	github.com/go-git/go-git/v6 v6.0.0-20251205125627-4aac0c537802
 	github.com/go-viper/mapstructure/v2 v2.4.0
 	github.com/google/go-github/v80 v80.0.0
 	github.com/hako/durafmt v0.0.0-20210608085754-5c1018a4e16b
@@ -58,7 +58,7 @@ require (
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/getsentry/sentry-go v0.27.0 // indirect
 	github.com/go-git/gcfg/v2 v2.0.2 // indirect
-	github.com/go-git/go-billy/v6 v6.0.0-20251120215217-80673c4ccbfb // indirect
+	github.com/go-git/go-billy/v6 v6.0.0-20251126203821-7f9c95185ee0 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
