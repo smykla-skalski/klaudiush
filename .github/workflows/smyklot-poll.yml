@@ -35,7 +35,7 @@ jobs:
           private-key: ${{ secrets.SMYKLOT_APP_PRIVATE_KEY }}
 
       - name: Poll reactions on open PRs
-        uses: smykla-labs/smyklot@9430b1ee32d0dbd2e395ad873caf40831e83bcea # v1.10.4
+        uses: smykla-labs/smyklot@24d988ab0acbbcf0f4e650804248f3a0b507b043 # v1.11.0
         with:
           args: poll
         env:
