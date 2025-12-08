@@ -17,32 +17,40 @@
     "security:openssf-scorecard",
     "group:linters"
   ],
+  "ignorePaths": [
+    "**/tmp/**",
+    ".github/workflows/smyklot-pr-commands.yml",
+    ".github/workflows/smyklot-poll.yml"
+  ],
   "osvVulnerabilityAlerts": true,
   "packageRules": [
     {
+      "addLabels": ["area/ci"],
+      "commitMessageTopic": "{{depName}} action",
       "description": "GitHub Actions dependencies",
       "matchManagers": ["github-actions"],
-      "addLabels": ["area/ci"],
-      "semanticCommitType": "ci",
-      "commitMessageTopic": "{{depName}} action"
+      "semanticCommitType": "ci"
     },
     {
       "description": "Group Go tool dependencies",
-      "matchManagers": ["gomod"],
+      "groupName": "Go tooling",
       "matchDepTypes": ["require"],
-      "matchPackageNames": ["/^golang.org/x/tools/"],
-      "groupName": "Go tooling"
+      "matchManagers": ["gomod"],
+      "matchPackageNames": ["/^golang.org/x/tools/"]
     },
     {
       "description": "Group golangci-lint across mise and CI workflow",
-      "matchPackageNames": ["golangci-lint", "golangci/golangci-lint"],
-      "groupName": "golangci-lint"
+      "groupName": "golangci-lint",
+      "matchPackageNames": ["golangci-lint", "golangci/golangci-lint"]
+    },
+    {
+      "description": "Smyklot action managed by sync-smyklot workflow",
+      "enabled": false,
+      "matchManagers": ["github-actions"],
+      "matchPackageNames": ["smykla-labs/smyklot"]
     }
   ],
   "vulnerabilityAlerts": {
     "automerge": true
-  },
-  "ignorePaths": [
-    "**/tmp/**"
-  ]
+  }
 }
