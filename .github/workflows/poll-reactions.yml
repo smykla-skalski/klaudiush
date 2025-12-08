@@ -1,7 +1,11 @@
-# Poll Reactions workflow for klaudiush
+---
+# Smyklot Poll workflow
 # Polls PR reactions via smyklot bot for auto-merge
+#
+# This file is managed by smykla-labs/.github org sync.
+# Do not edit manually - changes will be overwritten.
 
-name: Poll Reactions
+name: Smyklot Poll
 
 on:
   schedule:
@@ -28,7 +32,7 @@ jobs:
         uses: actions/create-github-app-token@29824e69f54612133e76f7eaac726eef6c875baf # v2.2.1
         with:
           app-id: ${{ vars.SMYKLOT_APP_ID }}
-          private-key: ${{ secrets.SMYKLOT_PRIVATE_KEY }}
+          private-key: ${{ secrets.SMYKLOT_APP_PRIVATE_KEY }}
 
       - name: Poll reactions on open PRs
         uses: smykla-labs/smyklot@776e8215ebb94953af237017938d28ab5e721cfe # v1.10.0
