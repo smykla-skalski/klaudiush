@@ -7,7 +7,7 @@ go = "1.25.5"
 
 # Go linting tool with comprehensive checks
 # https://golangci-lint.run/
-golangci-lint = "2.7.1"
+golangci-lint = "2.7.2"
 
 # Task runner
 # https://taskfile.dev/
