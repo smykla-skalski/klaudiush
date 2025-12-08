@@ -15,7 +15,11 @@ task = "3.45.5"
 
 # Markdown linter
 # https://github.com/DavidAnson/markdownlint-cli2
-"npm:markdownlint-cli2" = "0.19.1"
+markdownlint-cli2 = "0.20.0"
+
+# Ginkgo BDD test framework CLI
+# https://onsi.github.io/ginkgo/
+ginkgo = "2.27.2"
 
 # Enum code generator
 # https://github.com/dmarkham/enumer
@@ -24,10 +28,6 @@ task = "3.45.5"
 # Mock generator for Go interfaces
 # https://github.com/uber-go/mock
 "go:go.uber.org/mock/mockgen" = "v0.6.0"
-
-# Ginkgo BDD test framework CLI
-# https://onsi.github.io/ginkgo/
-"go:github.com/onsi/ginkgo/v2/ginkgo" = "v2.27.2"
 
 # Git hooks manager
 # https://github.com/evilmartians/lefthook
