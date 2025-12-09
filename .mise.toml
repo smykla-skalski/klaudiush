@@ -19,7 +19,7 @@ markdownlint-cli2 = "0.20.0"
 
 # Ginkgo BDD test framework CLI
 # https://onsi.github.io/ginkgo/
-ginkgo = "2.27.2"
+ginkgo = "2.27.3"
 
 # Enum code generator
 # https://github.com/dmarkham/enumer
