@@ -23,6 +23,8 @@
     ".github/workflows/smyklot-poll.yml"
   ],
   "osvVulnerabilityAlerts": true,
+  "gitIgnoredAuthors": ["205507218+smyklot[bot]@users.noreply.github.com"],
+  "automergeStrategy": "squash",
   "packageRules": [
     {
       "addLabels": ["area/ci"],
@@ -39,9 +41,24 @@
       "matchPackageNames": ["/^golang.org/x/tools/"]
     },
     {
-      "description": "Group golangci-lint across mise and CI workflow",
-      "groupName": "golangci-lint",
-      "matchPackageNames": ["golangci-lint", "golangci/golangci-lint"]
+      "description": [
+        " Group dependency bumps from selected GitHub sources into a single PR across managers",
+        " (e.g., mise and gomod) to avoid separate PRs per manager"
+      ],
+      "matchSourceUrls": ["https://github.com/{onsi/ginkgo,golangci/golangci-lint}"],
+      "groupName": "{{{replace 'https://github\\.com/[a-z-]+/' '' sourceUrl}}}"
+    },
+    {
+      "description": "Enable Go version updates in go.mod",
+      "matchManagers": ["gomod"],
+      "matchDepNames": ["go"],
+      "rangeStrategy": "bump"
+    },
+    {
+      "description": "Group Go version updates across mise and go.mod",
+      "groupName": "Go",
+      "matchPackageNames": ["go"],
+      "matchDatasources": ["golang-version"]
     },
     {
       "description": "Smyklot action managed by sync-smyklot workflow",
