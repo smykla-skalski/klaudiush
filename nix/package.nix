@@ -6,7 +6,7 @@ buildGoModule rec {
 
   src = lib.cleanSource ./..;
 
-  vendorHash = "sha256-2PaAIrujBZbModbgIvNK1MNO0J509IX6FICmFOH4UCA=";
+  vendorHash = "sha256-J0q6BFwhM6MNZ8euqAFhhtF6A9rNJKUG1oobngfxEPk=";
 
   subPackages = [ "cmd/klaudiush" ];
 
