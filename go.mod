@@ -19,7 +19,7 @@ require (
 	github.com/knadh/koanf/providers/file v1.2.0
 	github.com/knadh/koanf/v2 v2.3.0
 	github.com/mattn/go-runewidth v0.0.19
-	github.com/onsi/ginkgo/v2 v2.27.2
+	github.com/onsi/ginkgo/v2 v2.27.3
 	github.com/onsi/gomega v1.38.2
 	github.com/pelletier/go-toml/v2 v2.2.4
 	github.com/rogpeppe/go-internal v1.14.1
