@@ -65,6 +65,12 @@
       "enabled": false,
       "matchManagers": ["github-actions"],
       "matchPackageNames": ["smykla-labs/smyklot"]
+    },
+    {
+      "description": "Update go-git only on Monday mornings (using pinned commit SHAs as v6 is not yet GA)",
+      "extends": ["schedule:earlyMondays"],
+      "matchManagers": ["gomod"],
+      "matchPackageNames": ["github.com/go-git/go-git/v6"]
     }
   ],
   "vulnerabilityAlerts": {
