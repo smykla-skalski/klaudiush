@@ -9,7 +9,7 @@ require (
 	github.com/cockroachdb/errors v1.12.0
 	github.com/dmarkham/enumer v1.6.1
 	github.com/dustin/go-humanize v1.0.1
-	github.com/go-git/go-git/v6 v6.0.0-20251206100705-e633db5b9a34
+	github.com/go-git/go-git/v6 v6.0.0-20251210072406-9b5f6428e1da
 	github.com/go-viper/mapstructure/v2 v2.4.0
 	github.com/google/go-github/v80 v80.0.0
 	github.com/hako/durafmt v0.0.0-20210608085754-5c1018a4e16b
@@ -89,11 +89,11 @@ require (
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
-	golang.org/x/crypto v0.45.0 // indirect
+	golang.org/x/crypto v0.46.0 // indirect
 	golang.org/x/mod v0.30.0 // indirect
-	golang.org/x/net v0.47.0 // indirect
+	golang.org/x/net v0.48.0 // indirect
 	golang.org/x/sys v0.39.0 // indirect
-	golang.org/x/text v0.31.0 // indirect
+	golang.org/x/text v0.32.0 // indirect
 	golang.org/x/tools v0.39.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251022142026-3a174f9686a8 // indirect
 )
