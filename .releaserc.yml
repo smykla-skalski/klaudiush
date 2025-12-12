@@ -81,13 +81,11 @@ plugins:
         The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
         and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-  # Update version in nix/package.nix
-  - - '@semantic-release/exec'
-    - prepareCmd: sed -i 's/version = "[^"]*";/version = "${nextRelease.version}";/' nix/package.nix
+  # Note: nix/package.nix (version and hashes) is updated automatically by the
+  # update-nix-hashes job in .github/workflows/release.yml after GoReleaser uploads artifacts
 
   # Create git tag and GitHub release (GoReleaser handles the actual release)
   - - '@semantic-release/git'
     - assets:
         - CHANGELOG.md
-        - nix/package.nix
       message: 'chore(release): ${nextRelease.version} [skip ci]'

@@ -8,13 +8,8 @@
 
   outputs = { self, nixpkgs, flake-utils }:
     let
-      rev = self.rev or self.dirtyRev or "unknown";
-      shortRev = self.shortRev or self.dirtyShortRev or "unknown";
-      lastModifiedDate = self.lastModifiedDate or "unknown";
       overlay = final: prev: {
-        klaudiush = final.callPackage ./package.nix {
-          inherit rev shortRev lastModifiedDate;
-        };
+        klaudiush = final.callPackage ./package.nix { };
       };
     in
     flake-utils.lib.eachDefaultSystem (system:
