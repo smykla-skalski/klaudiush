@@ -5,6 +5,22 @@ set -euo pipefail
 readonly GITHUB_REPO="${GITHUB_REPO:-smykla-labs/klaudiush}"
 readonly RELEASE_BASE_URL="https://github.com/${GITHUB_REPO}/releases/download"
 
+# Global cleanup tracking
+declare -a CLEANUP_FILES=()
+declare -a CLEANUP_DIRS=()
+
+cleanup_all() {
+  local file dir
+  for file in "${CLEANUP_FILES[@]+"${CLEANUP_FILES[@]}"}"; do
+    [[ -f "${file}" ]] && rm -f "${file}"
+  done
+  for dir in "${CLEANUP_DIRS[@]+"${CLEANUP_DIRS[@]}"}"; do
+    [[ -d "${dir}" ]] && rm -rf "${dir}"
+  done
+}
+
+trap cleanup_all EXIT
+
 main() {
   local version="${1:-}"
 
@@ -49,7 +65,7 @@ fetch_and_hash_artifacts() {
 
   local tmp_dir
   tmp_dir="$(mktemp -d)"
-  trap 'rm -rf "${tmp_dir}"' RETURN
+  CLEANUP_DIRS+=("${tmp_dir}")
 
   echo "Fetching and hashing release artifacts..."
 
@@ -93,7 +109,7 @@ update_package_file() {
 
   local output_file
   output_file="$(mktemp)"
-  trap 'rm -f "${output_file}"' RETURN
+  CLEANUP_FILES+=("${output_file}")
 
   awk \
     -v version="${version}" \
@@ -106,17 +122,29 @@ update_package_file() {
       print "  version = \"" version "\";"
       next
     }
-    /aarch64-darwin/ && /hash = / {
-      sub(/hash = "[^"]*"/, "hash = \"" hash_aarch64_darwin "\"")
+    /aarch64-darwin = \{/ {
+      current_platform = "aarch64-darwin"
     }
-    /x86_64-darwin/ && /hash = / {
-      sub(/hash = "[^"]*"/, "hash = \"" hash_x86_64_darwin "\"")
+    /x86_64-darwin = \{/ {
+      current_platform = "x86_64-darwin"
     }
-    /x86_64-linux/ && /hash = / {
-      sub(/hash = "[^"]*"/, "hash = \"" hash_x86_64_linux "\"")
+    /x86_64-linux = \{/ {
+      current_platform = "x86_64-linux"
     }
-    /aarch64-linux/ && /hash = / {
-      sub(/hash = "[^"]*"/, "hash = \"" hash_aarch64_linux "\"")
+    /aarch64-linux = \{/ {
+      current_platform = "aarch64-linux"
+    }
+    /hash = / && current_platform != "" {
+      if (current_platform == "aarch64-darwin") {
+        sub(/hash = "[^"]*"/, "hash = \"" hash_aarch64_darwin "\"")
+      } else if (current_platform == "x86_64-darwin") {
+        sub(/hash = "[^"]*"/, "hash = \"" hash_x86_64_darwin "\"")
+      } else if (current_platform == "x86_64-linux") {
+        sub(/hash = "[^"]*"/, "hash = \"" hash_x86_64_linux "\"")
+      } else if (current_platform == "aarch64-linux") {
+        sub(/hash = "[^"]*"/, "hash = \"" hash_aarch64_linux "\"")
+      }
+      current_platform = ""
     }
     { print }
     ' "${pkg_file}" > "${output_file}"
