@@ -5,6 +5,12 @@ All notable changes to klaudiush will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.8](https://github.com/smykla-labs/klaudiush/compare/v1.12.7...v1.12.8) (2025-12-15)
+
+### Bug Fixes
+
+* **deps:** update module google.golang.org/protobuf to v1.36.11 ([#225](https://github.com/smykla-labs/klaudiush/issues/225)) ([02f0b2b](https://github.com/smykla-labs/klaudiush/commit/02f0b2bcba02cd63c87e11115bd2f8f46ea43ba9))
+
 ## [1.12.7](https://github.com/smykla-labs/klaudiush/compare/v1.12.6...v1.12.7) (2025-12-12)
 
 ### Bug Fixes
