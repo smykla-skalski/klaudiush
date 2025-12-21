@@ -5,6 +5,12 @@ All notable changes to klaudiush will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.10](https://github.com/smykla-labs/klaudiush/compare/v1.12.9...v1.12.10) (2025-12-21)
+
+### Bug Fixes
+
+* **deps:** update module github.com/knadh/koanf/providers/file to v1.2.1 ([#235](https://github.com/smykla-labs/klaudiush/issues/235)) ([4b3a9e8](https://github.com/smykla-labs/klaudiush/commit/4b3a9e885aee2ec2815131e699e1402e49249988))
+
 ## [1.12.9](https://github.com/smykla-labs/klaudiush/compare/v1.12.8...v1.12.9) (2025-12-16)
 
 ### Bug Fixes
