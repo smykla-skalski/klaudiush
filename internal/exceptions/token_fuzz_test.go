@@ -3,7 +3,7 @@ package exceptions_test
 import (
 	"testing"
 
-	"github.com/smykla-labs/klaudiush/internal/exceptions"
+	"github.com/smykla-skalski/klaudiush/internal/exceptions"
 )
 
 func FuzzTokenParse(f *testing.F) {

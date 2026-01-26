@@ -1,6 +1,6 @@
 package github
 
-import "github.com/smykla-labs/klaudiush/internal/validator"
+import "github.com/smykla-skalski/klaudiush/internal/validator"
 
 // FilterDisabledRules is exported for testing.
 var FilterDisabledRules = filterDisabledRules

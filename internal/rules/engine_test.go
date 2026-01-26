@@ -6,8 +6,8 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/smykla-labs/klaudiush/internal/rules"
-	"github.com/smykla-labs/klaudiush/pkg/hook"
+	"github.com/smykla-skalski/klaudiush/internal/rules"
+	"github.com/smykla-skalski/klaudiush/pkg/hook"
 )
 
 var _ = Describe("RuleEngine", func() {

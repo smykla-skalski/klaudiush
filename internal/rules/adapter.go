@@ -3,9 +3,9 @@ package rules
 import (
 	"context"
 
-	"github.com/smykla-labs/klaudiush/internal/validator"
-	"github.com/smykla-labs/klaudiush/pkg/hook"
-	"github.com/smykla-labs/klaudiush/pkg/logger"
+	"github.com/smykla-skalski/klaudiush/internal/validator"
+	"github.com/smykla-skalski/klaudiush/pkg/hook"
+	"github.com/smykla-skalski/klaudiush/pkg/logger"
 )
 
 // RuleValidatorAdapter adapts the rule engine for use in validators.

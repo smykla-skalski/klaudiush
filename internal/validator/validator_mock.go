@@ -13,7 +13,7 @@ import (
 	context "context"
 	reflect "reflect"
 
-	hook "github.com/smykla-labs/klaudiush/pkg/hook"
+	hook "github.com/smykla-skalski/klaudiush/pkg/hook"
 	gomock "go.uber.org/mock/gomock"
 )
 

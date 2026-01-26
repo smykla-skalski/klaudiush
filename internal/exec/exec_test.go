@@ -10,7 +10,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/smykla-labs/klaudiush/internal/exec"
+	"github.com/smykla-skalski/klaudiush/internal/exec"
 )
 
 func TestExec(t *testing.T) {

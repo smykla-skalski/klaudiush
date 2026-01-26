@@ -6,11 +6,11 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/smykla-labs/klaudiush/internal/rules"
-	"github.com/smykla-labs/klaudiush/internal/validator"
-	"github.com/smykla-labs/klaudiush/pkg/config"
-	"github.com/smykla-labs/klaudiush/pkg/hook"
-	"github.com/smykla-labs/klaudiush/pkg/logger"
+	"github.com/smykla-skalski/klaudiush/internal/rules"
+	"github.com/smykla-skalski/klaudiush/internal/validator"
+	"github.com/smykla-skalski/klaudiush/pkg/config"
+	"github.com/smykla-skalski/klaudiush/pkg/hook"
+	"github.com/smykla-skalski/klaudiush/pkg/logger"
 )
 
 // BellValidator sends a bell character to /dev/tty for all notification events.

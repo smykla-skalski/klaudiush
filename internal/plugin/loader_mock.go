@@ -12,7 +12,7 @@ package plugin
 import (
 	reflect "reflect"
 
-	config "github.com/smykla-labs/klaudiush/pkg/config"
+	config "github.com/smykla-skalski/klaudiush/pkg/config"
 	gomock "go.uber.org/mock/gomock"
 )
 

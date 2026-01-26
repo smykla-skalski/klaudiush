@@ -8,9 +8,9 @@ import (
 
 	"github.com/cockroachdb/errors"
 
-	internalconfig "github.com/smykla-labs/klaudiush/internal/config"
-	"github.com/smykla-labs/klaudiush/internal/doctor"
-	"github.com/smykla-labs/klaudiush/pkg/config"
+	internalconfig "github.com/smykla-skalski/klaudiush/internal/config"
+	"github.com/smykla-skalski/klaudiush/internal/doctor"
+	"github.com/smykla-skalski/klaudiush/pkg/config"
 )
 
 // ConfigLoader defines the interface for configuration loading operations.

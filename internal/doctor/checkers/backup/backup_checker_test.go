@@ -10,9 +10,9 @@ import (
 	. "github.com/onsi/gomega"
 	"go.uber.org/mock/gomock"
 
-	"github.com/smykla-labs/klaudiush/internal/backup"
-	"github.com/smykla-labs/klaudiush/internal/doctor"
-	backupchecker "github.com/smykla-labs/klaudiush/internal/doctor/checkers/backup"
+	"github.com/smykla-skalski/klaudiush/internal/backup"
+	"github.com/smykla-skalski/klaudiush/internal/doctor"
+	backupchecker "github.com/smykla-skalski/klaudiush/internal/doctor/checkers/backup"
 )
 
 func TestBackupChecker(t *testing.T) {

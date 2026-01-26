@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/smykla-labs/klaudiush/pkg/config"
-	"github.com/smykla-labs/klaudiush/pkg/hook"
+	"github.com/smykla-skalski/klaudiush/pkg/config"
+	"github.com/smykla-skalski/klaudiush/pkg/hook"
 )
 
 // TestIntegration_FullCrashDumpFlow tests the complete crash dump creation flow.

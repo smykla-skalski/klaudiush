@@ -6,7 +6,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/smykla-labs/klaudiush/internal/doctor"
+	"github.com/smykla-skalski/klaudiush/internal/doctor"
 )
 
 // categoryOrder defines the display order for categories

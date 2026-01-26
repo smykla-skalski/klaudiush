@@ -12,7 +12,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	internalgit "github.com/smykla-labs/klaudiush/internal/git"
+	internalgit "github.com/smykla-skalski/klaudiush/internal/git"
 )
 
 var _ = Describe("OpenRepository", func() {

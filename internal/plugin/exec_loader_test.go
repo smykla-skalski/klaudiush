@@ -11,10 +11,10 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/smykla-labs/klaudiush/internal/exec"
-	"github.com/smykla-labs/klaudiush/internal/plugin"
-	"github.com/smykla-labs/klaudiush/pkg/config"
-	pluginapi "github.com/smykla-labs/klaudiush/pkg/plugin"
+	"github.com/smykla-skalski/klaudiush/internal/exec"
+	"github.com/smykla-skalski/klaudiush/internal/plugin"
+	"github.com/smykla-skalski/klaudiush/pkg/config"
+	pluginapi "github.com/smykla-skalski/klaudiush/pkg/plugin"
 )
 
 // mockCommandRunner is a mock implementation of exec.CommandRunner for testing.

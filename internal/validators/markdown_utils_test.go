@@ -4,7 +4,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/smykla-labs/klaudiush/internal/validators"
+	"github.com/smykla-skalski/klaudiush/internal/validators"
 )
 
 var _ = Describe("MarkdownState", func() {

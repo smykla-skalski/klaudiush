@@ -4,7 +4,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/smykla-labs/klaudiush/internal/session"
+	"github.com/smykla-skalski/klaudiush/internal/session"
 )
 
 var _ = Describe("Unpoison Parser", func() {

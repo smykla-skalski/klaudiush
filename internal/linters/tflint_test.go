@@ -8,8 +8,8 @@ import (
 	. "github.com/onsi/gomega"
 	"go.uber.org/mock/gomock"
 
-	execpkg "github.com/smykla-labs/klaudiush/internal/exec"
-	"github.com/smykla-labs/klaudiush/internal/linters"
+	execpkg "github.com/smykla-skalski/klaudiush/internal/exec"
+	"github.com/smykla-skalski/klaudiush/internal/linters"
 )
 
 var errTfLintFailed = errors.New("tflint failed")

@@ -6,7 +6,7 @@ import (
 	"context"
 	"encoding/json"
 
-	execpkg "github.com/smykla-labs/klaudiush/internal/exec"
+	execpkg "github.com/smykla-skalski/klaudiush/internal/exec"
 )
 
 // oxlintFinding represents a single file's findings from oxlint JSON output

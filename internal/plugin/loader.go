@@ -3,7 +3,7 @@ package plugin
 //go:generate mockgen -source=loader.go -destination=loader_mock.go -package=plugin
 
 import (
-	"github.com/smykla-labs/klaudiush/pkg/config"
+	"github.com/smykla-skalski/klaudiush/pkg/config"
 )
 
 // Loader loads plugins from various sources (Go plugins, gRPC, exec).

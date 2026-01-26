@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/smykla-labs/klaudiush/pkg/parser"
+	"github.com/smykla-skalski/klaudiush/pkg/parser"
 )
 
 func FuzzParseGitCommand(f *testing.F) {

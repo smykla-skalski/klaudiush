@@ -100,7 +100,7 @@ Native Go plugins compiled as shared libraries.
 ```go
 package main
 
-import "github.com/smykla-labs/klaudiush/pkg/plugin"
+import "github.com/smykla-skalski/klaudiush/pkg/plugin"
 
 // MyPlugin implements the plugin.Plugin interface.
 type MyPlugin struct{}
@@ -168,7 +168,7 @@ import (
     "regexp"
     "strings"
 
-    "github.com/smykla-labs/klaudiush/pkg/plugin"
+    "github.com/smykla-skalski/klaudiush/pkg/plugin"
 )
 
 type ConfigurablePlugin struct{}
@@ -497,7 +497,7 @@ import (
     "strings"
 
     "google.golang.org/grpc"
-    pluginv1 "github.com/smykla-labs/klaudiush/api/plugin/v1"
+    pluginv1 "github.com/smykla-skalski/klaudiush/api/plugin/v1"
 )
 
 type server struct {
@@ -1123,5 +1123,5 @@ Each example includes:
 
 ## Support
 
-- **Issues**: <https://github.com/smykla-labs/klaudiush/issues>
-- **Discussions**: <https://github.com/smykla-labs/klaudiush/discussions>
+- **Issues**: <https://github.com/smykla-skalski/klaudiush/issues>
+- **Discussions**: <https://github.com/smykla-skalski/klaudiush/discussions>

@@ -12,7 +12,7 @@ package backupchecker
 import (
 	reflect "reflect"
 
-	backup "github.com/smykla-labs/klaudiush/internal/backup"
+	backup "github.com/smykla-skalski/klaudiush/internal/backup"
 	gomock "go.uber.org/mock/gomock"
 )
 

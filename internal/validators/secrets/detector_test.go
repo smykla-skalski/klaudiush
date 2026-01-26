@@ -6,8 +6,8 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/smykla-labs/klaudiush/internal/validator"
-	"github.com/smykla-labs/klaudiush/internal/validators/secrets"
+	"github.com/smykla-skalski/klaudiush/internal/validator"
+	"github.com/smykla-skalski/klaudiush/internal/validators/secrets"
 )
 
 var _ = Describe("PatternDetector", func() {

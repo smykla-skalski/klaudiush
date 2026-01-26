@@ -7,7 +7,7 @@ import (
 
 	"github.com/rogpeppe/go-internal/testscript"
 
-	gitpkg "github.com/smykla-labs/klaudiush/internal/git"
+	gitpkg "github.com/smykla-skalski/klaudiush/internal/git"
 )
 
 func TestMain(m *testing.M) {

@@ -7,8 +7,8 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/smykla-labs/klaudiush/internal/doctor"
-	"github.com/smykla-labs/klaudiush/internal/doctor/checkers/hook"
+	"github.com/smykla-skalski/klaudiush/internal/doctor"
+	"github.com/smykla-skalski/klaudiush/internal/doctor/checkers/hook"
 )
 
 func TestHook(t *testing.T) {

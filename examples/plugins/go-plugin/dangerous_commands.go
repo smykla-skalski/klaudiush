@@ -26,7 +26,7 @@ package main
 import (
 	"strings"
 
-	"github.com/smykla-labs/klaudiush/pkg/plugin"
+	"github.com/smykla-skalski/klaudiush/pkg/plugin"
 )
 
 // DangerousCommandsPlugin blocks potentially dangerous shell commands.
@@ -39,7 +39,7 @@ func (*DangerousCommandsPlugin) Info() plugin.Info {
 		Version:     "1.0.0",
 		Description: "Blocks dangerous shell commands",
 		Author:      "klaudiush",
-		URL:         "https://github.com/smykla-labs/klaudiush/examples/plugins/go-plugin",
+		URL:         "https://github.com/smykla-skalski/klaudiush/examples/plugins/go-plugin",
 	}
 }
 
@@ -60,7 +60,7 @@ func (p *DangerousCommandsPlugin) Validate(req *plugin.ValidateRequest) *plugin.
 				"DANGEROUS_CMD",
 				"Dangerous command blocked: "+blocked,
 				"Avoid destructive commands or use safer alternatives",
-				"https://github.com/smykla-labs/klaudiush/blob/main/docs/PLUGIN_GUIDE.md",
+				"https://github.com/smykla-skalski/klaudiush/blob/main/docs/PLUGIN_GUIDE.md",
 			)
 		}
 	}

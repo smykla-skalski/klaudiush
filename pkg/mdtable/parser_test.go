@@ -4,7 +4,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/smykla-labs/klaudiush/pkg/mdtable"
+	"github.com/smykla-skalski/klaudiush/pkg/mdtable"
 )
 
 var _ = Describe("Parser", func() {

@@ -8,11 +8,11 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	execpkg "github.com/smykla-labs/klaudiush/internal/exec"
-	"github.com/smykla-labs/klaudiush/internal/linters"
-	"github.com/smykla-labs/klaudiush/internal/validators/file"
-	"github.com/smykla-labs/klaudiush/pkg/hook"
-	"github.com/smykla-labs/klaudiush/pkg/logger"
+	execpkg "github.com/smykla-skalski/klaudiush/internal/exec"
+	"github.com/smykla-skalski/klaudiush/internal/linters"
+	"github.com/smykla-skalski/klaudiush/internal/validators/file"
+	"github.com/smykla-skalski/klaudiush/pkg/hook"
+	"github.com/smykla-skalski/klaudiush/pkg/logger"
 )
 
 var _ = Describe("MarkdownValidator", func() {

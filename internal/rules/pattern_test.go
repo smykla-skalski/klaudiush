@@ -6,7 +6,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/smykla-labs/klaudiush/internal/rules"
+	"github.com/smykla-skalski/klaudiush/internal/rules"
 )
 
 func TestRules(t *testing.T) {

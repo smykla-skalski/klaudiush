@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/smykla-labs/klaudiush/internal/rules"
-	"github.com/smykla-labs/klaudiush/pkg/hook"
+	"github.com/smykla-skalski/klaudiush/internal/rules"
+	"github.com/smykla-skalski/klaudiush/pkg/hook"
 )
 
 // BenchmarkPatternMatching benchmarks pattern matching performance.

@@ -8,9 +8,9 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/smykla-labs/klaudiush/internal/backup"
-	internalconfig "github.com/smykla-labs/klaudiush/internal/config"
-	"github.com/smykla-labs/klaudiush/pkg/logger"
+	"github.com/smykla-skalski/klaudiush/internal/backup"
+	internalconfig "github.com/smykla-skalski/klaudiush/internal/config"
+	"github.com/smykla-skalski/klaudiush/pkg/logger"
 )
 
 func TestMigration(t *testing.T) {

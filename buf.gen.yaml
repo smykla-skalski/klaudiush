@@ -3,7 +3,7 @@ managed:
   enabled: true
   override:
     - file_option: go_package_prefix
-      value: github.com/smykla-labs/klaudiush
+      value: github.com/smykla-skalski/klaudiush
 plugins:
   - remote: buf.build/protocolbuffers/go
     out: .

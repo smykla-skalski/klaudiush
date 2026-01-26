@@ -10,7 +10,7 @@
 //
 //	package main
 //
-//	import "github.com/smykla-labs/klaudiush/pkg/plugin"
+//	import "github.com/smykla-skalski/klaudiush/pkg/plugin"
 //
 //	type MyPlugin struct{}
 //

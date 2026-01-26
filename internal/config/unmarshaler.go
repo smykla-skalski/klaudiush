@@ -7,7 +7,7 @@ import (
 
 	"github.com/go-viper/mapstructure/v2"
 
-	"github.com/smykla-labs/klaudiush/pkg/config"
+	"github.com/smykla-skalski/klaudiush/pkg/config"
 )
 
 // CustomDecoderConfig returns a mapstructure decoder config with custom type hooks

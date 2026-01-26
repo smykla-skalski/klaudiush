@@ -110,7 +110,7 @@ changelog:
 
 release:
   github:
-    owner: smykla-labs
+    owner: smykla-skalski
     name: klaudiush
   prerelease: auto
   draft: false
@@ -124,7 +124,7 @@ release:
 
     ### Using install script (recommended)
     ```bash
-    curl -sSfL https://raw.githubusercontent.com/smykla-labs/klaudiush/main/install.sh | sh
+    curl -sSfL https://raw.githubusercontent.com/smykla-skalski/klaudiush/main/install.sh | sh
     ```
 
     ### Manual download
@@ -152,22 +152,22 @@ release:
     Build provenance attestations are available via GitHub's attestation API:
     ```bash
     gh attestation verify klaudiush_{{ .Version }}_linux_amd64.tar.gz \
-      --owner smykla-labs
+      --owner smykla-skalski
     ```
 
     ### SBOM
     Software Bill of Materials (SBOM) in CycloneDX JSON format is included with each archive (`*.sbom.json`).
 
     ---
-    **Full Changelog**: https://github.com/smykla-labs/klaudiush/compare/{{ .PreviousTag }}...{{ .Tag }}
+    **Full Changelog**: https://github.com/smykla-skalski/klaudiush/compare/{{ .PreviousTag }}...{{ .Tag }}
 
 # Homebrew tap (optional - uncomment to enable)
 # brews:
 #   - repository:
-#       owner: smykla-labs
+#       owner: smykla-skalski
 #       name: homebrew-tap
 #     directory: Formula
-#     homepage: https://github.com/smykla-labs/klaudiush
+#     homepage: https://github.com/smykla-skalski/klaudiush
 #     description: Claude Code hooks validator
 #     license: MIT
 #     install: |

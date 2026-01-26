@@ -3,9 +3,9 @@
 # Downloads and installs the latest release of klaudiush
 #
 # Usage:
-#   curl -sSfL https://raw.githubusercontent.com/smykla-labs/klaudiush/main/install.sh | sh
-#   curl -sSfL https://raw.githubusercontent.com/smykla-labs/klaudiush/main/install.sh | sh -s -- -b /custom/path
-#   curl -sSfL https://raw.githubusercontent.com/smykla-labs/klaudiush/main/install.sh | sh -s -- -v v1.0.0
+#   curl -sSfL https://raw.githubusercontent.com/smykla-skalski/klaudiush/main/install.sh | sh
+#   curl -sSfL https://raw.githubusercontent.com/smykla-skalski/klaudiush/main/install.sh | sh -s -- -b /custom/path
+#   curl -sSfL https://raw.githubusercontent.com/smykla-skalski/klaudiush/main/install.sh | sh -s -- -v v1.0.0
 #
 # Options:
 #   -b DIR    Install binary to DIR (default: ~/.local/bin)
@@ -14,7 +14,7 @@
 
 set -e
 
-GITHUB_REPO="smykla-labs/klaudiush"
+GITHUB_REPO="smykla-skalski/klaudiush"
 BINARY_NAME="klaudiush"
 DEFAULT_INSTALL_DIR="${HOME}/.local/bin"
 
@@ -64,13 +64,13 @@ Options:
 
 Examples:
     # Install latest version to ~/.local/bin
-    curl -sSfL https://raw.githubusercontent.com/smykla-labs/klaudiush/main/install.sh | sh
+    curl -sSfL https://raw.githubusercontent.com/smykla-skalski/klaudiush/main/install.sh | sh
 
     # Install specific version
-    curl -sSfL https://raw.githubusercontent.com/smykla-labs/klaudiush/main/install.sh | sh -s -- -v v1.0.0
+    curl -sSfL https://raw.githubusercontent.com/smykla-skalski/klaudiush/main/install.sh | sh -s -- -v v1.0.0
 
     # Install to custom directory
-    curl -sSfL https://raw.githubusercontent.com/smykla-labs/klaudiush/main/install.sh | sh -s -- -b /usr/local/bin
+    curl -sSfL https://raw.githubusercontent.com/smykla-skalski/klaudiush/main/install.sh | sh -s -- -b /usr/local/bin
 EOF
 }
 

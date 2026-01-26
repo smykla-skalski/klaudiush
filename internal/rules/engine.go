@@ -3,8 +3,8 @@ package rules
 import (
 	"context"
 
-	"github.com/smykla-labs/klaudiush/pkg/hook"
-	"github.com/smykla-labs/klaudiush/pkg/logger"
+	"github.com/smykla-skalski/klaudiush/pkg/hook"
+	"github.com/smykla-skalski/klaudiush/pkg/logger"
 )
 
 // RuleEngine is the main implementation of the Engine interface.

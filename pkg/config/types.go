@@ -8,7 +8,7 @@ import (
 )
 
 //go:generate enumer -type=Severity -trimprefix=Severity -transform=lower -json -text -yaml -sql
-//go:generate go run github.com/smykla-labs/klaudiush/tools/enumerfix severity_enumer.go
+//go:generate go run github.com/smykla-skalski/klaudiush/tools/enumerfix severity_enumer.go
 
 var (
 	// ErrInvalidSeverity is returned when an invalid severity value is provided.

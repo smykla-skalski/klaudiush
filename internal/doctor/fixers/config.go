@@ -6,9 +6,9 @@ import (
 
 	"github.com/cockroachdb/errors"
 
-	"github.com/smykla-labs/klaudiush/internal/config"
-	"github.com/smykla-labs/klaudiush/internal/doctor"
-	"github.com/smykla-labs/klaudiush/internal/prompt"
+	"github.com/smykla-skalski/klaudiush/internal/config"
+	"github.com/smykla-skalski/klaudiush/internal/doctor"
+	"github.com/smykla-skalski/klaudiush/internal/prompt"
 )
 
 // ConfigFixer creates missing configuration files with default values.

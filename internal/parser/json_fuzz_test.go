@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/smykla-labs/klaudiush/pkg/hook"
+	"github.com/smykla-skalski/klaudiush/pkg/hook"
 )
 
 func FuzzJSONParse(f *testing.F) {

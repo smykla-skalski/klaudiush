@@ -253,13 +253,13 @@ formatters:
   settings:
     goimports:
       local-prefixes:
-        - github.com/smykla-labs/klaudiush
+        - github.com/smykla-skalski/klaudiush
 
     gci:
       sections:
         - standard
         - default
-        - prefix(github.com/smykla-labs/klaudiush)
+        - prefix(github.com/smykla-skalski/klaudiush)
 
 issues:
   max-same-issues: 50

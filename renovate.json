@@ -64,7 +64,7 @@
       "description": "Smyklot action managed by sync-smyklot workflow",
       "enabled": false,
       "matchManagers": ["github-actions"],
-      "matchPackageNames": ["smykla-labs/smyklot"]
+      "matchPackageNames": ["smykla-skalski/smyklot"]
     },
     {
       "description": "Update go-git only on Monday mornings (using pinned commit SHAs as v6 is not yet GA)",

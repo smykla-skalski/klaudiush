@@ -4,11 +4,11 @@ import (
 	"context"
 	"strings"
 
-	"github.com/smykla-labs/klaudiush/internal/plugin"
-	"github.com/smykla-labs/klaudiush/internal/validator"
-	"github.com/smykla-labs/klaudiush/pkg/config"
-	"github.com/smykla-labs/klaudiush/pkg/hook"
-	"github.com/smykla-labs/klaudiush/pkg/logger"
+	"github.com/smykla-skalski/klaudiush/internal/plugin"
+	"github.com/smykla-skalski/klaudiush/internal/validator"
+	"github.com/smykla-skalski/klaudiush/pkg/config"
+	"github.com/smykla-skalski/klaudiush/pkg/hook"
+	"github.com/smykla-skalski/klaudiush/pkg/logger"
 )
 
 // PluginValidatorFactory creates validators from plugin configuration.

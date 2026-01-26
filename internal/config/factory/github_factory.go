@@ -3,14 +3,14 @@ package factory
 import (
 	"time"
 
-	execpkg "github.com/smykla-labs/klaudiush/internal/exec"
-	"github.com/smykla-labs/klaudiush/internal/linters"
-	"github.com/smykla-labs/klaudiush/internal/rules"
-	"github.com/smykla-labs/klaudiush/internal/validator"
-	githubvalidators "github.com/smykla-labs/klaudiush/internal/validators/github"
-	"github.com/smykla-labs/klaudiush/pkg/config"
-	"github.com/smykla-labs/klaudiush/pkg/hook"
-	"github.com/smykla-labs/klaudiush/pkg/logger"
+	execpkg "github.com/smykla-skalski/klaudiush/internal/exec"
+	"github.com/smykla-skalski/klaudiush/internal/linters"
+	"github.com/smykla-skalski/klaudiush/internal/rules"
+	"github.com/smykla-skalski/klaudiush/internal/validator"
+	githubvalidators "github.com/smykla-skalski/klaudiush/internal/validators/github"
+	"github.com/smykla-skalski/klaudiush/pkg/config"
+	"github.com/smykla-skalski/klaudiush/pkg/hook"
+	"github.com/smykla-skalski/klaudiush/pkg/logger"
 )
 
 const defaultLinterTimeout = 10 * time.Second

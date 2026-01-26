@@ -13,7 +13,7 @@ import (
 	context "context"
 	reflect "reflect"
 
-	plugin "github.com/smykla-labs/klaudiush/pkg/plugin"
+	plugin "github.com/smykla-skalski/klaudiush/pkg/plugin"
 	gomock "go.uber.org/mock/gomock"
 )
 

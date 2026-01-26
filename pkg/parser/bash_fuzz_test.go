@@ -3,7 +3,7 @@ package parser_test
 import (
 	"testing"
 
-	"github.com/smykla-labs/klaudiush/pkg/parser"
+	"github.com/smykla-skalski/klaudiush/pkg/parser"
 )
 
 func FuzzBashParse(f *testing.F) {

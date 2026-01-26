@@ -13,7 +13,7 @@ import (
 	context "context"
 	reflect "reflect"
 
-	validators "github.com/smykla-labs/klaudiush/internal/validators"
+	validators "github.com/smykla-skalski/klaudiush/internal/validators"
 	gomock "go.uber.org/mock/gomock"
 )
 

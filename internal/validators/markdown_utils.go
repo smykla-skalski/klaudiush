@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/smykla-labs/klaudiush/pkg/mdtable"
+	"github.com/smykla-skalski/klaudiush/pkg/mdtable"
 )
 
 const (

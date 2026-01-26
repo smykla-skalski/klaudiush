@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	execpkg "github.com/smykla-labs/klaudiush/internal/exec"
+	execpkg "github.com/smykla-skalski/klaudiush/internal/exec"
 )
 
 // tflintPattern matches tflint compact format: file:line:col: severity - message (rule)

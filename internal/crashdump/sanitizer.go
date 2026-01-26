@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/smykla-labs/klaudiush/pkg/config"
+	"github.com/smykla-skalski/klaudiush/pkg/config"
 )
 
 // minSecretLength is the minimum length for a value to be considered a potential secret.

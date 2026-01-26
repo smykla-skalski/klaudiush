@@ -3,7 +3,7 @@ package linters
 import (
 	"context"
 
-	execpkg "github.com/smykla-labs/klaudiush/internal/exec"
+	execpkg "github.com/smykla-skalski/klaudiush/internal/exec"
 )
 
 // OutputParser is a function that parses command output into LintFindings

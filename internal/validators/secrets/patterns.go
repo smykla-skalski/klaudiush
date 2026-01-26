@@ -4,7 +4,7 @@ package secrets
 import (
 	"regexp"
 
-	"github.com/smykla-labs/klaudiush/internal/validator"
+	"github.com/smykla-skalski/klaudiush/internal/validator"
 )
 
 // Pattern represents a secret detection pattern with metadata.

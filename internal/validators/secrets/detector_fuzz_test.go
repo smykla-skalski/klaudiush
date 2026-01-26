@@ -3,7 +3,7 @@ package secrets_test
 import (
 	"testing"
 
-	"github.com/smykla-labs/klaudiush/internal/validators/secrets"
+	"github.com/smykla-skalski/klaudiush/internal/validators/secrets"
 )
 
 func FuzzSecretsDetect(f *testing.F) {

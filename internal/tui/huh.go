@@ -3,7 +3,7 @@ package tui
 import (
 	"github.com/charmbracelet/huh"
 
-	pkgConfig "github.com/smykla-labs/klaudiush/pkg/config"
+	pkgConfig "github.com/smykla-skalski/klaudiush/pkg/config"
 )
 
 // HuhUI implements UI using charmbracelet/huh.

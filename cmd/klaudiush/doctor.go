@@ -10,17 +10,17 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/spf13/cobra"
 
-	"github.com/smykla-labs/klaudiush/internal/doctor"
-	backupchecker "github.com/smykla-labs/klaudiush/internal/doctor/checkers/backup"
-	"github.com/smykla-labs/klaudiush/internal/doctor/checkers/binary"
-	configchecker "github.com/smykla-labs/klaudiush/internal/doctor/checkers/config"
-	"github.com/smykla-labs/klaudiush/internal/doctor/checkers/hook"
-	ruleschecker "github.com/smykla-labs/klaudiush/internal/doctor/checkers/rules"
-	"github.com/smykla-labs/klaudiush/internal/doctor/checkers/tools"
-	"github.com/smykla-labs/klaudiush/internal/doctor/fixers"
-	"github.com/smykla-labs/klaudiush/internal/doctor/reporters"
-	"github.com/smykla-labs/klaudiush/internal/prompt"
-	"github.com/smykla-labs/klaudiush/pkg/logger"
+	"github.com/smykla-skalski/klaudiush/internal/doctor"
+	backupchecker "github.com/smykla-skalski/klaudiush/internal/doctor/checkers/backup"
+	"github.com/smykla-skalski/klaudiush/internal/doctor/checkers/binary"
+	configchecker "github.com/smykla-skalski/klaudiush/internal/doctor/checkers/config"
+	"github.com/smykla-skalski/klaudiush/internal/doctor/checkers/hook"
+	ruleschecker "github.com/smykla-skalski/klaudiush/internal/doctor/checkers/rules"
+	"github.com/smykla-skalski/klaudiush/internal/doctor/checkers/tools"
+	"github.com/smykla-skalski/klaudiush/internal/doctor/fixers"
+	"github.com/smykla-skalski/klaudiush/internal/doctor/reporters"
+	"github.com/smykla-skalski/klaudiush/internal/prompt"
+	"github.com/smykla-skalski/klaudiush/pkg/logger"
 )
 
 var (

@@ -38,7 +38,7 @@ import (
 
 	"google.golang.org/grpc"
 
-	pluginv1 "github.com/smykla-labs/klaudiush/api/plugin/v1"
+	pluginv1 "github.com/smykla-skalski/klaudiush/api/plugin/v1"
 )
 
 const (
@@ -65,7 +65,7 @@ func (*server) Info(_ context.Context, _ *pluginv1.InfoRequest) (*pluginv1.InfoR
 		Version:     "1.0.0",
 		Description: "Validates git operations (prevents unsafe force pushes)",
 		Author:      "klaudiush",
-		Url:         "https://github.com/smykla-labs/klaudiush/examples/plugins/grpc-go",
+		Url:         "https://github.com/smykla-skalski/klaudiush/examples/plugins/grpc-go",
 	}, nil
 }
 

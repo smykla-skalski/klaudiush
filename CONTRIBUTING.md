@@ -28,7 +28,7 @@ Check the project's README for specific prerequisites. Common requirements inclu
 3. Add upstream remote:
 
    ```bash
-   git remote add upstream https://github.com/smykla-labs/REPO_NAME.git
+   git remote add upstream https://github.com/smykla-skalski/REPO_NAME.git
    ```
 
 4. Install dependencies (if applicable):

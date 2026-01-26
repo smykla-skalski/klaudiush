@@ -8,8 +8,8 @@ import (
 
 	"github.com/cockroachdb/errors"
 
-	"github.com/smykla-labs/klaudiush/internal/doctor"
-	"github.com/smykla-labs/klaudiush/internal/prompt"
+	"github.com/smykla-skalski/klaudiush/internal/doctor"
+	"github.com/smykla-skalski/klaudiush/internal/prompt"
 )
 
 var (
@@ -107,8 +107,8 @@ func (*InstallBinaryFixer) isInKlaudiushRepo() bool {
 		if err == nil {
 			content := string(data)
 			if filepath.Base(filepath.Dir(content)) == "klaudiush" ||
-				len(content) > 0 && (content[:50] == "module github.com/smykla-labs/klaudiush" ||
-					len(content) > 42 && content[:42] == "module github.com/smykla-labs/klaudiush") {
+				len(content) > 0 && (content[:50] == "module github.com/smykla-skalski/klaudiush" ||
+					len(content) > 42 && content[:42] == "module github.com/smykla-skalski/klaudiush") {
 				return true
 			}
 		}

@@ -9,7 +9,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/smykla-labs/klaudiush/internal/doctor/settings"
+	"github.com/smykla-skalski/klaudiush/internal/doctor/settings"
 )
 
 func TestSettings(t *testing.T) {

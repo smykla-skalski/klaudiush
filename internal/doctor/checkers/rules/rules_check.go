@@ -7,10 +7,10 @@ import (
 	"slices"
 	"strings"
 
-	internalconfig "github.com/smykla-labs/klaudiush/internal/config"
-	"github.com/smykla-labs/klaudiush/internal/doctor"
-	"github.com/smykla-labs/klaudiush/pkg/config"
-	"github.com/smykla-labs/klaudiush/pkg/stringutil"
+	internalconfig "github.com/smykla-skalski/klaudiush/internal/config"
+	"github.com/smykla-skalski/klaudiush/internal/doctor"
+	"github.com/smykla-skalski/klaudiush/pkg/config"
+	"github.com/smykla-skalski/klaudiush/pkg/stringutil"
 )
 
 // RuleIssue represents an issue found in a rule configuration.

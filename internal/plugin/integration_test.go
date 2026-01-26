@@ -10,13 +10,13 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	pb "github.com/smykla-labs/klaudiush/api/plugin/v1"
-	"github.com/smykla-labs/klaudiush/internal/plugin"
-	"github.com/smykla-labs/klaudiush/internal/validator"
-	"github.com/smykla-labs/klaudiush/pkg/config"
-	"github.com/smykla-labs/klaudiush/pkg/hook"
-	"github.com/smykla-labs/klaudiush/pkg/logger"
-	pluginapi "github.com/smykla-labs/klaudiush/pkg/plugin"
+	pb "github.com/smykla-skalski/klaudiush/api/plugin/v1"
+	"github.com/smykla-skalski/klaudiush/internal/plugin"
+	"github.com/smykla-skalski/klaudiush/internal/validator"
+	"github.com/smykla-skalski/klaudiush/pkg/config"
+	"github.com/smykla-skalski/klaudiush/pkg/hook"
+	"github.com/smykla-skalski/klaudiush/pkg/logger"
+	pluginapi "github.com/smykla-skalski/klaudiush/pkg/plugin"
 )
 
 // Integration tests reuse mockGRPCServer from grpc_loader_test.go.

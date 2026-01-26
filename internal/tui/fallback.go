@@ -3,8 +3,8 @@ package tui
 import (
 	"fmt"
 
-	"github.com/smykla-labs/klaudiush/internal/prompt"
-	pkgConfig "github.com/smykla-labs/klaudiush/pkg/config"
+	"github.com/smykla-skalski/klaudiush/internal/prompt"
+	pkgConfig "github.com/smykla-skalski/klaudiush/pkg/config"
 )
 
 // FallbackUI implements UI using simple stdin/stdout prompts.

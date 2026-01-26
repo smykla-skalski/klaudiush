@@ -13,7 +13,7 @@ import (
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
 
-	"github.com/smykla-labs/klaudiush/pkg/config"
+	"github.com/smykla-skalski/klaudiush/pkg/config"
 )
 
 var (

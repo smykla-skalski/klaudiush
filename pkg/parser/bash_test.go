@@ -4,7 +4,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/smykla-labs/klaudiush/pkg/parser"
+	"github.com/smykla-skalski/klaudiush/pkg/parser"
 )
 
 var _ = Describe("BashParser", func() {
@@ -697,7 +697,7 @@ EOF`
 
 			It("tracks directory context in user's failing scenario", func() {
 				result, err := p.Parse(
-					"cd ~/Projects/github.com/smykla-labs/smyklot && " +
+					"cd ~/Projects/github.com/smykla-skalski/smyklot && " +
 						"git fetch upstream main && " +
 						"git checkout -b feat/sync-smyklot-version upstream/main",
 				)
@@ -706,21 +706,21 @@ EOF`
 
 				cdCmd := result.Commands[0]
 				Expect(cdCmd.Name).To(Equal("cd"))
-				Expect(cdCmd.Args).To(Equal([]string{"~/Projects/github.com/smykla-labs/smyklot"}))
+				Expect(cdCmd.Args).To(Equal([]string{"~/Projects/github.com/smykla-skalski/smyklot"}))
 				Expect(cdCmd.WorkingDirectory).To(BeEmpty())
 
 				fetchCmd := result.Commands[1]
 				Expect(fetchCmd.Name).To(Equal("git"))
 				Expect(fetchCmd.Args[0]).To(Equal("fetch"))
 				Expect(fetchCmd.WorkingDirectory).To(
-					Equal("~/Projects/github.com/smykla-labs/smyklot"),
+					Equal("~/Projects/github.com/smykla-skalski/smyklot"),
 				)
 
 				checkoutCmd := result.Commands[2]
 				Expect(checkoutCmd.Name).To(Equal("git"))
 				Expect(checkoutCmd.Args[0]).To(Equal("checkout"))
 				Expect(checkoutCmd.WorkingDirectory).To(
-					Equal("~/Projects/github.com/smykla-labs/smyklot"),
+					Equal("~/Projects/github.com/smykla-skalski/smyklot"),
 				)
 			})
 

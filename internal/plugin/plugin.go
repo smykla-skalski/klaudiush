@@ -6,7 +6,7 @@ package plugin
 import (
 	"context"
 
-	"github.com/smykla-labs/klaudiush/pkg/plugin"
+	"github.com/smykla-skalski/klaudiush/pkg/plugin"
 )
 
 // Plugin represents an internal plugin instance that can be invoked.

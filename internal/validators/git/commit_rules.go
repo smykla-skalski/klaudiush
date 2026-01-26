@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/smykla-labs/klaudiush/internal/validator"
+	"github.com/smykla-skalski/klaudiush/internal/validator"
 )
 
 // RuleResult contains the result of a rule validation including reference.

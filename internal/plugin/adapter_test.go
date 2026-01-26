@@ -7,11 +7,11 @@ import (
 	. "github.com/onsi/gomega"
 	"go.uber.org/mock/gomock"
 
-	"github.com/smykla-labs/klaudiush/internal/plugin"
-	"github.com/smykla-labs/klaudiush/internal/validator"
-	"github.com/smykla-labs/klaudiush/pkg/hook"
-	"github.com/smykla-labs/klaudiush/pkg/logger"
-	pluginapi "github.com/smykla-labs/klaudiush/pkg/plugin"
+	"github.com/smykla-skalski/klaudiush/internal/plugin"
+	"github.com/smykla-skalski/klaudiush/internal/validator"
+	"github.com/smykla-skalski/klaudiush/pkg/hook"
+	"github.com/smykla-skalski/klaudiush/pkg/logger"
+	pluginapi "github.com/smykla-skalski/klaudiush/pkg/plugin"
 )
 
 var _ = Describe("ValidatorAdapter", func() {
