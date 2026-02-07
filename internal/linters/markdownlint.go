@@ -12,10 +12,10 @@ import (
 
 	"github.com/cockroachdb/errors"
 
-	execpkg "github.com/smykla-skalski/klaudiush/internal/exec"
-	"github.com/smykla-skalski/klaudiush/internal/validators"
-	"github.com/smykla-skalski/klaudiush/pkg/config"
-	"github.com/smykla-skalski/klaudiush/pkg/mdtable"
+	execpkg "github.com/smykla-labs/klaudiush/internal/exec"
+	"github.com/smykla-labs/klaudiush/internal/validators"
+	"github.com/smykla-labs/klaudiush/pkg/config"
+	"github.com/smykla-labs/klaudiush/pkg/mdtable"
 )
 
 const (

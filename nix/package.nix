@@ -6,19 +6,19 @@ let
   # Platform-specific release URLs and hashes
   sources = {
     aarch64-darwin = {
-      url = "https://github.com/smykla-skalski/klaudiush/releases/download/v${version}/klaudiush_${version}_darwin_arm64.tar.gz";
+      url = "https://github.com/smykla-labs/klaudiush/releases/download/v${version}/klaudiush_${version}_darwin_arm64.tar.gz";
       hash = "sha256-jT0OuDhh+IN8ehFEjLlIAQ0ZM240VkU66ek9xHLHbvw=";
     };
     x86_64-darwin = {
-      url = "https://github.com/smykla-skalski/klaudiush/releases/download/v${version}/klaudiush_${version}_darwin_amd64.tar.gz";
+      url = "https://github.com/smykla-labs/klaudiush/releases/download/v${version}/klaudiush_${version}_darwin_amd64.tar.gz";
       hash = "sha256-SDX7Cu7AFO0f6b33ILIibNzX2GaiJWqLpPZVnZJTM1I=";
     };
     x86_64-linux = {
-      url = "https://github.com/smykla-skalski/klaudiush/releases/download/v${version}/klaudiush_${version}_linux_amd64.tar.gz";
+      url = "https://github.com/smykla-labs/klaudiush/releases/download/v${version}/klaudiush_${version}_linux_amd64.tar.gz";
       hash = "sha256-kMgp15OBWtgNyp3q0EnnqrIXIb3mf58BZAWrmb2Sl/4=";
     };
     aarch64-linux = {
-      url = "https://github.com/smykla-skalski/klaudiush/releases/download/v${version}/klaudiush_${version}_linux_arm64.tar.gz";
+      url = "https://github.com/smykla-labs/klaudiush/releases/download/v${version}/klaudiush_${version}_linux_arm64.tar.gz";
       hash = "sha256-P+AqIkqLx3caOtumrOoInlY7lMXbVmulsbeE3Be/xlU=";
     };
   };
@@ -53,7 +53,7 @@ stdenv.mkDerivation {
 
   meta = {
     description = "Validation dispatcher for Claude Code hooks";
-    homepage = "https://github.com/smykla-skalski/klaudiush";
+    homepage = "https://github.com/smykla-labs/klaudiush";
     license = lib.licenses.mit;
     mainProgram = "klaudiush";
     platforms = lib.platforms.unix;

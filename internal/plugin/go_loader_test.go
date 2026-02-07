@@ -8,9 +8,9 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/smykla-skalski/klaudiush/internal/plugin"
-	"github.com/smykla-skalski/klaudiush/pkg/config"
-	pluginapi "github.com/smykla-skalski/klaudiush/pkg/plugin"
+	"github.com/smykla-labs/klaudiush/internal/plugin"
+	"github.com/smykla-labs/klaudiush/pkg/config"
+	pluginapi "github.com/smykla-labs/klaudiush/pkg/plugin"
 )
 
 // mockGoPlugin implements the public plugin.Plugin interface for testing.

@@ -5,8 +5,8 @@ package rules
 import (
 	"context"
 
-	"github.com/smykla-skalski/klaudiush/internal/validator"
-	"github.com/smykla-skalski/klaudiush/pkg/hook"
+	"github.com/smykla-labs/klaudiush/internal/validator"
+	"github.com/smykla-labs/klaudiush/pkg/hook"
 )
 
 // ActionType represents the action to take when a rule matches.

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/smykla-skalski/klaudiush/internal/session"
-	"github.com/smykla-skalski/klaudiush/internal/validator"
+	"github.com/smykla-labs/klaudiush/internal/session"
+	"github.com/smykla-labs/klaudiush/internal/validator"
 )
 
 const (

@@ -14,10 +14,10 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 
-	pluginv1 "github.com/smykla-skalski/klaudiush/api/plugin/v1"
-	"github.com/smykla-skalski/klaudiush/pkg/config"
-	"github.com/smykla-skalski/klaudiush/pkg/logger"
-	"github.com/smykla-skalski/klaudiush/pkg/plugin"
+	pluginv1 "github.com/smykla-labs/klaudiush/api/plugin/v1"
+	"github.com/smykla-labs/klaudiush/pkg/config"
+	"github.com/smykla-labs/klaudiush/pkg/logger"
+	"github.com/smykla-labs/klaudiush/pkg/plugin"
 )
 
 const (

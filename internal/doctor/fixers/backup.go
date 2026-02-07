@@ -8,9 +8,9 @@ import (
 
 	"github.com/cockroachdb/errors"
 
-	"github.com/smykla-skalski/klaudiush/internal/backup"
-	"github.com/smykla-skalski/klaudiush/internal/doctor"
-	"github.com/smykla-skalski/klaudiush/internal/prompt"
+	"github.com/smykla-labs/klaudiush/internal/backup"
+	"github.com/smykla-labs/klaudiush/internal/doctor"
+	"github.com/smykla-labs/klaudiush/internal/prompt"
 )
 
 // BackupFixer fixes issues with the backup system.

@@ -6,8 +6,8 @@ import (
 
 	"github.com/cockroachdb/errors"
 
-	"github.com/smykla-skalski/klaudiush/internal/prompt"
-	"github.com/smykla-skalski/klaudiush/pkg/logger"
+	"github.com/smykla-labs/klaudiush/internal/prompt"
+	"github.com/smykla-labs/klaudiush/pkg/logger"
 )
 
 // Runner orchestrates health checks and fixes

@@ -9,7 +9,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/smykla-skalski/klaudiush/pkg/logger"
+	"github.com/smykla-labs/klaudiush/pkg/logger"
 )
 
 func TestLogger(t *testing.T) {
@@ -182,7 +182,7 @@ var _ = Describe("SlogAdapter", func() {
 		})
 
 		It("should not truncate long values", func() {
-			longCommand := "git -C /Users/bart.smykla@konghq.com/Projects/github.com/smykla-skalski/klaudiush add pkg/mdtable/parser.go pkg/mdtable/parser_test.go && git -C /Users/bart.smykla@konghq.com/Projects/github.com/smykla-skalski/klaudiush commit -sS -m \"fix(mdtable): prevent false positives in spacing detection\""
+			longCommand := "git -C /Users/bart.smykla@konghq.com/Projects/github.com/smykla-labs/klaudiush add pkg/mdtable/parser.go pkg/mdtable/parser_test.go && git -C /Users/bart.smykla@konghq.com/Projects/github.com/smykla-labs/klaudiush commit -sS -m \"fix(mdtable): prevent false positives in spacing detection\""
 
 			log.Info("context parsed", "command", longCommand)
 			output = buf.String()

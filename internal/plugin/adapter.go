@@ -3,10 +3,10 @@ package plugin
 import (
 	"context"
 
-	"github.com/smykla-skalski/klaudiush/internal/validator"
-	"github.com/smykla-skalski/klaudiush/pkg/hook"
-	"github.com/smykla-skalski/klaudiush/pkg/logger"
-	"github.com/smykla-skalski/klaudiush/pkg/plugin"
+	"github.com/smykla-labs/klaudiush/internal/validator"
+	"github.com/smykla-labs/klaudiush/pkg/hook"
+	"github.com/smykla-labs/klaudiush/pkg/logger"
+	"github.com/smykla-labs/klaudiush/pkg/plugin"
 )
 
 // ValidatorAdapter adapts a Plugin to the Validator interface.

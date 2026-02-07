@@ -14,8 +14,8 @@ import (
 
 	"github.com/cockroachdb/errors"
 
-	"github.com/smykla-skalski/klaudiush/pkg/config"
-	"github.com/smykla-skalski/klaudiush/pkg/logger"
+	"github.com/smykla-labs/klaudiush/pkg/config"
+	"github.com/smykla-labs/klaudiush/pkg/logger"
 )
 
 // Audit file permission constants.
@@ -39,8 +39,8 @@ const (
 	timestampDashPos = 8
 )
 
-//go:generate enumer -type=AuditAction -trimprefix=AuditAction -json -text -yaml -sql
-//go:generate go run github.com/smykla-skalski/klaudiush/tools/enumerfix audit_action_enumer.go
+//go:generate enumer -type=AuditAction -trimprefix=AuditAction -json -text -yaml -sql -output=audit_action_enumer.go
+//go:generate go run github.com/smykla-labs/klaudiush/tools/enumerfix audit_action_enumer.go
 
 // AuditAction represents the type of session action being audited.
 type AuditAction int

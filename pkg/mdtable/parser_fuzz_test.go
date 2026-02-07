@@ -3,7 +3,7 @@ package mdtable_test
 import (
 	"testing"
 
-	"github.com/smykla-skalski/klaudiush/pkg/mdtable"
+	"github.com/smykla-labs/klaudiush/pkg/mdtable"
 )
 
 func FuzzMdtableParse(f *testing.F) {

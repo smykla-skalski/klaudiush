@@ -4,7 +4,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/smykla-skalski/klaudiush/pkg/parser"
+	"github.com/smykla-labs/klaudiush/pkg/parser"
 )
 
 var _ = Describe("GitCommand", func() {
@@ -475,7 +475,7 @@ EOF
 		Context("in user's failing scenario", func() {
 			It("extracts working directory from cd command for git operations", func() {
 				result, err := p.Parse(
-					"cd ~/Projects/github.com/smykla-skalski/smyklot && git fetch upstream main",
+					"cd ~/Projects/github.com/smykla-labs/smyklot && git fetch upstream main",
 				)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(result.GitOperations).To(HaveLen(1))
@@ -484,7 +484,7 @@ EOF
 				Expect(err).NotTo(HaveOccurred())
 				Expect(gitFetch.Subcommand).To(Equal("fetch"))
 				Expect(gitFetch.GetWorkingDirectory()).To(
-					Equal("~/Projects/github.com/smykla-skalski/smyklot"),
+					Equal("~/Projects/github.com/smykla-labs/smyklot"),
 				)
 			})
 		})

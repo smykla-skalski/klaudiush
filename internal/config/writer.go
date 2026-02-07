@@ -9,8 +9,8 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/pelletier/go-toml/v2"
 
-	"github.com/smykla-skalski/klaudiush/internal/backup"
-	"github.com/smykla-skalski/klaudiush/pkg/config"
+	"github.com/smykla-labs/klaudiush/internal/backup"
+	"github.com/smykla-labs/klaudiush/pkg/config"
 )
 
 const (

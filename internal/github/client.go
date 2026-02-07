@@ -13,7 +13,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/google/go-github/v80/github"
 
-	execpkg "github.com/smykla-skalski/klaudiush/internal/exec"
+	execpkg "github.com/smykla-labs/klaudiush/internal/exec"
 )
 
 const (

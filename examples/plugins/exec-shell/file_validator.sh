@@ -79,7 +79,7 @@ if [[ "$block_on_bin" == "true" ]]; then
   "message": "Binary files are not allowed: $file_path",
   "error_code": "BIN_FILE",
   "fix_hint": "Use source code or text files instead",
-  "doc_link": "https://github.com/smykla-skalski/klaudiush/blob/main/docs/PLUGIN_GUIDE.md"
+  "doc_link": "https://github.com/smykla-labs/klaudiush/blob/main/docs/PLUGIN_GUIDE.md"
 }
 EOF
       exit 0

@@ -8,7 +8,7 @@ import (
 )
 
 //go:generate enumer -type=Status -trimprefix=Status -json -text -yaml -sql
-//go:generate go run github.com/smykla-skalski/klaudiush/tools/enumerfix status_enumer.go
+//go:generate go run github.com/smykla-labs/klaudiush/tools/enumerfix status_enumer.go
 
 // Status represents the current state of a session.
 type Status int

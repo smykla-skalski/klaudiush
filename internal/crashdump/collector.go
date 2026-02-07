@@ -10,8 +10,8 @@ import (
 	"runtime/debug"
 	"time"
 
-	"github.com/smykla-skalski/klaudiush/pkg/config"
-	"github.com/smykla-skalski/klaudiush/pkg/hook"
+	"github.com/smykla-labs/klaudiush/pkg/config"
+	"github.com/smykla-labs/klaudiush/pkg/hook"
 )
 
 const (

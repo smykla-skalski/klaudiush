@@ -6,7 +6,7 @@ import (
 	. "github.com/onsi/gomega"
 	"go.uber.org/mock/gomock"
 
-	"github.com/smykla-skalski/klaudiush/internal/git"
+	"github.com/smykla-labs/klaudiush/internal/git"
 )
 
 var _ = Describe("CachedRunner", func() {

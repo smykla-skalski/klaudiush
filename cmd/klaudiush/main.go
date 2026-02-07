@@ -10,16 +10,16 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/spf13/cobra"
 
-	"github.com/smykla-skalski/klaudiush/internal/backup"
-	internalconfig "github.com/smykla-skalski/klaudiush/internal/config"
-	"github.com/smykla-skalski/klaudiush/internal/config/factory"
-	"github.com/smykla-skalski/klaudiush/internal/crashdump"
-	"github.com/smykla-skalski/klaudiush/internal/dispatcher"
-	"github.com/smykla-skalski/klaudiush/internal/parser"
-	"github.com/smykla-skalski/klaudiush/internal/session"
-	"github.com/smykla-skalski/klaudiush/pkg/config"
-	"github.com/smykla-skalski/klaudiush/pkg/hook"
-	"github.com/smykla-skalski/klaudiush/pkg/logger"
+	"github.com/smykla-labs/klaudiush/internal/backup"
+	internalconfig "github.com/smykla-labs/klaudiush/internal/config"
+	"github.com/smykla-labs/klaudiush/internal/config/factory"
+	"github.com/smykla-labs/klaudiush/internal/crashdump"
+	"github.com/smykla-labs/klaudiush/internal/dispatcher"
+	"github.com/smykla-labs/klaudiush/internal/parser"
+	"github.com/smykla-labs/klaudiush/internal/session"
+	"github.com/smykla-labs/klaudiush/pkg/config"
+	"github.com/smykla-labs/klaudiush/pkg/hook"
+	"github.com/smykla-labs/klaudiush/pkg/logger"
 )
 
 const (

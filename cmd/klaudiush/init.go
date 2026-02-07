@@ -9,11 +9,11 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/spf13/cobra"
 
-	"github.com/smykla-skalski/klaudiush/internal/backup"
-	"github.com/smykla-skalski/klaudiush/internal/config"
-	"github.com/smykla-skalski/klaudiush/internal/git"
-	"github.com/smykla-skalski/klaudiush/internal/tui"
-	pkgConfig "github.com/smykla-skalski/klaudiush/pkg/config"
+	"github.com/smykla-labs/klaudiush/internal/backup"
+	"github.com/smykla-labs/klaudiush/internal/config"
+	"github.com/smykla-labs/klaudiush/internal/git"
+	"github.com/smykla-labs/klaudiush/internal/tui"
+	pkgConfig "github.com/smykla-labs/klaudiush/pkg/config"
 )
 
 var (

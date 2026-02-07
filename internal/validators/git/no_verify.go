@@ -3,13 +3,13 @@ package git
 import (
 	"context"
 
-	"github.com/smykla-skalski/klaudiush/internal/rules"
-	"github.com/smykla-skalski/klaudiush/internal/templates"
-	"github.com/smykla-skalski/klaudiush/internal/validator"
-	"github.com/smykla-skalski/klaudiush/pkg/config"
-	"github.com/smykla-skalski/klaudiush/pkg/hook"
-	"github.com/smykla-skalski/klaudiush/pkg/logger"
-	"github.com/smykla-skalski/klaudiush/pkg/parser"
+	"github.com/smykla-labs/klaudiush/internal/rules"
+	"github.com/smykla-labs/klaudiush/internal/templates"
+	"github.com/smykla-labs/klaudiush/internal/validator"
+	"github.com/smykla-labs/klaudiush/pkg/config"
+	"github.com/smykla-labs/klaudiush/pkg/hook"
+	"github.com/smykla-labs/klaudiush/pkg/logger"
+	"github.com/smykla-labs/klaudiush/pkg/parser"
 )
 
 // NoVerifyValidator validates that git commit commands don't use --no-verify flag

@@ -4,7 +4,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/smykla-skalski/klaudiush/pkg/config"
+	"github.com/smykla-labs/klaudiush/pkg/config"
 )
 
 // Note: Tests run as part of existing Koanf Rules Suite via TestKoanfRules

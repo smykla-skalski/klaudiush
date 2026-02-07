@@ -6,7 +6,7 @@ import (
 	"context"
 	"encoding/json"
 
-	execpkg "github.com/smykla-skalski/klaudiush/internal/exec"
+	execpkg "github.com/smykla-labs/klaudiush/internal/exec"
 )
 
 // gitleaksFinding represents a single finding from gitleaks JSON output.

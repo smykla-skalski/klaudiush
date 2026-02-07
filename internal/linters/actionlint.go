@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	execpkg "github.com/smykla-skalski/klaudiush/internal/exec"
+	execpkg "github.com/smykla-labs/klaudiush/internal/exec"
 )
 
 // actionlintPattern matches actionlint output: file:line:col: message [rule]

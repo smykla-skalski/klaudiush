@@ -1,11 +1,11 @@
 # Klaudiush
 
-[![CI](https://github.com/smykla-skalski/klaudiush/actions/workflows/ci.yml/badge.svg)](https://github.com/smykla-skalski/klaudiush/actions/workflows/ci.yml)
-[![CodeQL](https://github.com/smykla-skalski/klaudiush/actions/workflows/codeql.yml/badge.svg)](https://github.com/smykla-skalski/klaudiush/actions/workflows/codeql.yml)
-[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/smykla-skalski/klaudiush/badge)](https://scorecard.dev/viewer/?uri=github.com/smykla-skalski/klaudiush)
-[![Go Report Card](https://goreportcard.com/badge/github.com/smykla-skalski/klaudiush)](https://goreportcard.com/report/github.com/smykla-skalski/klaudiush)
+[![CI](https://github.com/smykla-labs/klaudiush/actions/workflows/ci.yml/badge.svg)](https://github.com/smykla-labs/klaudiush/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/smykla-labs/klaudiush/actions/workflows/codeql.yml/badge.svg)](https://github.com/smykla-labs/klaudiush/actions/workflows/codeql.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/smykla-labs/klaudiush/badge)](https://scorecard.dev/viewer/?uri=github.com/smykla-labs/klaudiush)
+[![Go Report Card](https://goreportcard.com/badge/github.com/smykla-labs/klaudiush)](https://goreportcard.com/report/github.com/smykla-labs/klaudiush)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![Release](https://img.shields.io/github/v/release/smykla-skalski/klaudiush)](https://github.com/smykla-skalski/klaudiush/releases/latest)
+[![Release](https://img.shields.io/github/v/release/smykla-labs/klaudiush)](https://github.com/smykla-labs/klaudiush/releases/latest)
 
 A validation dispatcher for Claude Code hooks that intercepts tool invocations and enforces git workflow standards, commit message conventions, and code quality rules.
 
@@ -28,13 +28,13 @@ Klaudiush is a Go-based validation system that runs as a PreToolUse hook in Clau
 
 ```bash
 # Install latest release
-curl -sSfL https://raw.githubusercontent.com/smykla-skalski/klaudiush/main/install.sh | sh
+curl -sSfL https://raw.githubusercontent.com/smykla-labs/klaudiush/main/install.sh | sh
 
 # Install specific version
-curl -sSfL https://raw.githubusercontent.com/smykla-skalski/klaudiush/main/install.sh | sh -s -- -v v1.0.0
+curl -sSfL https://raw.githubusercontent.com/smykla-labs/klaudiush/main/install.sh | sh -s -- -v v1.0.0
 
 # Install to custom directory
-curl -sSfL https://raw.githubusercontent.com/smykla-skalski/klaudiush/main/install.sh | sh -s -- -b /usr/local/bin
+curl -sSfL https://raw.githubusercontent.com/smykla-labs/klaudiush/main/install.sh | sh -s -- -b /usr/local/bin
 ```
 
 ### Build from Source
@@ -537,8 +537,8 @@ See the [Rules Guide](docs/RULES_GUIDE.md) for comprehensive documentation.
 
 ## Support
 
-- **Issues**: [GitHub Issues](https://github.com/smykla-skalski/klaudiush/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/smykla-skalski/klaudiush/discussions)
+- **Issues**: [GitHub Issues](https://github.com/smykla-labs/klaudiush/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/smykla-labs/klaudiush/discussions)
 - **Logs**: `~/.claude/hooks/dispatcher.log`
 
 ## License

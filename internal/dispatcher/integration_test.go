@@ -8,12 +8,12 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/smykla-skalski/klaudiush/internal/dispatcher"
-	"github.com/smykla-skalski/klaudiush/internal/exceptions"
-	"github.com/smykla-skalski/klaudiush/internal/validator"
-	"github.com/smykla-skalski/klaudiush/pkg/config"
-	"github.com/smykla-skalski/klaudiush/pkg/hook"
-	"github.com/smykla-skalski/klaudiush/pkg/logger"
+	"github.com/smykla-labs/klaudiush/internal/dispatcher"
+	"github.com/smykla-labs/klaudiush/internal/exceptions"
+	"github.com/smykla-labs/klaudiush/internal/validator"
+	"github.com/smykla-labs/klaudiush/pkg/config"
+	"github.com/smykla-labs/klaudiush/pkg/hook"
+	"github.com/smykla-labs/klaudiush/pkg/logger"
 )
 
 // mockBlockingValidator is a test validator that always blocks with a reference.

@@ -1,6 +1,6 @@
 package git
 
-import "github.com/smykla-skalski/klaudiush/pkg/parser"
+import "github.com/smykla-labs/klaudiush/pkg/parser"
 
 // Export functions for testing.
 // These functions expose internal methods for unit testing.

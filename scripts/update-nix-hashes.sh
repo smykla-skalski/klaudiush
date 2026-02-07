@@ -2,7 +2,7 @@
 # shellcheck disable=SC2034  # Namerefs appear unused to shellcheck
 set -euo pipefail
 
-readonly GITHUB_REPO="${GITHUB_REPO:-smykla-skalski/klaudiush}"
+readonly GITHUB_REPO="${GITHUB_REPO:-smykla-labs/klaudiush}"
 readonly RELEASE_BASE_URL="https://github.com/${GITHUB_REPO}/releases/download"
 
 # Global cleanup tracking

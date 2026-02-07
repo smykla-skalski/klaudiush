@@ -12,8 +12,8 @@ import (
 	"github.com/hako/durafmt"
 	"github.com/spf13/cobra"
 
-	"github.com/smykla-skalski/klaudiush/internal/crashdump"
-	"github.com/smykla-skalski/klaudiush/pkg/config"
+	"github.com/smykla-labs/klaudiush/internal/crashdump"
+	"github.com/smykla-labs/klaudiush/pkg/config"
 )
 
 const (

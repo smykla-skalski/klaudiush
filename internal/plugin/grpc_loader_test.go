@@ -11,10 +11,10 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	pluginv1 "github.com/smykla-skalski/klaudiush/api/plugin/v1"
-	"github.com/smykla-skalski/klaudiush/internal/plugin"
-	"github.com/smykla-skalski/klaudiush/pkg/config"
-	pluginpkg "github.com/smykla-skalski/klaudiush/pkg/plugin"
+	pluginv1 "github.com/smykla-labs/klaudiush/api/plugin/v1"
+	"github.com/smykla-labs/klaudiush/internal/plugin"
+	"github.com/smykla-labs/klaudiush/pkg/config"
+	pluginpkg "github.com/smykla-labs/klaudiush/pkg/plugin"
 )
 
 var _ = Describe("GRPCLoader", func() {

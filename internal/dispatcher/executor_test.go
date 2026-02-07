@@ -9,10 +9,10 @@ import (
 	. "github.com/onsi/gomega"
 	"go.uber.org/mock/gomock"
 
-	"github.com/smykla-skalski/klaudiush/internal/dispatcher"
-	"github.com/smykla-skalski/klaudiush/internal/validator"
-	"github.com/smykla-skalski/klaudiush/pkg/hook"
-	"github.com/smykla-skalski/klaudiush/pkg/logger"
+	"github.com/smykla-labs/klaudiush/internal/dispatcher"
+	"github.com/smykla-labs/klaudiush/internal/validator"
+	"github.com/smykla-labs/klaudiush/pkg/hook"
+	"github.com/smykla-labs/klaudiush/pkg/logger"
 )
 
 // testValidator is a simple test validator implementation

@@ -4,7 +4,7 @@ package config
 import (
 	"time"
 
-	"github.com/smykla-skalski/klaudiush/pkg/config"
+	"github.com/smykla-labs/klaudiush/pkg/config"
 )
 
 const (

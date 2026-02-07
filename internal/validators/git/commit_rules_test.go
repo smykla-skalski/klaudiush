@@ -6,7 +6,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/smykla-skalski/klaudiush/internal/validators/git"
+	"github.com/smykla-labs/klaudiush/internal/validators/git"
 )
 
 var _ = Describe("PRReferenceRule", func() {

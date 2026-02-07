@@ -2,7 +2,7 @@
 package tui
 
 import (
-	pkgConfig "github.com/smykla-skalski/klaudiush/pkg/config"
+	pkgConfig "github.com/smykla-labs/klaudiush/pkg/config"
 )
 
 // UI defines the interface for terminal user interface operations.

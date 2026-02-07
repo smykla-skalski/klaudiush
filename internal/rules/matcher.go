@@ -3,7 +3,7 @@ package rules
 import (
 	"strings"
 
-	"github.com/smykla-skalski/klaudiush/pkg/hook"
+	"github.com/smykla-labs/klaudiush/pkg/hook"
 )
 
 // RepoPatternMatcher matches against the repository root path.

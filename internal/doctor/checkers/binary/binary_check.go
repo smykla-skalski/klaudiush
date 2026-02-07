@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"slices"
 
-	"github.com/smykla-skalski/klaudiush/internal/doctor"
+	"github.com/smykla-labs/klaudiush/internal/doctor"
 )
 
 const (

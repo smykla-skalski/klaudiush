@@ -8,10 +8,10 @@ import (
 	. "github.com/onsi/gomega"
 	"go.uber.org/mock/gomock"
 
-	execpkg "github.com/smykla-skalski/klaudiush/internal/exec"
-	"github.com/smykla-skalski/klaudiush/internal/linters"
-	"github.com/smykla-skalski/klaudiush/internal/validators"
-	"github.com/smykla-skalski/klaudiush/pkg/config"
+	execpkg "github.com/smykla-labs/klaudiush/internal/exec"
+	"github.com/smykla-labs/klaudiush/internal/linters"
+	"github.com/smykla-labs/klaudiush/internal/validators"
+	"github.com/smykla-labs/klaudiush/pkg/config"
 )
 
 var _ = Describe("MarkdownLinter", func() {

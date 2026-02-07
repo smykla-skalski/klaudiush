@@ -8,7 +8,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 
-	"github.com/smykla-skalski/klaudiush/pkg/hook"
+	"github.com/smykla-labs/klaudiush/pkg/hook"
 )
 
 var (

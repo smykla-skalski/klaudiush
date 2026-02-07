@@ -1,12 +1,12 @@
 package factory
 
 import (
-	"github.com/smykla-skalski/klaudiush/internal/rules"
-	"github.com/smykla-skalski/klaudiush/internal/validator"
-	shellvalidators "github.com/smykla-skalski/klaudiush/internal/validators/shell"
-	"github.com/smykla-skalski/klaudiush/pkg/config"
-	"github.com/smykla-skalski/klaudiush/pkg/hook"
-	"github.com/smykla-skalski/klaudiush/pkg/logger"
+	"github.com/smykla-labs/klaudiush/internal/rules"
+	"github.com/smykla-labs/klaudiush/internal/validator"
+	shellvalidators "github.com/smykla-labs/klaudiush/internal/validators/shell"
+	"github.com/smykla-labs/klaudiush/pkg/config"
+	"github.com/smykla-labs/klaudiush/pkg/hook"
+	"github.com/smykla-labs/klaudiush/pkg/logger"
 )
 
 // ShellValidatorFactory creates shell validators from configuration.

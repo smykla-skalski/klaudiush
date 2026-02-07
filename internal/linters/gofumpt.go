@@ -6,7 +6,7 @@ import (
 	"context"
 	"strings"
 
-	execpkg "github.com/smykla-skalski/klaudiush/internal/exec"
+	execpkg "github.com/smykla-labs/klaudiush/internal/exec"
 )
 
 // GofumptOptions configures gofumpt behavior

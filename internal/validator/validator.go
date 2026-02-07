@@ -5,8 +5,8 @@ package validator
 import (
 	"context"
 
-	"github.com/smykla-skalski/klaudiush/pkg/hook"
-	"github.com/smykla-skalski/klaudiush/pkg/logger"
+	"github.com/smykla-labs/klaudiush/pkg/hook"
+	"github.com/smykla-labs/klaudiush/pkg/logger"
 )
 
 // ValidatorCategory represents the type of workload a validator performs.

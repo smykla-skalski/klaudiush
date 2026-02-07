@@ -2,10 +2,10 @@
 package factory
 
 import (
-	"github.com/smykla-skalski/klaudiush/internal/rules"
-	"github.com/smykla-skalski/klaudiush/internal/validator"
-	"github.com/smykla-skalski/klaudiush/pkg/config"
-	"github.com/smykla-skalski/klaudiush/pkg/logger"
+	"github.com/smykla-labs/klaudiush/internal/rules"
+	"github.com/smykla-labs/klaudiush/internal/validator"
+	"github.com/smykla-labs/klaudiush/pkg/config"
+	"github.com/smykla-labs/klaudiush/pkg/logger"
 )
 
 // ValidatorWithPredicate pairs a validator with its registration predicate.

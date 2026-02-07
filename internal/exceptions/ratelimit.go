@@ -11,8 +11,8 @@ import (
 
 	"github.com/cockroachdb/errors"
 
-	"github.com/smykla-skalski/klaudiush/pkg/config"
-	"github.com/smykla-skalski/klaudiush/pkg/logger"
+	"github.com/smykla-labs/klaudiush/pkg/config"
+	"github.com/smykla-labs/klaudiush/pkg/logger"
 )
 
 // File permission constants.

@@ -6,7 +6,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/smykla-skalski/klaudiush/pkg/hook"
+	"github.com/smykla-labs/klaudiush/pkg/hook"
 )
 
 const (

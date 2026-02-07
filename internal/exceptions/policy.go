@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/smykla-skalski/klaudiush/pkg/config"
+	"github.com/smykla-labs/klaudiush/pkg/config"
 )
 
 // DefaultPolicy provides default policy settings when no explicit policy exists.

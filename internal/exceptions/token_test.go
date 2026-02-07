@@ -4,7 +4,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/smykla-skalski/klaudiush/internal/exceptions"
+	"github.com/smykla-labs/klaudiush/internal/exceptions"
 )
 
 var _ = Describe("Token Parser", func() {

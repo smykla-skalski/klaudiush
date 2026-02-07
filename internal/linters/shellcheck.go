@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"strconv"
 
-	execpkg "github.com/smykla-skalski/klaudiush/internal/exec"
+	execpkg "github.com/smykla-labs/klaudiush/internal/exec"
 )
 
 // shellcheckFinding represents a single finding from shellcheck JSON output

@@ -3,7 +3,7 @@ package crashdump
 import (
 	"testing"
 
-	"github.com/smykla-skalski/klaudiush/pkg/config"
+	"github.com/smykla-labs/klaudiush/pkg/config"
 )
 
 func TestNewSanitizer(t *testing.T) {

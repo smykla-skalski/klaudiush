@@ -5,8 +5,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/smykla-skalski/klaudiush/internal/doctor"
-	"github.com/smykla-skalski/klaudiush/internal/exec"
+	"github.com/smykla-labs/klaudiush/internal/doctor"
+	"github.com/smykla-labs/klaudiush/internal/exec"
 )
 
 // ToolChecker checks for optional tool dependencies

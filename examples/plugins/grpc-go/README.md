@@ -100,7 +100,7 @@ Expected output:
   "version": "1.0.0",
   "description": "Validates git operations (prevents unsafe force pushes)",
   "author": "klaudiush",
-  "url": "https://github.com/smykla-skalski/klaudiush/examples/plugins/grpc-go"
+  "url": "https://github.com/smykla-labs/klaudiush/examples/plugins/grpc-go"
 }
 ```
 

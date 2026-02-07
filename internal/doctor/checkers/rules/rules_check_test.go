@@ -8,8 +8,8 @@ import (
 	. "github.com/onsi/gomega"
 	"go.uber.org/mock/gomock"
 
-	"github.com/smykla-skalski/klaudiush/internal/doctor"
-	"github.com/smykla-skalski/klaudiush/pkg/config"
+	"github.com/smykla-labs/klaudiush/internal/doctor"
+	"github.com/smykla-labs/klaudiush/pkg/config"
 )
 
 func TestRulesChecker(t *testing.T) {

@@ -8,11 +8,11 @@ import (
 
 	"github.com/cockroachdb/errors"
 
-	internalconfig "github.com/smykla-skalski/klaudiush/internal/config"
-	"github.com/smykla-skalski/klaudiush/internal/doctor"
-	ruleschecker "github.com/smykla-skalski/klaudiush/internal/doctor/checkers/rules"
-	"github.com/smykla-skalski/klaudiush/internal/prompt"
-	"github.com/smykla-skalski/klaudiush/pkg/config"
+	internalconfig "github.com/smykla-labs/klaudiush/internal/config"
+	"github.com/smykla-labs/klaudiush/internal/doctor"
+	ruleschecker "github.com/smykla-labs/klaudiush/internal/doctor/checkers/rules"
+	"github.com/smykla-labs/klaudiush/internal/prompt"
+	"github.com/smykla-labs/klaudiush/pkg/config"
 )
 
 const (

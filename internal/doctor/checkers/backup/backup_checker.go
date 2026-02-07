@@ -9,8 +9,8 @@ import (
 
 	"github.com/cockroachdb/errors"
 
-	"github.com/smykla-skalski/klaudiush/internal/backup"
-	"github.com/smykla-skalski/klaudiush/internal/doctor"
+	"github.com/smykla-labs/klaudiush/internal/backup"
+	"github.com/smykla-labs/klaudiush/internal/doctor"
 )
 
 // StorageProvider provides access to backup storage.

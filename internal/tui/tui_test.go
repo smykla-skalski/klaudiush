@@ -4,7 +4,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/smykla-skalski/klaudiush/internal/tui"
+	"github.com/smykla-labs/klaudiush/internal/tui"
 )
 
 var _ = Describe("TUI", func() {

@@ -9,10 +9,10 @@ import (
 	. "github.com/onsi/gomega"
 	"go.uber.org/mock/gomock"
 
-	internalconfig "github.com/smykla-skalski/klaudiush/internal/config"
-	"github.com/smykla-skalski/klaudiush/internal/doctor"
-	configchecker "github.com/smykla-skalski/klaudiush/internal/doctor/checkers/config"
-	"github.com/smykla-skalski/klaudiush/pkg/config"
+	internalconfig "github.com/smykla-labs/klaudiush/internal/config"
+	"github.com/smykla-labs/klaudiush/internal/doctor"
+	configchecker "github.com/smykla-labs/klaudiush/internal/doctor/checkers/config"
+	"github.com/smykla-labs/klaudiush/pkg/config"
 )
 
 func TestConfig(t *testing.T) {

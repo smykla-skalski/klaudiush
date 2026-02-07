@@ -9,8 +9,8 @@ import (
 	. "github.com/onsi/gomega"
 	"go.uber.org/mock/gomock"
 
-	"github.com/smykla-skalski/klaudiush/internal/doctor"
-	"github.com/smykla-skalski/klaudiush/internal/prompt"
+	"github.com/smykla-labs/klaudiush/internal/doctor"
+	"github.com/smykla-labs/klaudiush/internal/prompt"
 )
 
 var _ = Describe("RulesFixer", func() {

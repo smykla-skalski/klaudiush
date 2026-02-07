@@ -6,7 +6,7 @@ import (
 	"context"
 	"encoding/json"
 
-	execpkg "github.com/smykla-skalski/klaudiush/internal/exec"
+	execpkg "github.com/smykla-labs/klaudiush/internal/exec"
 )
 
 // ruffFinding represents a single finding from ruff JSON output

@@ -12,10 +12,10 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/spf13/cobra"
 
-	"github.com/smykla-skalski/klaudiush/internal/backup"
-	internalconfig "github.com/smykla-skalski/klaudiush/internal/config"
-	"github.com/smykla-skalski/klaudiush/pkg/config"
-	"github.com/smykla-skalski/klaudiush/pkg/logger"
+	"github.com/smykla-labs/klaudiush/internal/backup"
+	internalconfig "github.com/smykla-labs/klaudiush/internal/config"
+	"github.com/smykla-labs/klaudiush/pkg/config"
+	"github.com/smykla-labs/klaudiush/pkg/logger"
 )
 
 // Backup command flags.

@@ -8,9 +8,9 @@ import (
 
 	"github.com/cockroachdb/errors"
 
-	"github.com/smykla-skalski/klaudiush/internal/doctor"
-	"github.com/smykla-skalski/klaudiush/internal/doctor/settings"
-	"github.com/smykla-skalski/klaudiush/internal/prompt"
+	"github.com/smykla-labs/klaudiush/internal/doctor"
+	"github.com/smykla-labs/klaudiush/internal/doctor/settings"
+	"github.com/smykla-labs/klaudiush/internal/prompt"
 )
 
 const (
