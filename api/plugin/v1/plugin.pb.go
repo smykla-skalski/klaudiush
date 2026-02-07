@@ -401,7 +401,7 @@ const file_plugin_v1_plugin_proto_rawDesc = "" +
 	"\x0fValidatorPlugin\x127\n" +
 	"\x04Info\x12\x16.plugin.v1.InfoRequest\x1a\x17.plugin.v1.InfoResponse\x12C\n" +
 	"\bValidate\x12\x1a.plugin.v1.ValidateRequest\x1a\x1b.plugin.v1.ValidateResponseB\x96\x01\n" +
-	"\rcom.plugin.v1B\vPluginProtoP\x01Z3github.com/smykla-skalski/klaudiush/plugin/v1;pluginv1\xa2\x02\x03PXX\xaa\x02\tPlugin.V1\xca\x02\tPlugin\\V1\xe2\x02\x15Plugin\\V1\\GPBMetadata\xea\x02\n" +
+	"\rcom.plugin.v1B\vPluginProtoP\x01Z3github.com/smykla-labs/klaudiush/plugin/v1;pluginv1\xa2\x02\x03PXX\xaa\x02\tPlugin.V1\xca\x02\tPlugin\\V1\xe2\x02\x15Plugin\\V1\\GPBMetadata\xea\x02\n" +
 	"Plugin::V1b\x06proto3"
 
 var (

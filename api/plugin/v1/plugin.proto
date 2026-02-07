@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package plugin.v1;
 
-option go_package = "github.com/smykla-labs/klaudiush/api/plugin/v1;pluginv1";
+option go_package = "github.com/smykla-skalski/klaudiush/api/plugin/v1;pluginv1";
 
 // ValidatorPlugin defines the gRPC service for external validator plugins.
 service ValidatorPlugin {

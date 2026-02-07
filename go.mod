@@ -1,4 +1,4 @@
-module github.com/smykla-labs/klaudiush
+module github.com/smykla-skalski/klaudiush
 
 go 1.25.5
 
