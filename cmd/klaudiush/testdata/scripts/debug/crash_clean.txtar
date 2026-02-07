@@ -3,11 +3,11 @@
 
 mkdir -p .klaudiush/crash_dumps
 
-# Create multiple test crash dumps (all recent, so age pruning won't affect them)
-cp crash1.json .klaudiush/crash_dumps/crash-20251201T120000-test1.json
-cp crash2.json .klaudiush/crash_dumps/crash-20251202T120001-test2.json
-cp crash3.json .klaudiush/crash_dumps/crash-20251203T120002-test3.json
-cp crash4.json .klaudiush/crash_dumps/crash-20251204T120003-test4.json
+# Create multiple test crash dumps (using very recent timestamps to avoid age-based pruning)
+cp crash1.json .klaudiush/crash_dumps/crash-20260207T120000-test1.json
+cp crash2.json .klaudiush/crash_dumps/crash-20260207T120001-test2.json
+cp crash3.json .klaudiush/crash_dumps/crash-20260207T120002-test3.json
+cp crash4.json .klaudiush/crash_dumps/crash-20260207T120003-test4.json
 
 # Set config to keep only 2 dumps
 mkdir -p .klaudiush
@@ -19,10 +19,10 @@ stdout 'Crash Dumps Cleanup'
 stdout 'Removed: 2 dump\(s\)'
 
 # Verify oldest dumps are removed (keeping only newest 2)
-! exists .klaudiush/crash_dumps/crash-20251201T120000-test1.json
-! exists .klaudiush/crash_dumps/crash-20251202T120001-test2.json
-exists .klaudiush/crash_dumps/crash-20251203T120002-test3.json
-exists .klaudiush/crash_dumps/crash-20251204T120003-test4.json
+! exists .klaudiush/crash_dumps/crash-20260207T120000-test1.json
+! exists .klaudiush/crash_dumps/crash-20260207T120001-test2.json
+exists .klaudiush/crash_dumps/crash-20260207T120002-test3.json
+exists .klaudiush/crash_dumps/crash-20260207T120003-test4.json
 
 -- config.toml --
 [crash_dump]
@@ -32,8 +32,8 @@ max_age_days = 0
 
 -- crash1.json --
 {
-  "id": "crash-20251201T120000-test1",
-  "timestamp": "2025-12-01T12:00:00Z",
+  "id": "crash-20260207T120000-test1",
+  "timestamp": "2026-02-07T12:00:00Z",
   "panic_value": "test 1",
   "stack_trace": "test",
   "runtime": {"goos": "darwin", "goarch": "arm64", "go_version": "go1.23.0", "num_goroutine": 1, "num_cpu": 8},
@@ -42,8 +42,8 @@ max_age_days = 0
 
 -- crash2.json --
 {
-  "id": "crash-20251202T120001-test2",
-  "timestamp": "2025-12-02T12:00:01Z",
+  "id": "crash-20260207T120001-test2",
+  "timestamp": "2026-02-07T12:00:01Z",
   "panic_value": "test 2",
   "stack_trace": "test",
   "runtime": {"goos": "darwin", "goarch": "arm64", "go_version": "go1.23.0", "num_goroutine": 1, "num_cpu": 8},
@@ -52,8 +52,8 @@ max_age_days = 0
 
 -- crash3.json --
 {
-  "id": "crash-20251203T120002-test3",
-  "timestamp": "2025-12-03T12:00:02Z",
+  "id": "crash-20260207T120002-test3",
+  "timestamp": "2026-02-07T12:00:02Z",
   "panic_value": "test 3",
   "stack_trace": "test",
   "runtime": {"goos": "darwin", "goarch": "arm64", "go_version": "go1.23.0", "num_goroutine": 1, "num_cpu": 8},
@@ -62,8 +62,8 @@ max_age_days = 0
 
 -- crash4.json --
 {
-  "id": "crash-20251204T120003-test4",
-  "timestamp": "2025-12-04T12:00:03Z",
+  "id": "crash-20260207T120003-test4",
+  "timestamp": "2026-02-07T12:00:03Z",
   "panic_value": "test 4",
   "stack_trace": "test",
   "runtime": {"goos": "darwin", "goarch": "arm64", "go_version": "go1.23.0", "num_goroutine": 1, "num_cpu": 8},

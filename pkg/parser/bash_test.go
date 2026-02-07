@@ -706,7 +706,9 @@ EOF`
 
 				cdCmd := result.Commands[0]
 				Expect(cdCmd.Name).To(Equal("cd"))
-				Expect(cdCmd.Args).To(Equal([]string{"~/Projects/github.com/smykla-skalski/smyklot"}))
+				Expect(cdCmd.Args).To(Equal(
+					[]string{"~/Projects/github.com/smykla-skalski/smyklot"},
+				))
 				Expect(cdCmd.WorkingDirectory).To(BeEmpty())
 
 				fetchCmd := result.Commands[1]
