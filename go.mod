@@ -7,7 +7,7 @@ require (
 	github.com/bmatcuk/doublestar/v4 v4.9.1
 	github.com/charmbracelet/huh v0.8.0
 	github.com/cockroachdb/errors v1.12.0
-	github.com/dmarkham/enumer v1.6.1
+	github.com/dmarkham/enumer v1.6.3
 	github.com/dustin/go-humanize v1.0.1
 	github.com/go-git/go-git/v6 v6.0.0-20251212081956-e83cbb9651e8
 	github.com/go-viper/mapstructure/v2 v2.4.0
