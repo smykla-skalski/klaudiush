@@ -2,7 +2,7 @@
 # Sync Trigger workflow
 # Detects changes to org-synced files and triggers re-sync
 #
-# This file is managed by smykla-labs/.github org sync.
+# This file is managed by smykla-skalski/.github org sync.
 # Do not edit manually - changes will be overwritten.
 
 name: Sync Trigger
