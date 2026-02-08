@@ -1,6 +1,6 @@
-# Contributing to Smykla Labs Projects
+# Contributing to Smykla Skalski Projects
 
-Thank you for your interest in contributing! This document provides guidelines and instructions for contributing to Smykla Labs projects.
+Thank you for your interest in contributing! This document provides guidelines and instructions for contributing to Smykla Skalski projects.
 
 ## Code of Conduct
 
