@@ -23,7 +23,7 @@ ginkgo = "2.28.1"
 
 # Enum code generator
 # https://github.com/dmarkham/enumer
-"go:github.com/dmarkham/enumer" = "1.6.1"
+"go:github.com/dmarkham/enumer" = "1.6.3"
 
 # Mock generator for Go interfaces
 # https://github.com/uber-go/mock
