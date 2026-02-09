@@ -5,6 +5,22 @@ All notable changes to klaudiush will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.12](https://github.com/smykla-skalski/klaudiush/compare/v1.12.11...v1.12.12) (2026-02-09)
+
+### Bug Fixes
+
+* **deps:** update ginkgo to v2.28.1 ([#246](https://github.com/smykla-skalski/klaudiush/issues/246)) ([499c810](https://github.com/smykla-skalski/klaudiush/commit/499c810686656389baf2dd2e140a71e562239e40))
+* **deps:** update module github.com/bmatcuk/doublestar/v4 to v4.10.0 ([#250](https://github.com/smykla-skalski/klaudiush/issues/250)) ([783456a](https://github.com/smykla-skalski/klaudiush/commit/783456a72844f460ca81a0a33e5d475ca8cf2e88))
+* **deps:** update module github.com/dmarkham/enumer to v1.6.3 ([#265](https://github.com/smykla-skalski/klaudiush/issues/265)) ([8ca49e4](https://github.com/smykla-skalski/klaudiush/commit/8ca49e495db8d7f3f011617fc07a33277a82c60f))
+* **deps:** update module github.com/go-git/go-git/v6 to v6.0.0-20260206150416-f623c7555599 ([#238](https://github.com/smykla-skalski/klaudiush/issues/238)) ([4a7ce69](https://github.com/smykla-skalski/klaudiush/commit/4a7ce69a956167da1ff64e53d2866b52ff6eedbb))
+* **deps:** update module github.com/go-viper/mapstructure/v2 to v2.5.0 ([#252](https://github.com/smykla-skalski/klaudiush/issues/252)) ([0bc1d14](https://github.com/smykla-skalski/klaudiush/commit/0bc1d14bd29ebed27db4cd71d0976f130e032217))
+* **deps:** update module github.com/google/go-github/v80 to v82 ([#269](https://github.com/smykla-skalski/klaudiush/issues/269)) ([cb7be52](https://github.com/smykla-skalski/klaudiush/commit/cb7be5211184335e5873270bd5459d8dcd61188d))
+* **deps:** update module github.com/knadh/koanf/v2 to v2.3.2 ([#266](https://github.com/smykla-skalski/klaudiush/issues/266)) ([ac39d7d](https://github.com/smykla-skalski/klaudiush/commit/ac39d7dae0ec3ebc1f3ca51f003e2f5efbfdf78e))
+* **deps:** update module github.com/onsi/gomega to v1.39.1 ([#247](https://github.com/smykla-skalski/klaudiush/issues/247)) ([50418b1](https://github.com/smykla-skalski/klaudiush/commit/50418b1fd812f8bd1c642f7f58587a46c14cdd51))
+* **deps:** update module golang.org/x/term to v0.39.0 ([#249](https://github.com/smykla-skalski/klaudiush/issues/249)) ([8acaaec](https://github.com/smykla-skalski/klaudiush/commit/8acaaec71ed6bfb8027d12e66e648ff2de1e04a6))
+* **deps:** update module google.golang.org/grpc to v1.78.0 ([#239](https://github.com/smykla-skalski/klaudiush/issues/239)) ([58da712](https://github.com/smykla-skalski/klaudiush/commit/58da7123f242c720df79d53bdf2f5c5301b10189))
+* **proto:** update module path after org rename ([a7630b8](https://github.com/smykla-skalski/klaudiush/commit/a7630b8f8642fb191ae496bc6e8168e2f2e07c05))
+
 ## [1.12.11](https://github.com/smykla-skalski/klaudiush/compare/v1.12.10...v1.12.11) (2026-02-08)
 
 ### Bug Fixes
