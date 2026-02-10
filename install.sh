@@ -94,12 +94,22 @@ detect_arch() {
 }
 
 get_latest_version() {
-    version=$(curl -fsSL "https://api.github.com/repos/${GITHUB_REPO}/releases/latest" | \
-        grep '"tag_name":' | \
-        sed -E 's/.*"([^"]+)".*/\1/')
+    # Fetch latest release info from GitHub API
+    response=$(curl -fsSL "https://api.github.com/repos/${GITHUB_REPO}/releases/latest" 2>&1)
+    if [ $? -ne 0 ]; then
+        error "Failed to fetch release information from GitHub API. Check your internet connection."
+    fi
+
+    # Extract tag_name from JSON response
+    version=$(echo "$response" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
 
     if [ -z "$version" ]; then
-        error "Failed to get latest version from GitHub"
+        error "Failed to parse version from GitHub API response. The API response format may have changed."
+    fi
+
+    # Validate version format (should start with 'v' followed by numbers)
+    if ! echo "$version" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+'; then
+        error "Invalid version format received: ${version}"
     fi
 
     echo "$version"
@@ -129,12 +139,40 @@ download_and_install() {
     info "Downloading ${archive_name}..."
 
     # Create temp directory
-    tmp_dir=$(mktemp -d)
+    tmp_dir=$(mktemp -d 2>/dev/null)
+    if [ -z "$tmp_dir" ] || [ ! -d "$tmp_dir" ]; then
+        error "Failed to create temporary directory. Check /tmp permissions and available disk space."
+    fi
     trap 'rm -rf "$tmp_dir"' EXIT
 
-    # Download archive
-    if ! curl -fsSL -o "${tmp_dir}/${archive_name}" "$download_url"; then
-        error "Failed to download ${download_url}"
+    # Download archive with retry logic (3 attempts)
+    max_retries=3
+    retry_delay=2
+    attempt=1
+
+    while [ $attempt -le $max_retries ]; do
+        if curl -fsSL -o "${tmp_dir}/${archive_name}" "$download_url"; then
+            # Verify downloaded file is not empty
+            if [ -s "${tmp_dir}/${archive_name}" ]; then
+                break
+            else
+                warn "Downloaded file is empty (attempt ${attempt}/${max_retries})"
+            fi
+        else
+            warn "Download failed (attempt ${attempt}/${max_retries})"
+        fi
+
+        if [ $attempt -lt $max_retries ]; then
+            info "Retrying in ${retry_delay} seconds..."
+            sleep $retry_delay
+        fi
+
+        attempt=$((attempt + 1))
+    done
+
+    # Final check after all retries
+    if [ ! -s "${tmp_dir}/${archive_name}" ]; then
+        error "Failed to download ${download_url} after ${max_retries} attempts. Check your internet connection and that the release exists."
     fi
 
     # Verify checksum
@@ -143,15 +181,27 @@ download_and_install() {
         info "Verifying checksum..."
         cd "$tmp_dir"
 
-        if command -v sha256sum >/dev/null 2>&1; then
-            grep "  ${archive_name}$" checksums.txt | sha256sum -c - >/dev/null 2>&1 || \
-                error "Checksum verification failed"
-        elif command -v shasum >/dev/null 2>&1; then
-            grep "  ${archive_name}$" checksums.txt | shasum -a 256 -c - >/dev/null 2>&1 || \
-                error "Checksum verification failed"
-        else
-            warn "No checksum tool available, skipping verification"
+        # Extract expected checksum for this archive (exact match only)
+        expected_line=$(grep "  ${archive_name}$" checksums.txt)
+
+        if [ -z "$expected_line" ]; then
+            error "Archive '${archive_name}' not found in checksums.txt. This may indicate a corrupted download or version mismatch."
         fi
+
+        # Verify checksum using available tool
+        if command -v sha256sum >/dev/null 2>&1; then
+            if ! echo "$expected_line" | sha256sum -c - 2>&1 | grep -q "OK"; then
+                error "Checksum verification failed for ${archive_name}. Expected checksum does not match downloaded file."
+            fi
+        elif command -v shasum >/dev/null 2>&1; then
+            if ! echo "$expected_line" | shasum -a 256 -c - 2>&1 | grep -q "OK"; then
+                error "Checksum verification failed for ${archive_name}. Expected checksum does not match downloaded file."
+            fi
+        else
+            warn "No checksum tool available (sha256sum or shasum), skipping verification"
+        fi
+
+        info "Checksum verified successfully"
         cd - >/dev/null
     else
         warn "Checksums not available, skipping verification"
@@ -162,21 +212,32 @@ download_and_install() {
     cd "$tmp_dir"
 
     if [ "$ext" = "zip" ]; then
-        unzip -q "${archive_name}"
+        if ! unzip -q "${archive_name}"; then
+            error "Failed to extract ${archive_name}. Archive may be corrupted."
+        fi
     else
-        tar -xzf "${archive_name}"
+        if ! tar -xzf "${archive_name}"; then
+            error "Failed to extract ${archive_name}. Archive may be corrupted."
+        fi
+    fi
+
+    # Verify binary exists in archive
+    if [ ! -f "$binary" ]; then
+        error "Binary '${binary}' not found in archive. Expected files may be missing or archive structure may have changed."
     fi
 
     # Install binary
-    mkdir -p "$install_dir"
-
-    if [ -f "$binary" ]; then
-        mv "$binary" "${install_dir}/${BINARY_NAME}"
-    else
-        error "Binary not found in archive"
+    if ! mkdir -p "$install_dir"; then
+        error "Failed to create installation directory: ${install_dir}"
     fi
 
-    chmod +x "${install_dir}/${BINARY_NAME}"
+    if ! mv "$binary" "${install_dir}/${BINARY_NAME}"; then
+        error "Failed to install binary to ${install_dir}/${BINARY_NAME}. Check directory permissions."
+    fi
+
+    if ! chmod +x "${install_dir}/${BINARY_NAME}"; then
+        error "Failed to make binary executable at ${install_dir}/${BINARY_NAME}"
+    fi
 
     cd - >/dev/null
 }
