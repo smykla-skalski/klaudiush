@@ -144,10 +144,10 @@ download_and_install() {
         cd "$tmp_dir"
 
         if command -v sha256sum >/dev/null 2>&1; then
-            grep "${archive_name}" checksums.txt | sha256sum -c - >/dev/null 2>&1 || \
+            grep "  ${archive_name}$" checksums.txt | sha256sum -c - >/dev/null 2>&1 || \
                 error "Checksum verification failed"
         elif command -v shasum >/dev/null 2>&1; then
-            grep "${archive_name}" checksums.txt | shasum -a 256 -c - >/dev/null 2>&1 || \
+            grep "  ${archive_name}$" checksums.txt | shasum -a 256 -c - >/dev/null 2>&1 || \
                 error "Checksum verification failed"
         else
             warn "No checksum tool available, skipping verification"
