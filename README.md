@@ -24,7 +24,30 @@ Klaudiush is a Go-based validation system that runs as a PreToolUse hook in Clau
 
 ## Installation
 
-### Quick Install (Recommended)
+Choose your preferred method:
+
+- **Homebrew** (macOS/Linux) - Recommended for macOS users, includes shell completions
+- **Install Script** (Linux/macOS/Windows) - Single command, works everywhere
+- **Nix** (NixOS/Linux/macOS) - Declarative, reproducible
+- **Build from Source** - Latest development version
+
+### Homebrew (macOS/Linux)
+
+```bash
+brew install smykla-skalski/tap/klaudiush
+```
+
+**Post-install setup:**
+
+```bash
+# Run interactive setup wizard
+klaudiush init --global
+
+# Verify installation
+klaudiush doctor
+```
+
+### Install Script
 
 ```bash
 # Install latest release
