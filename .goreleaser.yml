@@ -122,26 +122,31 @@ release:
   footer: |
     ## Installation
 
-    ### Using install script (recommended)
+    ### Homebrew (macOS/Linux)
+    ```bash
+    brew install smykla-skalski/tap/klaudiush
+    ```
+
+    ### Install script
     ```bash
     curl -sSfL https://raw.githubusercontent.com/smykla-skalski/klaudiush/main/install.sh | sh
     ```
 
-    ### Manual download
-    Download the appropriate archive for your platform from the assets below, extract, and add to your PATH.
+    ### Nix
+    Available via nixpkgs or flake (`github:smykla-skalski/klaudiush?dir=nix`)
 
     ## Verification
 
     ### Checksums
-    SHA256 checksums are available in `checksums.txt`. Verify downloads:
+    SHA256 checksums are available in `checksums.txt`:
     ```bash
     sha256sum -c checksums.txt 2>&1 | grep OK
     ```
 
     ### GPG Signatures
-    All checksums are signed with GPG. Verify authenticity:
+    All checksums are signed with GPG:
     ```bash
-    # Import public key (first time only)
+    # Import public key (first time)
     gpg --keyserver keys.openpgp.org --recv-keys C1F468CD7B3DB219CFFEC99821DC3AC33C4EF676
 
     # Verify signature
@@ -149,28 +154,35 @@ release:
     ```
 
     ### SLSA Provenance
-    Build provenance attestations are available via GitHub's attestation API:
     ```bash
-    gh attestation verify klaudiush_{{ .Version }}_linux_amd64.tar.gz \
-      --owner smykla-skalski
+    gh attestation verify klaudiush_{{ .Version }}_linux_amd64.tar.gz --owner smykla-skalski
     ```
-
-    ### SBOM
-    Software Bill of Materials (SBOM) in CycloneDX JSON format is included with each archive (`*.sbom.json`).
 
     ---
     **Full Changelog**: https://github.com/smykla-skalski/klaudiush/compare/{{ .PreviousTag }}...{{ .Tag }}
 
-# Homebrew tap (optional - uncomment to enable)
-# brews:
-#   - repository:
-#       owner: smykla-skalski
-#       name: homebrew-tap
-#     directory: Formula
-#     homepage: https://github.com/smykla-skalski/klaudiush
-#     description: Claude Code hooks validator
-#     license: MIT
-#     install: |
-#       bin.install "klaudiush"
-#     test: |
-#       system "#{bin}/klaudiush", "--help"
+brews:
+  - repository:
+      owner: smykla-skalski
+      name: homebrew-tap
+      branch: main
+      token: "{{ .Env.GITHUB_TOKEN }}"
+    directory: Formula
+    homepage: https://github.com/smykla-skalski/klaudiush
+    description: "Validation dispatcher for Claude Code hooks"
+    license: MIT
+
+    install: |
+      bin.install "klaudiush"
+      generate_completions_from_executable(bin/"klaudiush", "completion")
+
+    test: |
+      system "#{bin}/klaudiush", "--version"
+      system "#{bin}/klaudiush", "doctor", "--help"
+
+    caveats: |
+      To enable klaudiush as a Claude Code hook dispatcher:
+
+        klaudiush init --global
+
+      Documentation: https://github.com/smykla-skalski/klaudiush

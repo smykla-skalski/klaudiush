@@ -24,7 +24,30 @@ Klaudiush is a Go-based validation system that runs as a PreToolUse hook in Clau
 
 ## Installation
 
-### Quick Install (Recommended)
+Choose your preferred method:
+
+- **Homebrew** (macOS/Linux) - Recommended for macOS users, includes shell completions
+- **Install Script** (Linux/macOS/Windows) - Single command, works everywhere
+- **Nix** (NixOS/Linux/macOS) - Declarative, reproducible
+- **Build from Source** - Latest development version
+
+### Homebrew (macOS/Linux)
+
+```bash
+brew install smykla-skalski/tap/klaudiush
+```
+
+**Post-install setup:**
+
+```bash
+# Run interactive setup wizard
+klaudiush init --global
+
+# Verify installation
+klaudiush doctor
+```
+
+### Install Script
 
 ```bash
 # Install latest release
@@ -35,6 +58,55 @@ curl -sSfL https://raw.githubusercontent.com/smykla-skalski/klaudiush/main/insta
 
 # Install to custom directory
 curl -sSfL https://raw.githubusercontent.com/smykla-skalski/klaudiush/main/install.sh | sh -s -- -b /usr/local/bin
+```
+
+### Nix
+
+**Using Flake:**
+
+```bash
+# Run directly
+nix run github:smykla-skalski/klaudiush?dir=nix
+
+# Install to profile
+nix profile install github:smykla-skalski/klaudiush?dir=nix
+```
+
+**Using nixpkgs:**
+
+```bash
+# Add to configuration.nix or home.nix
+environment.systemPackages = [ pkgs.klaudiush ];
+```
+
+**Home Manager Module:**
+
+```nix
+{
+  inputs.klaudiush.url = "github:smykla-skalski/klaudiush?dir=nix";
+}
+
+# In home-manager configuration
+{
+  imports = [ inputs.klaudiush.homeManagerModules.default ];
+
+  programs.klaudiush = {
+    enable = true;
+    settings = {
+      # Optional configuration
+    };
+  };
+}
+```
+
+**Post-install setup:**
+
+```bash
+# Run interactive setup wizard
+klaudiush init --global
+
+# Verify installation
+klaudiush doctor
 ```
 
 ### Build from Source
