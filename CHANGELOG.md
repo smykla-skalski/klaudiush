@@ -5,6 +5,21 @@ All notable changes to klaudiush will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.13.0](https://github.com/smykla-skalski/klaudiush/compare/v1.12.12...v1.13.0) (2026-02-10)
+
+### Features
+
+* **brew:** add homebrew tap support ([#275](https://github.com/smykla-skalski/klaudiush/issues/275)) ([27b1df7](https://github.com/smykla-skalski/klaudiush/commit/27b1df776ebc6715ddad4d2644dc606365e1acdb))
+* **install:** add comprehensive error handling ([99d5bfc](https://github.com/smykla-skalski/klaudiush/commit/99d5bfc90b6b08b35d1ee5d06f9b2bb9e3e7c9ae))
+
+### Bug Fixes
+
+* **install:** fix checksum verification pattern ([33b8015](https://github.com/smykla-skalski/klaudiush/commit/33b80155692f9ab075d795a5f16c342a4a8be27c))
+
+### Code Refactoring
+
+* **lint:** fix linter issues ([e5c94ea](https://github.com/smykla-skalski/klaudiush/commit/e5c94ea19978f93bc4936bb2b32cab2799c8b625))
+
 ## [1.12.12](https://github.com/smykla-skalski/klaudiush/compare/v1.12.11...v1.12.12) (2026-02-09)
 
 ### Bug Fixes
