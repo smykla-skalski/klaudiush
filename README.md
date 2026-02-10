@@ -60,6 +60,55 @@ curl -sSfL https://raw.githubusercontent.com/smykla-skalski/klaudiush/main/insta
 curl -sSfL https://raw.githubusercontent.com/smykla-skalski/klaudiush/main/install.sh | sh -s -- -b /usr/local/bin
 ```
 
+### Nix
+
+**Using Flake:**
+
+```bash
+# Run directly
+nix run github:smykla-skalski/klaudiush?dir=nix
+
+# Install to profile
+nix profile install github:smykla-skalski/klaudiush?dir=nix
+```
+
+**Using nixpkgs:**
+
+```bash
+# Add to configuration.nix or home.nix
+environment.systemPackages = [ pkgs.klaudiush ];
+```
+
+**Home Manager Module:**
+
+```nix
+{
+  inputs.klaudiush.url = "github:smykla-skalski/klaudiush?dir=nix";
+}
+
+# In home-manager configuration
+{
+  imports = [ inputs.klaudiush.homeManagerModules.default ];
+
+  programs.klaudiush = {
+    enable = true;
+    settings = {
+      # Optional configuration
+    };
+  };
+}
+```
+
+**Post-install setup:**
+
+```bash
+# Run interactive setup wizard
+klaudiush init --global
+
+# Verify installation
+klaudiush doctor
+```
+
 ### Build from Source
 
 ```bash
