@@ -168,6 +168,7 @@ brews:
       branch: main
       token: "{{ .Env.GITHUB_TOKEN }}"
     directory: Formula
+    commit_msg_template: "chore(formula): update klaudiush to {{ .Tag }}"
     homepage: https://github.com/smykla-skalski/klaudiush
     description: "Validation dispatcher for Claude Code hooks"
     license: MIT
