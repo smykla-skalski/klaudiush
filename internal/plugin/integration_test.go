@@ -756,7 +756,7 @@ var _ = Describe("Plugin Integration Tests", func() {
 			Expect(validators).To(HaveLen(2))
 
 			// Execute both
-			results := make([]*pluginapi.ValidateResponse, 0)
+			results := make([]*pluginapi.ValidateResponse, 0, len(validators))
 			for _, v := range validators {
 				result := v.Validate(context.Background(), hookCtx)
 				Expect(result.Passed).To(BeTrue())

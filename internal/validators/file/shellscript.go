@@ -242,10 +242,7 @@ func detectShellFromShebang(content string) string {
 	}
 
 	// Get first line
-	firstLine := content
-	if idx := strings.Index(content, "\n"); idx != -1 {
-		firstLine = content[:idx]
-	}
+	firstLine, _, _ := strings.Cut(content, "\n")
 
 	// Common shebang patterns
 	switch {

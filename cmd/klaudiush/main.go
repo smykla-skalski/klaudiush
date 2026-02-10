@@ -330,7 +330,11 @@ func performFirstRunMigration(homeDir string, log logger.Logger) error {
 	if err != nil {
 		log.Error("failed to get working directory", "error", err)
 	} else {
-		projectConfigPath := filepath.Join(workDir, internalconfig.ProjectConfigDir, internalconfig.ProjectConfigFile)
+		projectConfigPath := filepath.Join(
+			workDir,
+			internalconfig.ProjectConfigDir,
+			internalconfig.ProjectConfigFile,
+		)
 
 		if err := backupConfigIfExists(
 			projectConfigPath,

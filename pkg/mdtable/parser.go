@@ -80,7 +80,9 @@ func Parse(content string) *ParseResult {
 // parseTableAt attempts to parse a table starting at the given line index.
 // Returns the parsed table, the ending index, and any issues found.
 func parseTableAt(lines []string, startIdx int) (*ParsedTable, int, []TableIssue) {
-	issues := []TableIssue{}
+	const typicalIssueCount = 5 // Typical number of table issues
+
+	issues := make([]TableIssue, 0, typicalIssueCount)
 
 	// Need at least 2 lines for a valid table (header + separator)
 	if startIdx+1 >= len(lines) {

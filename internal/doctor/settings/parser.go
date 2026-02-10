@@ -173,20 +173,21 @@ func GetEnterprisePolicyPaths() []string {
 // GetAllSettingsPaths returns all possible Claude settings file locations
 // with their type and existence status.
 func GetAllSettingsPaths() []SettingsLocation {
-	locations := []SettingsLocation{
-		{
-			Path: GetUserSettingsPath(),
-			Type: "user",
-		},
-		{
-			Path: GetProjectSettingsPath(),
-			Type: "project",
-		},
-		{
-			Path: GetProjectLocalSettingsPath(),
-			Type: "project-local",
-		},
-	}
+	const numLocations = 3 // user, project, project-local
+
+	locations := make([]SettingsLocation, 0, numLocations)
+	locations = append(locations, SettingsLocation{
+		Path: GetUserSettingsPath(),
+		Type: "user",
+	})
+	locations = append(locations, SettingsLocation{
+		Path: GetProjectSettingsPath(),
+		Type: "project",
+	})
+	locations = append(locations, SettingsLocation{
+		Path: GetProjectLocalSettingsPath(),
+		Type: "project-local",
+	})
 
 	for _, path := range GetEnterprisePolicyPaths() {
 		locations = append(locations, SettingsLocation{

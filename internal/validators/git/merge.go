@@ -254,7 +254,9 @@ func (v *MergeValidator) validateMergeMessage(pr *PRDetails) *validator.Result {
 		return validator.Pass()
 	}
 
-	var allErrors []string
+	const typicalErrorCount = 5 // Typical number of title + body errors
+
+	allErrors := make([]string, 0, typicalErrorCount)
 
 	// 1. Validate PR title (commit message title)
 	titleErrors := v.validateTitle(pr.Title)

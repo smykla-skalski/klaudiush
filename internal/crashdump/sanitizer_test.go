@@ -314,7 +314,13 @@ func TestSanitizer_SanitizeSlice(t *testing.T) {
 
 					for key, expectedVal := range expected {
 						if actual[key] != expectedVal {
-							t.Errorf("input[%d][%q] = %v, want %v", i, key, actual[key], expectedVal)
+							t.Errorf(
+								"input[%d][%q] = %v, want %v",
+								i,
+								key,
+								actual[key],
+								expectedVal,
+							)
 						}
 					}
 				case []any:

@@ -127,7 +127,9 @@ func (f *DefaultValidatorFactory) CreatePluginValidators(
 
 // CreateAll creates all validators from config.
 func (f *DefaultValidatorFactory) CreateAll(cfg *config.Config) []ValidatorWithPredicate {
-	var all []ValidatorWithPredicate
+	const typicalValidatorCount = 20 // Typical total across all categories
+
+	all := make([]ValidatorWithPredicate, 0, typicalValidatorCount)
 
 	all = append(all, f.CreateGitValidators(cfg)...)
 	all = append(all, f.CreateGitHubValidators(cfg)...)

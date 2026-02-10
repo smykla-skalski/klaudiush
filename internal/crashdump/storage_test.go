@@ -306,17 +306,20 @@ func TestFilesystemStorage_List_SkipsInvalidFiles(t *testing.T) {
 		t.Fatalf("failed to marshal valid dump: %v", err)
 	}
 
-	if err := os.WriteFile(filepath.Join(tmpDir, "crash-valid.json"), validData, FilePerm); err != nil {
+	validPath := filepath.Join(tmpDir, "crash-valid.json")
+	if err := os.WriteFile(validPath, validData, FilePerm); err != nil {
 		t.Fatalf("failed to write valid dump: %v", err)
 	}
 
 	// Create invalid JSON file
-	if err := os.WriteFile(filepath.Join(tmpDir, "crash-invalid.json"), []byte("{invalid json}"), FilePerm); err != nil {
+	invalidPath := filepath.Join(tmpDir, "crash-invalid.json")
+	if err := os.WriteFile(invalidPath, []byte("{invalid json}"), FilePerm); err != nil {
 		t.Fatalf("failed to write invalid dump: %v", err)
 	}
 
 	// Create non-JSON file (should be ignored)
-	if err := os.WriteFile(filepath.Join(tmpDir, "readme.txt"), []byte("test"), FilePerm); err != nil {
+	readmePath := filepath.Join(tmpDir, "readme.txt")
+	if err := os.WriteFile(readmePath, []byte("test"), FilePerm); err != nil {
 		t.Fatalf("failed to write non-JSON file: %v", err)
 	}
 

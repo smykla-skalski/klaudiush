@@ -46,7 +46,12 @@ func (r *Registry) RunAll(ctx context.Context) []CheckResult {
 	defer r.mu.RUnlock()
 
 	// Collect all checkers across categories
-	var allCheckers []HealthChecker
+	totalCheckers := 0
+	for _, checkers := range r.checkers {
+		totalCheckers += len(checkers)
+	}
+
+	allCheckers := make([]HealthChecker, 0, totalCheckers)
 	for _, checkers := range r.checkers {
 		allCheckers = append(allCheckers, checkers...)
 	}
@@ -92,7 +97,7 @@ func (*Registry) runCheckers(ctx context.Context, checkers []HealthChecker) []Ch
 
 // GetFixer retrieves a fixer by ID.
 //
-//nolint:ireturn // interface for polymorphism
+//nolint:ireturn // Fixer interface for polymorphism
 func (r *Registry) GetFixer(fixID string) (Fixer, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()

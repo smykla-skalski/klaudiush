@@ -32,7 +32,7 @@ func (f *SecretsValidatorFactory) SetRuleEngine(engine *rules.RuleEngine) {
 
 // CreateValidators creates all secrets validators based on configuration.
 func (f *SecretsValidatorFactory) CreateValidators(cfg *config.Config) []ValidatorWithPredicate {
-	var validators []ValidatorWithPredicate
+	validators := make([]ValidatorWithPredicate, 0, 1)
 
 	// Get secrets config with nil safety
 	secretsCfg := f.getSecretsConfig(cfg)

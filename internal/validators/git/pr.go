@@ -265,9 +265,14 @@ func (*PRValidator) parseLabels(labelStr string) []string {
 
 // validatePR performs comprehensive PR validation
 func (v *PRValidator) validatePR(ctx context.Context, data PRData) *validator.Result {
-	var allErrors []string
+	const (
+		typicalErrorCount   = 10 // Typical number of PR validation errors
+		typicalWarningCount = 5  // Typical number of PR validation warnings
+	)
 
-	var allWarnings []string
+	allErrors := make([]string, 0, typicalErrorCount)
+
+	allWarnings := make([]string, 0, typicalWarningCount)
 
 	// 1. Validate PR title
 	v.validatePRTitleData(data.Title, &allErrors, &allWarnings)
@@ -466,12 +471,14 @@ func (*PRValidator) checkCILabelHeuristics(data PRData, prType string) []string 
 
 	// Suggest labels if appropriate
 	if shouldSkipTests && !data.HasLabels {
-		warnings = append(warnings,
+		warnings = append(
+			warnings,
 			"This appears to be a non-logic change - consider adding --label \"ci/skip-test\"",
 			"Important: ci/* labels MUST be added during creation (--label flag)",
 		)
 	} else if shouldSkipE2E && !hasCILabel {
-		warnings = append(warnings,
+		warnings = append(
+			warnings,
 			"This appears to be a unit-test-only change - consider adding --label \"ci/skip-e2e-test\"",
 			"Important: ci/* labels MUST be added during creation (--label flag)",
 		)

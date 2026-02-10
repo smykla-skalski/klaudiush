@@ -69,7 +69,8 @@ func (c *Command) String() string {
 
 // FullCommand returns the complete command as a string slice.
 func (c *Command) FullCommand() []string {
-	result := []string{c.Name}
+	result := make([]string, 0, 1+len(c.Args))
+	result = append(result, c.Name)
 	result = append(result, c.Args...)
 
 	return result
