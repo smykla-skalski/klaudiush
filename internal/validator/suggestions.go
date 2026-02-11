@@ -40,6 +40,7 @@ var DefaultSuggestions = map[Reference]string{
 	RefRuffCheck:    "Run 'ruff check <file>' to see Python code quality issues",
 	RefOxlintCheck:  "Run 'oxlint <file>' to see JavaScript/TypeScript code quality issues",
 	RefRustfmtCheck: "Run 'rustfmt <file>' to auto-fix formatting",
+	RefLinterIgnore: "Fix linter errors properly instead of suppressing them with ignore directives",
 
 	// Security suggestions
 	RefSecretsAPIKey:     "Remove API key and use environment variables or secret management",
