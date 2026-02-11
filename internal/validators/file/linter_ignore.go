@@ -85,11 +85,16 @@ func NewLinterIgnoreValidator(
 	for _, pattern := range patterns {
 		re, err := regexp.Compile(pattern)
 		if err != nil {
-			log.Debug("failed to compile linter ignore pattern", "pattern", pattern, "error", err)
+			log.Error("failed to compile linter ignore pattern", "pattern", pattern, "error", err)
 			continue
 		}
 
 		v.patterns = append(v.patterns, re)
+	}
+
+	// Log error when zero patterns compiled (will pass all content)
+	if len(v.patterns) == 0 && len(patterns) > 0 {
+		log.Error("all linter ignore patterns failed to compile", "total", len(patterns))
 	}
 
 	return v
@@ -165,7 +170,6 @@ func (v *LinterIgnoreValidator) findViolations(content string) []violation {
 			if match := pattern.FindString(line); match != "" {
 				violations = append(violations, violation{
 					line:      lineNum + 1,
-					content:   strings.TrimSpace(line),
 					directive: strings.TrimSpace(match),
 				})
 
@@ -212,6 +216,5 @@ func (*LinterIgnoreValidator) Category() validator.ValidatorCategory {
 // violation represents a detected linter ignore directive.
 type violation struct {
 	line      int
-	content   string
 	directive string
 }

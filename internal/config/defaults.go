@@ -102,12 +102,13 @@ func DefaultIssueValidatorConfig() *config.IssueValidatorConfig {
 // DefaultFileConfig returns the default file validators configuration.
 func DefaultFileConfig() *config.FileConfig {
 	return &config.FileConfig{
-		Markdown:    DefaultMarkdownValidatorConfig(),
-		ShellScript: DefaultShellScriptValidatorConfig(),
-		Terraform:   DefaultTerraformValidatorConfig(),
-		Workflow:    DefaultWorkflowValidatorConfig(),
-		Python:      DefaultPythonValidatorConfig(),
-		JavaScript:  DefaultJavaScriptValidatorConfig(),
+		Markdown:     DefaultMarkdownValidatorConfig(),
+		ShellScript:  DefaultShellScriptValidatorConfig(),
+		Terraform:    DefaultTerraformValidatorConfig(),
+		Workflow:     DefaultWorkflowValidatorConfig(),
+		Python:       DefaultPythonValidatorConfig(),
+		JavaScript:   DefaultJavaScriptValidatorConfig(),
+		LinterIgnore: DefaultLinterIgnoreValidatorConfig(),
 	}
 }
 
@@ -420,6 +421,19 @@ func DefaultJavaScriptValidatorConfig() *config.JavaScriptValidatorConfig {
 		OxlintPath:   "",
 		ExcludeRules: []string{},
 		OxlintConfig: "",
+	}
+}
+
+// DefaultLinterIgnoreValidatorConfig returns the default linter ignore validator configuration.
+func DefaultLinterIgnoreValidatorConfig() *config.LinterIgnoreValidatorConfig {
+	enabled := true
+
+	return &config.LinterIgnoreValidatorConfig{
+		ValidatorConfig: config.ValidatorConfig{
+			Enabled:  &enabled,
+			Severity: config.SeverityError,
+		},
+		Patterns: []string{}, // Empty = use built-in defaults
 	}
 }
 

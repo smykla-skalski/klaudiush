@@ -343,7 +343,7 @@ func (f *FileValidatorFactory) createLinterIgnoreValidator(
 		Validator: filevalidators.NewLinterIgnoreValidator(f.log, cfg, ruleAdapter),
 		Predicate: validator.And(
 			validator.EventTypeIs(hook.EventTypePreToolUse),
-			validator.ToolTypeIn(hook.ToolTypeWrite, hook.ToolTypeEdit, hook.ToolTypeMultiEdit),
+			validator.ToolTypeIn(hook.ToolTypeWrite, hook.ToolTypeEdit),
 		),
 	}
 }
