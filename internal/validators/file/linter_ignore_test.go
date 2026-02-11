@@ -8,6 +8,7 @@ import (
 
 	"github.com/smykla-skalski/klaudiush/internal/validator"
 	"github.com/smykla-skalski/klaudiush/internal/validators/file"
+	"github.com/smykla-skalski/klaudiush/pkg/config"
 	"github.com/smykla-skalski/klaudiush/pkg/hook"
 	"github.com/smykla-skalski/klaudiush/pkg/logger"
 )
@@ -35,6 +36,63 @@ var _ = Describe("LinterIgnoreValidator", func() {
 	Describe("Category", func() {
 		It("returns CategoryCPU", func() {
 			Expect(v.Category()).To(Equal(validator.CategoryCPU))
+		})
+	})
+
+	Describe("NewLinterIgnoreValidator", func() {
+		It("handles invalid regex patterns gracefully", func() {
+			cfg := &config.LinterIgnoreValidatorConfig{
+				Patterns: []string{
+					`valid-pattern`,
+					`[invalid(regex`, // Invalid regex
+					`another-valid`,
+				},
+			}
+
+			validator := file.NewLinterIgnoreValidator(logger.NewNoOpLogger(), cfg, nil)
+			Expect(validator).NotTo(BeNil())
+			// Validator should be created even with some invalid patterns
+		})
+
+		It("uses default patterns when config is nil", func() {
+			validator := file.NewLinterIgnoreValidator(logger.NewNoOpLogger(), nil, nil)
+			Expect(validator).NotTo(BeNil())
+		})
+
+		It("uses custom patterns from config", func() {
+			cfg := &config.LinterIgnoreValidatorConfig{
+				Patterns: []string{`custom-ignore`},
+			}
+
+			validator := file.NewLinterIgnoreValidator(logger.NewNoOpLogger(), cfg, nil)
+			testCtx := &hook.Context{
+				EventType: hook.EventTypePreToolUse,
+				ToolName:  hook.ToolTypeWrite,
+				ToolInput: hook.ToolInput{
+					Content: `x = 1  # custom-ignore`,
+				},
+			}
+
+			result := validator.Validate(context.Background(), testCtx)
+			Expect(result.Passed).To(BeFalse())
+		})
+
+		It("uses default patterns when config has empty patterns", func() {
+			cfg := &config.LinterIgnoreValidatorConfig{
+				Patterns: []string{},
+			}
+
+			validator := file.NewLinterIgnoreValidator(logger.NewNoOpLogger(), cfg, nil)
+			testCtx := &hook.Context{
+				EventType: hook.EventTypePreToolUse,
+				ToolName:  hook.ToolTypeWrite,
+				ToolInput: hook.ToolInput{
+					Content: `x = 1  # noqa`,
+				},
+			}
+
+			result := validator.Validate(context.Background(), testCtx)
+			Expect(result.Passed).To(BeFalse())
 		})
 	})
 

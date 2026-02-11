@@ -120,6 +120,43 @@ var _ = Describe("FileValidatorFactory", func() {
 			})
 		})
 
+		Context("LinterIgnore validator", func() {
+			It("should create linter ignore validator when enabled", func() {
+				cfg.Validators.File.LinterIgnore = &config.LinterIgnoreValidatorConfig{
+					ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(true)},
+				}
+
+				validators := fileFactory.CreateValidators(cfg)
+				Expect(len(validators)).To(BeNumerically(">=", 1))
+			})
+
+			It("should not create linter ignore validator when disabled", func() {
+				cfg.Validators.File.LinterIgnore = &config.LinterIgnoreValidatorConfig{
+					ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(false)},
+				}
+
+				validators := fileFactory.CreateValidators(cfg)
+				Expect(len(validators)).To(Equal(0))
+			})
+
+			It("should create linter ignore validator with custom patterns", func() {
+				cfg.Validators.File.LinterIgnore = &config.LinterIgnoreValidatorConfig{
+					ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(true)},
+					Patterns:        []string{`custom-pattern`, `another-pattern`},
+				}
+
+				validators := fileFactory.CreateValidators(cfg)
+				Expect(len(validators)).To(BeNumerically(">=", 1))
+			})
+
+			It("should handle nil linter ignore config", func() {
+				cfg.Validators.File.LinterIgnore = nil
+
+				validators := fileFactory.CreateValidators(cfg)
+				Expect(len(validators)).To(Equal(0))
+			})
+		})
+
 		Context("Multiple file validators", func() {
 			It("should create multiple validators when enabled", func() {
 				enabled := true
