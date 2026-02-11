@@ -5,6 +5,12 @@ All notable changes to klaudiush will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.13.1](https://github.com/smykla-skalski/klaudiush/compare/v1.13.0...v1.13.1) (2026-02-11)
+
+### Bug Fixes
+
+* **ci:** grant smyklot bot access to homebrew-tap ([515492e](https://github.com/smykla-skalski/klaudiush/commit/515492eb5451b0646181c438f04676abd7f208ae))
+
 ## [1.13.0](https://github.com/smykla-skalski/klaudiush/compare/v1.12.12...v1.13.0) (2026-02-10)
 
 ### Features
