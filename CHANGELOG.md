@@ -5,6 +5,12 @@ All notable changes to klaudiush will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.0](https://github.com/smykla-skalski/klaudiush/compare/v1.13.1...v1.14.0) (2026-02-11)
+
+### Features
+
+* **validators:** block linter ignore directives ([#280](https://github.com/smykla-skalski/klaudiush/issues/280)) ([4cc45eb](https://github.com/smykla-skalski/klaudiush/commit/4cc45ebeadd0995b1726dba6af622fc702b54689))
+
 ## [1.13.1](https://github.com/smykla-skalski/klaudiush/compare/v1.13.0...v1.13.1) (2026-02-11)
 
 ### Bug Fixes
