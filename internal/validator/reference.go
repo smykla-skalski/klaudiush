@@ -115,6 +115,9 @@ const (
 
 	// RefRustfmtCheck indicates rustfmt Rust code formatting failure.
 	RefRustfmtCheck Reference = ReferenceBaseURL + "/FILE009"
+
+	// RefLinterIgnore indicates linter ignore directives detected in code.
+	RefLinterIgnore Reference = ReferenceBaseURL + "/FILE010"
 )
 
 // Security-related references (SEC001-SEC005).

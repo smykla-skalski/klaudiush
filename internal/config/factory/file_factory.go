@@ -112,6 +112,13 @@ func (f *FileValidatorFactory) CreateValidators(cfg *config.Config) []ValidatorW
 		)
 	}
 
+	if cfg.Validators.File.LinterIgnore != nil && cfg.Validators.File.LinterIgnore.IsEnabled() {
+		validators = append(
+			validators,
+			f.createLinterIgnoreValidator(cfg.Validators.File.LinterIgnore),
+		)
+	}
+
 	return validators
 }
 
@@ -316,6 +323,27 @@ func (f *FileValidatorFactory) createRustValidator(
 			validator.EventTypeIs(hook.EventTypePreToolUse),
 			validator.ToolTypeIn(hook.ToolTypeWrite, hook.ToolTypeEdit, hook.ToolTypeMultiEdit),
 			validator.FileExtensionIs(".rs"),
+		),
+	}
+}
+
+func (f *FileValidatorFactory) createLinterIgnoreValidator(
+	cfg *config.LinterIgnoreValidatorConfig,
+) ValidatorWithPredicate {
+	var ruleAdapter *rules.RuleValidatorAdapter
+	if f.ruleEngine != nil {
+		ruleAdapter = rules.NewRuleValidatorAdapter(
+			f.ruleEngine,
+			rules.ValidatorFileLinterIgnore,
+			rules.WithAdapterLogger(f.log),
+		)
+	}
+
+	return ValidatorWithPredicate{
+		Validator: filevalidators.NewLinterIgnoreValidator(f.log, cfg, ruleAdapter),
+		Predicate: validator.And(
+			validator.EventTypeIs(hook.EventTypePreToolUse),
+			validator.ToolTypeIn(hook.ToolTypeWrite, hook.ToolTypeEdit),
 		),
 	}
 }

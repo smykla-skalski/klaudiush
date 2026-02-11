@@ -26,6 +26,9 @@ type FileConfig struct {
 
 	// Rust validator configuration
 	Rust *RustValidatorConfig `json:"rust,omitempty" koanf:"rust" toml:"rust"`
+
+	// LinterIgnore validator configuration
+	LinterIgnore *LinterIgnoreValidatorConfig `json:"linter_ignore,omitempty" koanf:"linter_ignore" toml:"linter_ignore"`
 }
 
 // MarkdownValidatorConfig configures the Markdown file validator.
@@ -303,4 +306,13 @@ type RustValidatorConfig struct {
 	// RustfmtConfig is the path to a rustfmt configuration file (rustfmt.toml).
 	// Default: "" (use rustfmt defaults)
 	RustfmtConfig string `json:"rustfmt_config,omitempty" koanf:"rustfmt_config" toml:"rustfmt_config"`
+}
+
+// LinterIgnoreValidatorConfig configures the linter ignore directive validator.
+type LinterIgnoreValidatorConfig struct {
+	ValidatorConfig `koanf:",squash"`
+
+	// Patterns is a list of regex patterns to detect linter ignore directives.
+	// Default: built-in patterns for common languages (noqa, eslint-disable, nolint, etc.)
+	Patterns []string `json:"patterns,omitempty" koanf:"patterns" toml:"patterns"`
 }
