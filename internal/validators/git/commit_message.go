@@ -1,6 +1,7 @@
 package git
 
 import (
+	"context"
 	"regexp"
 	"strings"
 
@@ -14,6 +15,13 @@ const (
 	defaultMaxBodyLineLength = 72
 	defaultBodyLineTolerance = 5  // Additional tolerance beyond max body line length
 	truncateErrorLineAt      = 60 // Truncate long lines in error messages for readability
+
+	// Commit style constants for commit_style config field.
+	commitStyleConventional = "conventional"
+	commitStyleScopeOnly    = "scope-only"
+	commitStyleNone         = "none"
+	commitStyleCustom       = "custom"
+	commitStyleAuto         = "auto"
 )
 
 var (
@@ -43,7 +51,7 @@ var (
 )
 
 // validateMessage validates the commit message content using the parser and rules.
-func (v *CommitValidator) validateMessage(message string) *validator.Result {
+func (v *CommitValidator) validateMessage(ctx context.Context, message string) *validator.Result {
 	log := v.Logger()
 	log.Debug("Validating commit message", "length", len(message))
 
@@ -61,7 +69,7 @@ func (v *CommitValidator) validateMessage(message string) *validator.Result {
 	parsed := parser.Parse(message)
 
 	// Build and execute validation rules
-	rules := v.buildRules()
+	rules := v.buildRules(ctx)
 	ruleResults := make([]*RuleResult, 0)
 
 	for _, rule := range rules {
@@ -94,7 +102,7 @@ func (v *CommitValidator) validateMessage(message string) *validator.Result {
 }
 
 // buildRules creates the validation rules based on configuration.
-func (v *CommitValidator) buildRules() []CommitRule {
+func (v *CommitValidator) buildRules(ctx context.Context) []CommitRule {
 	rules := make([]CommitRule, 0)
 
 	// Title length rule
@@ -103,12 +111,31 @@ func (v *CommitValidator) buildRules() []CommitRule {
 		AllowUnlimitedRevertTitle: v.shouldAllowUnlimitedRevertTitle(),
 	})
 
-	// Conventional commit format rule
-	if v.shouldCheckConventionalCommits() {
+	// Title format rule - determined by commit_style config
+	switch v.getCommitStyle() {
+	case commitStyleConventional:
 		rules = append(rules, &ConventionalFormatRule{
 			ValidTypes:   v.getValidTypes(),
 			RequireScope: v.shouldRequireScope(),
 		})
+	case commitStyleScopeOnly:
+		rules = append(rules, &ScopeOnlyFormatRule{})
+	case commitStyleCustom:
+		if pattern := v.getTitlePattern(); pattern != nil {
+			rules = append(rules, &CustomPatternRule{Pattern: pattern})
+		}
+	case commitStyleNone:
+		// no title format rule
+	case commitStyleAuto:
+		detected := NewCommitStyleDetector().Detect(ctx)
+		if detected == commitStyleScopeOnly {
+			rules = append(rules, &ScopeOnlyFormatRule{})
+		} else {
+			rules = append(rules, &ConventionalFormatRule{
+				ValidTypes:   v.getValidTypes(),
+				RequireScope: v.shouldRequireScope(),
+			})
+		}
 	}
 
 	// Infrastructure scope misuse rule
@@ -298,6 +325,35 @@ func (v *CommitValidator) shouldCheckConventionalCommits() bool {
 	}
 
 	return true // Default: enabled
+}
+
+// getCommitStyle returns the effective commit style.
+// When CommitStyle is empty or unset, falls back to the legacy ConventionalCommits flag.
+func (v *CommitValidator) getCommitStyle() string {
+	if v.config != nil && v.config.Message != nil && v.config.Message.CommitStyle != "" {
+		return v.config.Message.CommitStyle
+	}
+
+	// Legacy: ConventionalCommits=false → "none"
+	if !v.shouldCheckConventionalCommits() {
+		return commitStyleNone
+	}
+
+	return commitStyleConventional // default
+}
+
+// getTitlePattern compiles and returns the custom title regex, or nil if not set.
+func (v *CommitValidator) getTitlePattern() *regexp.Regexp {
+	if v.config == nil || v.config.Message == nil || v.config.Message.TitlePattern == "" {
+		return nil
+	}
+
+	pattern, err := regexp.Compile(v.config.Message.TitlePattern)
+	if err != nil {
+		return nil // already validated by config validation
+	}
+
+	return pattern
 }
 
 // getValidTypes returns the valid commit types from config, or defaults.

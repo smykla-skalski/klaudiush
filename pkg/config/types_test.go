@@ -58,6 +58,7 @@ var _ = Describe("Duration", func() {
 	Describe("UnmarshalText", func() {
 		It("should parse valid duration strings", func() {
 			var d config.Duration
+
 			err := d.UnmarshalText([]byte("10s"))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(d.String()).To(Equal("10s"))
@@ -65,6 +66,7 @@ var _ = Describe("Duration", func() {
 
 		It("should parse duration with multiple units", func() {
 			var d config.Duration
+
 			err := d.UnmarshalText([]byte("1h30m"))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(d.String()).To(Equal("1h30m0s"))
@@ -72,6 +74,7 @@ var _ = Describe("Duration", func() {
 
 		It("should return error for invalid duration format", func() {
 			var d config.Duration
+
 			err := d.UnmarshalText([]byte("invalid"))
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("invalid duration"))
@@ -79,6 +82,7 @@ var _ = Describe("Duration", func() {
 
 		It("should return error for negative duration", func() {
 			var d config.Duration
+
 			err := d.UnmarshalText([]byte("-5s"))
 			Expect(err).To(HaveOccurred())
 			Expect(errors.Is(err, config.ErrNegativeDuration)).To(BeTrue())
@@ -86,6 +90,7 @@ var _ = Describe("Duration", func() {
 
 		It("should accept zero duration", func() {
 			var d config.Duration
+
 			err := d.UnmarshalText([]byte("0s"))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(d.String()).To(Equal("0s"))
@@ -95,6 +100,7 @@ var _ = Describe("Duration", func() {
 	Describe("MarshalText", func() {
 		It("should marshal duration to text", func() {
 			var d config.Duration
+
 			_ = d.UnmarshalText([]byte("5m"))
 			text, err := d.MarshalText()
 			Expect(err).NotTo(HaveOccurred())
@@ -103,6 +109,7 @@ var _ = Describe("Duration", func() {
 
 		It("should marshal zero duration", func() {
 			var d config.Duration
+
 			text, err := d.MarshalText()
 			Expect(err).NotTo(HaveOccurred())
 			Expect(string(text)).To(Equal("0s"))
@@ -112,6 +119,7 @@ var _ = Describe("Duration", func() {
 	Describe("String", func() {
 		It("should return string representation", func() {
 			var d config.Duration
+
 			_ = d.UnmarshalText([]byte("2h"))
 			Expect(d.String()).To(Equal("2h0m0s"))
 		})
@@ -120,6 +128,7 @@ var _ = Describe("Duration", func() {
 	Describe("ToDuration", func() {
 		It("should convert to time.Duration", func() {
 			var d config.Duration
+
 			_ = d.UnmarshalText([]byte("30s"))
 			Expect(d.ToDuration().Seconds()).To(Equal(float64(30)))
 		})

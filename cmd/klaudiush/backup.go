@@ -546,7 +546,7 @@ func runBackupPrune(_ *cobra.Command, _ []string) error {
 	)
 
 	// Load config to get retention policy
-	cfg, err := loadConfig(log)
+	cfg, err := loadConfig(log, "")
 	if err != nil {
 		return errors.Wrap(err, "failed to load config")
 	}
@@ -671,7 +671,7 @@ func runBackupStatus(_ *cobra.Command, _ []string) error {
 
 	log.Info("backup status command invoked")
 
-	cfg, err := loadConfig(log)
+	cfg, err := loadConfig(log, "")
 	if err != nil {
 		return errors.Wrap(err, "failed to load config")
 	}
@@ -934,7 +934,7 @@ func setupBackupManagers() (logger.Logger, []*backup.Manager, error) {
 	}
 
 	// Load configuration
-	cfg, err := loadConfig(log)
+	cfg, err := loadConfig(log, "")
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "failed to load configuration")
 	}

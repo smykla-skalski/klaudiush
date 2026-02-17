@@ -22,6 +22,7 @@ var _ = Describe("ExceptionChecker", func() {
 
 	BeforeEach(func() {
 		var err error
+
 		tempDir, err = os.MkdirTemp("", "exception-checker-test-*")
 		Expect(err).NotTo(HaveOccurred())
 	})

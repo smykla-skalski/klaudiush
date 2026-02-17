@@ -25,6 +25,7 @@ var _ = Describe("Writer with Backup Integration", func() {
 	BeforeEach(func() {
 		// Create temporary directories
 		var err error
+
 		tmpDir, err = os.MkdirTemp("", "writer-test-*")
 		Expect(err).ToNot(HaveOccurred())
 

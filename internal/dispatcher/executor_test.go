@@ -240,6 +240,7 @@ var _ = Describe("Executor", func() {
 				for i, r := range result {
 					failedNames[i] = r.Validator
 				}
+
 				Expect(failedNames).To(ContainElements("v2", "v3", "v4"))
 			})
 		})
@@ -394,7 +395,6 @@ var _ = Describe("Executor", func() {
 	Describe("race condition tests", Label("race"), func() {
 		// These tests are specifically designed to catch race conditions
 		// Run with: go test -race ./internal/dispatcher/...
-
 		It("should safely collect results from many concurrent validators", func() {
 			cfg := &dispatcher.ParallelExecutorConfig{
 				MaxCPUWorkers: 10,

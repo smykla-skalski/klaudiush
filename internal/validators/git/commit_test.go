@@ -966,6 +966,7 @@ Signed-off-by: Test User <test@klaudiu.sh>`
 		It("should pass with valid message from file using -F", func() {
 			file, err := os.CreateTemp("", "commit-msg-*.txt")
 			Expect(err).ToNot(HaveOccurred())
+
 			tmpFile = file.Name()
 
 			_, err = file.WriteString(
@@ -989,6 +990,7 @@ Signed-off-by: Test User <test@klaudiu.sh>`
 		It("should pass with valid message from file using --file", func() {
 			file, err := os.CreateTemp("", "commit-msg-*.txt")
 			Expect(err).ToNot(HaveOccurred())
+
 			tmpFile = file.Name()
 
 			_, err = file.WriteString("fix(auth): resolve login issue")
@@ -1010,6 +1012,7 @@ Signed-off-by: Test User <test@klaudiu.sh>`
 		It("should fail with invalid message from file", func() {
 			file, err := os.CreateTemp("", "commit-msg-*.txt")
 			Expect(err).ToNot(HaveOccurred())
+
 			tmpFile = file.Name()
 
 			_, err = file.WriteString("Add new feature")
@@ -1048,6 +1051,7 @@ Signed-off-by: Test User <test@klaudiu.sh>`
 		It("should pass with empty file (message from editor)", func() {
 			file, err := os.CreateTemp("", "commit-msg-*.txt")
 			Expect(err).ToNot(HaveOccurred())
+
 			tmpFile = file.Name()
 			file.Close()
 
@@ -1066,6 +1070,7 @@ Signed-off-by: Test User <test@klaudiu.sh>`
 		It("should handle combined flags with file", func() {
 			file, err := os.CreateTemp("", "commit-msg-*.txt")
 			Expect(err).ToNot(HaveOccurred())
+
 			tmpFile = file.Name()
 
 			_, err = file.WriteString("feat(api): add endpoint")
@@ -1374,6 +1379,122 @@ Signed-off-by: Test User <test@klaudiu.sh>`
 
 			result := validator.Validate(context.Background(), ctx)
 			Expect(result.Passed).To(BeTrue())
+		})
+	})
+
+	Describe("commit_style config", func() {
+		makeCtxWithMsg := func(msg string) *hook.Context {
+			return &hook.Context{
+				EventType: hook.EventTypePreToolUse,
+				ToolName:  hook.ToolTypeBash,
+				ToolInput: hook.ToolInput{
+					Command: `git commit -sS -m "` + msg + `"`,
+				},
+			}
+		}
+
+		Context("scope-only style", func() {
+			var scopeValidator *git.CommitValidator
+
+			BeforeEach(func() {
+				style := "scope-only"
+				cfg := &config.CommitValidatorConfig{
+					Message: &config.CommitMessageConfig{CommitStyle: style},
+				}
+				scopeValidator = git.NewCommitValidator(log, fakeGit, cfg, nil)
+			})
+
+			It("should pass home-manager scope: description style", func() {
+				result := scopeValidator.Validate(
+					context.Background(),
+					makeCtxWithMsg("home-environment: use nix profile"),
+				)
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("should pass path-based scope", func() {
+				result := scopeValidator.Validate(
+					context.Background(),
+					makeCtxWithMsg("modules/systemd: add persistent timer unit"),
+				)
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("should reject conventional type(scope): description", func() {
+				result := scopeValidator.Validate(
+					context.Background(),
+					makeCtxWithMsg("feat(api): add endpoint"),
+				)
+				Expect(result.Passed).To(BeFalse())
+				Expect(result.Details["errors"]).To(ContainSubstring("scope-only format"))
+			})
+
+			It("should reject a plain sentence without colon", func() {
+				result := scopeValidator.Validate(
+					context.Background(),
+					makeCtxWithMsg("just a plain commit message"),
+				)
+				Expect(result.Passed).To(BeFalse())
+			})
+		})
+
+		Context("none style", func() {
+			var noneValidator *git.CommitValidator
+
+			BeforeEach(func() {
+				style := "none"
+				cfg := &config.CommitValidatorConfig{
+					Message: &config.CommitMessageConfig{CommitStyle: style},
+				}
+				noneValidator = git.NewCommitValidator(log, fakeGit, cfg, nil)
+			})
+
+			It("should pass any title format", func() {
+				for _, msg := range []string{
+					"just a plain message",
+					"home-environment: use nix profile",
+					"feat(api): add endpoint",
+					"PROJ-123: Jira ticket style",
+				} {
+					result := noneValidator.Validate(context.Background(), makeCtxWithMsg(msg))
+					Expect(result.Passed).To(BeTrue(), "expected pass for: %s", msg)
+				}
+			})
+		})
+
+		Context("custom style", func() {
+			var customValidator *git.CommitValidator
+
+			BeforeEach(func() {
+				style := "custom"
+				pattern := `^[A-Z]+-\d+: .+`
+				cfg := &config.CommitValidatorConfig{
+					Message: &config.CommitMessageConfig{
+						CommitStyle:  style,
+						TitlePattern: pattern,
+					},
+				}
+				customValidator = git.NewCommitValidator(log, fakeGit, cfg, nil)
+			})
+
+			It("should pass Jira-style ticket prefix", func() {
+				result := customValidator.Validate(
+					context.Background(),
+					makeCtxWithMsg("PROJ-123: implement the thing"),
+				)
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("should reject conventional format when custom pattern is required", func() {
+				result := customValidator.Validate(
+					context.Background(),
+					makeCtxWithMsg("feat(api): add endpoint"),
+				)
+				Expect(result.Passed).To(BeFalse())
+				Expect(
+					result.Details["errors"],
+				).To(ContainSubstring("doesn't match the required pattern"))
+			})
 		})
 	})
 })

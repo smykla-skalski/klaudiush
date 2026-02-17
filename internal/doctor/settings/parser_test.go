@@ -262,16 +262,20 @@ var _ = Describe("SettingsParser", func() {
 				Expect(len(locations)).To(BeNumerically(">=", 3))
 
 				var foundUser, foundProject, foundProjectLocal bool
+
 				for _, loc := range locations {
 					switch loc.Type {
 					case "user":
 						foundUser = true
+
 						Expect(loc.Path).To(ContainSubstring(".claude"))
 					case "project":
 						foundProject = true
+
 						Expect(loc.Path).To(Equal(filepath.Join(".claude", "settings.json")))
 					case "project-local":
 						foundProjectLocal = true
+
 						Expect(loc.Path).To(Equal(
 							filepath.Join(".claude", "settings.local.json"),
 						))

@@ -66,6 +66,7 @@ var _ = Describe("CLIGitRunnerWithPath", func() {
 		// Configure repository
 		cfg, err := repo.Config()
 		Expect(err).NotTo(HaveOccurred())
+
 		cfg.User.Name = testAuthor.Name
 		cfg.User.Email = testAuthor.Email
 		err = repo.SetConfig(cfg)
@@ -102,6 +103,7 @@ var _ = Describe("CLIGitRunnerWithPath", func() {
 		It("should return false when path is not in a git repository", func() {
 			nonRepoDir, err := os.MkdirTemp("", "non-repo-*")
 			Expect(err).NotTo(HaveOccurred())
+
 			defer os.RemoveAll(nonRepoDir)
 
 			// Clear GIT_DIR/GIT_WORK_TREE so the non-repo check isn't affected

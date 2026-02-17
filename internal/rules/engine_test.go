@@ -34,6 +34,7 @@ var _ = Describe("RuleEngine", func() {
 			}
 
 			var err error
+
 			engine, err = rules.NewRuleEngine(ruleList)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(engine.Size()).To(Equal(1))
@@ -57,6 +58,7 @@ var _ = Describe("RuleEngine", func() {
 
 		It("should create engine with empty rules", func() {
 			var err error
+
 			engine, err = rules.NewRuleEngine(nil)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(engine.Size()).To(Equal(0))
@@ -98,6 +100,7 @@ var _ = Describe("RuleEngine", func() {
 			}
 
 			var err error
+
 			engine, err = rules.NewRuleEngine(ruleList)
 			Expect(err).NotTo(HaveOccurred())
 		})
@@ -189,6 +192,7 @@ var _ = Describe("RuleEngine", func() {
 			}
 
 			var err error
+
 			engine, err = rules.NewRuleEngine(ruleList)
 			Expect(err).NotTo(HaveOccurred())
 		})
@@ -216,6 +220,7 @@ var _ = Describe("RuleEngine", func() {
 	Describe("Rule Management", func() {
 		BeforeEach(func() {
 			var err error
+
 			engine, err = rules.NewRuleEngine(nil)
 			Expect(err).NotTo(HaveOccurred())
 		})
@@ -277,6 +282,7 @@ var _ = Describe("RuleEngine", func() {
 			}
 
 			var err error
+
 			engine, err = rules.NewRuleEngine(ruleList)
 			Expect(err).NotTo(HaveOccurred())
 		})
@@ -315,6 +321,7 @@ var _ = Describe("RuleEngine", func() {
 			}
 
 			var err error
+
 			engine, err = rules.NewRuleEngine(ruleList)
 			Expect(err).NotTo(HaveOccurred())
 		})

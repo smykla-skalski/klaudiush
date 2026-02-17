@@ -140,10 +140,12 @@ var _ = Describe("KoanfLoader rules loading", func() {
 		// Use separate directories for home and work
 		homeDir, err = os.MkdirTemp("", "koanf-rules-test-home")
 		Expect(err).NotTo(HaveOccurred())
+
 		cleanups = append(cleanups, homeDir)
 
 		workDir, err = os.MkdirTemp("", "koanf-rules-test-work")
 		Expect(err).NotTo(HaveOccurred())
+
 		cleanups = append(cleanups, workDir)
 
 		loader, err = NewKoanfLoaderWithDirs(homeDir, workDir)
