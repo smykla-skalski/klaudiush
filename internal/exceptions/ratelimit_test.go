@@ -23,6 +23,7 @@ var _ = Describe("RateLimiter", func() {
 
 	BeforeEach(func() {
 		var err error
+
 		tempDir, err = os.MkdirTemp("", "ratelimit-test-*")
 		Expect(err).NotTo(HaveOccurred())
 
@@ -519,6 +520,7 @@ var _ = Describe("RateLimiter", func() {
 			for range count {
 				go func() {
 					_ = limiter.Record("GIT022")
+
 					done <- true
 				}()
 			}
@@ -539,6 +541,7 @@ var _ = Describe("RateLimiter", func() {
 				go func() {
 					result := limiter.Check("GIT022")
 					Expect(result).NotTo(BeNil())
+
 					done <- true
 				}()
 			}

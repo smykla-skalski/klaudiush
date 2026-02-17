@@ -328,6 +328,7 @@ file.md:5 MD041 First line in a file should be a top-level heading`
 
 		BeforeEach(func() {
 			var err error
+
 			tempDir, err = os.MkdirTemp("", "issue-test-*")
 			Expect(err).NotTo(HaveOccurred())
 		})

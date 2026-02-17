@@ -24,6 +24,7 @@ var _ = Describe("AuditLogger", func() {
 
 	BeforeEach(func() {
 		var err error
+
 		tempDir, err = os.MkdirTemp("", "session-audit-test-*")
 		Expect(err).NotTo(HaveOccurred())
 
@@ -204,6 +205,7 @@ var _ = Describe("AuditLogger", func() {
 			Expect(err).NotTo(HaveOccurred())
 			_, err = f.Write(append(data, '\n'))
 			Expect(err).NotTo(HaveOccurred())
+
 			_ = f.Close()
 
 			entries, err := logger.Read()
@@ -259,6 +261,7 @@ var _ = Describe("AuditLogger", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			backupFound := false
+
 			for _, f := range files {
 				if f.Name() != "session_audit.jsonl" {
 					backupFound = true
@@ -266,6 +269,7 @@ var _ = Describe("AuditLogger", func() {
 					break
 				}
 			}
+
 			Expect(backupFound).To(BeTrue())
 		})
 
@@ -415,6 +419,7 @@ var _ = Describe("AuditEntry", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			var decoded session.AuditEntry
+
 			err = json.Unmarshal(data, &decoded)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(decoded.Action).To(Equal(session.AuditActionPoison))
@@ -437,6 +442,7 @@ var _ = Describe("AuditEntry", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			var decoded session.AuditEntry
+
 			err = json.Unmarshal(data, &decoded)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(decoded.Action).To(Equal(session.AuditActionUnpoison))
@@ -500,6 +506,7 @@ var _ = Describe("AuditLogger additional coverage", func() {
 
 	BeforeEach(func() {
 		var err error
+
 		tempDir, err = os.MkdirTemp("", "session-audit-test-*")
 		Expect(err).NotTo(HaveOccurred())
 
@@ -571,6 +578,7 @@ var _ = Describe("AuditLogger additional coverage", func() {
 
 			// Create multiple backup files manually
 			base := filepath.Join(tempDir, "session_audit")
+
 			for i := range 5 {
 				ts := time.Now().Add(-time.Duration(i) * time.Hour).Format("20060102-150405")
 				backupName := base + "." + ts + ".jsonl"
@@ -585,11 +593,13 @@ var _ = Describe("AuditLogger additional coverage", func() {
 			Expect(readErr).NotTo(HaveOccurred())
 
 			backupCount := 0
+
 			for _, f := range files {
 				if f.Name() != "session_audit.jsonl" {
 					backupCount++
 				}
 			}
+
 			Expect(backupCount).To(BeNumerically("<=", 2))
 		})
 	})
@@ -613,6 +623,7 @@ var _ = Describe("AuditLogger additional coverage", func() {
 
 			// Create backup files
 			base := filepath.Join(tempDir, "session_audit")
+
 			for i := 1; i <= 3; i++ {
 				ts := time.Now().Add(-time.Duration(i) * time.Hour).Format("20060102-150405")
 				backupName := base + "." + ts + ".jsonl"

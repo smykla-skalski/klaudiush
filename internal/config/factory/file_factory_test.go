@@ -47,11 +47,13 @@ var _ = Describe("FileValidatorFactory", func() {
 				validators := fileFactory.CreateValidators(cfg)
 				// Count Python validators (should be 0)
 				pythonValidatorCount := 0
+
 				for _, v := range validators {
 					if v.Validator != nil {
 						pythonValidatorCount++
 					}
 				}
+
 				Expect(pythonValidatorCount).To(Equal(0))
 			})
 

@@ -34,6 +34,7 @@ var _ = Describe("RulesFixer", func() {
 
 		// Create temp directory for tests
 		var err error
+
 		tempDir, err = os.MkdirTemp("", "rules-fixer-test-*")
 		Expect(err).NotTo(HaveOccurred())
 

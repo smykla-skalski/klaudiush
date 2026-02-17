@@ -24,6 +24,7 @@ var _ = Describe("Helper Functions", func() {
 
 		BeforeEach(func() {
 			var err error
+
 			tmpDir, err = os.MkdirTemp("", "klaudiush-helpers-*")
 			Expect(err).NotTo(HaveOccurred())
 
@@ -77,10 +78,12 @@ var _ = Describe("Helper Functions", func() {
 			// Save original
 			origUser := os.Getenv("USER")
 			origUsername := os.Getenv("USERNAME")
+
 			defer func() {
 				if origUser != "" {
 					os.Setenv("USER", origUser)
 				}
+
 				if origUsername != "" {
 					os.Setenv("USERNAME", origUsername)
 				}
@@ -104,10 +107,12 @@ var _ = Describe("Helper Functions", func() {
 			// Save original
 			origUser := os.Getenv("USER")
 			origUsername := os.Getenv("USERNAME")
+
 			defer func() {
 				if origUser != "" {
 					os.Setenv("USER", origUser)
 				}
+
 				if origUsername != "" {
 					os.Setenv("USERNAME", origUsername)
 				}

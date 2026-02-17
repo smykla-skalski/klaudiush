@@ -5,6 +5,25 @@ All notable changes to klaudiush will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.0](https://github.com/smykla-skalski/klaudiush/compare/v1.15.0...v1.16.0) (2026-02-17)
+
+### Features
+
+* **validators:** skip plan doc md validation ([d5ed242](https://github.com/smykla-skalski/klaudiush/commit/d5ed24254da608e72e96895334bf9eee113f6802))
+
+## [1.15.0](https://github.com/smykla-skalski/klaudiush/compare/v1.14.0...v1.15.0) (2026-02-17)
+
+### Features
+
+* **validators:** add commit_style config option ([99fa99d](https://github.com/smykla-skalski/klaudiush/commit/99fa99d8782fd087db93312372bca88eb1b4ece2))
+* **validators:** add title_style to PR validator ([e7f173d](https://github.com/smykla-skalski/klaudiush/commit/e7f173df2dcb5d10f6becb7d53f7d4d16f65fd6b))
+
+### Bug Fixes
+
+* **config:** resolve project config from cd target ([6190978](https://github.com/smykla-skalski/klaudiush/commit/61909789d712ade34f9f8680c0404437e1598234))
+* **session:** pin enumer output filename ([d4f6e2d](https://github.com/smykla-skalski/klaudiush/commit/d4f6e2d341e1d3582176e32c99b29c397646e9eb))
+* **validators:** wire shellcheck severity config ([7a321d0](https://github.com/smykla-skalski/klaudiush/commit/7a321d0dd4b1ca7bda8168824f2c83cd0d95a9ad))
+
 ## [1.14.0](https://github.com/smykla-skalski/klaudiush/compare/v1.13.1...v1.14.0) (2026-02-11)
 
 ### Features

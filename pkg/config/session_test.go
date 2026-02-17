@@ -91,6 +91,7 @@ var _ = Describe("SessionConfig", func() {
 
 		It("returns default audit config for nil session config", func() {
 			var cfg *config.SessionConfig
+
 			audit := cfg.GetAudit()
 
 			Expect(audit).NotTo(BeNil())

@@ -318,6 +318,7 @@ var _ = Describe("Markdownlint validation", func() {
 
 		// Write to temp file
 		filename := filepath.Join(tmpDir, "test.md")
+
 		err := os.WriteFile(filename, []byte(content), 0o644)
 		if err != nil {
 			return err
@@ -326,6 +327,7 @@ var _ = Describe("Markdownlint validation", func() {
 		// Run markdownlint with config
 		configPath := filepath.Join(tmpDir, ".markdownlint.json")
 		cmd := exec.Command("markdownlint", "--config", configPath, filename)
+
 		output, err := cmd.CombinedOutput()
 		if err != nil {
 			GinkgoWriter.Printf("markdownlint output: %s\n", string(output))

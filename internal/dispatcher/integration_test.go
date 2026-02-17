@@ -49,6 +49,7 @@ var _ = Describe("Dispatcher Exception Integration", func() {
 
 	BeforeEach(func() {
 		var err error
+
 		tempDir, err = os.MkdirTemp("", "dispatcher-integration-*")
 		Expect(err).NotTo(HaveOccurred())
 

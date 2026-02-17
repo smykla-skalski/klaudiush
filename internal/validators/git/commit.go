@@ -101,7 +101,7 @@ func (v *CommitValidator) Validate(ctx context.Context, hookCtx *hook.Context) *
 		}
 
 		// Validate the git commit command
-		return v.validateGitCommit(gitCmd, hasGitAdd)
+		return v.validateGitCommit(ctx, gitCmd, hasGitAdd)
 	}
 
 	log.Debug("No git commit commands found")
@@ -111,6 +111,7 @@ func (v *CommitValidator) Validate(ctx context.Context, hookCtx *hook.Context) *
 
 // validateGitCommit validates a single git commit command
 func (v *CommitValidator) validateGitCommit(
+	ctx context.Context,
 	gitCmd *parser.GitCommand,
 	hasGitAdd bool,
 ) *validator.Result {
@@ -147,7 +148,7 @@ func (v *CommitValidator) validateGitCommit(
 	}
 
 	// Validate the commit message
-	return v.validateMessage(commitMsg)
+	return v.validateMessage(ctx, commitMsg)
 }
 
 // shouldCheckStaging determines if staging area should be checked

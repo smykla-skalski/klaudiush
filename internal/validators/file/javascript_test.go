@@ -52,6 +52,7 @@ if (require.main === module) {
     greet('World');
 }
 `
+
 			mockChecker.EXPECT().
 				CheckWithOptions(gomock.Any(), gomock.Any(), gomock.Any()).
 				Return(&linters.LintResult{Success: true})
@@ -66,6 +67,7 @@ if (require.main === module) {
 				"    console.log(`Hello, ${name}!`);\n" +
 				"}\n\n" +
 				"greet('World');\n"
+
 			mockChecker.EXPECT().
 				CheckWithOptions(gomock.Any(), gomock.Any(), gomock.Any()).
 				Return(&linters.LintResult{Success: true})
@@ -78,6 +80,7 @@ if (require.main === module) {
 			ctx.ToolInput.FilePath = "test.js"
 			ctx.ToolInput.Content = `console.log("Hello, World!");
 `
+
 			mockChecker.EXPECT().
 				CheckWithOptions(gomock.Any(), gomock.Any(), gomock.Any()).
 				Return(&linters.LintResult{Success: true})
@@ -94,6 +97,7 @@ if (require.main === module) {
 
 console.log("Hello, World!");
 `
+
 			mockChecker.EXPECT().
 				CheckWithOptions(gomock.Any(), gomock.Any(), gomock.Any()).
 				Return(&linters.LintResult{
@@ -122,6 +126,7 @@ console.log("Hello, World!");
     console.log(undefinedVar);
 }
 `
+
 			mockChecker.EXPECT().
 				CheckWithOptions(gomock.Any(), gomock.Any(), gomock.Any()).
 				Return(&linters.LintResult{
@@ -158,6 +163,7 @@ console.log("Hello, World!");
 
 console.log("Hello, World!");
 `
+
 			mockChecker.EXPECT().
 				CheckWithOptions(gomock.Any(), gomock.Any(), gomock.Any()).
 				Return(&linters.LintResult{Success: true})

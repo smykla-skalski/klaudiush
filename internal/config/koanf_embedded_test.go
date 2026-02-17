@@ -16,6 +16,7 @@ var _ = Describe("KoanfLoader embedded struct handling", func() {
 
 	BeforeEach(func() {
 		var err error
+
 		tempDir, err = os.MkdirTemp("", "koanf-embedded-test")
 		Expect(err).NotTo(HaveOccurred())
 
