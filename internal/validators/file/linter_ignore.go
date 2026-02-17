@@ -21,7 +21,8 @@ var defaultIgnorePatterns = []string{
 	`#\s*type:\s*ignore`,    // # type: ignore
 	`#\s*pylint:\s*disable`, // # pylint: disable=...
 	`#\s*pyright:\s*ignore`, // # pyright: ignore
-	`#\s*mypy:\s*ignore`,    // # mypy: ignore
+	`#\s*mypy:\s*ignore`,    // mypy suppress directive
+	`#\s*pyrefly:\s*ignore`, // pyrefly suppress directive
 
 	// JavaScript/TypeScript
 	`//\s*eslint-disable`,   // // eslint-disable
