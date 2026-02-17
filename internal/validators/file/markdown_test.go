@@ -11,6 +11,7 @@ import (
 	execpkg "github.com/smykla-skalski/klaudiush/internal/exec"
 	"github.com/smykla-skalski/klaudiush/internal/linters"
 	"github.com/smykla-skalski/klaudiush/internal/validators/file"
+	"github.com/smykla-skalski/klaudiush/pkg/config"
 	"github.com/smykla-skalski/klaudiush/pkg/hook"
 	"github.com/smykla-skalski/klaudiush/pkg/logger"
 )
@@ -509,6 +510,52 @@ code
 					result.Details["errors"],
 				).To(ContainSubstring("Code block should have empty line before it"))
 				Expect(result.Details["errors"]).NotTo(ContainSubstring("indented"))
+			})
+		})
+
+		Context("plan document skipping", func() {
+			It("skips validation for plan documents with nil config (default)", func() {
+				ctx.ToolInput.FilePath = "/Users/test/.claude/plans/some-plan.md"
+				ctx.ToolInput.Content = "# Header\nText without blank line\n"
+				result := v.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("skips validation for plan documents when explicitly enabled", func() {
+				skipTrue := true
+				cfg := &config.MarkdownValidatorConfig{
+					SkipPlanDocuments: &skipTrue,
+				}
+				runner := execpkg.NewCommandRunner(10 * time.Second)
+				linter := linters.NewMarkdownLinter(runner)
+				vWithCfg := file.NewMarkdownValidator(cfg, linter, logger.NewNoOpLogger(), nil)
+
+				ctx.ToolInput.FilePath = "/Users/test/.claude/plans/some-plan.md"
+				ctx.ToolInput.Content = "# Header\nText without blank line\n"
+				result := vWithCfg.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("validates plan documents when skipping is disabled", func() {
+				skipFalse := false
+				cfg := &config.MarkdownValidatorConfig{
+					SkipPlanDocuments: &skipFalse,
+				}
+				runner := execpkg.NewCommandRunner(10 * time.Second)
+				linter := linters.NewMarkdownLinter(runner)
+				vWithCfg := file.NewMarkdownValidator(cfg, linter, logger.NewNoOpLogger(), nil)
+
+				ctx.ToolInput.FilePath = "/Users/test/.claude/plans/some-plan.md"
+				ctx.ToolInput.Content = "# Header\nText without blank line\n"
+				result := vWithCfg.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeFalse())
+			})
+
+			It("validates non-plan markdown files normally", func() {
+				ctx.ToolInput.FilePath = "/Users/test/project/README.md"
+				ctx.ToolInput.Content = "# Header\nText without blank line\n"
+				result := v.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeFalse())
 			})
 		})
 
