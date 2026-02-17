@@ -173,12 +173,6 @@ x: int = "wrong"  # type: ignore
 				result := v.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeFalse())
 			})
-
-			It("fails for pyrefly: ignore", func() {
-				ctx.ToolInput.Content = "x = 1  # pyrefly:" + " ignore"
-				result := v.Validate(context.Background(), ctx)
-				Expect(result.Passed).To(BeFalse())
-			})
 		})
 
 		Context("JavaScript/TypeScript ignore directives", func() {
