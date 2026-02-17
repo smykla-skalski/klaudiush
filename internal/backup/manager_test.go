@@ -418,6 +418,7 @@ var _ = Describe("Manager", func() {
 
 			snapshot, err := manager.CreateBackup(opts)
 			Expect(err).NotTo(HaveOccurred())
+
 			snapshotID = snapshot.ID
 		})
 
@@ -772,7 +773,9 @@ var _ = Describe("Manager", func() {
 
 		BeforeEach(func() {
 			auditFile := filepath.Join(tmpDir, "audit.jsonl")
+
 			var err error
+
 			auditLogger, err = backup.NewJSONLAuditLogger(auditFile)
 			Expect(err).NotTo(HaveOccurred())
 		})

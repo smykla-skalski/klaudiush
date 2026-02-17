@@ -152,6 +152,7 @@ echo "Hello from Fish"
 
 		BeforeEach(func() {
 			var err error
+
 			tmpDir, err = os.MkdirTemp("", "shellscript-test-*")
 			Expect(err).NotTo(HaveOccurred())
 		})

@@ -23,6 +23,7 @@ var _ = Describe("Handler", func() {
 
 	BeforeEach(func() {
 		var err error
+
 		tempDir, err = os.MkdirTemp("", "handler-test-*")
 		Expect(err).NotTo(HaveOccurred())
 	})

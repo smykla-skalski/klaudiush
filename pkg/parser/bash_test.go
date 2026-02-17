@@ -601,6 +601,7 @@ EOF`
 
 				// Check that the one with $VAR has HasVariables=true
 				var varLocation *parser.BacktickLocation
+
 				for i := range locations {
 					if locations[i].HasVariables {
 						varLocation = &locations[i]
@@ -608,6 +609,7 @@ EOF`
 						break
 					}
 				}
+
 				Expect(varLocation).NotTo(BeNil())
 				Expect(varLocation.SuggestSingle).To(BeFalse())
 			})

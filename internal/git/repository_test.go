@@ -154,6 +154,7 @@ var _ = Describe("SDKRepository", func() {
 		// Configure repository
 		cfg, err := repo.Config() //nolint:govet // shadow
 		Expect(err).NotTo(HaveOccurred())
+
 		cfg.User.Name = testAuthor.Name
 		cfg.User.Email = testAuthor.Email
 		err = repo.SetConfig(cfg)
@@ -595,6 +596,7 @@ var _ = Describe("DiscoverRepository with linked worktrees", func() {
 		// Configure repository
 		cfg, cfgErr := repo.Config()
 		Expect(cfgErr).NotTo(HaveOccurred())
+
 		cfg.User.Name = testAuthor.Name
 		cfg.User.Email = testAuthor.Email
 		err = repo.SetConfig(cfg)
@@ -644,6 +646,7 @@ var _ = Describe("DiscoverRepository with linked worktrees", func() {
 		gitDir := filepath.Join(mainRepoDir, ".git")
 		args := []string{"--git-dir=" + gitDir, "worktree", "add", worktreeDir, "feature-branch"}
 		gitCmd := exec.Command("git", args...)
+
 		output, cmdErr := gitCmd.CombinedOutput()
 		if cmdErr != nil {
 			// If git worktree command fails, skip test

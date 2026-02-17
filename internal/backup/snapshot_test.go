@@ -146,6 +146,7 @@ var _ = Describe("Snapshot", func() {
 
 			It("updates timestamp", func() {
 				initialTime := index.Updated
+
 				time.Sleep(10 * time.Millisecond)
 
 				snapshot := backup.Snapshot{ID: "test-id"}
@@ -194,6 +195,7 @@ var _ = Describe("Snapshot", func() {
 				snapshot := backup.Snapshot{ID: "test-id"}
 				index.Add(snapshot)
 				initialTime := index.Updated
+
 				time.Sleep(10 * time.Millisecond)
 
 				err := index.Delete("test-id")
@@ -207,6 +209,7 @@ var _ = Describe("Snapshot", func() {
 			It("returns all snapshots", func() {
 				snapshot1 := backup.Snapshot{ID: "id-1"}
 				snapshot2 := backup.Snapshot{ID: "id-2"}
+
 				index.Add(snapshot1)
 				index.Add(snapshot2)
 
@@ -259,6 +262,7 @@ var _ = Describe("Snapshot", func() {
 				snapshot1 := backup.Snapshot{ID: "id-1", ChainID: "chain-A", SequenceNum: 1}
 				snapshot2 := backup.Snapshot{ID: "id-2", ChainID: "chain-A", SequenceNum: 2}
 				snapshot3 := backup.Snapshot{ID: "id-3", ChainID: "chain-B", SequenceNum: 1}
+
 				index.Add(snapshot1)
 				index.Add(snapshot2)
 				index.Add(snapshot3)

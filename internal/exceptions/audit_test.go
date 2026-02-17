@@ -26,6 +26,7 @@ var _ = Describe("AuditLogger", func() {
 
 	BeforeEach(func() {
 		var err error
+
 		tempDir, err = os.MkdirTemp("", "audit-test-*")
 		Expect(err).NotTo(HaveOccurred())
 
@@ -133,6 +134,7 @@ var _ = Describe("AuditLogger", func() {
 				Expect(err).NotTo(HaveOccurred())
 
 				var logged exceptions.AuditEntry
+
 				err = json.Unmarshal(data, &logged)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(logged.ErrorCode).To(Equal("GIT022"))
@@ -538,8 +540,10 @@ var _ = Describe("AuditLogger", func() {
 		})
 
 		It("handles concurrent writes safely", func() {
-			const numGoroutines = 10
-			const entriesPerGoroutine = 10
+			const (
+				numGoroutines       = 10
+				entriesPerGoroutine = 10
+			)
 
 			done := make(chan bool, numGoroutines)
 

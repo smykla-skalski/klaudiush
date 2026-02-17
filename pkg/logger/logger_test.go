@@ -39,6 +39,7 @@ var _ = Describe("SlogAdapter", func() {
 
 		It("should use local timezone in timestamps", func() {
 			log.Info("test message")
+
 			output = buf.String()
 
 			// Timestamp should include timezone offset like +01:00 or -05:00
@@ -52,6 +53,7 @@ var _ = Describe("SlogAdapter", func() {
 
 		It("should not use UTC (Z suffix) in timestamps", func() {
 			log.Info("test message")
+
 			output = buf.String()
 
 			// Should NOT end with Z (UTC marker)
@@ -61,6 +63,7 @@ var _ = Describe("SlogAdapter", func() {
 
 		It("should use current local time", func() {
 			log.Info("test message")
+
 			output = buf.String()
 
 			// Extract the timestamp part
@@ -90,6 +93,7 @@ var _ = Describe("SlogAdapter", func() {
 
 			It("should log Info messages", func() {
 				log.Info("test info message")
+
 				output = buf.String()
 
 				Expect(output).To(ContainSubstring("INFO"))
@@ -98,6 +102,7 @@ var _ = Describe("SlogAdapter", func() {
 
 			It("should log Error messages", func() {
 				log.Error("test error message")
+
 				output = buf.String()
 
 				Expect(output).To(ContainSubstring("ERROR"))
@@ -106,6 +111,7 @@ var _ = Describe("SlogAdapter", func() {
 
 			It("should not log Debug messages without trace mode", func() {
 				log.Debug("test debug message")
+
 				output = buf.String()
 
 				Expect(output).To(BeEmpty())
@@ -119,6 +125,7 @@ var _ = Describe("SlogAdapter", func() {
 
 			It("should log Debug messages", func() {
 				log.Debug("test debug message")
+
 				output = buf.String()
 
 				Expect(output).To(ContainSubstring("DEBUG"))
@@ -133,6 +140,7 @@ var _ = Describe("SlogAdapter", func() {
 
 			It("should not log Info messages", func() {
 				log.Info("test info message")
+
 				output = buf.String()
 
 				Expect(output).To(BeEmpty())
@@ -140,6 +148,7 @@ var _ = Describe("SlogAdapter", func() {
 
 			It("should still log Error messages", func() {
 				log.Error("test error message")
+
 				output = buf.String()
 
 				Expect(output).To(ContainSubstring("ERROR"))
@@ -154,6 +163,7 @@ var _ = Describe("SlogAdapter", func() {
 
 		It("should log key-value pairs", func() {
 			log.Info("test message", "key1", "value1", "key2", 42)
+
 			output = buf.String()
 
 			Expect(output).To(ContainSubstring("key1=value1"))
@@ -162,6 +172,7 @@ var _ = Describe("SlogAdapter", func() {
 
 		It("should quote values with spaces", func() {
 			log.Info("test message", "command", "echo hello world")
+
 			output = buf.String()
 
 			Expect(output).To(ContainSubstring(`command="echo hello world"`))
@@ -169,6 +180,7 @@ var _ = Describe("SlogAdapter", func() {
 
 		It("should escape quotes in values", func() {
 			log.Info("test message", "msg", `say "hello"`)
+
 			output = buf.String()
 
 			Expect(output).To(ContainSubstring(`msg="say \"hello\""`))
@@ -176,6 +188,7 @@ var _ = Describe("SlogAdapter", func() {
 
 		It("should escape newlines in values", func() {
 			log.Info("test message", "text", "line1\nline2")
+
 			output = buf.String()
 
 			Expect(output).To(ContainSubstring(`text="line1\nline2"`))
@@ -185,6 +198,7 @@ var _ = Describe("SlogAdapter", func() {
 			longCommand := "git -C /Users/bart.smykla@konghq.com/Projects/github.com/smykla-skalski/klaudiush add pkg/mdtable/parser.go pkg/mdtable/parser_test.go && git -C /Users/bart.smykla@konghq.com/Projects/github.com/smykla-skalski/klaudiush commit -sS -m \"fix(mdtable): prevent false positives in spacing detection\""
 
 			log.Info("context parsed", "command", longCommand)
+
 			output = buf.String()
 
 			// The full command should be present, not truncated
@@ -202,6 +216,7 @@ var _ = Describe("SlogAdapter", func() {
 		It("should create logger with base key-value pairs", func() {
 			childLog := log.With("baseKey", "baseValue")
 			childLog.Info("test message", "msgKey", "msgValue")
+
 			output = buf.String()
 
 			Expect(output).To(ContainSubstring("baseKey=baseValue"))
@@ -212,6 +227,7 @@ var _ = Describe("SlogAdapter", func() {
 			childLog := log.With("childKey", "childValue")
 			log.Info("parent message")
 			childLog.Info("child message")
+
 			output = buf.String()
 
 			// Parent log should not have childKey

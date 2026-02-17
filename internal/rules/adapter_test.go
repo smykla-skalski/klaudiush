@@ -42,6 +42,7 @@ var _ = Describe("RuleValidatorAdapter", func() {
 				}
 
 				var err error
+
 				engine, err = rules.NewRuleEngine(ruleList)
 				Expect(err).NotTo(HaveOccurred())
 
@@ -105,6 +106,7 @@ var _ = Describe("RuleValidatorAdapter", func() {
 				}
 
 				var err error
+
 				engine, err = rules.NewRuleEngine(ruleList)
 				Expect(err).NotTo(HaveOccurred())
 
@@ -144,6 +146,7 @@ var _ = Describe("RuleValidatorAdapter", func() {
 				}
 
 				var err error
+
 				engine, err = rules.NewRuleEngine(ruleList)
 				Expect(err).NotTo(HaveOccurred())
 
@@ -192,6 +195,7 @@ var _ = Describe("RuleValidatorAdapter", func() {
 			}
 
 			var err error
+
 			engine, err = rules.NewRuleEngine(ruleList)
 			Expect(err).NotTo(HaveOccurred())
 
@@ -336,6 +340,7 @@ var _ = Describe("RuleValidatorAdapter", func() {
 			}
 
 			var err error
+
 			engine, err = rules.NewRuleEngine(ruleList)
 			Expect(err).NotTo(HaveOccurred())
 		})

@@ -3,6 +3,7 @@ package config
 
 import (
 	"fmt"
+	"regexp"
 	"slices"
 
 	"github.com/cockroachdb/errors"
@@ -292,6 +293,34 @@ func (*Validator) validateCommitMessageConfig(cfg *config.CommitMessageConfig) e
 			validationErrors = append(
 				validationErrors,
 				errors.WithMessage(ErrEmptyValue, "valid_types"),
+			)
+		}
+	}
+
+	validCommitStyles := []string{"", "conventional", "scope-only", "none", "custom", "auto"}
+	if !slices.Contains(validCommitStyles, cfg.CommitStyle) {
+		validationErrors = append(
+			validationErrors,
+			errors.Newf(
+				"commit_style must be one of %v, got %q",
+				validCommitStyles[1:],
+				cfg.CommitStyle,
+			),
+		)
+	}
+
+	if cfg.CommitStyle == "custom" && cfg.TitlePattern == "" {
+		validationErrors = append(
+			validationErrors,
+			errors.New("title_pattern is required when commit_style is \"custom\""),
+		)
+	}
+
+	if cfg.TitlePattern != "" {
+		if _, err := regexp.Compile(cfg.TitlePattern); err != nil {
+			validationErrors = append(
+				validationErrors,
+				errors.Wrapf(err, "title_pattern is not a valid regex"),
 			)
 		}
 	}

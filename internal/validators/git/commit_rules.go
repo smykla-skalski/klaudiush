@@ -114,6 +114,74 @@ func (r *ConventionalFormatRule) Validate(commit *ParsedCommit, _ string) *RuleR
 	return nil
 }
 
+// scopeOnlyTitleRegex matches "scope: description" format used by projects like home-manager.
+// The scope can be any lowercase identifier with optional path separators (/, -, .).
+var scopeOnlyTitleRegex = regexp.MustCompile(`^[a-z][a-z0-9./_-]*: .+`)
+
+// ScopeOnlyFormatRule validates "scope: description" commit titles (no type prefix).
+// This matches the convention used by home-manager, linux kernel patches, and similar
+// projects where the scope is a module or file path, not a semantic type like feat/fix.
+type ScopeOnlyFormatRule struct{}
+
+func (*ScopeOnlyFormatRule) Name() string {
+	return "scope-only-format"
+}
+
+func (*ScopeOnlyFormatRule) Validate(commit *ParsedCommit, _ string) *RuleResult {
+	if isRevertCommit(commit.Title) {
+		return nil
+	}
+
+	if scopeOnlyTitleRegex.MatchString(commit.Title) {
+		return nil
+	}
+
+	return &RuleResult{
+		Reference: validator.RefGitConventionalCommit,
+		Errors: []string{
+			"❌ Title doesn't follow scope-only format: scope: description",
+			"   Scope must start with a lowercase letter (a-z)",
+			"   Valid characters in scope: letters, digits, '.', '/', '_', '-'",
+			"   Examples: 'home-environment: use nix profile', 'modules/systemd: add unit'",
+			fmt.Sprintf("   Current title: '%s'", commit.Title),
+		},
+	}
+}
+
+// CustomPatternRule validates commit titles against a user-supplied regex.
+type CustomPatternRule struct {
+	Pattern *regexp.Regexp
+}
+
+// NewCustomPatternRule creates a CustomPatternRule from a regex string.
+// Panics if the pattern is invalid (callers should validate first).
+func NewCustomPatternRule(pattern string) *CustomPatternRule {
+	return &CustomPatternRule{Pattern: regexp.MustCompile(pattern)}
+}
+
+func (*CustomPatternRule) Name() string {
+	return "custom-pattern"
+}
+
+func (r *CustomPatternRule) Validate(commit *ParsedCommit, _ string) *RuleResult {
+	if isRevertCommit(commit.Title) {
+		return nil
+	}
+
+	if r.Pattern.MatchString(commit.Title) {
+		return nil
+	}
+
+	return &RuleResult{
+		Reference: validator.RefGitConventionalCommit,
+		Errors: []string{
+			"❌ Title doesn't match the required pattern",
+			"   Pattern: " + r.Pattern.String(),
+			fmt.Sprintf("   Current title: '%s'", commit.Title),
+		},
+	}
+}
+
 // InfraScopeMisuseRule blocks feat/fix with infrastructure scopes.
 type InfraScopeMisuseRule struct {
 	infraScopeMisuseRegex *regexp.Regexp

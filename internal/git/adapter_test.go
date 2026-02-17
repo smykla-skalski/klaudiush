@@ -26,6 +26,7 @@ var _ = Describe("RepositoryAdapter", func() {
 	Describe("IsInRepo", func() {
 		It("should delegate to repository", func() {
 			mockRepo.isInRepoResult = true
+
 			Expect(adapter.IsInRepo()).To(BeTrue())
 			Expect(mockRepo.isInRepoCalled).To(BeTrue())
 		})

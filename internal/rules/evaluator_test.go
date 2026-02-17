@@ -259,6 +259,7 @@ var _ = Describe("Evaluator", func() {
 			for i, r := range filtered {
 				names[i] = r.Rule.Name
 			}
+
 			Expect(names).To(ContainElements("git-push-rule", "universal-rule"))
 		})
 

@@ -26,6 +26,7 @@ var _ = Describe("Migration", func() {
 
 	BeforeEach(func() {
 		var err error
+
 		tempDir, err = os.MkdirTemp("", "klaudiush-migration-test-*")
 		Expect(err).NotTo(HaveOccurred())
 
@@ -106,6 +107,7 @@ var _ = Describe("Migration", func() {
 				// Change to project directory
 				originalWd, err := os.Getwd()
 				Expect(err).NotTo(HaveOccurred())
+
 				defer os.Chdir(originalWd)
 
 				err = os.Chdir(projectDir)
@@ -252,6 +254,7 @@ var _ = Describe("Migration", func() {
 					snapshot = s
 					break
 				}
+
 				Expect(snapshot.Trigger).To(Equal(backup.TriggerMigration))
 				Expect(snapshot.Metadata.Command).To(Equal("first-run migration"))
 			})

@@ -20,6 +20,7 @@ var _ = Describe("Integration Tests", func() {
 
 	BeforeEach(func() {
 		var err error
+
 		tempDir, err = os.MkdirTemp("", "session-integration-*")
 		Expect(err).NotTo(HaveOccurred())
 
@@ -212,6 +213,7 @@ var _ = Describe("Integration Tests", func() {
 
 			// Advance 30 minutes
 			currentTime = currentTime.Add(30 * time.Minute)
+
 			tracker1.RecordCommand("recent-session")
 
 			// Save

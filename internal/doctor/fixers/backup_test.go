@@ -27,6 +27,7 @@ var _ = Describe("BackupFixer", func() {
 		prompter = prompt.NewMockPrompter(ctrl)
 
 		var err error
+
 		tempDir, err = os.MkdirTemp("", "klaudiush-test-*")
 		Expect(err).NotTo(HaveOccurred())
 
@@ -38,6 +39,7 @@ var _ = Describe("BackupFixer", func() {
 
 	AfterEach(func() {
 		ctrl.Finish()
+
 		_ = os.RemoveAll(tempDir)
 	})
 
@@ -133,6 +135,7 @@ var _ = Describe("BackupFixer Integration", func() {
 
 	BeforeEach(func() {
 		var err error
+
 		tempDir, err = os.MkdirTemp("", "klaudiush-test-*")
 		Expect(err).NotTo(HaveOccurred())
 

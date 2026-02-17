@@ -48,6 +48,7 @@ var _ = Describe("RustValidator", func() {
     println!("Hello, World!");
 }
 `
+
 			mockChecker.EXPECT().
 				CheckWithOptions(gomock.Any(), gomock.Any(), gomock.Any()).
 				Return(&linters.LintResult{Success: true})
@@ -72,6 +73,7 @@ mod tests {
     }
 }
 `
+
 			mockChecker.EXPECT().
 				CheckWithOptions(gomock.Any(), gomock.Any(), gomock.Any()).
 				Return(&linters.LintResult{Success: true})
@@ -93,6 +95,7 @@ impl User {
     }
 }
 `
+
 			mockChecker.EXPECT().
 				CheckWithOptions(gomock.Any(), gomock.Any(), gomock.Any()).
 				Return(&linters.LintResult{Success: true})
@@ -170,6 +173,7 @@ impl User {
     println!("Hello");
 }
 `
+
 			mockChecker.EXPECT().
 				CheckWithOptions(gomock.Any(), gomock.Any(), gomock.Any()).
 				Do(func(_ context.Context, _ string, opts *linters.RustfmtOptions) {
@@ -193,6 +197,7 @@ impl User {
     println!("Hello");
 }
 `
+
 			mockChecker.EXPECT().
 				CheckWithOptions(gomock.Any(), gomock.Any(), gomock.Any()).
 				Do(func(_ context.Context, _ string, opts *linters.RustfmtOptions) {
@@ -292,8 +297,10 @@ println!("Hello, World!");`
 	})
 
 	Describe("edition auto-detection", func() {
-		var tempDir string
-		var rustFile string
+		var (
+			tempDir  string
+			rustFile string
+		)
 
 		BeforeEach(func() {
 			tempDir = GinkgoT().TempDir()
@@ -329,6 +336,7 @@ edition = "2018"
     println!("Hello");
 }
 `
+
 			mockChecker.EXPECT().
 				CheckWithOptions(gomock.Any(), gomock.Any(), gomock.Any()).
 				Do(func(_ context.Context, _ string, opts *linters.RustfmtOptions) {
@@ -349,6 +357,7 @@ edition = "2018"
     println!("Hello");
 }
 `
+
 			mockChecker.EXPECT().
 				CheckWithOptions(gomock.Any(), gomock.Any(), gomock.Any()).
 				Do(func(_ context.Context, _ string, opts *linters.RustfmtOptions) {
@@ -381,6 +390,7 @@ edition = "2018"
     println!("Hello");
 }
 `
+
 			mockChecker.EXPECT().
 				CheckWithOptions(gomock.Any(), gomock.Any(), gomock.Any()).
 				Do(func(_ context.Context, _ string, opts *linters.RustfmtOptions) {

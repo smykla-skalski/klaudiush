@@ -89,6 +89,7 @@ var _ = Describe("Plugin Integration Tests", func() {
 		// Create a temp directory to act as project root
 		tmpDir, err = os.MkdirTemp("", "plugin-integration-test-*")
 		Expect(err).NotTo(HaveOccurred())
+
 		projectRoot = tmpDir
 
 		// Create .klaudiush/plugins directory for plugin path validation
@@ -787,6 +788,7 @@ var _ = Describe("Plugin Integration Tests", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			srv := newMockGRPCServer()
+
 			address := srv.start()
 			defer srv.stop()
 

@@ -80,8 +80,10 @@ var _ = Describe("ExecLoader", func() {
 
 		// Create temp project structure
 		var err error
+
 		tmpDir, err = os.MkdirTemp("", "exec-loader-test-*")
 		Expect(err).NotTo(HaveOccurred())
+
 		projectRoot = tmpDir
 
 		pluginDir = filepath.Join(tmpDir, ".klaudiush", "plugins")
@@ -541,6 +543,7 @@ var _ = Describe("ExecLoader", func() {
 				) exec.CommandResult {
 					// Simulate slow execution
 					time.Sleep(200 * time.Millisecond)
+
 					resp := pluginapi.PassResponse()
 					respJSON, _ := json.Marshal(resp)
 
