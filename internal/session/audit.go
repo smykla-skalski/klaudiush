@@ -39,7 +39,7 @@ const (
 	timestampDashPos = 8
 )
 
-//go:generate enumer -type=AuditAction -trimprefix=AuditAction -json -text -yaml -sql
+//go:generate enumer -type=AuditAction -trimprefix=AuditAction -json -text -yaml -sql -output=audit_action_enumer.go
 //go:generate go run github.com/smykla-skalski/klaudiush/tools/enumerfix audit_action_enumer.go
 
 // AuditAction represents the type of session action being audited.
