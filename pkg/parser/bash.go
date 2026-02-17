@@ -99,6 +99,21 @@ func (r *ParseResult) GetCommands(name string) []Command {
 	return result
 }
 
+// GetFirstGitWorkingDir returns the effective working directory for the first
+// git command, as set by a preceding cd command in the same command chain.
+// Returns "" if no cd command preceded the git operation.
+//
+// Example: "cd /path/to/repo && git commit -m 'msg'" returns "/path/to/repo".
+func (r *ParseResult) GetFirstGitWorkingDir() string {
+	for _, op := range r.GitOperations {
+		if op.WorkingDirectory != "" {
+			return op.WorkingDirectory
+		}
+	}
+
+	return ""
+}
+
 // BacktickIssue represents a problematic use of backticks in double quotes.
 type BacktickIssue struct {
 	ArgIndex int    // Index of the argument containing backticks

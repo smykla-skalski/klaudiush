@@ -119,12 +119,14 @@ var _ = Describe("Pattern detection coverage", func() {
 			Expect(findings).NotTo(BeEmpty(), "Expected to detect secret in: %s", content)
 			// Find the expected pattern in findings
 			var found bool
+
 			for _, f := range findings {
 				if f.Pattern.Name == expectedPatternName {
 					found = true
 					break
 				}
 			}
+
 			Expect(
 				found,
 			).To(BeTrue(), "Expected pattern %s in findings for: %s", expectedPatternName, content)
@@ -188,13 +190,16 @@ var _ = Describe("Slack webhook URL pattern security", func() {
 			"valid Slack webhooks",
 			func(content string) {
 				findings := detector.Detect(content)
+
 				var found bool
+
 				for _, f := range findings {
 					if f.Pattern.Name == "slack-webhook" {
 						found = true
 						break
 					}
 				}
+
 				Expect(found).To(BeTrue(), "Expected slack-webhook to be detected in: %s", content)
 			},
 			//nolint:lll // Slack webhook URL test data is intentionally long
@@ -262,13 +267,16 @@ var _ = Describe("Slack webhook URL pattern security", func() {
 			//nolint:lll // Slack webhook URL test data is intentionally long
 			content := "https://hooks.slack.com/services/T12345678901234567890/B12345678901234567890/abcdefghijklmnopqrstuvwx"
 			findings := detector.Detect(content)
+
 			var found bool
+
 			for _, f := range findings {
 				if f.Pattern.Name == "slack-webhook" {
 					found = true
 					break
 				}
 			}
+
 			Expect(found).To(BeTrue(), "Should detect webhook with max length IDs")
 		})
 
@@ -276,6 +284,7 @@ var _ = Describe("Slack webhook URL pattern security", func() {
 			// 21 digits after T (22 characters total, exceeds upper bound of 20)
 			//nolint:lll // Slack webhook URL test data is intentionally long
 			content := "https://hooks.slack.com/services/T123456789012345678901/B123456789012345678901/abcdefghijklmnopqrstuvwx"
+
 			findings := detector.Detect(content)
 			for _, f := range findings {
 				Expect(f.Pattern.Name).NotTo(

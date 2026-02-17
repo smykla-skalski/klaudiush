@@ -83,6 +83,15 @@ func (v *MarkdownValidator) isUseMarkdownlint() bool {
 	return true // default: enabled
 }
 
+// isSkipPlanDocuments returns whether plan document skipping is enabled
+func (v *MarkdownValidator) isSkipPlanDocuments() bool {
+	if v.config != nil && v.config.SkipPlanDocuments != nil {
+		return *v.config.SkipPlanDocuments
+	}
+
+	return true // default: skip plan documents
+}
+
 // Validate checks Markdown formatting rules
 func (v *MarkdownValidator) Validate(ctx context.Context, hookCtx *hook.Context) *validator.Result {
 	log := v.Logger()
@@ -92,6 +101,12 @@ func (v *MarkdownValidator) Validate(ctx context.Context, hookCtx *hook.Context)
 		if result := v.ruleAdapter.CheckRules(ctx, hookCtx); result != nil {
 			return result
 		}
+	}
+
+	// Skip validation for Claude Code plan documents
+	if v.isSkipPlanDocuments() && strings.Contains(hookCtx.GetFilePath(), ".claude/plans/") {
+		log.Debug("skipping markdown validation for plan document", "path", hookCtx.GetFilePath())
+		return validator.Pass()
 	}
 
 	// Skip if markdownlint is disabled

@@ -39,10 +39,12 @@ var _ = Describe("Rule Engine Integration Tests", func() {
 
 			homeDir, err = os.MkdirTemp("", "rules-integration-home")
 			Expect(err).NotTo(HaveOccurred())
+
 			cleanups = append(cleanups, homeDir)
 
 			workDir, err = os.MkdirTemp("", "rules-integration-work")
 			Expect(err).NotTo(HaveOccurred())
+
 			cleanups = append(cleanups, workDir)
 		})
 
@@ -245,10 +247,12 @@ message = "Warning: pushing to main branch"
 
 			homeDir, err = os.MkdirTemp("", "rules-precedence-home")
 			Expect(err).NotTo(HaveOccurred())
+
 			cleanups = append(cleanups, homeDir)
 
 			workDir, err = os.MkdirTemp("", "rules-precedence-work")
 			Expect(err).NotTo(HaveOccurred())
+
 			cleanups = append(cleanups, workDir)
 		})
 

@@ -84,6 +84,84 @@ func (v *PRValidator) isTitleConventionalCommitsEnabled() bool {
 	return true // default: enabled
 }
 
+// getTitleStyle returns the title format style to enforce.
+// Supports the same options as commit_style in CommitMessageConfig.
+// Falls back to TitleConventionalCommits for backwards compatibility.
+func (v *PRValidator) getTitleStyle() string {
+	if v.config != nil && v.config.TitleStyle != "" {
+		return v.config.TitleStyle
+	}
+
+	// Legacy: TitleConventionalCommits = false maps to "none"
+	if !v.isTitleConventionalCommitsEnabled() {
+		return commitStyleNone
+	}
+
+	return commitStyleConventional
+}
+
+// getPRTitlePattern returns the compiled title pattern regex, or nil if not configured.
+func (v *PRValidator) getPRTitlePattern() *regexp.Regexp {
+	if v.config == nil || v.config.TitlePattern == "" {
+		return nil
+	}
+
+	pattern, err := regexp.Compile(v.config.TitlePattern)
+	if err != nil {
+		return nil
+	}
+
+	return pattern
+}
+
+// buildPRTitleFormatRules returns the format rules for PR title validation
+// based on the configured title_style.
+func (v *PRValidator) buildPRTitleFormatRules(ctx context.Context) []CommitRule {
+	var formatRules []CommitRule
+
+	switch v.getTitleStyle() {
+	case commitStyleConventional:
+		// PR titles don't require scope (scope is optional)
+		formatRules = append(formatRules, &ConventionalFormatRule{
+			ValidTypes:   v.getValidTypes(),
+			RequireScope: false,
+		})
+		formatRules = append(formatRules, NewInfraScopeMisuseRule())
+
+	case commitStyleScopeOnly:
+		formatRules = append(formatRules, &ScopeOnlyFormatRule{})
+
+	case commitStyleCustom:
+		if pattern := v.getPRTitlePattern(); pattern != nil {
+			formatRules = append(formatRules, &CustomPatternRule{Pattern: pattern})
+		}
+
+	case commitStyleNone:
+		// no format rule
+
+	case commitStyleAuto:
+		detected := NewCommitStyleDetector().Detect(ctx)
+		if detected == commitStyleScopeOnly {
+			formatRules = append(formatRules, &ScopeOnlyFormatRule{})
+		} else {
+			formatRules = append(formatRules, &ConventionalFormatRule{
+				ValidTypes:   v.getValidTypes(),
+				RequireScope: false,
+			})
+			formatRules = append(formatRules, NewInfraScopeMisuseRule())
+		}
+	}
+
+	return formatRules
+}
+
+// parsedCommitForPRTitle builds a ParsedCommit from a PR title string.
+// PR titles are single-line commit subjects, so we parse just the title.
+func (v *PRValidator) parsedCommitForPRTitle(title string) *ParsedCommit {
+	parser := NewCommitParser(WithValidTypes(v.getValidTypes()))
+	return parser.Parse(title)
+}
+
 // shouldAllowUnlimitedRevertTitle returns whether revert PRs are exempt from title length limits
 func (v *PRValidator) shouldAllowUnlimitedRevertTitle() bool {
 	if v.config != nil && v.config.AllowUnlimitedRevertTitle != nil {
@@ -275,7 +353,7 @@ func (v *PRValidator) validatePR(ctx context.Context, data PRData) *validator.Re
 	allWarnings := make([]string, 0, typicalWarningCount)
 
 	// 1. Validate PR title
-	v.validatePRTitleData(data.Title, &allErrors, &allWarnings)
+	v.validatePRTitleData(ctx, data.Title, &allErrors, &allWarnings)
 
 	// 2. Check for forbidden patterns in title and body
 	forbiddenErrors := v.checkForbiddenPatterns(data.Title, data.Body)
@@ -312,8 +390,12 @@ func (v *PRValidator) validatePR(ctx context.Context, data PRData) *validator.Re
 	return v.buildResult(allErrors, allWarnings, data.Title)
 }
 
-// validatePRTitleData validates the PR title
-func (v *PRValidator) validatePRTitleData(title string, allErrors, allWarnings *[]string) {
+// validatePRTitleData validates the PR title using commit rules.
+func (v *PRValidator) validatePRTitleData(
+	ctx context.Context,
+	title string,
+	allErrors, allWarnings *[]string,
+) {
 	if title == "" {
 		*allWarnings = append(
 			*allWarnings,
@@ -323,22 +405,29 @@ func (v *PRValidator) validatePRTitleData(title string, allErrors, allWarnings *
 		return
 	}
 
-	validTypes := v.getValidTypes()
-	titleMaxLength := v.getTitleMaxLength()
-	checkConventionalCommits := v.isTitleConventionalCommitsEnabled()
-	allowUnlimitedRevertTitle := v.shouldAllowUnlimitedRevertTitle()
+	// Check title length
+	lengthRule := &TitleLengthRule{
+		MaxLength:                 v.getTitleMaxLength(),
+		AllowUnlimitedRevertTitle: v.shouldAllowUnlimitedRevertTitle(),
+	}
 
-	titleResult := validatePRTitle(
-		title,
-		titleMaxLength,
-		checkConventionalCommits,
-		allowUnlimitedRevertTitle,
-		validTypes,
-	)
+	commit := v.parsedCommitForPRTitle(title)
 
-	if !titleResult.Valid {
-		*allErrors = append(*allErrors, titleResult.ErrorMessage)
-		*allErrors = append(*allErrors, titleResult.Details...)
+	if result := lengthRule.Validate(commit, title); result != nil {
+		*allErrors = append(*allErrors, result.Errors...)
+
+		return
+	}
+
+	// Check title format based on style (skip for revert titles)
+	if !isRevertCommit(title) {
+		for _, rule := range v.buildPRTitleFormatRules(ctx) {
+			if result := rule.Validate(commit, title); result != nil {
+				*allErrors = append(*allErrors, result.Errors...)
+
+				return
+			}
+		}
 	}
 }
 

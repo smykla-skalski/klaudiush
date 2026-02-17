@@ -35,6 +35,7 @@ var _ = Describe("DirectoryChecker", func() {
 		provider = backupchecker.NewMockStorageProvider(ctrl)
 
 		var err error
+
 		tempDir, err = os.MkdirTemp("", "klaudiush-test-*")
 		Expect(err).NotTo(HaveOccurred())
 
@@ -45,6 +46,7 @@ var _ = Describe("DirectoryChecker", func() {
 
 	AfterEach(func() {
 		ctrl.Finish()
+
 		_ = os.RemoveAll(tempDir)
 	})
 
@@ -335,6 +337,7 @@ var _ = Describe("DefaultStorageProvider", func() {
 
 	BeforeEach(func() {
 		var err error
+
 		provider, err = backupchecker.NewDefaultStorageProvider()
 		Expect(err).NotTo(HaveOccurred())
 	})

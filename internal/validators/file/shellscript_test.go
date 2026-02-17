@@ -53,13 +53,24 @@ echo "Hello, World!"
 			result := v.Validate(context.Background(), ctx)
 			Expect(result.Passed).To(BeTrue())
 		})
+
+		It("should pass for GraphQL query script with single-quoted $variables (SC2016)", func() {
+			ctx.ToolInput.FilePath = "resolve-thread.sh"
+			ctx.ToolInput.Content = `#!/bin/bash
+QUERY='mutation ResolveThread($threadId: ID!) { resolveThread(threadId: $threadId) { success } }'
+gh api graphql -f query="$QUERY" -f threadId="$1"
+`
+			result := v.Validate(context.Background(), ctx)
+			Expect(result.Passed).To(BeTrue())
+		})
 	})
 
 	Describe("invalid shell scripts", func() {
-		It("should fail for undefined variable", func() {
+		It("should fail for unsafe cd without error check (SC2164)", func() {
 			ctx.ToolInput.FilePath = "test.sh"
 			ctx.ToolInput.Content = `#!/bin/bash
-echo $UNDEFINED_VAR
+cd /tmp
+echo "done"
 `
 			result := v.Validate(context.Background(), ctx)
 			Expect(result.Passed).To(BeFalse())
@@ -141,6 +152,7 @@ echo "Hello from Fish"
 
 		BeforeEach(func() {
 			var err error
+
 			tmpDir, err = os.MkdirTemp("", "shellscript-test-*")
 			Expect(err).NotTo(HaveOccurred())
 		})

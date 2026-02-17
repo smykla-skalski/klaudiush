@@ -50,6 +50,7 @@ var _ = Describe("PythonValidator", func() {
 if __name__ == "__main__":
     greet("World")
 `
+
 			mockChecker.EXPECT().
 				CheckWithOptions(gomock.Any(), gomock.Any(), gomock.Any()).
 				Return(&linters.LintResult{Success: true})
@@ -62,6 +63,7 @@ if __name__ == "__main__":
 			ctx.ToolInput.FilePath = "test.py"
 			ctx.ToolInput.Content = `print("Hello, World!")
 `
+
 			mockChecker.EXPECT().
 				CheckWithOptions(gomock.Any(), gomock.Any(), gomock.Any()).
 				Return(&linters.LintResult{Success: true})
@@ -78,6 +80,7 @@ if __name__ == "__main__":
 
 print("Hello, World!")
 `
+
 			mockChecker.EXPECT().
 				CheckWithOptions(gomock.Any(), gomock.Any(), gomock.Any()).
 				Return(&linters.LintResult{
@@ -105,6 +108,7 @@ print("Hello, World!")
 			ctx.ToolInput.Content = `def hello():
     print(undefined_var)
 `
+
 			mockChecker.EXPECT().
 				CheckWithOptions(gomock.Any(), gomock.Any(), gomock.Any()).
 				Return(&linters.LintResult{
@@ -141,6 +145,7 @@ print("Hello, World!")
 
 print("Hello, World!")
 `
+
 			mockChecker.EXPECT().
 				CheckWithOptions(gomock.Any(), gomock.Any(), gomock.Any()).
 				Return(&linters.LintResult{Success: true})

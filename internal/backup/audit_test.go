@@ -104,6 +104,7 @@ var _ = Describe("Audit", func() {
 			nestedDir := filepath.Join(tempDir, "nested", "dir")
 			nestedLogger, err := backup.NewJSONLAuditLogger(nestedDir)
 			Expect(err).NotTo(HaveOccurred())
+
 			defer nestedLogger.Close()
 
 			entry := backup.AuditEntry{
@@ -255,6 +256,7 @@ var _ = Describe("Audit", func() {
 				filepath.Join(tempDir, "nonexistent"),
 			)
 			Expect(err).NotTo(HaveOccurred())
+
 			defer emptyLogger.Close()
 
 			entries, err := emptyLogger.Query(backup.AuditFilter{})
@@ -281,8 +283,10 @@ var _ = Describe("Audit", func() {
 
 	Describe("Concurrent operations", func() {
 		It("should handle concurrent writes", func() {
-			const numGoroutines = 10
-			const entriesPerGoroutine = 10
+			const (
+				numGoroutines       = 10
+				entriesPerGoroutine = 10
+			)
 
 			var wg sync.WaitGroup
 

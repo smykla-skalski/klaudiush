@@ -371,6 +371,7 @@ var _ = Describe("MergeRules", func() {
 
 		// Shared rule should be overridden.
 		var sharedRule *rules.Rule
+
 		for _, r := range merged {
 			if r.Name == "shared" {
 				sharedRule = r

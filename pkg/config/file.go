@@ -60,6 +60,12 @@ type MarkdownValidatorConfig struct {
 	// Default: true
 	UseMarkdownlint *bool `json:"use_markdownlint,omitempty" koanf:"use_markdownlint" toml:"use_markdownlint"`
 
+	// SkipPlanDocuments skips markdown validation for Claude Code plan files
+	// written to ~/.claude/plans/. These are ephemeral working documents where
+	// linting is counterproductive.
+	// Default: true
+	SkipPlanDocuments *bool `json:"skip_plan_documents,omitempty" koanf:"skip_plan_documents" toml:"skip_plan_documents"`
+
 	// MarkdownlintPath is the path to the markdownlint binary.
 	// Default: "" (use PATH)
 	MarkdownlintPath string `json:"markdownlint_path,omitempty" koanf:"markdownlint_path" toml:"markdownlint_path"`

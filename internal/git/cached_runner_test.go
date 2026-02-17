@@ -161,6 +161,7 @@ var _ = Describe("CachedRunner", func() {
 
 			It("propagates error from GetModifiedFiles", func() {
 				expectedErr := errors.New("modified files error")
+
 				mockRunner.EXPECT().GetStagedFiles().Return([]string{}, nil).Times(1)
 				mockRunner.EXPECT().GetModifiedFiles().Return(nil, expectedErr).Times(1)
 
@@ -352,6 +353,7 @@ var _ = Describe("CachedRunner", func() {
 				go func() {
 					result := cached.IsInRepo()
 					Expect(result).To(BeTrue())
+
 					done <- true
 				}()
 			}
@@ -373,6 +375,7 @@ var _ = Describe("CachedRunner", func() {
 					files, err := cached.GetStagedFiles()
 					Expect(err).NotTo(HaveOccurred())
 					Expect(files).To(Equal([]string{"staged.go"}))
+
 					done <- true
 				}()
 
@@ -380,6 +383,7 @@ var _ = Describe("CachedRunner", func() {
 					files, err := cached.GetModifiedFiles()
 					Expect(err).NotTo(HaveOccurred())
 					Expect(files).To(Equal([]string{"modified.go"}))
+
 					done <- true
 				}()
 
@@ -387,6 +391,7 @@ var _ = Describe("CachedRunner", func() {
 					files, err := cached.GetUntrackedFiles()
 					Expect(err).NotTo(HaveOccurred())
 					Expect(files).To(Equal([]string{"untracked.txt"}))
+
 					done <- true
 				}()
 			}
@@ -409,6 +414,7 @@ var _ = Describe("CachedRunner", func() {
 					url, err := cached.GetRemoteURL("origin")
 					Expect(err).NotTo(HaveOccurred())
 					Expect(url).To(Equal("git@github.com:user/repo.git"))
+
 					done <- true
 				}()
 			}

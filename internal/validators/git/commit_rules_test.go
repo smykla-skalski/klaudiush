@@ -165,6 +165,7 @@ var _ = Describe("PRReferenceRule", func() {
 
 				// Verify the correct URL format is shown
 				foundURLError := false
+
 				for _, err := range result.Errors {
 					match, _ := ContainSubstring("github.com/owner/repo/pull/123").Match(err)
 					if match {
@@ -172,6 +173,7 @@ var _ = Describe("PRReferenceRule", func() {
 						break
 					}
 				}
+
 				Expect(foundURLError).To(BeTrue(), "Expected error to contain the GitHub URL")
 			})
 
@@ -241,5 +243,67 @@ var _ = Describe("PRReferenceRule", func() {
 				Expect(result).To(BeNil())
 			})
 		})
+	})
+})
+
+var _ = Describe("ScopeOnlyFormatRule", func() {
+	var rule *git.ScopeOnlyFormatRule
+
+	BeforeEach(func() {
+		rule = &git.ScopeOnlyFormatRule{}
+	})
+
+	DescribeTable("valid scope-only titles",
+		func(title string) {
+			commit := &git.ParsedCommit{Title: title, Valid: false}
+			Expect(rule.Validate(commit, title)).To(BeNil())
+		},
+		Entry("simple scope", "home-environment: use nix profile add instead of install"),
+		Entry("path scope", "modules/systemd: add new unit"),
+		Entry("dotted scope", "modules.home: configure shell"),
+		Entry("short scope", "cli: add flag"),
+		Entry("numeric in scope", "go1.21: update minimum version"),
+		Entry("underscore in scope", "my_module: fix typo"),
+	)
+
+	DescribeTable("invalid scope-only titles",
+		func(title string) {
+			commit := &git.ParsedCommit{Title: title, Valid: false}
+			result := rule.Validate(commit, title)
+			Expect(result).NotTo(BeNil())
+			Expect(result.Errors).NotTo(BeEmpty())
+		},
+		Entry("no colon", "just a plain message"),
+		Entry("uppercase start", "Home-environment: something"),
+		Entry("no space after colon", "home:description"),
+		Entry("conventional type prefix", "feat(auth): add login"),
+		Entry("empty description after colon", "scope: "),
+	)
+
+	It("should exempt revert commits", func() {
+		commit := &git.ParsedCommit{Title: `Revert "home-environment: remove package"`, Valid: true}
+		Expect(rule.Validate(commit, commit.Title)).To(BeNil())
+	})
+})
+
+var _ = Describe("CustomPatternRule", func() {
+	It("should pass when title matches pattern", func() {
+		rule := git.NewCustomPatternRule(`^[A-Z]+-\d+: .+`)
+		commit := &git.ParsedCommit{Title: "PROJ-123: implement feature", Valid: true}
+		Expect(rule.Validate(commit, commit.Title)).To(BeNil())
+	})
+
+	It("should fail when title does not match pattern", func() {
+		rule := git.NewCustomPatternRule(`^[A-Z]+-\d+: .+`)
+		commit := &git.ParsedCommit{Title: "feat(api): add endpoint", Valid: true}
+		result := rule.Validate(commit, commit.Title)
+		Expect(result).NotTo(BeNil())
+		Expect(result.Errors[0]).To(ContainSubstring("doesn't match the required pattern"))
+	})
+
+	It("should exempt revert commits", func() {
+		rule := git.NewCustomPatternRule(`^[A-Z]+-\d+: .+`)
+		commit := &git.ParsedCommit{Title: `Revert "something"`, Valid: true}
+		Expect(rule.Validate(commit, commit.Title)).To(BeNil())
 	})
 })

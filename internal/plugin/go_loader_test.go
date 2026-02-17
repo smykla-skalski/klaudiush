@@ -44,8 +44,10 @@ var _ = Describe("GoLoader", func() {
 
 		// Create temp project structure
 		var err error
+
 		tmpDir, err = os.MkdirTemp("", "go-loader-test-*")
 		Expect(err).NotTo(HaveOccurred())
+
 		projectRoot = tmpDir
 
 		pluginDir = filepath.Join(tmpDir, ".klaudiush", "plugins")

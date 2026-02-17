@@ -93,6 +93,21 @@ type CommitMessageConfig struct {
 	// Default: true
 	BlockAIAttribution *bool `json:"block_ai_attribution,omitempty" koanf:"block_ai_attribution" toml:"block_ai_attribution"`
 
+	// CommitStyle specifies the commit title format to enforce.
+	// Options:
+	//   "conventional" - type(scope): description, e.g. feat(auth): add login (default)
+	//   "scope-only"   - scope: description, e.g. home-environment: use nix profile
+	//   "none"         - disable title format check (length still enforced)
+	//   "custom"       - match TitlePattern regex
+	//   "auto"         - detect style from recent git history
+	// Default: "conventional"
+	CommitStyle string `json:"commit_style,omitempty" koanf:"commit_style" toml:"commit_style"`
+
+	// TitlePattern is a custom regex the commit title must match.
+	// Required when CommitStyle is "custom".
+	// Example: `^[\w/-]+: .+` matches "scope: description"
+	TitlePattern string `json:"title_pattern,omitempty" koanf:"title_pattern" toml:"title_pattern"`
+
 	// ForbiddenPatterns is a list of regex patterns that are forbidden in commit messages.
 	// Each pattern is a regular expression that will be checked against the entire commit message.
 	// Default: ["\\btmp/", "\\btmp\\b"] (blocks mentions of tmp directory)
@@ -175,6 +190,22 @@ type PRValidatorConfig struct {
 	// MarkdownDisabledRules is a list of markdownlint rules to disable for PR body validation.
 	// Default: ["MD013", "MD034", "MD041"]
 	MarkdownDisabledRules []string `json:"markdown_disabled_rules,omitempty" koanf:"markdown_disabled_rules" toml:"markdown_disabled_rules"`
+
+	// TitleStyle specifies the PR title format to enforce.
+	// Mirrors commit_style in CommitMessageConfig.
+	// Options:
+	//   "conventional" - type(scope): description, e.g. feat(api): add endpoint (default)
+	//   "scope-only"   - scope: description, e.g. home-environment: use nix profile
+	//   "none"         - disable title format check (length still enforced)
+	//   "custom"       - match TitlePattern regex
+	//   "auto"         - detect style from recent git history
+	// Default: "" (falls back to TitleConventionalCommits for backwards compatibility)
+	TitleStyle string `json:"title_style,omitempty" koanf:"title_style" toml:"title_style"`
+
+	// TitlePattern is a custom regex the PR title must match.
+	// Required when TitleStyle is "custom".
+	// Example: `^[\w/-]+: .+` matches "scope: description"
+	TitlePattern string `json:"title_pattern,omitempty" koanf:"title_pattern" toml:"title_pattern"`
 
 	// ForbiddenPatterns is a list of regex patterns that are forbidden in PR title and body.
 	// Each pattern is a regular expression that will be checked against the PR title and body.

@@ -36,6 +36,7 @@ var _ = Describe("GofumptValidator", func() {
 
 		// Create temp directory for tests
 		var err error
+
 		testDir, err = os.MkdirTemp("", "gofumpt-test-*")
 		Expect(err).NotTo(HaveOccurred())
 
@@ -52,6 +53,7 @@ var _ = Describe("GofumptValidator", func() {
 
 	AfterEach(func() {
 		ctrl.Finish()
+
 		if testDir != "" {
 			os.RemoveAll(testDir)
 		}

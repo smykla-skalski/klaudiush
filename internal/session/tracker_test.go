@@ -23,6 +23,7 @@ var _ = Describe("Tracker", func() {
 
 	BeforeEach(func() {
 		var err error
+
 		tempDir, err = os.MkdirTemp("", "session-test-*")
 		Expect(err).NotTo(HaveOccurred())
 
@@ -577,6 +578,7 @@ var _ = Describe("Tracker", func() {
 
 			// Advance time but not past max age
 			currentTime = currentTime.Add(30 * time.Minute)
+
 			tracker.RecordCommand("session-2")
 
 			// Advance to expire session-1 but not session-2
@@ -667,6 +669,7 @@ var _ = Describe("Tracker", func() {
 			for range count {
 				go func() {
 					tracker.RecordCommand("session-1")
+
 					done <- true
 				}()
 			}
@@ -686,6 +689,7 @@ var _ = Describe("Tracker", func() {
 			for range count {
 				go func() {
 					tracker.Poison("session-1", []string{"GIT001"}, "test")
+
 					done <- true
 				}()
 			}
@@ -708,6 +712,7 @@ var _ = Describe("Tracker", func() {
 				go func() {
 					poisoned, _ := tracker.IsPoisoned("session-1")
 					Expect(poisoned).To(BeTrue())
+
 					done <- true
 				}()
 			}

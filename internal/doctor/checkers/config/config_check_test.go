@@ -222,6 +222,7 @@ var _ = Describe("ProjectChecker", func() {
 
 			It("should return error with fix ID for generic rule error message", func() {
 				err := errors.New("rule has invalid match condition")
+
 				mockLoader.EXPECT().HasProjectConfig().Return(true)
 				mockLoader.EXPECT().Load(nil).Return(nil, err)
 
@@ -235,6 +236,7 @@ var _ = Describe("ProjectChecker", func() {
 
 			It("should return error with fix ID for empty rule match error", func() {
 				err := errors.New("rule has empty match section")
+
 				mockLoader.EXPECT().HasProjectConfig().Return(true)
 				mockLoader.EXPECT().Load(nil).Return(nil, err)
 
@@ -249,6 +251,7 @@ var _ = Describe("ProjectChecker", func() {
 		Context("when config has generic load error", func() {
 			It("should return error without fix ID", func() {
 				err := errors.New("some generic error")
+
 				mockLoader.EXPECT().HasProjectConfig().Return(true)
 				mockLoader.EXPECT().Load(nil).Return(nil, err)
 

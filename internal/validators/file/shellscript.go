@@ -315,11 +315,20 @@ func (v *ShellScriptValidator) buildShellCheckOptions(isFragment bool) *linters.
 		excludes = append(excludes, fragmentExcludes...)
 	}
 
-	if len(excludes) == 0 {
-		return nil
+	return &linters.ShellCheckOptions{
+		ExcludeCodes: excludes,
+		Severity:     v.getShellcheckSeverity(),
+	}
+}
+
+// getShellcheckSeverity returns the configured minimum severity level for shellcheck.
+// Defaults to "warning" so info/style findings (like SC2016 in GraphQL scripts) don't block.
+func (v *ShellScriptValidator) getShellcheckSeverity() string {
+	if v.config != nil && v.config.ShellcheckSeverity != "" {
+		return v.config.ShellcheckSeverity
 	}
 
-	return &linters.ShellCheckOptions{ExcludeCodes: excludes}
+	return "warning"
 }
 
 // parseExcludeRules converts string rule codes (e.g., "SC1091") to integers.

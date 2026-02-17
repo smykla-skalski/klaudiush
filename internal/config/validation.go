@@ -3,6 +3,7 @@ package config
 
 import (
 	"fmt"
+	"regexp"
 	"slices"
 
 	"github.com/cockroachdb/errors"
@@ -296,6 +297,34 @@ func (*Validator) validateCommitMessageConfig(cfg *config.CommitMessageConfig) e
 		}
 	}
 
+	validCommitStyles := []string{"", "conventional", "scope-only", "none", "custom", "auto"}
+	if !slices.Contains(validCommitStyles, cfg.CommitStyle) {
+		validationErrors = append(
+			validationErrors,
+			errors.Newf(
+				"commit_style must be one of %v, got %q",
+				validCommitStyles[1:],
+				cfg.CommitStyle,
+			),
+		)
+	}
+
+	if cfg.CommitStyle == "custom" && cfg.TitlePattern == "" {
+		validationErrors = append(
+			validationErrors,
+			errors.New("title_pattern is required when commit_style is \"custom\""),
+		)
+	}
+
+	if cfg.TitlePattern != "" {
+		if _, err := regexp.Compile(cfg.TitlePattern); err != nil {
+			validationErrors = append(
+				validationErrors,
+				errors.Wrapf(err, "title_pattern is not a valid regex"),
+			)
+		}
+	}
+
 	if len(validationErrors) > 0 {
 		return combineErrors(validationErrors)
 	}
@@ -337,6 +366,34 @@ func (v *Validator) validatePRConfig(cfg *config.PRValidatorConfig) error {
 			validationErrors = append(
 				validationErrors,
 				errors.WithMessage(ErrEmptyValue, "valid_types"),
+			)
+		}
+	}
+
+	validTitleStyles := []string{"", "conventional", "scope-only", "none", "custom", "auto"}
+	if !slices.Contains(validTitleStyles, cfg.TitleStyle) {
+		validationErrors = append(
+			validationErrors,
+			errors.Newf(
+				"title_style must be one of %v, got %q",
+				validTitleStyles[1:],
+				cfg.TitleStyle,
+			),
+		)
+	}
+
+	if cfg.TitleStyle == "custom" && cfg.TitlePattern == "" {
+		validationErrors = append(
+			validationErrors,
+			errors.New("title_pattern is required when title_style is \"custom\""),
+		)
+	}
+
+	if cfg.TitlePattern != "" {
+		if _, err := regexp.Compile(cfg.TitlePattern); err != nil {
+			validationErrors = append(
+				validationErrors,
+				errors.Wrapf(err, "title_pattern is not a valid regex"),
 			)
 		}
 	}
