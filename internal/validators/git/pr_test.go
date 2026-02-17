@@ -558,7 +558,9 @@ EOF
 			result := validator.Validate(context.Background(), ctx)
 			Expect(result.Passed).To(BeFalse())
 			Expect(result.Message).To(ContainSubstring("PR validation failed"))
-			Expect(result.Message).To(ContainSubstring("doesn't follow semantic commit format"))
+			Expect(
+				result.Message,
+			).To(ContainSubstring("doesn't follow conventional commits format"))
 		})
 
 		It("should fail for feat(ci) title", func() {

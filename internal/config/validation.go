@@ -370,6 +370,34 @@ func (v *Validator) validatePRConfig(cfg *config.PRValidatorConfig) error {
 		}
 	}
 
+	validTitleStyles := []string{"", "conventional", "scope-only", "none", "custom", "auto"}
+	if !slices.Contains(validTitleStyles, cfg.TitleStyle) {
+		validationErrors = append(
+			validationErrors,
+			errors.Newf(
+				"title_style must be one of %v, got %q",
+				validTitleStyles[1:],
+				cfg.TitleStyle,
+			),
+		)
+	}
+
+	if cfg.TitleStyle == "custom" && cfg.TitlePattern == "" {
+		validationErrors = append(
+			validationErrors,
+			errors.New("title_pattern is required when title_style is \"custom\""),
+		)
+	}
+
+	if cfg.TitlePattern != "" {
+		if _, err := regexp.Compile(cfg.TitlePattern); err != nil {
+			validationErrors = append(
+				validationErrors,
+				errors.Wrapf(err, "title_pattern is not a valid regex"),
+			)
+		}
+	}
+
 	if len(validationErrors) > 0 {
 		return combineErrors(validationErrors)
 	}
