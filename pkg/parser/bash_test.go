@@ -756,4 +756,51 @@ EOF`
 			})
 		})
 	})
+
+	Describe("GetFirstGitWorkingDir", func() {
+		It("returns the cd target for cd && git commit pattern", func() {
+			result, err := p.Parse("cd /Users/user/home-manager && git commit -sS -m 'msg'")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.GetFirstGitWorkingDir()).To(Equal("/Users/user/home-manager"))
+		})
+
+		It("returns the cd target for cd ; git commit pattern", func() {
+			result, err := p.Parse("cd /path/to/repo; git commit -m 'msg'")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.GetFirstGitWorkingDir()).To(Equal("/path/to/repo"))
+		})
+
+		It("returns relative cd target as-is", func() {
+			result, err := p.Parse("cd ../home-manager && git commit -m 'msg'")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.GetFirstGitWorkingDir()).To(Equal("../home-manager"))
+		})
+
+		It("returns tilde cd target as-is", func() {
+			result, err := p.Parse("cd ~/Projects/repo && git commit -m 'msg'")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.GetFirstGitWorkingDir()).To(Equal("~/Projects/repo"))
+		})
+
+		It("returns empty string when no cd precedes git", func() {
+			result, err := p.Parse("git commit -sS -m 'msg'")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.GetFirstGitWorkingDir()).To(BeEmpty())
+		})
+
+		It("returns the workdir of the first git command that has a preceding cd", func() {
+			result, err := p.Parse("git status && cd /tmp && git log")
+			Expect(err).NotTo(HaveOccurred())
+			// git status has no cd before it (workdir = "")
+			// git log has cd /tmp before it (workdir = "/tmp")
+			// The function returns the first non-empty workdir among git operations
+			Expect(result.GetFirstGitWorkingDir()).To(Equal("/tmp"))
+		})
+
+		It("returns empty string when no git commands", func() {
+			result, err := p.Parse("cd /tmp && ls")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.GetFirstGitWorkingDir()).To(BeEmpty())
+		})
+	})
 })

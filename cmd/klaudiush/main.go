@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/cockroachdb/errors"
 	"github.com/spf13/cobra"
@@ -20,6 +21,7 @@ import (
 	"github.com/smykla-skalski/klaudiush/pkg/config"
 	"github.com/smykla-skalski/klaudiush/pkg/hook"
 	"github.com/smykla-skalski/klaudiush/pkg/logger"
+	bashparser "github.com/smykla-skalski/klaudiush/pkg/parser"
 )
 
 const (
@@ -149,13 +151,8 @@ func run(_ *cobra.Command, _ []string) error {
 		"trace", traceMode,
 	)
 
-	// Load configuration
-	cfg, err := loadConfig(log)
-	if err != nil {
-		return errors.Wrap(err, "failed to load configuration")
-	}
-
-	// Parse JSON input
+	// Parse JSON input first so we can detect the effective working directory
+	// from cd commands (e.g. "cd /path/to/repo && git commit") before loading config.
 	jsonParser := parser.NewJSONParser(os.Stdin)
 
 	ctx, err := jsonParser.Parse(eventType)
@@ -174,6 +171,18 @@ func run(_ *cobra.Command, _ []string) error {
 		"command", ctx.GetCommand(),
 		"file", filepath.Base(ctx.GetFilePath()),
 	)
+
+	// Extract effective working directory from cd command in bash.
+	// When Claude runs "cd /path/to/repo && git commit ...", klaudiush is
+	// invoked from the shell's CWD (e.g. dotfiles), not the cd target.
+	// We detect the cd target and use it to load the correct project config.
+	workDir := extractEffectiveWorkDir(ctx, log)
+
+	// Load configuration with the effective working directory
+	cfg, err := loadConfig(log, workDir)
+	if err != nil {
+		return errors.Wrap(err, "failed to load configuration")
+	}
 
 	// Store context and config for crash recovery
 	crashContext = ctx
@@ -232,12 +241,27 @@ func run(_ *cobra.Command, _ []string) error {
 }
 
 // loadConfig loads configuration from all sources with precedence.
-func loadConfig(log logger.Logger) (*config.Config, error) {
+// workDir overrides the current working directory for project config resolution.
+// Pass "" to use os.Getwd() (the default behavior).
+func loadConfig(log logger.Logger, workDir string) (*config.Config, error) {
 	// Build flags map from CLI arguments
 	flags := buildFlagsMap()
 
-	// Create koanf loader
-	loader, err := internalconfig.NewKoanfLoader()
+	var loader *internalconfig.KoanfLoader
+
+	var err error
+
+	if workDir != "" {
+		homeDir, homeDirErr := os.UserHomeDir()
+		if homeDirErr != nil {
+			return nil, errors.Wrap(homeDirErr, "failed to get home directory")
+		}
+
+		loader, err = internalconfig.NewKoanfLoaderWithDirs(homeDir, workDir)
+	} else {
+		loader, err = internalconfig.NewKoanfLoader()
+	}
+
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create config loader")
 	}
@@ -251,6 +275,62 @@ func loadConfig(log logger.Logger) (*config.Config, error) {
 	log.Debug("configuration loaded")
 
 	return cfg, nil
+}
+
+// extractEffectiveWorkDir returns the effective working directory for config loading.
+// When a bash command starts with "cd /path && git ...", the project config should
+// be loaded from /path, not from the shell's current working directory.
+// Returns "" if no cd-prefixed git command is detected (caller uses os.Getwd()).
+func extractEffectiveWorkDir(ctx *hook.Context, log logger.Logger) string {
+	if !ctx.IsBashTool() {
+		return ""
+	}
+
+	command := ctx.GetCommand()
+	if command == "" {
+		return ""
+	}
+
+	bp := bashparser.NewBashParser()
+
+	result, err := bp.Parse(command)
+	if err != nil {
+		return ""
+	}
+
+	cdTarget := result.GetFirstGitWorkingDir()
+	if cdTarget == "" {
+		return ""
+	}
+
+	// Expand tilde prefix
+	if strings.HasPrefix(cdTarget, "~/") {
+		homeDir, homeDirErr := os.UserHomeDir()
+		if homeDirErr != nil {
+			return ""
+		}
+
+		cdTarget = filepath.Join(homeDir, cdTarget[2:])
+	}
+
+	// Resolve relative paths against the actual CWD
+	if !filepath.IsAbs(cdTarget) {
+		cwd, cwdErr := os.Getwd()
+		if cwdErr != nil {
+			return ""
+		}
+
+		cdTarget = filepath.Join(cwd, cdTarget)
+	}
+
+	// Verify the target directory exists
+	if _, statErr := os.Stat(cdTarget); statErr != nil {
+		return ""
+	}
+
+	log.Debug("detected cd target for config resolution", "workDir", cdTarget)
+
+	return cdTarget
 }
 
 // initSessionTracker creates and initializes a session tracker if enabled in the config.
