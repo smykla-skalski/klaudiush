@@ -7,6 +7,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/smykla-skalski/klaudiush/internal/validators/git"
+	"github.com/smykla-skalski/klaudiush/pkg/config"
 	"github.com/smykla-skalski/klaudiush/pkg/hook"
 	"github.com/smykla-skalski/klaudiush/pkg/logger"
 )
@@ -851,6 +852,121 @@ See docs/api.md'`,
 
 			result := validator.Validate(context.Background(), ctx)
 			Expect(result.Passed).To(BeTrue())
+		})
+	})
+
+	Describe("title_style config", func() {
+		makeGHPRCtx := func(title string) *hook.Context {
+			return &hook.Context{
+				EventType: hook.EventTypePreToolUse,
+				ToolName:  hook.ToolTypeBash,
+				ToolInput: hook.ToolInput{
+					Command: "gh pr create --title \"" + title + `" --body '## Motivation
+
+Describe the change.
+
+## Implementation information
+
+- Step one
+- Step two
+
+## Supporting documentation
+
+See README.md for details.'`,
+				},
+			}
+		}
+
+		Context("scope-only style", func() {
+			var scopeValidator *git.PRValidator
+
+			BeforeEach(func() {
+				cfg := &config.PRValidatorConfig{TitleStyle: "scope-only"}
+				scopeValidator = git.NewPRValidator(cfg, logger.NewNoOpLogger(), nil)
+			})
+
+			It("should pass home-environment scope: description style", func() {
+				result := scopeValidator.Validate(
+					context.Background(),
+					makeGHPRCtx("home-environment: use nix profile"),
+				)
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("should pass path-based scope", func() {
+				result := scopeValidator.Validate(
+					context.Background(),
+					makeGHPRCtx("modules/systemd: add persistent timer unit"),
+				)
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("should reject conventional type(scope): description", func() {
+				result := scopeValidator.Validate(
+					context.Background(),
+					makeGHPRCtx("feat(api): add endpoint"),
+				)
+				Expect(result.Passed).To(BeFalse())
+				Expect(result.Message).To(ContainSubstring("scope-only format"))
+			})
+
+			It("should reject a plain sentence without colon", func() {
+				result := scopeValidator.Validate(
+					context.Background(),
+					makeGHPRCtx("just a plain PR title"),
+				)
+				Expect(result.Passed).To(BeFalse())
+			})
+		})
+
+		Context("none style", func() {
+			var noneValidator *git.PRValidator
+
+			BeforeEach(func() {
+				cfg := &config.PRValidatorConfig{TitleStyle: "none"}
+				noneValidator = git.NewPRValidator(cfg, logger.NewNoOpLogger(), nil)
+			})
+
+			It("should pass any title format", func() {
+				for _, title := range []string{
+					"just a plain PR title",
+					"home-environment: use nix profile",
+					"feat(api): add endpoint",
+					"PROJ-123: Jira ticket style",
+				} {
+					result := noneValidator.Validate(context.Background(), makeGHPRCtx(title))
+					Expect(result.Passed).To(BeTrue(), "expected pass for: %s", title)
+				}
+			})
+		})
+
+		Context("custom style", func() {
+			var customValidator *git.PRValidator
+
+			BeforeEach(func() {
+				cfg := &config.PRValidatorConfig{
+					TitleStyle:   "custom",
+					TitlePattern: `^[A-Z]+-\d+: .+`,
+				}
+				customValidator = git.NewPRValidator(cfg, logger.NewNoOpLogger(), nil)
+			})
+
+			It("should pass Jira-style ticket prefix", func() {
+				result := customValidator.Validate(
+					context.Background(),
+					makeGHPRCtx("PROJ-123: implement the thing"),
+				)
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("should reject conventional format when custom pattern is required", func() {
+				result := customValidator.Validate(
+					context.Background(),
+					makeGHPRCtx("feat(api): add endpoint"),
+				)
+				Expect(result.Passed).To(BeFalse())
+				Expect(result.Message).To(ContainSubstring("doesn't match the required pattern"))
+			})
 		})
 	})
 })
