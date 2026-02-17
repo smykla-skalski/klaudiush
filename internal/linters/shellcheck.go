@@ -24,6 +24,10 @@ type shellcheckFinding struct {
 type ShellCheckOptions struct {
 	// ExcludeCodes are shellcheck codes to exclude (e.g., []int{2034, 2154})
 	ExcludeCodes []int
+
+	// Severity is the minimum severity level to report ("error", "warning", "info", "style").
+	// Shellcheck findings below this level are suppressed. Default: "" (shellcheck default).
+	Severity string
 }
 
 // ShellChecker validates shell scripts using shellcheck
@@ -64,10 +68,14 @@ func (s *RealShellChecker) CheckWithOptions(
 ) *LintResult {
 	args := []string{"--format=json"}
 
-	// Add exclude codes if specified
+	// Add options if specified
 	if opts != nil {
 		for _, code := range opts.ExcludeCodes {
 			args = append(args, "--exclude=SC"+strconv.Itoa(code))
+		}
+
+		if opts.Severity != "" {
+			args = append(args, "--severity="+opts.Severity)
 		}
 	}
 
