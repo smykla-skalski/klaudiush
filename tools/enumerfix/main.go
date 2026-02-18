@@ -4,6 +4,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -31,7 +32,7 @@ func run(args []string) error {
 		return ErrUsage
 	}
 
-	filename := args[1]
+	filename := filepath.Clean(args[1])
 
 	//nolint:gosec // G304: File path from CLI argument is expected
 	content, err := os.ReadFile(filename)
@@ -41,6 +42,7 @@ func run(args []string) error {
 
 	fixed := fixEnumerFile(content)
 
+	//nolint:gosec // G703: filename is sanitized via filepath.Clean above; gosec cannot trace through variable assignment
 	if err := os.WriteFile(filename, fixed, filePermissions); err != nil {
 		return errors.Wrap(err, "writing file")
 	}

@@ -54,22 +54,22 @@ func runVersion(_ *cobra.Command, _ []string) {
 func versionString() string {
 	var b strings.Builder
 
-	b.WriteString(fmt.Sprintf("klaudiush %s\n", version))
-	b.WriteString(fmt.Sprintf("  commit:    %s\n", commit))
-	b.WriteString(fmt.Sprintf("  built:     %s\n", date))
-	b.WriteString(fmt.Sprintf("  go:        %s\n", runtime.Version()))
-	b.WriteString(fmt.Sprintf("  os/arch:   %s/%s\n", runtime.GOOS, runtime.GOARCH))
+	fmt.Fprintf(&b, "klaudiush %s\n", version)
+	fmt.Fprintf(&b, "  commit:    %s\n", commit)
+	fmt.Fprintf(&b, "  built:     %s\n", date)
+	fmt.Fprintf(&b, "  go:        %s\n", runtime.Version())
+	fmt.Fprintf(&b, "  os/arch:   %s/%s\n", runtime.GOOS, runtime.GOARCH)
 
 	if info, ok := debug.ReadBuildInfo(); ok {
-		b.WriteString(fmt.Sprintf("  module:    %s\n", info.Main.Path))
+		fmt.Fprintf(&b, "  module:    %s\n", info.Main.Path)
 
 		for _, setting := range info.Settings {
 			if setting.Key == "vcs.revision" && setting.Value != "" {
 				if commit == "unknown" {
-					b.WriteString(fmt.Sprintf(
+					fmt.Fprintf(&b,
 						"  vcs.rev:   %s\n",
 						setting.Value[:min(shortCommitLength, len(setting.Value))],
-					))
+					)
 				}
 			}
 

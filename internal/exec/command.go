@@ -69,6 +69,7 @@ func (*commandRunner) Run(
 	name string,
 	args ...string,
 ) CommandResult {
+	//nolint:gosec // G204: CommandRunner is a general-purpose executor; callers are responsible for safe inputs
 	cmd := exec.CommandContext(ctx, name, args...)
 
 	var stdout, stderr bytes.Buffer
@@ -101,6 +102,7 @@ func (*commandRunner) RunWithStdin(
 	name string,
 	args ...string,
 ) CommandResult {
+	//nolint:gosec // G204: CommandRunner is a general-purpose executor; callers are responsible for safe inputs
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Stdin = stdin
 

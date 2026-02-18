@@ -66,10 +66,10 @@ func (v *PathValidator) CheckProtectedPaths(writes []FileWrite) []PathViolation 
 func (v *PathValidator) getSuggestion(path string) string {
 	var suggestion strings.Builder
 
-	suggestion.WriteString("💡 Use project-local tmp/ directory instead:\n")
-	suggestion.WriteString("   - Create: mkdir -p tmp/\n")
-	suggestion.WriteString(fmt.Sprintf("   - Use: %s\n", v.getLocalPath(path)))
-	suggestion.WriteString("   - Add to .git/info/exclude if needed")
+	fmt.Fprint(&suggestion, "💡 Use project-local tmp/ directory instead:\n")
+	fmt.Fprint(&suggestion, "   - Create: mkdir -p tmp/\n")
+	fmt.Fprintf(&suggestion, "   - Use: %s\n", v.getLocalPath(path))
+	fmt.Fprint(&suggestion, "   - Add to .git/info/exclude if needed")
 
 	return suggestion.String()
 }
