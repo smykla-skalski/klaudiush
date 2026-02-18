@@ -5,6 +5,16 @@ All notable changes to klaudiush will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.17.0](https://github.com/smykla-skalski/klaudiush/compare/v1.16.0...v1.17.0) (2026-02-18)
+
+### Features
+
+* **validators:** add pyrefly ignore pattern ([#295](https://github.com/smykla-skalski/klaudiush/issues/295)) ([1b2e315](https://github.com/smykla-skalski/klaudiush/commit/1b2e3151b4c59ae2be948ed4b5b82564762bb0c7))
+
+### Bug Fixes
+
+* **deps:** update module golang.org/x/term to v0.40.0 ([#272](https://github.com/smykla-skalski/klaudiush/issues/272)) ([643266c](https://github.com/smykla-skalski/klaudiush/commit/643266cf72e5840bbe413e9037887f3058de5c2b))
+
 ## [1.16.0](https://github.com/smykla-skalski/klaudiush/compare/v1.15.0...v1.16.0) (2026-02-17)
 
 ### Features
