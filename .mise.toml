@@ -15,7 +15,7 @@ task = "3.45.5"
 
 # Markdown linter
 # https://github.com/DavidAnson/markdownlint-cli2
-markdownlint-cli2 = "0.20.0"
+markdownlint-cli2 = "0.21.0"
 
 # Ginkgo BDD test framework CLI
 # https://onsi.github.io/ginkgo/
