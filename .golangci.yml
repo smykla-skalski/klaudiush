@@ -210,6 +210,14 @@ linters:
     nestif:
       min-complexity: 5
 
+    ireturn:
+      allow:
+        - anon
+        - error
+        - empty
+        - stdlib
+        - "github.com/go-viper/mapstructure"  # DecodeHookFunc is type alias for any; ireturn classifies named external aliases as NamedInterface, not EmptyInterface
+
     nolintlint:
       allow-unused: false
       require-explanation: true

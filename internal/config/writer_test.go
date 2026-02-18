@@ -90,7 +90,7 @@ var _ = Describe("Writer with Backup Integration", func() {
 			It("should create backup before writing (sync)", func() {
 				cfg := &pkgConfig.Config{
 					Backup: &pkgConfig.BackupConfig{
-						AsyncBackup: boolPtr(false),
+						AsyncBackup: new(false),
 					},
 				}
 
@@ -109,7 +109,7 @@ var _ = Describe("Writer with Backup Integration", func() {
 			It("should create backup before writing (async)", func() {
 				cfg := &pkgConfig.Config{
 					Backup: &pkgConfig.BackupConfig{
-						AsyncBackup: boolPtr(true),
+						AsyncBackup: new(true),
 					},
 				}
 
@@ -134,7 +134,7 @@ var _ = Describe("Writer with Backup Integration", func() {
 			It("should not create backup when disabled", func() {
 				cfg := &pkgConfig.Config{
 					Backup: &pkgConfig.BackupConfig{
-						Enabled: boolPtr(false),
+						Enabled: new(false),
 					},
 				}
 
@@ -150,8 +150,8 @@ var _ = Describe("Writer with Backup Integration", func() {
 			It("should not create backup when auto_backup is disabled", func() {
 				cfg := &pkgConfig.Config{
 					Backup: &pkgConfig.BackupConfig{
-						Enabled:    boolPtr(true),
-						AutoBackup: boolPtr(false),
+						Enabled:    new(true),
+						AutoBackup: new(false),
 					},
 				}
 
@@ -194,7 +194,7 @@ var _ = Describe("Writer with Backup Integration", func() {
 			// Write again (should trigger backup)
 			cfg2 := &pkgConfig.Config{
 				Backup: &pkgConfig.BackupConfig{
-					AsyncBackup: boolPtr(false),
+					AsyncBackup: new(false),
 				},
 			}
 			err = writer.WriteGlobal(cfg2)
@@ -239,7 +239,7 @@ var _ = Describe("Writer with Backup Integration", func() {
 			// Write again (should trigger backup)
 			cfg2 := &pkgConfig.Config{
 				Backup: &pkgConfig.BackupConfig{
-					AsyncBackup: boolPtr(false),
+					AsyncBackup: new(false),
 				},
 			}
 			err = writer.WriteProject(cfg2)
@@ -252,8 +252,3 @@ var _ = Describe("Writer with Backup Integration", func() {
 		})
 	})
 })
-
-// boolPtr returns a pointer to a bool value.
-func boolPtr(b bool) *bool {
-	return &b
-}

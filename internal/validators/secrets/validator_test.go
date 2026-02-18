@@ -45,7 +45,7 @@ var _ = Describe("SecretsValidator", func() {
 		detector = secrets.NewDefaultPatternDetector()
 		gitleaks = &mockGitleaksChecker{available: false}
 		cfg = &config.SecretsValidatorConfig{
-			ValidatorConfig: config.ValidatorConfig{Enabled: boolPtr(true)},
+			ValidatorConfig: config.ValidatorConfig{Enabled: new(true)},
 		}
 		v = secrets.NewSecretsValidator(logger.NewNoOpLogger(), detector, gitleaks, cfg, nil)
 		hookCtx = &hook.Context{
@@ -246,7 +246,7 @@ secret = os.getenv("SECRET_KEY")
 		})
 
 		It("should warn instead of block when configured", func() {
-			cfg.BlockOnDetection = boolPtr(false)
+			cfg.BlockOnDetection = new(false)
 			v = secrets.NewSecretsValidator(logger.NewNoOpLogger(), detector, gitleaks, cfg, nil)
 
 			hookCtx.ToolInput.Content = `GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`
@@ -280,7 +280,7 @@ secret = os.getenv("SECRET_KEY")
 
 	Describe("gitleaks integration", func() {
 		It("should use gitleaks when available and enabled", func() {
-			cfg.UseGitleaks = boolPtr(true)
+			cfg.UseGitleaks = new(true)
 			gitleaks.available = true
 			gitleaks.result = &linters.LintResult{
 				Success: false,
@@ -298,7 +298,7 @@ secret = os.getenv("SECRET_KEY")
 		})
 
 		It("should skip gitleaks when not available", func() {
-			cfg.UseGitleaks = boolPtr(true)
+			cfg.UseGitleaks = new(true)
 			gitleaks.available = false
 			v = secrets.NewSecretsValidator(logger.NewNoOpLogger(), detector, gitleaks, cfg, nil)
 
@@ -308,7 +308,7 @@ secret = os.getenv("SECRET_KEY")
 		})
 
 		It("should skip gitleaks when disabled in config", func() {
-			cfg.UseGitleaks = boolPtr(false)
+			cfg.UseGitleaks = new(false)
 			gitleaks.available = true
 			gitleaks.result = &linters.LintResult{
 				Success: false,
@@ -330,7 +330,3 @@ secret = os.getenv("SECRET_KEY")
 		})
 	})
 })
-
-func boolPtr(b bool) *bool {
-	return &b
-}

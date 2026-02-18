@@ -416,7 +416,7 @@ var _ = Describe("Handler", func() {
 			auditLogger := exceptions.NewAuditLogger(
 				&config.ExceptionAuditConfig{
 					LogFile:    auditFile,
-					MaxAgeDays: intPtr(1),
+					MaxAgeDays: new(1),
 				},
 				exceptions.WithAuditTimeFunc(nowFunc),
 			)
@@ -507,8 +507,3 @@ var _ = Describe("FormatDenialMessage", func() {
 		Expect(msg).To(ContainSubstring("SEC001"))
 	})
 })
-
-// intPtr returns a pointer to an int.
-func intPtr(i int) *int {
-	return &i
-}
