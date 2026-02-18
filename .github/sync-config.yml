@@ -6,3 +6,21 @@
 sync:
   labels:
     allow_removal: true
+  files:
+    merge:
+      - path: renovate.json
+        arrayStrategies:
+          "$.extends": append
+          "$.packageRules": append
+        deduplicateArrays: true
+        overrides:
+          extends:
+            - "customManagers:githubActionsVersions"
+          packageRules:
+            - description: "Update go-git only on Monday mornings (using pinned commit SHAs as v6 is not yet GA)"
+              extends:
+                - "schedule:earlyMondays"
+              matchManagers:
+                - gomod
+              matchPackageNames:
+                - "github.com/go-git/go-git/v6"

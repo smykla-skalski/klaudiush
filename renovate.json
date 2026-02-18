@@ -13,6 +13,7 @@
     ":automergeLinters",
     ":automergeTesters",
     ":prConcurrentLimit20",
+    "customManagers:githubActionsVersions",
     "helpers:pinGitHubActionDigests",
     "security:openssf-scorecard",
     "group:linters"

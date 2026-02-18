@@ -186,14 +186,14 @@ func (v *LinterIgnoreValidator) findViolations(content string) []violation {
 func (*LinterIgnoreValidator) formatViolations(violations []violation) string {
 	var sb strings.Builder
 
-	sb.WriteString("Linter ignore directives are not allowed\n\n")
+	fmt.Fprint(&sb, "Linter ignore directives are not allowed\n\n")
 
 	for i, v := range violations {
 		if i > 0 {
-			sb.WriteString("\n")
+			fmt.Fprint(&sb, "\n")
 		}
 
-		sb.WriteString(fmt.Sprintf("Line %d: %s", v.line, v.directive))
+		fmt.Fprintf(&sb, "Line %d: %s", v.line, v.directive)
 	}
 
 	return sb.String()

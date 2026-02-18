@@ -89,7 +89,7 @@ func (m *ExcludeManager) AddEntry(pattern string) error {
 	}
 
 	// Add comment and entry
-	buf.WriteString(fmt.Sprintf("# Added by klaudiush\n%s\n", pattern))
+	fmt.Fprintf(&buf, "# Added by klaudiush\n%s\n", pattern)
 
 	// Write back to file
 	if err := os.WriteFile(excludePath, buf.Bytes(), ExcludeFileMode); err != nil {

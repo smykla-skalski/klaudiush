@@ -4,6 +4,7 @@ package exec
 
 import (
 	"os"
+	"path/filepath"
 
 	"github.com/cockroachdb/errors"
 )
@@ -30,11 +31,12 @@ func (*tempFileManager) Create(pattern, content string) (string, func(), error) 
 		return "", nil, errors.Wrap(err, "creating temp file")
 	}
 
-	filePath := tmpFile.Name()
+	filePath := filepath.Clean(tmpFile.Name())
 
 	// Write content
 	if _, err := tmpFile.WriteString(content); err != nil {
 		_ = tmpFile.Close()
+		//nolint:gosec // G703: filePath is from os.CreateTemp via filepath.Clean above; gosec cannot trace through variable assignment
 		_ = os.Remove(filePath)
 
 		return "", nil, errors.Wrap(err, "writing to temp file")
@@ -42,6 +44,7 @@ func (*tempFileManager) Create(pattern, content string) (string, func(), error) 
 
 	// Close file
 	if err := tmpFile.Close(); err != nil {
+		//nolint:gosec // G703: filePath is from os.CreateTemp via filepath.Clean above; gosec cannot trace through variable assignment
 		_ = os.Remove(filePath)
 		return "", nil, errors.Wrap(err, "closing temp file")
 	}
