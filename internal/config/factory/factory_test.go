@@ -10,10 +10,6 @@ import (
 	"github.com/smykla-skalski/klaudiush/pkg/logger"
 )
 
-func ptrBool(v bool) *bool {
-	return &v
-}
-
 var _ = Describe("DefaultValidatorFactory", func() {
 	var (
 		validatorFactory *factory.DefaultValidatorFactory
@@ -66,7 +62,7 @@ var _ = Describe("DefaultValidatorFactory", func() {
 				Validators: &config.ValidatorsConfig{
 					Git: &config.GitConfig{
 						Add: &config.AddValidatorConfig{
-							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(true)},
+							ValidatorConfig: config.ValidatorConfig{Enabled: new(true)},
 						},
 					},
 				},
@@ -81,7 +77,7 @@ var _ = Describe("DefaultValidatorFactory", func() {
 				Validators: &config.ValidatorsConfig{
 					Git: &config.GitConfig{
 						Commit: &config.CommitValidatorConfig{
-							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(true)},
+							ValidatorConfig: config.ValidatorConfig{Enabled: new(true)},
 						},
 					},
 				},
@@ -96,7 +92,7 @@ var _ = Describe("DefaultValidatorFactory", func() {
 				Validators: &config.ValidatorsConfig{
 					Git: &config.GitConfig{
 						Push: &config.PushValidatorConfig{
-							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(true)},
+							ValidatorConfig: config.ValidatorConfig{Enabled: new(true)},
 						},
 					},
 				},
@@ -111,7 +107,7 @@ var _ = Describe("DefaultValidatorFactory", func() {
 				Validators: &config.ValidatorsConfig{
 					Git: &config.GitConfig{
 						PR: &config.PRValidatorConfig{
-							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(true)},
+							ValidatorConfig: config.ValidatorConfig{Enabled: new(true)},
 						},
 					},
 				},
@@ -126,7 +122,7 @@ var _ = Describe("DefaultValidatorFactory", func() {
 				Validators: &config.ValidatorsConfig{
 					Git: &config.GitConfig{
 						Branch: &config.BranchValidatorConfig{
-							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(true)},
+							ValidatorConfig: config.ValidatorConfig{Enabled: new(true)},
 						},
 					},
 				},
@@ -141,7 +137,7 @@ var _ = Describe("DefaultValidatorFactory", func() {
 				Validators: &config.ValidatorsConfig{
 					Git: &config.GitConfig{
 						Merge: &config.MergeValidatorConfig{
-							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(true)},
+							ValidatorConfig: config.ValidatorConfig{Enabled: new(true)},
 						},
 					},
 				},
@@ -156,7 +152,7 @@ var _ = Describe("DefaultValidatorFactory", func() {
 				Validators: &config.ValidatorsConfig{
 					Git: &config.GitConfig{
 						NoVerify: &config.NoVerifyValidatorConfig{
-							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(true)},
+							ValidatorConfig: config.ValidatorConfig{Enabled: new(true)},
 						},
 					},
 				},
@@ -171,7 +167,7 @@ var _ = Describe("DefaultValidatorFactory", func() {
 				Validators: &config.ValidatorsConfig{
 					Git: &config.GitConfig{
 						Push: &config.PushValidatorConfig{
-							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(false)},
+							ValidatorConfig: config.ValidatorConfig{Enabled: new(false)},
 						},
 					},
 				},
@@ -186,25 +182,25 @@ var _ = Describe("DefaultValidatorFactory", func() {
 				Validators: &config.ValidatorsConfig{
 					Git: &config.GitConfig{
 						Add: &config.AddValidatorConfig{
-							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(true)},
+							ValidatorConfig: config.ValidatorConfig{Enabled: new(true)},
 						},
 						NoVerify: &config.NoVerifyValidatorConfig{
-							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(true)},
+							ValidatorConfig: config.ValidatorConfig{Enabled: new(true)},
 						},
 						Commit: &config.CommitValidatorConfig{
-							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(true)},
+							ValidatorConfig: config.ValidatorConfig{Enabled: new(true)},
 						},
 						Push: &config.PushValidatorConfig{
-							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(true)},
+							ValidatorConfig: config.ValidatorConfig{Enabled: new(true)},
 						},
 						PR: &config.PRValidatorConfig{
-							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(true)},
+							ValidatorConfig: config.ValidatorConfig{Enabled: new(true)},
 						},
 						Branch: &config.BranchValidatorConfig{
-							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(true)},
+							ValidatorConfig: config.ValidatorConfig{Enabled: new(true)},
 						},
 						Merge: &config.MergeValidatorConfig{
-							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(true)},
+							ValidatorConfig: config.ValidatorConfig{Enabled: new(true)},
 						},
 					},
 				},
@@ -242,7 +238,7 @@ var _ = Describe("DefaultValidatorFactory", func() {
 				Validators: &config.ValidatorsConfig{
 					Git: &config.GitConfig{
 						Push: &config.PushValidatorConfig{
-							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(true)},
+							ValidatorConfig: config.ValidatorConfig{Enabled: new(true)},
 						},
 					},
 				},
@@ -259,7 +255,7 @@ var _ = Describe("DefaultValidatorFactory", func() {
 				Validators: &config.ValidatorsConfig{
 					File: &config.FileConfig{
 						Markdown: &config.MarkdownValidatorConfig{
-							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(true)},
+							ValidatorConfig: config.ValidatorConfig{Enabled: new(true)},
 						},
 					},
 				},
@@ -274,7 +270,7 @@ var _ = Describe("DefaultValidatorFactory", func() {
 				Validators: &config.ValidatorsConfig{
 					File: &config.FileConfig{
 						Terraform: &config.TerraformValidatorConfig{
-							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(true)},
+							ValidatorConfig: config.ValidatorConfig{Enabled: new(true)},
 						},
 					},
 				},
@@ -289,7 +285,7 @@ var _ = Describe("DefaultValidatorFactory", func() {
 				Validators: &config.ValidatorsConfig{
 					File: &config.FileConfig{
 						ShellScript: &config.ShellScriptValidatorConfig{
-							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(true)},
+							ValidatorConfig: config.ValidatorConfig{Enabled: new(true)},
 						},
 					},
 				},
@@ -304,7 +300,7 @@ var _ = Describe("DefaultValidatorFactory", func() {
 				Validators: &config.ValidatorsConfig{
 					File: &config.FileConfig{
 						Workflow: &config.WorkflowValidatorConfig{
-							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(true)},
+							ValidatorConfig: config.ValidatorConfig{Enabled: new(true)},
 						},
 					},
 				},
@@ -319,7 +315,7 @@ var _ = Describe("DefaultValidatorFactory", func() {
 				Validators: &config.ValidatorsConfig{
 					File: &config.FileConfig{
 						Markdown: &config.MarkdownValidatorConfig{
-							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(false)},
+							ValidatorConfig: config.ValidatorConfig{Enabled: new(false)},
 						},
 					},
 				},
@@ -337,7 +333,7 @@ var _ = Describe("DefaultValidatorFactory", func() {
 				Validators: &config.ValidatorsConfig{
 					File: &config.FileConfig{
 						Markdown: &config.MarkdownValidatorConfig{
-							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(true)},
+							ValidatorConfig: config.ValidatorConfig{Enabled: new(true)},
 						},
 					},
 				},
@@ -352,16 +348,16 @@ var _ = Describe("DefaultValidatorFactory", func() {
 				Validators: &config.ValidatorsConfig{
 					File: &config.FileConfig{
 						Markdown: &config.MarkdownValidatorConfig{
-							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(true)},
+							ValidatorConfig: config.ValidatorConfig{Enabled: new(true)},
 						},
 						Terraform: &config.TerraformValidatorConfig{
-							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(true)},
+							ValidatorConfig: config.ValidatorConfig{Enabled: new(true)},
 						},
 						ShellScript: &config.ShellScriptValidatorConfig{
-							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(true)},
+							ValidatorConfig: config.ValidatorConfig{Enabled: new(true)},
 						},
 						Workflow: &config.WorkflowValidatorConfig{
-							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(true)},
+							ValidatorConfig: config.ValidatorConfig{Enabled: new(true)},
 						},
 					},
 				},
@@ -378,7 +374,7 @@ var _ = Describe("DefaultValidatorFactory", func() {
 				Validators: &config.ValidatorsConfig{
 					Notification: &config.NotificationConfig{
 						Bell: &config.BellValidatorConfig{
-							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(true)},
+							ValidatorConfig: config.ValidatorConfig{Enabled: new(true)},
 						},
 					},
 				},
@@ -393,7 +389,7 @@ var _ = Describe("DefaultValidatorFactory", func() {
 				Validators: &config.ValidatorsConfig{
 					Notification: &config.NotificationConfig{
 						Bell: &config.BellValidatorConfig{
-							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(false)},
+							ValidatorConfig: config.ValidatorConfig{Enabled: new(false)},
 						},
 					},
 				},
@@ -410,7 +406,7 @@ var _ = Describe("DefaultValidatorFactory", func() {
 				Validators: &config.ValidatorsConfig{
 					Secrets: &config.SecretsConfig{
 						Secrets: &config.SecretsValidatorConfig{
-							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(true)},
+							ValidatorConfig: config.ValidatorConfig{Enabled: new(true)},
 						},
 					},
 				},
@@ -425,7 +421,7 @@ var _ = Describe("DefaultValidatorFactory", func() {
 				Validators: &config.ValidatorsConfig{
 					Secrets: &config.SecretsConfig{
 						Secrets: &config.SecretsValidatorConfig{
-							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(false)},
+							ValidatorConfig: config.ValidatorConfig{Enabled: new(false)},
 						},
 					},
 				},
@@ -458,7 +454,7 @@ var _ = Describe("DefaultValidatorFactory", func() {
 				Validators: &config.ValidatorsConfig{
 					Secrets: &config.SecretsConfig{
 						Secrets: &config.SecretsValidatorConfig{
-							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(true)},
+							ValidatorConfig: config.ValidatorConfig{Enabled: new(true)},
 							CustomPatterns: []config.CustomPatternConfig{
 								{
 									Name:        "custom-key",
@@ -480,7 +476,7 @@ var _ = Describe("DefaultValidatorFactory", func() {
 				Validators: &config.ValidatorsConfig{
 					Secrets: &config.SecretsConfig{
 						Secrets: &config.SecretsValidatorConfig{
-							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(true)},
+							ValidatorConfig: config.ValidatorConfig{Enabled: new(true)},
 							CustomPatterns: []config.CustomPatternConfig{
 								{
 									Name:  "invalid-pattern",
@@ -505,7 +501,7 @@ var _ = Describe("DefaultValidatorFactory", func() {
 				Validators: &config.ValidatorsConfig{
 					Secrets: &config.SecretsConfig{
 						Secrets: &config.SecretsValidatorConfig{
-							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(true)},
+							ValidatorConfig: config.ValidatorConfig{Enabled: new(true)},
 						},
 					},
 				},
@@ -522,7 +518,7 @@ var _ = Describe("DefaultValidatorFactory", func() {
 				Validators: &config.ValidatorsConfig{
 					Shell: &config.ShellConfig{
 						Backtick: &config.BacktickValidatorConfig{
-							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(true)},
+							ValidatorConfig: config.ValidatorConfig{Enabled: new(true)},
 						},
 					},
 				},
@@ -537,7 +533,7 @@ var _ = Describe("DefaultValidatorFactory", func() {
 				Validators: &config.ValidatorsConfig{
 					Shell: &config.ShellConfig{
 						Backtick: &config.BacktickValidatorConfig{
-							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(false)},
+							ValidatorConfig: config.ValidatorConfig{Enabled: new(false)},
 						},
 					},
 				},
@@ -583,27 +579,27 @@ var _ = Describe("DefaultValidatorFactory", func() {
 				Validators: &config.ValidatorsConfig{
 					Git: &config.GitConfig{
 						Push: &config.PushValidatorConfig{
-							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(true)},
+							ValidatorConfig: config.ValidatorConfig{Enabled: new(true)},
 						},
 					},
 					File: &config.FileConfig{
 						Markdown: &config.MarkdownValidatorConfig{
-							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(true)},
+							ValidatorConfig: config.ValidatorConfig{Enabled: new(true)},
 						},
 					},
 					Notification: &config.NotificationConfig{
 						Bell: &config.BellValidatorConfig{
-							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(true)},
+							ValidatorConfig: config.ValidatorConfig{Enabled: new(true)},
 						},
 					},
 					Shell: &config.ShellConfig{
 						Backtick: &config.BacktickValidatorConfig{
-							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(true)},
+							ValidatorConfig: config.ValidatorConfig{Enabled: new(true)},
 						},
 					},
 					Secrets: &config.SecretsConfig{
 						Secrets: &config.SecretsValidatorConfig{
-							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(true)},
+							ValidatorConfig: config.ValidatorConfig{Enabled: new(true)},
 						},
 					},
 				},
@@ -653,7 +649,7 @@ var _ = Describe("RegistryBuilder", func() {
 				Validators: &config.ValidatorsConfig{
 					Git: &config.GitConfig{
 						Push: &config.PushValidatorConfig{
-							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(true)},
+							ValidatorConfig: config.ValidatorConfig{Enabled: new(true)},
 						},
 					},
 					File:         &config.FileConfig{},
@@ -699,7 +695,7 @@ var _ = Describe("RegistryBuilder", func() {
 				Validators: &config.ValidatorsConfig{
 					Git: &config.GitConfig{
 						Push: &config.PushValidatorConfig{
-							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(true)},
+							ValidatorConfig: config.ValidatorConfig{Enabled: new(true)},
 						},
 					},
 					File:         &config.FileConfig{},
@@ -725,7 +721,7 @@ var _ = Describe("RegistryBuilder", func() {
 				Validators: &config.ValidatorsConfig{
 					Git: &config.GitConfig{
 						Push: &config.PushValidatorConfig{
-							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(true)},
+							ValidatorConfig: config.ValidatorConfig{Enabled: new(true)},
 						},
 					},
 					File:         &config.FileConfig{},
@@ -831,16 +827,16 @@ var _ = Describe("GitValidatorFactory", func() {
 				Validators: &config.ValidatorsConfig{
 					Git: &config.GitConfig{
 						Add: &config.AddValidatorConfig{
-							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(true)},
+							ValidatorConfig: config.ValidatorConfig{Enabled: new(true)},
 						},
 						Commit: &config.CommitValidatorConfig{
-							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(true)},
+							ValidatorConfig: config.ValidatorConfig{Enabled: new(true)},
 						},
 						Push: &config.PushValidatorConfig{
-							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(true)},
+							ValidatorConfig: config.ValidatorConfig{Enabled: new(true)},
 						},
 						Merge: &config.MergeValidatorConfig{
-							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(true)},
+							ValidatorConfig: config.ValidatorConfig{Enabled: new(true)},
 						},
 					},
 				},
@@ -1004,7 +1000,7 @@ var _ = Describe("GitHubValidatorFactory", func() {
 				Validators: &config.ValidatorsConfig{
 					GitHub: &config.GitHubConfig{
 						Issue: &config.IssueValidatorConfig{
-							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(true)},
+							ValidatorConfig: config.ValidatorConfig{Enabled: new(true)},
 						},
 					},
 				},
@@ -1019,7 +1015,7 @@ var _ = Describe("GitHubValidatorFactory", func() {
 				Validators: &config.ValidatorsConfig{
 					GitHub: &config.GitHubConfig{
 						Issue: &config.IssueValidatorConfig{
-							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(false)},
+							ValidatorConfig: config.ValidatorConfig{Enabled: new(false)},
 						},
 					},
 				},
@@ -1056,7 +1052,7 @@ var _ = Describe("GitHubValidatorFactory", func() {
 				Validators: &config.ValidatorsConfig{
 					GitHub: &config.GitHubConfig{
 						Issue: &config.IssueValidatorConfig{
-							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(true)},
+							ValidatorConfig: config.ValidatorConfig{Enabled: new(true)},
 						},
 					},
 				},
@@ -1072,7 +1068,7 @@ var _ = Describe("GitHubValidatorFactory", func() {
 				Validators: &config.ValidatorsConfig{
 					GitHub: &config.GitHubConfig{
 						Issue: &config.IssueValidatorConfig{
-							ValidatorConfig:       config.ValidatorConfig{Enabled: ptrBool(true)},
+							ValidatorConfig:       config.ValidatorConfig{Enabled: new(true)},
 							RequireBody:           &requireBody,
 							MarkdownDisabledRules: []string{"MD001", "MD002"},
 							Timeout:               config.Duration(5000000000), // 5 seconds
@@ -1104,7 +1100,7 @@ var _ = Describe("DefaultValidatorFactory GitHub Integration", func() {
 				Validators: &config.ValidatorsConfig{
 					GitHub: &config.GitHubConfig{
 						Issue: &config.IssueValidatorConfig{
-							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(true)},
+							ValidatorConfig: config.ValidatorConfig{Enabled: new(true)},
 						},
 					},
 				},
@@ -1119,7 +1115,7 @@ var _ = Describe("DefaultValidatorFactory GitHub Integration", func() {
 				Validators: &config.ValidatorsConfig{
 					GitHub: &config.GitHubConfig{
 						Issue: &config.IssueValidatorConfig{
-							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(false)},
+							ValidatorConfig: config.ValidatorConfig{Enabled: new(false)},
 						},
 					},
 				},
@@ -1147,7 +1143,7 @@ var _ = Describe("DefaultValidatorFactory GitHub Integration", func() {
 				Validators: &config.ValidatorsConfig{
 					GitHub: &config.GitHubConfig{
 						Issue: &config.IssueValidatorConfig{
-							ValidatorConfig: config.ValidatorConfig{Enabled: ptrBool(true)},
+							ValidatorConfig: config.ValidatorConfig{Enabled: new(true)},
 						},
 					},
 					Git:          &config.GitConfig{},

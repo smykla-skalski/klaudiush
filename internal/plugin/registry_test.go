@@ -47,7 +47,7 @@ var _ = Describe("Registry", func() {
 		Context("when plugins are disabled globally", func() {
 			It("should not load plugins", func() {
 				cfg := &config.PluginConfig{
-					Enabled: boolPtr(false),
+					Enabled: new(false),
 				}
 
 				err := registry.LoadPlugins(cfg)
@@ -68,13 +68,13 @@ var _ = Describe("Registry", func() {
 		Context("when individual plugin is disabled", func() {
 			It("should skip disabled plugin", func() {
 				cfg := &config.PluginConfig{
-					Enabled: boolPtr(true),
+					Enabled: new(true),
 					Plugins: []*config.PluginInstanceConfig{
 						{
 							Name:    "disabled-plugin",
 							Type:    config.PluginTypeExec,
 							Path:    "/usr/local/bin/test-plugin",
-							Enabled: boolPtr(false),
+							Enabled: new(false),
 						},
 					},
 				}
@@ -98,7 +98,7 @@ var _ = Describe("Registry", func() {
 		Context("when loading invalid plugin", func() {
 			It("should return error for unsupported plugin type", func() {
 				cfg := &config.PluginConfig{
-					Enabled: boolPtr(true),
+					Enabled: new(true),
 					Plugins: []*config.PluginInstanceConfig{
 						{
 							Name: "invalid-plugin",
@@ -569,7 +569,3 @@ var _ = Describe("PredicateMatcher", func() {
 })
 
 // Helper functions
-
-func boolPtr(b bool) *bool {
-	return &b
-}

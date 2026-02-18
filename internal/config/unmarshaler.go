@@ -25,8 +25,6 @@ func CustomDecoderConfig() *mapstructure.DecoderConfig {
 }
 
 // stringToDurationHookFunc returns a decode hook for converting strings to config.Duration.
-//
-//nolint:ireturn // required by mapstructure.DecodeHookFunc interface
 func stringToDurationHookFunc() mapstructure.DecodeHookFunc {
 	return func(
 		_ reflect.Type,
@@ -59,8 +57,6 @@ func stringToDurationHookFunc() mapstructure.DecodeHookFunc {
 }
 
 // stringToSeverityHookFunc returns a decode hook for converting strings to config.Severity.
-//
-//nolint:ireturn // required by mapstructure.DecodeHookFunc interface
 func stringToSeverityHookFunc() mapstructure.DecodeHookFunc {
 	return func(
 		_ reflect.Type,

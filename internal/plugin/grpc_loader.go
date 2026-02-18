@@ -89,7 +89,7 @@ func NewGRPCLoaderWithLogger(log logger.Logger) *GRPCLoader {
 // The dial timeout from the loader is used for initial connection establishment.
 // The timeout from the config (or defaultGRPCTimeout) is used for subsequent RPC calls.
 //
-//nolint:ireturn // interface return is required by Loader interface
+//nolint:ireturn // implements Loader interface
 func (l *GRPCLoader) Load(cfg *config.PluginInstanceConfig) (Plugin, error) {
 	// Check if loader has been closed
 	l.mu.RLock()
@@ -248,7 +248,7 @@ func (*GRPCLoader) fetchInfo(
 //   - TLS disabled + localhost: insecure
 //   - TLS disabled + remote: error unless AllowInsecureRemote is set
 //
-//nolint:ireturn // interface return is required by gRPC credentials
+//nolint:ireturn // required by gRPC credentials.TransportCredentials interface
 func (l *GRPCLoader) buildTransportCredentials(
 	cfg *config.PluginInstanceConfig,
 ) (credentials.TransportCredentials, error) {
@@ -296,7 +296,7 @@ func (l *GRPCLoader) buildTransportCredentials(
 
 // buildTLSCredentials builds TLS transport credentials from the config.
 //
-//nolint:ireturn // interface return is required by gRPC credentials
+//nolint:ireturn // required by gRPC credentials.TransportCredentials interface
 func (*GRPCLoader) buildTLSCredentials(
 	cfg *config.TLSConfig,
 ) (credentials.TransportCredentials, error) {

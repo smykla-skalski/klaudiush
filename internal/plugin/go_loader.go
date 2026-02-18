@@ -24,7 +24,7 @@ func NewGoLoader() *GoLoader {
 
 // Load loads a Go plugin from the specified path.
 //
-//nolint:ireturn // interface return is required by Loader interface
+//nolint:ireturn // implements Loader interface
 func (*GoLoader) Load(cfg *config.PluginInstanceConfig) (Plugin, error) {
 	if cfg.Path == "" {
 		return nil, errors.New("path is required for Go plugins")
@@ -145,7 +145,7 @@ func (*goPluginAdapter) Close() error {
 // NewGoPluginAdapterForTesting creates a goPluginAdapter for testing purposes.
 // This allows tests to inject mock plugin implementations without needing .so files.
 //
-//nolint:ireturn // interface return is required for testing
+//nolint:ireturn // factory function for test injection; returns interface by design
 func NewGoPluginAdapterForTesting(
 	impl plugin.Plugin,
 	config map[string]any,
