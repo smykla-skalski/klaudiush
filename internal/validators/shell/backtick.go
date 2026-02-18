@@ -315,29 +315,30 @@ func (*BacktickValidator) buildErrorMessage(
 ) string {
 	var sb strings.Builder
 
-	sb.WriteString(
+	fmt.Fprint(
+		&sb,
 		"Command substitution (backticks or $()) in double-quoted strings can cause unexpected behavior.\n\n",
 	)
-	sb.WriteString("Found in:\n")
+	fmt.Fprint(&sb, "Found in:\n")
 
 	for _, issue := range issues {
-		sb.WriteString(fmt.Sprintf("- Argument at index %d\n", issue.ArgIndex))
+		fmt.Fprintf(&sb, "- Argument at index %d\n", issue.ArgIndex)
 	}
 
-	sb.WriteString("\nRecommended solutions:\n\n")
-	sb.WriteString("1. Use HEREDOC with single-quoted delimiter (recommended):\n")
-	sb.WriteString("   git commit -m \"$(cat <<'EOF'\n")
-	sb.WriteString("   Fix bug in `parser` module\n")
-	sb.WriteString("   EOF\n")
-	sb.WriteString("   )\"\n\n")
+	fmt.Fprint(&sb, "\nRecommended solutions:\n\n")
+	fmt.Fprint(&sb, "1. Use HEREDOC with single-quoted delimiter (recommended):\n")
+	fmt.Fprint(&sb, "   git commit -m \"$(cat <<'EOF'\n")
+	fmt.Fprint(&sb, "   Fix bug in `parser` module\n")
+	fmt.Fprint(&sb, "   EOF\n")
+	fmt.Fprint(&sb, "   )\"\n\n")
 
-	sb.WriteString("2. Use file-based input:\n")
-	sb.WriteString("   git commit -F commit-message.txt\n")
-	sb.WriteString("   gh pr create --body-file pr-body.md\n")
-	sb.WriteString("   gh issue create --body-file issue-body.md\n\n")
+	fmt.Fprint(&sb, "2. Use file-based input:\n")
+	fmt.Fprint(&sb, "   git commit -F commit-message.txt\n")
+	fmt.Fprint(&sb, "   gh pr create --body-file pr-body.md\n")
+	fmt.Fprint(&sb, "   gh issue create --body-file issue-body.md\n\n")
 
-	sb.WriteString("3. Escape backticks if intentional:\n")
-	sb.WriteString("   git commit -m \"Fix bug in \\`parser\\` module\"\n")
+	fmt.Fprint(&sb, "3. Escape backticks if intentional:\n")
+	fmt.Fprint(&sb, "   git commit -m \"Fix bug in \\`parser\\` module\"\n")
 
 	return sb.String()
 }
