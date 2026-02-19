@@ -10,17 +10,12 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	pb "github.com/smykla-skalski/klaudiush/api/plugin/v1"
 	"github.com/smykla-skalski/klaudiush/internal/plugin"
-	"github.com/smykla-skalski/klaudiush/internal/validator"
 	"github.com/smykla-skalski/klaudiush/pkg/config"
 	"github.com/smykla-skalski/klaudiush/pkg/hook"
 	"github.com/smykla-skalski/klaudiush/pkg/logger"
 	pluginapi "github.com/smykla-skalski/klaudiush/pkg/plugin"
 )
-
-// Integration tests reuse mockGRPCServer from grpc_loader_test.go.
-// The mock server provides configurable behavior for testing different scenarios.
 
 // createExecPlugin creates a temporary exec plugin script for testing.
 func createExecPlugin(
@@ -489,293 +484,6 @@ var _ = Describe("Plugin Integration Tests", func() {
 		})
 	})
 
-	Describe("gRPC Plugin Integration", func() {
-		Context("with a simple pass plugin", func() {
-			It("should load and execute successfully", func() {
-				srv := newMockGRPCServer()
-				srv.validateResponse = &pb.ValidateResponse{
-					Passed:      true,
-					ShouldBlock: false,
-					Message:     "gRPC validation passed",
-				}
-
-				address := srv.start()
-				defer srv.stop()
-
-				enabled := true
-				cfg := &config.PluginInstanceConfig{
-					Name:    "grpc-pass-plugin",
-					Type:    config.PluginTypeGRPC,
-					Enabled: &enabled,
-					Address: address,
-					Timeout: config.Duration(5 * time.Second),
-				}
-
-				registry := plugin.NewRegistry(log)
-				defer registry.Close()
-
-				err := registry.LoadPlugin(cfg)
-				Expect(err).NotTo(HaveOccurred())
-
-				hookCtx := &hook.Context{
-					EventType: hook.EventTypePreToolUse,
-					ToolName:  hook.ToolTypeBash,
-					ToolInput: hook.ToolInput{
-						Command: "echo test",
-					},
-				}
-
-				validators := registry.GetValidators(hookCtx)
-				Expect(validators).To(HaveLen(1))
-
-				result := validators[0].Validate(context.Background(), hookCtx)
-				Expect(result.Passed).To(BeTrue())
-				Expect(result.Message).To(ContainSubstring("gRPC validation passed"))
-			})
-		})
-
-		Context("with a failing plugin", func() {
-			It("should return failure result", func() {
-				srv := newMockGRPCServer()
-				srv.validateResponse = &pb.ValidateResponse{
-					Passed:      false,
-					ShouldBlock: true,
-					Message:     "gRPC validation failed",
-					ErrorCode:   "TEST001",
-					FixHint:     "Fix the issue",
-					DocLink:     "https://errors.smyk.la/TEST001",
-				}
-
-				address := srv.start()
-				defer srv.stop()
-
-				enabled := true
-				cfg := &config.PluginInstanceConfig{
-					Name:    "grpc-fail-plugin",
-					Type:    config.PluginTypeGRPC,
-					Enabled: &enabled,
-					Address: address,
-					Timeout: config.Duration(5 * time.Second),
-				}
-
-				registry := plugin.NewRegistry(log)
-				defer registry.Close()
-
-				err := registry.LoadPlugin(cfg)
-				Expect(err).NotTo(HaveOccurred())
-
-				hookCtx := &hook.Context{
-					EventType: hook.EventTypePreToolUse,
-					ToolName:  hook.ToolTypeBash,
-					ToolInput: hook.ToolInput{
-						Command: "echo test",
-					},
-				}
-
-				validators := registry.GetValidators(hookCtx)
-				Expect(validators).To(HaveLen(1))
-
-				result := validators[0].Validate(context.Background(), hookCtx)
-				Expect(result.Passed).To(BeFalse())
-				Expect(result.ShouldBlock).To(BeTrue())
-				Expect(result.Message).To(ContainSubstring("gRPC validation failed"))
-				// Plugin's DocLink is preserved as-is (plugins manage their own error references)
-				expected := validator.Reference("https://errors.smyk.la/TEST001")
-				Expect(result.Reference).To(Equal(expected))
-				Expect(result.FixHint).To(Equal("Fix the issue"))
-			})
-		})
-
-		Context("with predicates", func() {
-			It("should respect event type filtering", func() {
-				srv := newMockGRPCServer()
-				srv.validateResponse = &pb.ValidateResponse{
-					Passed:  true,
-					Message: "Matched",
-				}
-
-				address := srv.start()
-				defer srv.stop()
-
-				enabled := true
-				cfg := &config.PluginInstanceConfig{
-					Name:    "grpc-event-plugin",
-					Type:    config.PluginTypeGRPC,
-					Enabled: &enabled,
-					Address: address,
-					Predicate: &config.PluginPredicate{
-						EventTypes: []string{"PreToolUse"},
-						ToolTypes:  []string{"Write"},
-					},
-					Timeout: config.Duration(5 * time.Second),
-				}
-
-				registry := plugin.NewRegistry(log)
-				defer registry.Close()
-
-				err := registry.LoadPlugin(cfg)
-				Expect(err).NotTo(HaveOccurred())
-
-				// Should match
-				matchCtx := &hook.Context{
-					EventType: hook.EventTypePreToolUse,
-					ToolName:  hook.ToolTypeWrite,
-					ToolInput: hook.ToolInput{
-						FilePath: "test.txt",
-					},
-				}
-				validators := registry.GetValidators(matchCtx)
-				Expect(validators).To(HaveLen(1))
-
-				// Should not match (different tool type)
-				noMatchCtx := &hook.Context{
-					EventType: hook.EventTypePreToolUse,
-					ToolName:  hook.ToolTypeBash,
-				}
-				validators = registry.GetValidators(noMatchCtx)
-				Expect(validators).To(HaveLen(0))
-			})
-		})
-
-		Context("with connection pooling", func() {
-			It("should reuse connections for same address", func() {
-				srv := newMockGRPCServer()
-
-				address := srv.start()
-				defer srv.stop()
-
-				enabled := true
-				cfg1 := &config.PluginInstanceConfig{
-					Name:    "grpc-plugin-1",
-					Type:    config.PluginTypeGRPC,
-					Enabled: &enabled,
-					Address: address,
-					Timeout: config.Duration(5 * time.Second),
-				}
-
-				cfg2 := &config.PluginInstanceConfig{
-					Name:    "grpc-plugin-2",
-					Type:    config.PluginTypeGRPC,
-					Enabled: &enabled,
-					Address: address, // Same address
-					Timeout: config.Duration(5 * time.Second),
-				}
-
-				registry := plugin.NewRegistry(log)
-				defer registry.Close()
-
-				// Load two plugins with the same address
-				err := registry.LoadPlugin(cfg1)
-				Expect(err).NotTo(HaveOccurred())
-
-				err = registry.LoadPlugin(cfg2)
-				Expect(err).NotTo(HaveOccurred())
-
-				// Both should work (connection pooling should handle this)
-				hookCtx := &hook.Context{
-					EventType: hook.EventTypePreToolUse,
-					ToolName:  hook.ToolTypeBash,
-				}
-
-				validators := registry.GetValidators(hookCtx)
-				Expect(validators).To(HaveLen(2))
-
-				for _, v := range validators {
-					result := v.Validate(context.Background(), hookCtx)
-					Expect(result.Passed).To(BeTrue())
-				}
-			})
-		})
-	})
-
-	Describe("Mixed Plugin Types", func() {
-		It("should support exec and gRPC plugins together", func() {
-			// Create exec plugin
-			execPath, err := createExecPlugin(
-				pluginDir,
-				"exec-mixed",
-				&pluginapi.ValidateResponse{
-					Passed:  true,
-					Message: "Exec plugin",
-				},
-			)
-			Expect(err).NotTo(HaveOccurred())
-
-			// Create gRPC plugin
-			srv := newMockGRPCServer()
-			srv.validateResponse = &pb.ValidateResponse{
-				Passed:  true,
-				Message: "gRPC plugin",
-			}
-
-			address := srv.start()
-			defer srv.stop()
-
-			enabled := true
-			execCfg := &config.PluginInstanceConfig{
-				Name:        "exec-mixed",
-				Type:        config.PluginTypeExec,
-				Enabled:     &enabled,
-				Path:        execPath,
-				ProjectRoot: projectRoot,
-				Predicate: &config.PluginPredicate{
-					ToolTypes: []string{"Bash"},
-				},
-				Timeout: config.Duration(5 * time.Second),
-			}
-
-			grpcCfg := &config.PluginInstanceConfig{
-				Name:    "grpc-mixed",
-				Type:    config.PluginTypeGRPC,
-				Enabled: &enabled,
-				Address: address,
-				Predicate: &config.PluginPredicate{
-					ToolTypes: []string{"Bash"},
-				},
-				Timeout: config.Duration(5 * time.Second),
-			}
-
-			registry := plugin.NewRegistry(log)
-			defer registry.Close()
-
-			err = registry.LoadPlugin(execCfg)
-			Expect(err).NotTo(HaveOccurred())
-
-			err = registry.LoadPlugin(grpcCfg)
-			Expect(err).NotTo(HaveOccurred())
-
-			// Both should match
-			hookCtx := &hook.Context{
-				EventType: hook.EventTypePreToolUse,
-				ToolName:  hook.ToolTypeBash,
-				ToolInput: hook.ToolInput{
-					Command: "echo test",
-				},
-			}
-
-			validators := registry.GetValidators(hookCtx)
-			Expect(validators).To(HaveLen(2))
-
-			// Execute both
-			results := make([]*pluginapi.ValidateResponse, 0, len(validators))
-			for _, v := range validators {
-				result := v.Validate(context.Background(), hookCtx)
-				Expect(result.Passed).To(BeTrue())
-
-				resp := &pluginapi.ValidateResponse{
-					Passed:  result.Passed,
-					Message: result.Message,
-				}
-				results = append(results, resp)
-			}
-
-			// Verify we got both messages
-			messages := []string{results[0].Message, results[1].Message}
-			Expect(messages).To(ContainElement(ContainSubstring("Exec plugin")))
-			Expect(messages).To(ContainElement(ContainSubstring("gRPC plugin")))
-		})
-	})
-
 	Describe("Plugin Lifecycle", func() {
 		It("should properly close all plugins on registry close", func() {
 			execPath, err := createExecPlugin(
@@ -787,11 +495,6 @@ var _ = Describe("Plugin Integration Tests", func() {
 			)
 			Expect(err).NotTo(HaveOccurred())
 
-			srv := newMockGRPCServer()
-
-			address := srv.start()
-			defer srv.stop()
-
 			enabled := true
 			execCfg := &config.PluginInstanceConfig{
 				Name:        "lifecycle-exec",
@@ -802,20 +505,9 @@ var _ = Describe("Plugin Integration Tests", func() {
 				Timeout:     config.Duration(5 * time.Second),
 			}
 
-			grpcCfg := &config.PluginInstanceConfig{
-				Name:    "lifecycle-grpc",
-				Type:    config.PluginTypeGRPC,
-				Enabled: &enabled,
-				Address: address,
-				Timeout: config.Duration(5 * time.Second),
-			}
-
 			registry := plugin.NewRegistry(log)
 
 			err = registry.LoadPlugin(execCfg)
-			Expect(err).NotTo(HaveOccurred())
-
-			err = registry.LoadPlugin(grpcCfg)
 			Expect(err).NotTo(HaveOccurred())
 
 			// Close should not error

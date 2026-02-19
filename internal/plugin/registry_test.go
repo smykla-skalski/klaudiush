@@ -144,7 +144,7 @@ var _ = Describe("Registry", func() {
 			It("should return matching validators", func() {
 				cfg := &config.PluginInstanceConfig{
 					Name: "test-plugin",
-					Type: config.PluginTypeGo,
+					Type: config.PluginTypeExec,
 					Predicate: &config.PluginPredicate{
 						EventTypes: []string{"PreToolUse"},
 						ToolTypes:  []string{"Bash"},
@@ -171,7 +171,7 @@ var _ = Describe("Registry", func() {
 			It("should not return validators for wrong event type", func() {
 				cfg := &config.PluginInstanceConfig{
 					Name: "test-plugin",
-					Type: config.PluginTypeGo,
+					Type: config.PluginTypeExec,
 					Predicate: &config.PluginPredicate{
 						EventTypes: []string{"PostToolUse"},
 					},
@@ -194,7 +194,7 @@ var _ = Describe("Registry", func() {
 			It("should not return validators for wrong tool type", func() {
 				cfg := &config.PluginInstanceConfig{
 					Name: "test-plugin",
-					Type: config.PluginTypeGo,
+					Type: config.PluginTypeExec,
 					Predicate: &config.PluginPredicate{
 						EventTypes: []string{"PreToolUse"},
 						ToolTypes:  []string{"Write"},
@@ -234,7 +234,7 @@ var _ = Describe("Registry", func() {
 
 			cfg := &config.PluginInstanceConfig{
 				Name: "test-plugin",
-				Type: config.PluginTypeGo,
+				Type: config.PluginTypeExec,
 			}
 
 			err := registry.LoadPluginForTesting(mockPlugin, cfg)

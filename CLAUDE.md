@@ -134,7 +134,7 @@ Dynamic validation configuration without modifying code. Rules allow users to de
 
 **Notification** (`internal/validators/notification/`): BellValidator (ASCII 7 to `/dev/tty` for dock bounce)
 
-**Plugins** (`internal/plugin/`): External validators via Go plugins (.so), exec plugins (JSON over stdin/stdout), or gRPC. Predicate-based matching (event/tool/file/command filters), per-plugin config, enable/disable flags. See `docs/PLUGIN_GUIDE.md`, `.claude/session-plugin-system.md`, and `.claude/session-grpc-loader.md`.
+**Plugins** (`internal/plugin/`): External validators via exec plugins (JSON over stdin/stdout). Predicate-based matching (event/tool/file/command filters), per-plugin config, enable/disable flags. See `docs/PLUGIN_GUIDE.md`.
 
 ### Exception Workflow (`internal/exceptions/`)
 
@@ -348,24 +348,12 @@ Additional implementation details and policies are in `.claude/` files:
 - `validator-error-format-policy.md` - Comprehensive guide for validator error formatting, reference system (GIT001-GIT024, FILE001-FILE009, SEC001-SEC005), suggestions registry, FailWithRef pattern, error display format, best practices
 - `session-parallel-execution.md` - Parallel validator execution, category-specific worker pools, race detection testing
 - `session-error-reporting.md` - Error codes, suggestions/doc links registries, FailWithCode pattern, cognitive complexity refactoring
-- `session-secrets-detection.md` - Secrets validator with 25+ regex patterns, two-tier detection (patterns + gitleaks), configuration schema for allow lists/custom patterns
-- `session-plugin-system.md` - Plugin system with Go/exec loaders, predicate-based matching, flexible configuration, validator adapter integration
-- `session-grpc-loader.md` - gRPC plugin loader with connection pooling, buf 1.61.0 setup, protobuf protocol, double-check locking, type conversion between internal and protobuf types, TLS security (auto/manual modes, mTLS support)
-- `session-plugin-integration-tests.md` - Integration tests for plugin system with real shell scripts and gRPC servers, testing best practices research (bufconn vs real network, subprocess patterns)
-- `session-fuzzing.md` - Go native fuzzing for parsers, fuzz targets by risk, type limitations, progress tracking in `tmp/fuzzing/`
-- `session-github-quality.md` - OSSF Scorecard, branch rulesets API, Renovate version sync (customManagers:githubActionsVersions), smyklot bot workflows
-- `session-codeql-regex-security.md` - CodeQL regex anchor fixes (CWE-020), URL pattern anchoring with `(?:^|://|[^/a-zA-Z0-9])`, bounded quantifiers for ReDoS, prefix consumption in matches, GitHub push protection bypass for test secrets, PR review thread resolution
-- `session-rule-engine.md` - Rule engine implementation details (covered more comprehensively in `docs/RULES_GUIDE.md`)
-- `session-backup-system.md` - Backup system Phase 1-8 implementation (snapshot types, storage, manager, deduplication, retention policies, restore operations, writer integration, CLI commands, audit logging, doctor checks, comprehensive documentation), centralized storage architecture, interface-based design, security
-- `session-poisoning.md` - Session poisoning implementation (parser extensions, dispatcher integration, config schema, error codes SESS001, fast-fail mechanism after blocking errors)
 
 ## Plugin Documentation
 
-Comprehensive plugin development guide available in `docs/PLUGIN_GUIDE.md` with working examples in `examples/plugins/`:
+Plugin development guide available in `docs/PLUGIN_GUIDE.md` with working example in `examples/plugins/`:
 
-- **Go plugins** (`examples/plugins/go-plugin/`) - Native .so plugins for maximum performance
 - **Exec plugins** (`examples/plugins/exec-shell/`) - Shell script plugins for cross-platform compatibility
-- **gRPC plugins** (`examples/plugins/grpc-go/`) - Persistent server plugins with hot-reload capability
 
 Each example includes source code, configuration, testing instructions, and customization guidance.
 

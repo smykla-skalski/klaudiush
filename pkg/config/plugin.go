@@ -32,78 +32,21 @@ type PluginConfig struct {
 	DefaultTimeout Duration `json:"default_timeout,omitempty" koanf:"default_timeout" toml:"default_timeout"`
 }
 
-// TLSConfig configures TLS for gRPC plugin connections.
-type TLSConfig struct {
-	// Enabled controls TLS usage.
-	// nil = auto (TLS for remote, insecure for localhost)
-	// true = require TLS
-	// false = disable TLS (blocked for remote unless AllowInsecureRemote is set)
-	Enabled *bool `json:"enabled,omitempty" koanf:"enabled" toml:"enabled"`
-
-	// CertFile is the path to client certificate (for mTLS).
-	CertFile string `json:"cert_file,omitempty" koanf:"cert_file" toml:"cert_file"`
-
-	// KeyFile is the path to client private key (for mTLS).
-	KeyFile string `json:"key_file,omitempty" koanf:"key_file" toml:"key_file"`
-
-	// CAFile is the path to CA certificate for server verification.
-	CAFile string `json:"ca_file,omitempty" koanf:"ca_file" toml:"ca_file"`
-
-	// InsecureSkipVerify disables server certificate verification.
-	// WARNING: Only use for development/testing.
-	InsecureSkipVerify *bool `json:"insecure_skip_verify,omitempty" koanf:"insecure_skip_verify" toml:"insecure_skip_verify"`
-
-	// AllowInsecureRemote explicitly allows insecure connection to remote host.
-	// WARNING: This is a security risk and should only be used in trusted networks.
-	AllowInsecureRemote *bool `json:"allow_insecure_remote,omitempty" koanf:"allow_insecure_remote" toml:"allow_insecure_remote"`
-}
-
-// IsEnabled returns whether TLS is explicitly enabled.
-func (t *TLSConfig) IsEnabled() *bool {
-	if t == nil {
-		return nil
-	}
-
-	return t.Enabled
-}
-
-// ShouldSkipVerify returns whether to skip server certificate verification.
-func (t *TLSConfig) ShouldSkipVerify() bool {
-	if t == nil || t.InsecureSkipVerify == nil {
-		return false
-	}
-
-	return *t.InsecureSkipVerify
-}
-
-// AllowsInsecureRemote returns whether insecure remote connections are allowed.
-func (t *TLSConfig) AllowsInsecureRemote() bool {
-	if t == nil || t.AllowInsecureRemote == nil {
-		return false
-	}
-
-	return *t.AllowInsecureRemote
-}
-
 // PluginInstanceConfig configures a single plugin instance.
 type PluginInstanceConfig struct {
 	// Name is the unique identifier for this plugin instance.
 	Name string `json:"name" koanf:"name" toml:"name"`
 
-	// Type specifies the plugin type ("go", "grpc", or "exec").
+	// Type specifies the plugin type ("exec").
 	Type PluginType `json:"type" koanf:"type" toml:"type"`
 
 	// Enabled controls whether this plugin is enabled.
 	// Default: true
 	Enabled *bool `json:"enabled,omitempty" koanf:"enabled" toml:"enabled"`
 
-	// Path is the file path for Go plugins or exec plugins.
-	// Example: "~/.klaudiush/plugins/my-plugin.so"
+	// Path is the file path for exec plugins.
+	// Example: "~/.klaudiush/plugins/my-plugin.sh"
 	Path string `json:"path,omitempty" koanf:"path" toml:"path"`
-
-	// Address is the network address for gRPC plugins.
-	// Example: "localhost:50051"
-	Address string `json:"address,omitempty" koanf:"address" toml:"address"`
 
 	// Args are command-line arguments for exec plugins.
 	Args []string `json:"args,omitempty" koanf:"args" toml:"args"`
@@ -119,9 +62,6 @@ type PluginInstanceConfig struct {
 	// The structure is defined by the plugin author.
 	Config map[string]any `json:"config,omitempty" koanf:"config" toml:"config"`
 
-	// TLS contains TLS configuration for gRPC plugins.
-	TLS *TLSConfig `json:"tls,omitempty" koanf:"tls" toml:"tls"`
-
 	// ProjectRoot is the project root directory, set by the loader for path validation.
 	// This field is not serialized and is populated at runtime.
 	ProjectRoot string `json:"-" koanf:"-" toml:"-"`
@@ -131,12 +71,6 @@ type PluginInstanceConfig struct {
 type PluginType string
 
 const (
-	// PluginTypeGo loads native Go plugins (.so files).
-	PluginTypeGo PluginType = "go"
-
-	// PluginTypeGRPC communicates with plugins over gRPC.
-	PluginTypeGRPC PluginType = "grpc"
-
 	// PluginTypeExec executes plugins as subprocesses with JSON I/O.
 	PluginTypeExec PluginType = "exec"
 )

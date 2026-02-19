@@ -304,42 +304,6 @@ var _ = Describe("Security", func() {
 		})
 	})
 
-	Describe("IsLocalAddress", func() {
-		Context("with localhost addresses", func() {
-			DescribeTable("should return true",
-				func(address string) {
-					Expect(plugin.IsLocalAddress(address)).To(BeTrue())
-				},
-				Entry("localhost", "localhost"),
-				Entry("localhost with port", "localhost:50051"),
-				Entry("127.0.0.1", "127.0.0.1"),
-				Entry("127.0.0.1 with port", "127.0.0.1:50051"),
-				Entry("::1", "::1"),
-				Entry("[::1]", "[::1]"),
-				Entry("[::1] with port", "[::1]:50051"),
-				Entry("0.0.0.0", "0.0.0.0"),
-				Entry("0.0.0.0 with port", "0.0.0.0:8080"),
-				Entry("LOCALHOST uppercase", "LOCALHOST"),
-				Entry("LocalHost mixed case", "LocalHost"),
-			)
-		})
-
-		Context("with remote addresses", func() {
-			DescribeTable("should return false",
-				func(address string) {
-					Expect(plugin.IsLocalAddress(address)).To(BeFalse())
-				},
-				Entry("remote IP", "192.168.1.100"),
-				Entry("remote IP with port", "192.168.1.100:50051"),
-				Entry("domain name", "plugin.example.com"),
-				Entry("domain with port", "plugin.example.com:50051"),
-				Entry("external IP", "8.8.8.8:443"),
-				Entry("IPv6 remote", "2001:db8::1"),
-				Entry("empty string", ""),
-			)
-		})
-	})
-
 	Describe("SanitizePanicMessage", func() {
 		It("should remove file paths", func() {
 			msg := "panic at /home/user/project/plugin.go:42: nil pointer"
@@ -382,7 +346,6 @@ var _ = Describe("Security", func() {
 				plugin.ErrInvalidExtension,
 				plugin.ErrDangerousChars,
 				plugin.ErrLoaderClosed,
-				plugin.ErrInsecureRemote,
 			}
 
 			for i, err1 := range errors {

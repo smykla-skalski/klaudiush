@@ -1,7 +1,6 @@
 package plugin
 
 import (
-	"net"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -41,9 +40,6 @@ var (
 
 	// ErrLoaderClosed is returned when attempting to use a closed loader.
 	ErrLoaderClosed = errors.New("loader has been closed")
-
-	// ErrInsecureRemote is returned when attempting insecure connection to remote host.
-	ErrInsecureRemote = errors.New("insecure connection to remote host")
 )
 
 // dangerousChars contains shell metacharacters to reject in paths.
@@ -238,46 +234,6 @@ func GetAllowedDirs(projectRoot string) ([]string, error) {
 	}
 
 	return dirs, nil
-}
-
-// IsLocalAddress checks if the address refers to localhost.
-// Supports:
-//   - localhost (with or without port)
-//   - 127.0.0.1 (with or without port)
-//   - ::1 and [::1] (with or without port)
-//   - 0.0.0.0 (with or without port) - typically used for binding, but treated as local
-func IsLocalAddress(address string) bool {
-	if address == "" {
-		return false
-	}
-
-	// Extract host from host:port if present
-	host := address
-	if h, _, err := net.SplitHostPort(address); err == nil {
-		host = h
-	}
-
-	// Check various localhost representations
-	switch strings.ToLower(host) {
-	case "localhost", "127.0.0.1", "::1", "0.0.0.0":
-		return true
-	}
-
-	// Handle IPv6 with brackets (e.g., [::1])
-	if strings.HasPrefix(host, "[") && strings.HasSuffix(host, "]") {
-		innerHost := host[1 : len(host)-1]
-		if innerHost == "::1" {
-			return true
-		}
-	}
-
-	// Parse as IP and check if loopback
-	ip := net.ParseIP(host)
-	if ip != nil {
-		return ip.IsLoopback()
-	}
-
-	return false
 }
 
 // SanitizePanicMessage removes sensitive data from panic messages.

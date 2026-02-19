@@ -48,8 +48,6 @@ func NewRegistry(log logger.Logger) *Registry {
 
 	return &Registry{
 		loaders: map[config.PluginType]Loader{
-			config.PluginTypeGo:   NewGoLoader(),
-			config.PluginTypeGRPC: NewGRPCLoader(),
 			config.PluginTypeExec: NewExecLoader(runner),
 		},
 		plugins: make([]*PluginEntry, 0),
@@ -121,12 +119,8 @@ func (r *Registry) LoadPlugin(cfg *config.PluginInstanceConfig) error {
 		return errors.Wrap(err, "failed to build predicate matcher")
 	}
 
-	// Determine plugin category (default to CPU for external plugins)
-	category := validator.CategoryCPU
-	if cfg.Type == config.PluginTypeExec || cfg.Type == config.PluginTypeGRPC {
-		// Exec and gRPC plugins are I/O-bound (process spawning and network I/O)
-		category = validator.CategoryIO
-	}
+	// Exec plugins are I/O-bound (process spawning)
+	category := validator.CategoryIO
 
 	// Create validator adapter
 	validatorAdapter := NewValidatorAdapter(plugin, category, r.logger)
@@ -353,11 +347,8 @@ func (r *Registry) LoadPluginForTesting(
 		return errors.Wrap(err, "failed to build predicate matcher")
 	}
 
-	// Determine plugin category
-	category := validator.CategoryCPU
-	if cfg.Type == config.PluginTypeExec || cfg.Type == config.PluginTypeGRPC {
-		category = validator.CategoryIO
-	}
+	// Exec plugins are I/O-bound (process spawning)
+	category := validator.CategoryIO
 
 	// Create validator adapter
 	validatorAdapter := NewValidatorAdapter(p, category, r.logger)
