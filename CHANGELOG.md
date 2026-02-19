@@ -5,6 +5,16 @@ All notable changes to klaudiush will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.18.0](https://github.com/smykla-skalski/klaudiush/compare/v1.17.1...v1.18.0) (2026-02-19)
+
+### Features
+
+* **output:** use JSON stdout instead of exit 2 ([#300](https://github.com/smykla-skalski/klaudiush/issues/300)) ([cf11e85](https://github.com/smykla-skalski/klaudiush/commit/cf11e85a88a5c1883ace3fddce117a986acc257b))
+
+### Code Refactoring
+
+* **plugin:** simplify to exec-only ([e132e49](https://github.com/smykla-skalski/klaudiush/commit/e132e49d89715d6a5255f3168e758c9549ef31b9))
+
 ## [1.17.1](https://github.com/smykla-skalski/klaudiush/compare/v1.17.0...v1.17.1) (2026-02-19)
 
 ### Bug Fixes
