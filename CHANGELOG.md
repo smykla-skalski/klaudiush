@@ -5,6 +5,15 @@ All notable changes to klaudiush will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.17.1](https://github.com/smykla-skalski/klaudiush/compare/v1.17.0...v1.17.1) (2026-02-19)
+
+### Bug Fixes
+
+* **deps:** update go-github from v80/v82 to v83 ([#297](https://github.com/smykla-skalski/klaudiush/issues/297)) ([2f11c8a](https://github.com/smykla-skalski/klaudiush/commit/2f11c8a20327604007c062ca821d1288a211c500))
+* **deps:** update module github.com/go-git/go-git/v6 to v6.0.0-20260217223433-8b943fe3eb84 ([#288](https://github.com/smykla-skalski/klaudiush/issues/288)) ([848f463](https://github.com/smykla-skalski/klaudiush/commit/848f46368006d8c683f90f135b2488b6522534ef))
+* **deps:** update module github.com/mattn/go-runewidth to v0.0.20 ([#293](https://github.com/smykla-skalski/klaudiush/issues/293)) ([1d198ee](https://github.com/smykla-skalski/klaudiush/commit/1d198ee5c1da6d7d78569fa13d5e695692bf0b3a))
+* **deps:** update module google.golang.org/grpc to v1.79.1 ([#284](https://github.com/smykla-skalski/klaudiush/issues/284)) ([0e2aa63](https://github.com/smykla-skalski/klaudiush/commit/0e2aa632ad8409213346db53e0a05f1b8e9ff070))
+
 ## [1.17.0](https://github.com/smykla-skalski/klaudiush/compare/v1.16.0...v1.17.0) (2026-02-18)
 
 ### Features
