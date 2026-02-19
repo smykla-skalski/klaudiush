@@ -108,12 +108,14 @@ func (c *DefaultExceptionChecker) CheckException(
 
 	// Convert to a non-blocking warning with bypass info
 	bypassedErr := &ValidationError{
-		Validator:   verr.Validator,
-		Message:     formatBypassedMessage(verr.Message, resp),
-		Details:     verr.Details,
-		ShouldBlock: false, // No longer blocks
-		Reference:   verr.Reference,
-		FixHint:     verr.FixHint,
+		Validator:    verr.Validator,
+		Message:      formatBypassedMessage(verr.Message, resp),
+		Details:      verr.Details,
+		ShouldBlock:  false, // No longer blocks
+		Reference:    verr.Reference,
+		FixHint:      verr.FixHint,
+		Bypassed:     true,
+		BypassReason: resp.TokenReason,
 	}
 
 	return bypassedErr, true

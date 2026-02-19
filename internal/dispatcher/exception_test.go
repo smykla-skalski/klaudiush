@@ -169,6 +169,8 @@ var _ = Describe("ExceptionChecker", func() {
 				Expect(result.ShouldBlock).To(BeFalse())
 				Expect(result.Message).To(ContainSubstring("BYPASSED"))
 				Expect(result.Message).To(ContainSubstring("Emergency hotfix"))
+				Expect(result.Bypassed).To(BeTrue())
+				Expect(result.BypassReason).To(Equal("Emergency hotfix"))
 			})
 
 			It("preserves error details when bypassed", func() {

@@ -10,7 +10,7 @@ exec git add staged.go
 
 stdin input.json
 exec klaudiush --hook-type PreToolUse
-! stderr .
+! stdout .
 
 -- file.go --
 package main

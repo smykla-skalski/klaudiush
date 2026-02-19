@@ -72,6 +72,13 @@ type ValidationError struct {
 
 	// FixHint provides a short suggestion for fixing the issue.
 	FixHint string
+
+	// Bypassed indicates this error was bypassed via an exception token.
+	// When true, ShouldBlock is false (converted to warning).
+	Bypassed bool
+
+	// BypassReason is the justification from the exception token.
+	BypassReason string
 }
 
 // Error implements the error interface.
@@ -499,109 +506,4 @@ func ShouldBlock(errors []*ValidationError) bool {
 	}
 
 	return false
-}
-
-// categorizeErrors separates validation errors into blocking errors and warnings.
-func categorizeErrors(errors []*ValidationError) (blocking, warnings []*ValidationError) {
-	blockingErrors := make([]*ValidationError, 0)
-	warningErrors := make([]*ValidationError, 0)
-
-	for _, err := range errors {
-		if err.ShouldBlock {
-			blockingErrors = append(blockingErrors, err)
-		} else {
-			warningErrors = append(warningErrors, err)
-		}
-	}
-
-	return blockingErrors, warningErrors
-}
-
-// formatErrorList formats a list of errors with a header.
-func formatErrorList(header string, errors []*ValidationError) string {
-	if len(errors) == 0 {
-		return ""
-	}
-
-	var builder strings.Builder
-
-	formatErrorHeader(&builder, header, errors)
-
-	for _, err := range errors {
-		formatSingleError(&builder, err)
-	}
-
-	return builder.String()
-}
-
-// formatErrorHeader writes the header with validator names.
-func formatErrorHeader(builder *strings.Builder, header string, errors []*ValidationError) {
-	builder.WriteString("\n")
-	builder.WriteString(header)
-
-	for _, err := range errors {
-		builder.WriteString(" ")
-		builder.WriteString(shortName(err.Validator))
-	}
-
-	builder.WriteString("\n\n")
-}
-
-// formatSingleError writes a single validation error to the builder.
-func formatSingleError(builder *strings.Builder, err *ValidationError) {
-	builder.WriteString(err.Message)
-	builder.WriteString("\n")
-
-	formatErrorMetadata(builder, err)
-	formatErrorDetails(builder, err.Details)
-
-	builder.WriteString("\n")
-}
-
-// formatErrorMetadata writes fix hint and reference if present.
-func formatErrorMetadata(builder *strings.Builder, err *ValidationError) {
-	if err.FixHint != "" {
-		builder.WriteString("   Fix: ")
-		builder.WriteString(err.FixHint)
-		builder.WriteString("\n")
-	}
-
-	if err.Reference != "" {
-		builder.WriteString("   Reference: ")
-		builder.WriteString(string(err.Reference))
-		builder.WriteString("\n")
-	}
-}
-
-// formatErrorDetails writes error details to the builder.
-func formatErrorDetails(builder *strings.Builder, details map[string]string) {
-	if len(details) == 0 {
-		return
-	}
-
-	builder.WriteString("\n")
-
-	for _, v := range details {
-		lines := strings.SplitSeq(strings.TrimSpace(v), "\n")
-		for line := range lines {
-			if line != "" {
-				builder.WriteString(line)
-				builder.WriteString("\n")
-			}
-		}
-	}
-}
-
-// FormatErrors formats validation errors for display.
-func FormatErrors(errors []*ValidationError) string {
-	if len(errors) == 0 {
-		return ""
-	}
-
-	blockingErrors, warnings := categorizeErrors(errors)
-
-	result := formatErrorList("❌ Validation Failed:", blockingErrors)
-	result += formatErrorList("⚠️  Warnings:", warnings)
-
-	return result
 }

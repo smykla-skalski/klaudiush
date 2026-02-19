@@ -2,4 +2,4 @@
 # This tests that empty stdin doesn't cause errors
 
 exec klaudiush --hook-type PreToolUse
-! stderr .
+! stdout .

@@ -70,3 +70,16 @@ gh api repos/actions/checkout/git/ref/tags/v4.1.1 --jq '.object.sha'
 
 - [actionlint Documentation](https://github.com/rhysd/actionlint)
 - [GitHub Actions Security Hardening](https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions)
+
+## Hook output
+
+When this error is triggered, klaudiush writes JSON to stdout:
+
+**permissionDecisionReason** (shown to Claude):
+`[FILE004] actionlint or digest pinning validation found problems in a GitHub Actions workflow file. Run 'actionlint' to see workflow issues.`
+
+**systemMessage** (shown to user):
+Formatted error with fix hint and reference URL.
+
+**additionalContext** (behavioral guidance):
+`Automated klaudiush validation check. Fix the reported errors and retry the same command.`

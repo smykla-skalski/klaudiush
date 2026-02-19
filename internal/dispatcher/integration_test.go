@@ -364,37 +364,4 @@ var _ = Describe("Dispatcher Exception Integration", func() {
 			Expect(dispatcher.ShouldBlock([]*dispatcher.ValidationError{})).To(BeFalse())
 		})
 	})
-
-	Context("FormatErrors helper", func() {
-		It("formats blocking errors with red emoji", func() {
-			errors := []*dispatcher.ValidationError{
-				{
-					Validator:   "git.push",
-					Message:     "cannot push",
-					ShouldBlock: true,
-				},
-			}
-			formatted := dispatcher.FormatErrors(errors)
-			Expect(formatted).To(ContainSubstring("❌"))
-			Expect(formatted).To(ContainSubstring("cannot push"))
-		})
-
-		It("formats warnings with warning emoji", func() {
-			errors := []*dispatcher.ValidationError{
-				{
-					Validator:   "git.push",
-					Message:     "warning message",
-					ShouldBlock: false,
-				},
-			}
-			formatted := dispatcher.FormatErrors(errors)
-			Expect(formatted).To(ContainSubstring("⚠️"))
-			Expect(formatted).To(ContainSubstring("warning message"))
-		})
-
-		It("returns empty string for no errors", func() {
-			Expect(dispatcher.FormatErrors(nil)).To(BeEmpty())
-			Expect(dispatcher.FormatErrors([]*dispatcher.ValidationError{})).To(BeEmpty())
-		})
-	})
 })

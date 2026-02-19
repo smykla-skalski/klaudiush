@@ -101,7 +101,7 @@ registry.Register(
 **Validation Results** (`internal/validator/validator.go`):
 
 - `Pass()`: Validation passed
-- `Fail(msg)`: Validation failed, blocks operation (exit code 2)
+- `Fail(msg)`: Validation failed, blocks operation (JSON deny on stdout)
 - `Warn(msg)`: Validation failed, logs warning but allows operation
 
 **Creating Validators**:
@@ -170,12 +170,14 @@ All validators log to `~/.claude/hooks/dispatcher.log`:
 - **Test files**: `*_test.go`, `*_suite_test.go` for Ginkgo suites
 - Run single test: `go test -v ./pkg/parser -run TestBashParser`
 
-## Exit Codes
+## Hook output
 
-- `0`: Operation allowed (validation passed or no validators matched)
-- `2`: Operation blocked (validation failed with `ShouldBlock=true`)
+klaudiush always exits 0 and writes structured JSON to stdout:
 
-Warnings (`ShouldBlock=false`) print to stderr but allow operation (exit 0).
+- **Validation blocked**: `permissionDecision: "deny"` with error details in `permissionDecisionReason` and human-readable output in `systemMessage`
+- **Warnings only**: `permissionDecision: "allow"` with warning in `additionalContext`
+- **Clean pass**: No output, exit 0
+- **Crash**: Exit 3 with panic info on stderr (no JSON)
 
 ## Project Structure
 

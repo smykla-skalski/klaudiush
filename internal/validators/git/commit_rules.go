@@ -300,7 +300,7 @@ type ListFormattingRule struct {
 
 func NewListFormattingRule() *ListFormattingRule {
 	return &ListFormattingRule{
-		listItemRegex: regexp.MustCompile(`^\s*[-*]\s+|\s*[0-9]+\.\s+`),
+		listItemRegex: regexp.MustCompile(`^\s*[-*]\s+|^\s*[0-9]+\.\s+`),
 	}
 }
 

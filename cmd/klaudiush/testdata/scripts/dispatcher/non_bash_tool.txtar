@@ -3,7 +3,7 @@
 
 stdin input.json
 exec klaudiush --hook-type PreToolUse
-! stderr .
+! stdout .
 
 -- input.json --
 {

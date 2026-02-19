@@ -1,13 +1,13 @@
 # Session tracking guide
 
-Session tracking adds fast-fail behavior to Claude Code sessions. When klaudiush blocks a command (exit 2), subsequent commands in the same session are immediately rejected with a reference to the original error.
+Session tracking adds fast-fail behavior to Claude Code sessions. When klaudiush denies a command (JSON `permissionDecision: "deny"`), subsequent commands in the same session are immediately rejected with a reference to the original error.
 
 ## The problem
 
 Without session tracking:
 
 1. Claude Code executes command A
-2. klaudiush blocks command A (exit 2)
+2. klaudiush denies command A (JSON deny response)
 3. Claude Code continues with command B
 4. klaudiush evaluates command B independently
 5. Command B may also fail, wasting time
@@ -20,7 +20,7 @@ Each command fails one-by-one, with delays between each failure.
 With session tracking:
 
 1. Claude Code executes command A in session `abc-123`
-2. klaudiush blocks command A (exit 2)
+2. klaudiush denies command A (JSON deny response)
 3. Session `abc-123` is marked as "poisoned" with error code `GIT001`
 4. Claude Code executes command B in session `abc-123`
 5. klaudiush immediately fails with: "Blocked: session poisoned by GIT001 at 10:30:05"
@@ -76,18 +76,18 @@ Expired sessions are removed automatically when klaudiush starts, during `IsPois
 
 ## Error code: SESS001
 
-When a session is poisoned, subsequent commands receive error `SESS001`:
+When a session is poisoned, subsequent commands receive error `SESS001` as a JSON deny response:
 
-```text
-Blocked: session poisoned by GIT001, GIT002 at 2025-12-04 10:30:05
-
-Details:
-  original_error: git commit -sS flag missing
-  unpoison: To unpoison: KLACK="SESS:GIT001,GIT002" command  # or comment: # SESS:GIT001,GIT002
-
-Fix: Acknowledge violations to unpoison: KLACK="SESS:GIT001,GIT002" your_command
-
-Documentation: https://klaudiu.sh/SESS001
+```json
+{
+  "hookSpecificOutput": {
+    "hookEventName": "PreToolUse",
+    "permissionDecision": "deny",
+    "permissionDecisionReason": "[SESS001] Session poisoned by GIT001, GIT002 at 2025-12-04 10:30:05. Acknowledge violations to unpoison: KLACK=\"SESS:GIT001,GIT002\" your_command",
+    "additionalContext": "Automated klaudiush validation check. Fix the reported errors and retry."
+  },
+  "systemMessage": "Blocked: session poisoned by GIT001, GIT002 at 2025-12-04 10:30:05\n\nDetails:\n  original_error: git commit -sS flag missing\n  unpoison: To unpoison: KLACK=\"SESS:GIT001,GIT002\" command  # or comment: # SESS:GIT001,GIT002\n\nFix: Acknowledge violations to unpoison: KLACK=\"SESS:GIT001,GIT002\" your_command\n\nDocumentation: https://klaudiu.sh/SESS001"
+}
 ```
 
 The `unpoison` field contains machine-parseable instructions that Claude Code can use to automatically acknowledge violations.
@@ -178,7 +178,7 @@ If the state file keeps growing with old session data, check that cleanup is wor
 
 ### Session tracking not working
 
-If commands don't fast-fail after a blocking error and no `SESS001` errors appear:
+If commands don't fast-fail after a deny response and no `SESS001` errors appear:
 
 1. Check if enabled:
 
@@ -251,14 +251,13 @@ Partial acknowledgment (only some codes) is rejected and the session stays poiso
 ### Example
 
 ```text
-# Step 1: Command blocked, session poisoned
+# Step 1: Command denied, session poisoned
 $ git commit -m "fix"  # Missing -sS
-Error: Blocked - git commit -sS flag missing
+→ JSON deny: permissionDecision "deny", reason "[GIT001] ..."
 
-# Step 2: Next command fails immediately (session poisoned)
+# Step 2: Next command denied immediately (session poisoned)
 $ git status
-Error: Blocked: session poisoned by GIT001 at 2025-12-04 10:30:05
-       To unpoison: KLACK="SESS:GIT001" command
+→ JSON deny: permissionDecision "deny", reason "[SESS001] Session poisoned by GIT001 ..."
 
 # Step 3: Acknowledge and fix
 $ KLACK="SESS:GIT001" git commit -sS -m "fix"
@@ -267,19 +266,21 @@ $ KLACK="SESS:GIT001" git commit -sS -m "fix"
 
 ### Error message with unpoison instructions
 
-Poisoned session errors include machine-parseable unpoison instructions:
+Poisoned session errors are returned as JSON deny responses with machine-parseable unpoison instructions in `permissionDecisionReason`:
 
-```text
-Blocked: session poisoned by GIT001, GIT002 at 2025-12-04 10:30:05
-
-Details:
-  original_error: git commit -sS flag missing
-  unpoison: To unpoison: KLACK="SESS:GIT001,GIT002" command  # or comment: # SESS:GIT001,GIT002
-
-Fix: Acknowledge violations to unpoison: KLACK="SESS:GIT001,GIT002" your_command
+```json
+{
+  "hookSpecificOutput": {
+    "hookEventName": "PreToolUse",
+    "permissionDecision": "deny",
+    "permissionDecisionReason": "[SESS001] Session poisoned by GIT001, GIT002 at 2025-12-04 10:30:05. Acknowledge violations to unpoison: KLACK=\"SESS:GIT001,GIT002\" your_command",
+    "additionalContext": "Automated klaudiush validation check. Fix the reported errors and retry."
+  },
+  "systemMessage": "Blocked: session poisoned by GIT001, GIT002 at 2025-12-04 10:30:05\n\nDetails:\n  original_error: git commit -sS flag missing\n  unpoison: To unpoison: KLACK=\"SESS:GIT001,GIT002\" command  # or comment: # SESS:GIT001,GIT002\n\nFix: Acknowledge violations to unpoison: KLACK=\"SESS:GIT001,GIT002\" your_command"
+}
 ```
 
-Claude Code can parse the `unpoison` field to automatically add the token to the next command attempt.
+Claude Code can parse the `permissionDecisionReason` and `systemMessage` fields to automatically add the token to the next command attempt.
 
 ## Audit logging
 
@@ -426,12 +427,12 @@ Session tracking fits into the dispatcher flow like this:
 3. Check: IsPoisoned(ctx.SessionID)?
    - Yes → Check for unpoison token in command
      - Token valid (all codes acked) → Unpoison(sessionID), continue to validators
-     - Token invalid/partial → Return SESS001 error with unpoison instructions (exit 2)
+     - Token invalid/partial → Return SESS001 JSON deny with unpoison instructions
    - No → Continue to validators
 4. Run validators
 5. If blocking error:
    - Poison(ctx.SessionID, codes, message)  # codes is []string
-   - Return blocking error (exit 2)
+   - Return JSON deny output
 6. RecordCommand(ctx.SessionID) on success/warning
 ```
 

@@ -9,8 +9,9 @@ cp file.go staged.go
 exec git add staged.go
 
 stdin input.json
-! exec klaudiush --hook-type PreToolUse
-stderr 'missing required flag.*-S'
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'missing required flag.*-S'
 
 -- file.go --
 package main
