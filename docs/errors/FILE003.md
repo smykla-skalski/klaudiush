@@ -69,3 +69,16 @@ plugin "aws" {
 
 - [FILE002](FILE002.md) - Terraform format validation
 - [TFLint documentation](https://github.com/terraform-linters/tflint)
+
+## Hook output
+
+When this error is triggered, klaudiush writes JSON to stdout:
+
+**permissionDecisionReason** (shown to Claude):
+`[FILE003] tflint found issues in a Terraform/OpenTofu file. Run 'tflint' to see detailed linting issues.`
+
+**systemMessage** (shown to user):
+Formatted error with fix hint and reference URL.
+
+**additionalContext** (behavioral guidance):
+`Automated klaudiush validation check. Fix the reported errors and retry the same command.`

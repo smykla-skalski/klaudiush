@@ -56,3 +56,16 @@ Fish shell scripts (`.fish` extension or fish shebang) are skipped because shell
 ## Related
 
 - [shellcheck wiki](https://www.shellcheck.net/wiki/)
+
+## Hook output
+
+When this error is triggered, klaudiush writes JSON to stdout:
+
+**permissionDecisionReason** (shown to Claude):
+`[FILE001] Shell script failed shellcheck static analysis. Run 'shellcheck <file>' to see detailed errors.`
+
+**systemMessage** (shown to user):
+Formatted error with fix hint and reference URL.
+
+**additionalContext** (behavioral guidance):
+`Automated klaudiush validation check. Fix the reported errors and retry the same command.`

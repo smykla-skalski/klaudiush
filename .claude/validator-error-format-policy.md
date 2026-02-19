@@ -20,8 +20,8 @@ type Result struct {
 **Key semantics:**
 
 - `Passed=true` → validation passed (any other state ignored)
-- `Passed=false` + `ShouldBlock=true` → blocks operation (exit 2)
-- `Passed=false` + `ShouldBlock=false` → warning only (exit 0)
+- `Passed=false` + `ShouldBlock=true` → deny (JSON `permissionDecision: "deny"`)
+- `Passed=false` + `ShouldBlock=false` → allow with warning (JSON `permissionDecision: "allow"`)
 
 ## Reference System
 
@@ -181,25 +181,26 @@ func FailWithRef(ref Reference, message string) *Result {
 
 ## Error Display Format
 
-Errors are formatted and displayed by dispatcher (`internal/dispatcher/dispatcher.go`):
+The dispatcher maps validation results to structured JSON on stdout. klaudiush always exits 0 and communicates decisions via JSON fields:
 
-```text
-❌ Validation Failed: commit shellscript
-
-Git commit missing required flags: -S
-   Fix: Add -sS flags: git commit -sS -m "message"
-   Reference: https://klaudiu.sh/GIT010
-
-<additional details from Details map>
+```json
+{
+  "hookSpecificOutput": {
+    "hookEventName": "PreToolUse",
+    "permissionDecision": "deny",
+    "permissionDecisionReason": "[GIT010] Git commit missing required flags: -S. Add -sS flags: git commit -sS -m \"message\"",
+    "additionalContext": "Automated klaudiush validation check. Fix the reported errors and retry the same command."
+  },
+  "systemMessage": "\n❌ Validation Failed: commit\n\nGit commit missing required flags: -S\n   Fix: Add -sS flags\n   Reference: https://klaudiu.sh/GIT010\n\n"
+}
 ```
 
-### Formatting Components
+### JSON Fields
 
-1. **Header**: Shows failing validators (strips `validate-` prefix)
-2. **Message**: Main error description
-3. **Fix hint**: From suggestions registry (indented 3 spaces)
-4. **Reference URL**: Documentation link (indented 3 spaces)
-5. **Details**: Additional context from `Details` map (multi-line indented)
+1. **`permissionDecision`**: `"deny"` (ShouldBlock=true) or `"allow"` (pass/warn)
+2. **`permissionDecisionReason`**: Shown to Claude — contains `[CODE] message. Fix hint.`
+3. **`additionalContext`**: Behavioral framing that shapes how Claude responds
+4. **`systemMessage`**: Human-readable formatted output (displayed to the user)
 
 ## Real-World Examples
 
@@ -366,23 +367,15 @@ func (v *MyValidator) Validate(
 }
 ```
 
-## Exit Code Behavior
+## JSON Output Behavior
 
-- **Exit 0**: All pass OR only warnings
-- **Exit 2**: Any `ShouldBlock=true`
+klaudiush always exits 0 and writes structured JSON to stdout. The `ShouldBlock` field determines `permissionDecision`:
 
-Dispatcher checks:
+- **`ShouldBlock=true`**: `permissionDecision: "deny"` — Claude is told the operation is not allowed
+- **`ShouldBlock=false`** (warnings/pass): `permissionDecision: "allow"` — operation proceeds
+- **No errors**: No output, exit 0
 
-```go
-func ShouldBlock(errors []*ValidationError) bool {
-    for _, err := range errors {
-        if err.ShouldBlock {
-            return true
-        }
-    }
-    return false
-}
-```
+Exit code 2 is no longer used. All communication with Claude Code happens through the JSON structure on stdout. Only exit 3 (crash/panic) remains non-zero.
 
 ## Key Files Reference
 

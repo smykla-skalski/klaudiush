@@ -319,12 +319,14 @@ Add validators by creating them in `internal/validators/{category}/`, implementi
 
 Run `task test` for all tests, or `go test -v ./pkg/parser` for specific suites. Logs go to `~/.claude/hooks/dispatcher.log`. Use `tail -f` on that file for real-time debugging.
 
-## Exit codes
+## Hook output
 
-- `0`: Operation allowed (validation passed or no validators matched)
-- `2`: Operation blocked (validation failed with `ShouldBlock=true`)
+Klaudiush always exits 0 and writes structured JSON to stdout:
 
-Warnings (`ShouldBlock=false`) print to stderr but allow operation (exit 0).
+- **Validation blocked**: `permissionDecision: "deny"` with error details in `permissionDecisionReason` and human-readable output in `systemMessage`
+- **Warnings only**: `permissionDecision: "allow"` with warning in `additionalContext`
+- **Clean pass**: No output, exit 0
+- **Crash**: Exit 3 with panic info on stderr (no JSON)
 
 ## Configuration
 

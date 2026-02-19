@@ -91,7 +91,7 @@ Represents tool invocations: `EventType` (PreToolUse/PostToolUse/Notification), 
 
 **Registration** (`internal/validator/registry.go`): Predicate-based matching (e.g., `validator.And(EventTypeIs(PreToolUse), ToolTypeIs(Bash), CommandContains("git commit"))`)
 
-**Results** (`internal/validator/validator.go`): `Pass()`, `Fail(msg)` (blocks, exit 2), `Warn(msg)` (logs, allows)
+**Results** (`internal/validator/validator.go`): `Pass()`, `Fail(msg)` (blocks, JSON deny on stdout), `Warn(msg)` (logs, allows)
 
 **Creating**: 1) Embed `BaseValidator`, 2) Implement `Validate(ctx *hook.Context)`, 3) Register in `main.go:registerValidators()`
 
@@ -189,7 +189,7 @@ min_reason_length = 10
 
 Fast-fail mechanism preventing subsequent commands from executing after a blocking error occurs in the same Claude Code session.
 
-**Problem**: When klaudiush blocks a command (exit 2), Claude Code continues executing queued commands independently, causing poor UX as each fails one-by-one.
+**Problem**: When klaudiush blocks a command (JSON deny), Claude Code continues executing queued commands independently, causing poor UX as each fails one-by-one.
 
 **Solution**: Track session state. When any command is blocked, "poison" the session. Subsequent commands immediately fail with reference to original error.
 
@@ -223,7 +223,7 @@ Fast-fail mechanism preventing subsequent commands from executing after a blocki
   - Atomic writes (tmp + rename), file permissions 0600, dir permissions 0700
   - Home directory expansion for `~` in paths
 
-**Integration**: Dispatcher checks session state before validation. If poisoned, checks for unpoison token; if all codes acknowledged, unpoisons and continues to validators. Otherwise returns `SESS001` error with unpoison instructions. On validation failure with `ShouldBlock=true`, dispatcher poisons the session with all blocking error codes.
+**Integration**: Dispatcher checks session state before validation. If poisoned, checks for unpoison token; if all codes acknowledged, unpoisons and continues to validators. Otherwise returns `SESS001` error with unpoison instructions. On validation failure with `ShouldBlock=true` (mapped to `permissionDecision: "deny"` in JSON output), dispatcher poisons the session with all blocking error codes.
 
 **Configuration** (`pkg/config/session.go`):
 
@@ -315,11 +315,14 @@ Framework: Ginkgo/Gomega. 336 tests. Run: `mise exec -- go test -v ./pkg/parser 
 
 **Error Handling**: NEVER use `fmt.Errorf`, `errors`, or `github.com/pkg/errors` - linter will reject. ALWAYS use `github.com/cockroachdb/errors` for error creation and wrapping
 
-## Exit Codes
+## Hook output
 
-- `0`: Allowed (pass/warn/no match)
-- `2`: Blocked (fail with `ShouldBlock=true`)
-- `3`: Crash (panic with crash dump created)
+klaudiush always exits 0. Validation results are JSON on stdout:
+
+- `0`: JSON stdout (pass, deny, or warning). No output for clean pass.
+- `3`: Crash (panic with crash dump created, stderr only)
+
+JSON fields: `hookSpecificOutput.permissionDecision` (`"allow"` or `"deny"`), `permissionDecisionReason` (shown to Claude), `additionalContext` (behavioral framing), `systemMessage` (human-readable).
 
 ## GitHub Push Protection
 

@@ -742,69 +742,6 @@ var _ = Describe("ValidationError", func() {
 	})
 })
 
-var _ = Describe("FormatErrors", func() {
-	It("formats errors with fix hints", func() {
-		errs := []*dispatcher.ValidationError{
-			{
-				Validator:   "test-validator",
-				Message:     "Something went wrong",
-				ShouldBlock: true,
-				FixHint:     "Try doing X instead",
-				Reference:   "https://klaudiu.sh/GIT001",
-			},
-		}
-
-		result := dispatcher.FormatErrors(errs)
-		Expect(result).To(ContainSubstring("Something went wrong"))
-		Expect(result).To(ContainSubstring("Fix: Try doing X instead"))
-		Expect(result).To(ContainSubstring("Reference: https://klaudiu.sh/GIT001"))
-	})
-
-	It("formats errors with details", func() {
-		errs := []*dispatcher.ValidationError{
-			{
-				Validator:   "test-validator",
-				Message:     "Validation error",
-				ShouldBlock: true,
-				Details: map[string]string{
-					"detail1": "first detail\nsecond line",
-				},
-			},
-		}
-
-		result := dispatcher.FormatErrors(errs)
-		Expect(result).To(ContainSubstring("Validation error"))
-		Expect(result).To(ContainSubstring("first detail"))
-		Expect(result).To(ContainSubstring("second line"))
-	})
-
-	It("separates blocking errors and warnings", func() {
-		errs := []*dispatcher.ValidationError{
-			{
-				Validator:   "blocker",
-				Message:     "Blocking error",
-				ShouldBlock: true,
-			},
-			{
-				Validator:   "warner",
-				Message:     "Warning message",
-				ShouldBlock: false,
-			},
-		}
-
-		result := dispatcher.FormatErrors(errs)
-		Expect(result).To(ContainSubstring("Validation Failed:"))
-		Expect(result).To(ContainSubstring("blocker"))
-		Expect(result).To(ContainSubstring("Warnings:"))
-		Expect(result).To(ContainSubstring("warner"))
-	})
-
-	It("returns empty string for no errors", func() {
-		result := dispatcher.FormatErrors([]*dispatcher.ValidationError{})
-		Expect(result).To(BeEmpty())
-	})
-})
-
 var _ = Describe("Dispatcher constructors", func() {
 	var (
 		reg *validator.Registry

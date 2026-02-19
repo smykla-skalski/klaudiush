@@ -148,7 +148,7 @@ The plugin writes a JSON response to stdout:
 
 - `passed: true` -- operation proceeds
 - `passed: false, should_block: false` -- warning logged, operation proceeds
-- `passed: false, should_block: true` -- operation blocked (exit 2)
+- `passed: false, should_block: true` -- operation denied (JSON deny response)
 
 ### Exit codes
 

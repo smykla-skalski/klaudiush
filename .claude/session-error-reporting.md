@@ -82,23 +82,33 @@ Extended `ValidationError` in dispatcher:
 
 ```go
 type ValidationError struct {
-    Validator   string
-    Message     string
-    Details     map[string]string
-    ShouldBlock bool
-    Reference   validator.Reference  // URL for error docs
-    FixHint     string               // Fix suggestion
+    Validator    string
+    Message      string
+    Details      map[string]string
+    ShouldBlock  bool                     // Maps to permissionDecision in JSON output
+    Reference    validator.Reference      // URL for error docs
+    FixHint      string                   // Fix suggestion
+    Bypassed     bool                     // Set when exception bypass granted
+    BypassReason string                   // Reason from exception token
 }
 ```
 
+`ShouldBlock` no longer triggers exit code 2. The dispatcher maps it to JSON: `ShouldBlock=true` produces `permissionDecision: "deny"`, while `ShouldBlock=false` produces `permissionDecision: "allow"`.
+
 ### Error Output Format
 
-Formatted errors now show structured information:
+Errors are returned as structured JSON on stdout (always exit 0):
 
-```text
-Git commit missing required flags: -S
-   Fix: Add -sS flags: git commit -sS -m "message"
-   Reference: https://klaudiu.sh/GIT010
+```json
+{
+  "hookSpecificOutput": {
+    "hookEventName": "PreToolUse",
+    "permissionDecision": "deny",
+    "permissionDecisionReason": "[GIT010] Git commit missing required flags: -S. Add -sS flags: git commit -sS -m \"message\"",
+    "additionalContext": "Automated klaudiush validation check. Fix the reported errors and retry the same command."
+  },
+  "systemMessage": "...human-readable formatted output..."
+}
 ```
 
 ## Refactoring for Cognitive Complexity

@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -16,6 +17,7 @@ import (
 	"github.com/smykla-skalski/klaudiush/internal/config/factory"
 	"github.com/smykla-skalski/klaudiush/internal/crashdump"
 	"github.com/smykla-skalski/klaudiush/internal/dispatcher"
+	"github.com/smykla-skalski/klaudiush/internal/hookresponse"
 	"github.com/smykla-skalski/klaudiush/internal/parser"
 	"github.com/smykla-skalski/klaudiush/internal/session"
 	"github.com/smykla-skalski/klaudiush/pkg/config"
@@ -26,10 +28,8 @@ import (
 
 const (
 	// ExitCodeAllow indicates the operation should be allowed.
+	// Also used when blocking — the deny decision is communicated via JSON stdout.
 	ExitCodeAllow = 0
-
-	// ExitCodeBlock indicates the operation should be blocked.
-	ExitCodeBlock = 2
 
 	// ExitCodeCrash indicates an unexpected panic/crash occurred.
 	ExitCodeCrash = 3
@@ -213,28 +213,24 @@ func run(_ *cobra.Command, _ []string) error {
 		}
 	}
 
-	// Check if we should block
-	if dispatcher.ShouldBlock(errs) {
-		errorMsg := dispatcher.FormatErrors(errs)
-		//nolint:gosec // G705: errorMsg is internal validator output written to stderr, not user-controlled HTML
-		fmt.Fprintf(os.Stderr, "%s", errorMsg)
+	// Build JSON hook response and write to stdout
+	response := hookresponse.Build(hookType, errs)
+	if response != nil {
+		data, jsonErr := json.Marshal(response)
+		if jsonErr != nil {
+			log.Error("failed to marshal hook response", "error", jsonErr)
 
-		log.Error("validation blocked",
-			"errorCount", len(errs),
-		)
+			return errors.Wrap(jsonErr, "marshal hook response")
+		}
 
-		os.Exit(ExitCodeBlock)
-	}
+		//nolint:errcheck,gosec // G705: data is internal JSON from json.Marshal, not user-controlled HTML
+		fmt.Fprintf(os.Stdout, "%s\n", data)
 
-	// If there are warnings, log them
-	if len(errs) > 0 {
-		errorMsg := dispatcher.FormatErrors(errs)
-		//nolint:gosec // G705: errorMsg is internal validator output written to stderr, not user-controlled HTML
-		fmt.Fprintf(os.Stderr, "%s", errorMsg)
-
-		log.Info("validation passed with warnings",
-			"warningCount", len(errs),
-		)
+		if dispatcher.ShouldBlock(errs) {
+			log.Error("validation blocked", "errorCount", len(errs))
+		} else {
+			log.Info("validation passed with warnings", "warningCount", len(errs))
+		}
 	} else {
 		log.Info("validation passed")
 	}

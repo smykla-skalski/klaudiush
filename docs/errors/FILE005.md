@@ -68,3 +68,16 @@ use_markdownlint = false
 ## Related
 
 - [markdownlint Rules](https://github.com/DavidAnson/markdownlint#rules)
+
+## Hook output
+
+When this error is triggered, klaudiush writes JSON to stdout:
+
+**permissionDecisionReason** (shown to Claude):
+`[FILE005] Markdown formatting errors. Check markdown formatting and structure.`
+
+**systemMessage** (shown to user):
+Formatted error with fix hint and reference URL.
+
+**additionalContext** (behavioral guidance):
+`Automated klaudiush validation check. Fix the reported errors and retry the same command.`

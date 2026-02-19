@@ -1,6 +1,6 @@
 # Exception workflow guide
 
-Allow Claude to bypass validation blocks with explicit acknowledgment and audit trail.
+Allow Claude to bypass validation denials with explicit acknowledgment and audit trail.
 
 ## Table of contents
 
@@ -17,7 +17,7 @@ Allow Claude to bypass validation blocks with explicit acknowledgment and audit 
 
 ## Overview
 
-The exception workflow lets Claude Code bypass specific validation blocks when:
+The exception workflow lets Claude Code bypass specific validation denials when:
 
 1. An exception policy exists for the error code
 2. Claude includes an acknowledgment token in the command
@@ -34,7 +34,7 @@ Exceptions use token-based acknowledgment embedded in commands, with per-error-c
 3. klaudiush finds exception token in command
 4. Policy check: Is GIT019 exception allowed?
 5. Rate limit check: Within limits?
-6. If allowed: Block → Warning, command proceeds
+6. If allowed: deny → allow with additionalContext, command proceeds
 7. Audit entry logged
 ```
 
@@ -57,9 +57,9 @@ min_reason_length = 10
 description = "Exception for pushing to protected branches"
 ```
 
-### 2. Bypass a block
+### 2. Bypass a denial
 
-When Claude encounters a block, it can include an exception token:
+When Claude encounters a deny response, it can include an exception token:
 
 ```bash
 # Shell comment format
@@ -486,11 +486,11 @@ description = "Limited exceptions for commit message format"
 
 ### Exception not allowed
 
-Block not bypassed despite token present.
+Command still denied despite token present.
 
 1. Confirm a policy exists: `klaudiush debug exceptions`
 2. Verify the token format is `EXC:CODE:reason`
-3. Make sure the token code matches the block code exactly
+3. Make sure the token code matches the denied error code exactly
 4. Check that `enabled = true` and `allow_exception = true` in the policy
 5. If `require_reason = true`, make sure you included a reason
 
@@ -532,7 +532,7 @@ Token is in the command but the exception is not processed.
    - Correct: `EXC:GIT019:Emergency+hotfix`
 
 3. Wrong error code:
-   - Check the error reference in the block message
+   - Check the error code in the deny response's `permissionDecisionReason`
    - Error codes are case-sensitive
 
 4. Policy not loaded:
