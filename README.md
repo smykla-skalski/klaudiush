@@ -11,20 +11,18 @@ A validation dispatcher for Claude Code hooks that intercepts tool invocations a
 
 ## Overview
 
-Klaudiush is a Go-based validation system that runs as a PreToolUse hook in Claude Code. It parses commands using advanced Bash parsing (via `mvdan.cc/sh`), detects file operations, and validates them against project-specific rules before execution.
+Klaudiush is a Go-based validation system that runs as a PreToolUse hook in Claude Code. It parses commands via `mvdan.cc/sh`, detects file operations, and validates them against project-specific rules before execution.
 
-**Key Features:**
+Features:
 
-- **Git Workflow Validation**: Enforce commit message format, flag requirements, and push policies
-- **Code Quality Checks**: Run shellcheck, markdownlint, terraform fmt, and actionlint
-- **Advanced Command Parsing**: Handle command chains (&&, ||, ;), pipes, subshells, and redirections
-- **File Write Detection**: Detect and validate file writes via redirections, tee, cp, mv
-- **Protected Path Prevention**: Block writes to /tmp, suggest project-local tmp/
-- **Dynamic Validation Rules**: Configure validation behavior via TOML without code changes
+- Git workflow validation: commit message format, flag requirements, push policies
+- Code quality checks via shellcheck, markdownlint, terraform fmt, and actionlint
+- Bash AST parsing for command chains, pipes, subshells, and redirections
+- File write detection via redirections, tee, cp, mv
+- Path protection: blocks /tmp writes, suggests project-local tmp/
+- Dynamic validation rules via TOML configuration
 
 ## Installation
-
-Choose your preferred method:
 
 - **Homebrew** (macOS/Linux) - Recommended for macOS users, includes shell completions
 - **Install Script** (Linux/macOS/Windows) - Single command, works everywhere
@@ -47,7 +45,7 @@ klaudiush init --global
 klaudiush doctor
 ```
 
-### Install Script
+### Install script
 
 ```bash
 # Install latest release
@@ -109,7 +107,7 @@ klaudiush init --global
 klaudiush doctor
 ```
 
-### Build from Source
+### Build from source
 
 ```bash
 # Build the binary (development build)
@@ -187,7 +185,7 @@ task test:integration  # Integration tests only
 task test:staged       # Test packages with staged files
 ```
 
-### Code Quality
+### Code quality
 
 ```bash
 task check        # Lint and auto-fix
@@ -198,7 +196,7 @@ task fmt          # Format code
 task verify       # Run fmt + lint + test
 ```
 
-### Git Hooks
+### Git hooks
 
 ```bash
 task install:hooks  # Install pre-commit and pre-push hooks
@@ -206,12 +204,12 @@ task install:hooks  # Install pre-commit and pre-push hooks
 
 The project uses [Lefthook](https://github.com/evilmartians/lefthook) for git hook management.
 
-**Pre-commit hook** runs before each commit (parallel):
+Pre-commit hook runs before each commit (parallel):
 
 - Lints only modified and staged files
 - Tests only packages with changes
 
-**Pre-push hook** runs before each push (parallel):
+Pre-push hook runs before each push (parallel):
 
 - Full linting of entire codebase
 - Full test suite
@@ -231,19 +229,19 @@ task clean  # Remove build artifacts
 
 ## Architecture
 
-### Core Flow
+### Core flow
 
 ```text
 Claude Code JSON → CLI → JSON Parser → Dispatcher → Registry → Validators → Result
 ```
 
-1. **CLI Entry** (`cmd/klaudiush/main.go`): Receives JSON from stdin, parses `--hook-type` flag
-2. **JSON Parser** (`internal/parser/json.go`): Converts JSON to `hook.Context`
-3. **Dispatcher** (`internal/dispatcher/dispatcher.go`): Orchestrates validation
-4. **Registry** (`internal/validator/registry.go`): Matches validators to context using predicates
-5. **Validators**: Execute validation logic, return `Result` (Pass/Fail/Warn)
+1. CLI entry (`cmd/klaudiush/main.go`): receives JSON from stdin, parses `--hook-type` flag
+2. JSON parser (`internal/parser/json.go`): converts JSON to `hook.Context`
+3. Dispatcher (`internal/dispatcher/dispatcher.go`): orchestrates validation
+4. Registry (`internal/validator/registry.go`): matches validators to context using predicates
+5. Validators: execute validation logic, return `Result` (Pass/Fail/Warn)
 
-### Directory Structure
+### Directory structure
 
 ```text
 klaudiush/
@@ -266,26 +264,26 @@ klaudiush/
 
 ## Validators
 
-### Git Validators
+### Git validators
 
-- **GitAddValidator**: Blocks staging files in `tmp/` directory, suggests adding to `.git/info/exclude`
-- **CommitValidator**: Requires `-sS` flags, validates conventional commit format (≤50 char title, ≤72 char body), blocks `feat(ci)`/`fix(test)`, no PR refs or "Claude" mentions, checks forbidden patterns (default: blocks `tmp/` and `tmp` word)
-- **PushValidator**: Validates remote existence with configurable rules
-- **BranchValidator**: Enforces `type/description` format (lowercase, no spaces). Valid types: feat, fix, docs, style, refactor, test, chore, ci, build, perf
-- **PRValidator**: Validates PR title (semantic format, blocks `feat(ci)`/`fix(test)`), body (template sections, changelog rules, no formal language), Markdown formatting, suggests CI labels, checks forbidden patterns (default: blocks `tmp/` and `tmp` word)
+- `GitAddValidator`: blocks staging files in `tmp/` directory, suggests adding to `.git/info/exclude`
+- `CommitValidator`: requires `-sS` flags, validates conventional commit format (≤50 char title, ≤72 char body), blocks `feat(ci)`/`fix(test)`, no PR refs or "Claude" mentions, checks forbidden patterns (default: blocks `tmp/` and `tmp` word)
+- `PushValidator`: validates remote existence with configurable rules
+- `BranchValidator`: enforces `type/description` format (lowercase, no spaces). Valid types: feat, fix, docs, style, refactor, test, chore, ci, build, perf
+- `PRValidator`: validates PR title (semantic format, blocks `feat(ci)`/`fix(test)`), body (template sections, changelog rules, no formal language), Markdown formatting, suggests CI labels, checks forbidden patterns (default: blocks `tmp/` and `tmp` word)
 
-### File Validators
+### File validators
 
-- **MarkdownValidator**: Validates Markdown formatting: empty lines after headers and before lists/code blocks, proper code block indentation in lists
-- **ShellScriptValidator**: Runs shellcheck on `*.sh`/`*.bash` files (skips Fish scripts, 10s timeout)
-- **TerraformValidator**: Validates `*.tf` files with `terraform`/`tofu` fmt and tflint
-- **WorkflowValidator**: Enforces digest pinning for GitHub Actions with version comments, checks for latest versions via GitHub API, runs actionlint
+- `MarkdownValidator`: validates Markdown formatting: empty lines after headers and before lists/code blocks, proper code block indentation in lists
+- `ShellScriptValidator`: runs shellcheck on `*.sh`/`*.bash` files (skips Fish scripts, 10s timeout)
+- `TerraformValidator`: validates `*.tf` files with `terraform`/`tofu` fmt and tflint
+- `WorkflowValidator`: enforces digest pinning for GitHub Actions with version comments, checks for latest versions via GitHub API, runs actionlint
 
-### Notification Validators
+### Notification validators
 
-- **BellValidator**: Sends bell character to `/dev/tty` for all notification events (permission prompts, etc.)
+- `BellValidator`: sends bell character to `/dev/tty` for all notification events (permission prompts, etc.)
 
-## Predicate System
+## Predicate system
 
 Validators are registered with predicates that determine when they run:
 
@@ -300,7 +298,7 @@ registry.Register(
 )
 ```
 
-**Common Predicates**:
+Common predicates:
 
 - `EventTypeIs(eventType)`: Match event type (PreToolUse, PostToolUse, Notification)
 - `ToolTypeIs(toolType)`: Match tool type (Bash, Write, Edit, etc.)
@@ -311,19 +309,17 @@ registry.Register(
 - `Or(predicates...)`: Any predicate must match
 - `Not(predicate)`: Predicate must not match
 
-## Bash Parsing
+## Bash parsing
 
-Uses `mvdan.cc/sh` for production-grade parsing supporting command chains, pipes, subshells, redirections, and heredocs. Detects file writes via redirections (`>`, `>>`), `tee`, `cp`, and `mv`. Blocks writes to `/tmp` and suggests project-local `tmp/` directory.
+Uses `mvdan.cc/sh` to parse command chains, pipes, subshells, redirections, and heredocs. Detects file writes via redirections (`>`, `>>`), `tee`, `cp`, and `mv`. Blocks writes to `/tmp` and suggests project-local `tmp/` directory.
 
 ## Development
 
-**Adding Validators**: Create validator in `internal/validators/{category}/`, implement `Validate()` method, write tests, register in `cmd/klaudiush/main.go` with predicates.
+Add validators by creating them in `internal/validators/{category}/`, implementing the `Validate()` method, writing tests, and registering in `cmd/klaudiush/main.go` with predicates.
 
-**Testing**: Use `task test` for all tests, `go test -v ./pkg/parser` for specific suites. Logs in `~/.claude/hooks/dispatcher.log`.
+Run `task test` for all tests, or `go test -v ./pkg/parser` for specific suites. Logs go to `~/.claude/hooks/dispatcher.log`. Use `tail -f` on that file for real-time debugging.
 
-**Debugging**: `tail -f ~/.claude/hooks/dispatcher.log` to follow logs in real-time.
-
-## Exit Codes
+## Exit codes
 
 - `0`: Operation allowed (validation passed or no validators matched)
 - `2`: Operation blocked (validation failed with `ShouldBlock=true`)
@@ -332,9 +328,9 @@ Warnings (`ShouldBlock=false`) print to stderr but allow operation (exit 0).
 
 ## Configuration
 
-Klaudiush supports flexible configuration through multiple sources with a clear precedence hierarchy. All validators are fully configurable - you can enable/disable them, change severity levels, and customize individual rules.
+Klaudiush loads configuration from multiple sources with a defined precedence. Validators can be enabled/disabled, set to different severity levels, and customized per-rule.
 
-### Shell Completion
+### Shell completion
 
 Klaudiush supports shell completion for bash, zsh, fish, and PowerShell:
 
@@ -360,9 +356,9 @@ Run `klaudiush completion --help` for detailed installation instructions for eac
 
 **Note**: When using the Nix Home-Manager module, completions are automatically installed and configured.
 
-### Interactive Setup
+### Interactive setup
 
-The quickest way to get started is using the interactive `init` command:
+Run the `init` command for interactive setup:
 
 ```bash
 # Initialize project configuration (interactive)
@@ -377,7 +373,7 @@ The quickest way to get started is using the interactive `init` command:
 
 The `init` command guides you through configuration options with sensible defaults from your git config.
 
-### Configuration Files
+### Configuration files
 
 Klaudiush uses TOML configuration files:
 
@@ -393,21 +389,21 @@ Klaudiush uses TOML configuration files:
 - Overrides global settings
 - Committed to repository for team standards
 
-**No Configuration Required**: All validators work with sensible defaults if no config files exist.
+No configuration is required. All validators use working defaults.
 
-### Configuration Hierarchy
+### Configuration hierarchy
 
 Configuration sources are merged with the following precedence (highest to lowest):
 
-1. **CLI Flags** - Runtime overrides (e.g., `--disable=commit,markdown`)
-2. **Environment Variables** - Shell-level config (e.g., `KLAUDIUSH_VALIDATORS_GIT_COMMIT_ENABLED=false`)
-3. **Project Config** - Repository-specific settings
-4. **Global Config** - User-wide defaults
-5. **Built-in Defaults** - Sensible defaults matching current behavior
+1. CLI flags - runtime overrides (e.g., `--disable=commit,markdown`)
+2. Environment variables - shell-level config (e.g., `KLAUDIUSH_VALIDATORS_GIT_COMMIT_ENABLED=false`)
+3. Project config - repository-specific settings
+4. Global config - user-wide defaults
+5. Built-in defaults - defaults matching current behavior
 
 Settings from higher precedence sources override lower ones using deep merge (nested values are merged, not replaced entirely).
 
-### CLI Flags
+### CLI flags
 
 Override configuration at runtime:
 
@@ -428,7 +424,7 @@ klaudiush --hook-type PreToolUse --debug
 klaudiush --hook-type PreToolUse --trace
 ```
 
-### Environment Variables
+### Environment variables
 
 All environment variables use the `KLAUDIUSH_` prefix:
 
@@ -446,30 +442,30 @@ export KLAUDIUSH_VALIDATORS_FILE_MARKDOWN_ENABLED=false
 export KLAUDIUSH_USE_SDK_GIT=false  # Use CLI instead of SDK
 ```
 
-**Git SDK Performance**:
+Git SDK performance:
 
 The project supports two git operation implementations:
 
-- **SDK Implementation** (default): Native Go using `go-git/go-git/v6`
+- SDK implementation (default): native Go using `go-git/go-git/v6`
   - 2-5.9M× faster for cached operations (`IsInRepo`, `GetRepoRoot`)
   - 177× faster for `GetCurrentBranch`
   - 1.5× faster for `GetStagedFiles`
   - Used by default, no configuration needed
 
-- **CLI Implementation**: Executes git commands via shell
+- CLI implementation: executes git commands via shell
   - Fully tested fallback implementation
   - Automatic fallback if SDK initialization fails
   - Opt-in with `KLAUDIUSH_USE_SDK_GIT=false` or `KLAUDIUSH_USE_SDK_GIT=0`
 
-### Example Configurations
+### Example configurations
 
 Complete examples with all options are available in [`examples/config/`](examples/config/):
 
-- **[full.toml](examples/config/full.toml)** - All available options with defaults
-- **[minimal.toml](examples/config/minimal.toml)** - Quick setup to disable validators
-- **[project-override.toml](examples/config/project-override.toml)** - Project-specific customization
+- [full.toml](examples/config/full.toml) - all available options with defaults
+- [minimal.toml](examples/config/minimal.toml) - quick setup to disable validators
+- [project-override.toml](examples/config/project-override.toml) - project-specific customization
 
-**Quick Start Examples**:
+Quick start examples:
 
 ```toml
 # Disable commit message validation
@@ -501,44 +497,28 @@ timeout = "30s"
 
 See the [examples/config/README.md](examples/config/README.md) for complete documentation and more examples.
 
-### What's Configurable
+### What's configurable
 
-**All validators** support:
+All validators support `enabled` (on/off) and `severity` ("error" to block, "warning" to log only).
 
-- `enabled` - Enable/disable entire validator
-- `severity` - "error" (block) or "warning" (log only)
+Git validators add options for commit (required flags, staging checks, message format), PR (title format, changelog, CI labels), branch (protected branches, naming patterns), add (blocked file patterns), and push (remote restrictions).
 
-**Git validators** support additional options:
+File validators add timeouts, per-linter enable/disable, context lines for errors, and linter-specific rules (shellcheck, tflint, actionlint).
 
-- Commit: required flags, staging checks, message format rules
-- PR: title format, changelog requirements, CI labels
-- Branch: protected branches, naming patterns
-- Add: blocked file patterns
-- Push: remote restrictions
-
-**File validators** support:
-
-- Timeouts for linter operations
-- Enable/disable specific linters
-- Context lines for error messages
-- Linter-specific rules (shellcheck, tflint, actionlint)
-
-**Notification validators** support:
-
-- Custom notification commands
+Notification validators support custom notification commands.
 
 See [`examples/config/full.toml`](examples/config/full.toml) for the complete list of options.
 
-## Dynamic Validation Rules
+## Dynamic validation rules
 
-Configure validators dynamically without modifying code. The rule engine allows you to:
+The rule engine configures validation without code changes:
 
 - Block operations based on patterns (repository, branch, file, command)
 - Warn about potentially dangerous operations
 - Allow operations that would otherwise be blocked
 - Apply different validation logic per validator type
 
-### Quick Example
+### Quick example
 
 ```toml
 # .klaudiush/config.toml
@@ -559,7 +539,7 @@ type = "block"
 message = "Direct push to main is not allowed. Use a pull request."
 ```
 
-### Rule Features
+### Rule features
 
 | Feature           | Description                                                      |
 |:------------------|:-----------------------------------------------------------------|
@@ -569,7 +549,7 @@ message = "Direct push to main is not allowed. Use a pull request."
 | Validator Scoping | Apply rules to specific (`git.push`) or all (`git.*`) validators |
 | Advanced Patterns | Negation (`!*.tmp`), case-insensitive, multi-patterns            |
 
-### Debug Rules
+### Debug rules
 
 Inspect loaded rules with the debug command:
 
@@ -585,19 +565,19 @@ klaudiush debug rules --validator git.push
 
 Example configurations are available in [`examples/rules/`](examples/rules/):
 
-- **[organization.toml](examples/rules/organization.toml)** - Remote restrictions, branch protection
-- **[secrets-allow-list.toml](examples/rules/secrets-allow-list.toml)** - Allow list for test fixtures
-- **[advanced-patterns.toml](examples/rules/advanced-patterns.toml)** - Complex pattern matching
+- [organization.toml](examples/rules/organization.toml) - remote restrictions, branch protection
+- [secrets-allow-list.toml](examples/rules/secrets-allow-list.toml) - allow list for test fixtures
+- [advanced-patterns.toml](examples/rules/advanced-patterns.toml) - complex pattern matching
 
-See the [Rules Guide](docs/RULES_GUIDE.md) for comprehensive documentation.
+See the [Rules Guide](docs/RULES_GUIDE.md) for full documentation.
 
 ## Performance
 
-- **Cold start**: <100ms target
-- **Parser**: <100µs for typical commands
-- **Validators**: <50ms each (I/O dependent)
-- **Total**: <500ms for full validation chain
-- **Rule evaluation**: <1ms per rule (155ns-10.7µs achieved)
+- Cold start: <100ms target
+- Parser: <100µs for typical commands
+- Validators: <50ms each (I/O dependent)
+- Total: <500ms for full validation chain
+- Rule evaluation: <1ms per rule (155ns-10.7µs achieved)
 
 ## Contributing
 
@@ -609,9 +589,9 @@ See the [Rules Guide](docs/RULES_GUIDE.md) for comprehensive documentation.
 
 ## Support
 
-- **Issues**: [GitHub Issues](https://github.com/smykla-skalski/klaudiush/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/smykla-skalski/klaudiush/discussions)
-- **Logs**: `~/.claude/hooks/dispatcher.log`
+- [GitHub Issues](https://github.com/smykla-skalski/klaudiush/issues)
+- [GitHub Discussions](https://github.com/smykla-skalski/klaudiush/discussions)
+- Logs: `~/.claude/hooks/dispatcher.log`
 
 ## License
 
