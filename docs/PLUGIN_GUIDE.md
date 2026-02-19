@@ -122,7 +122,7 @@ klaudiush writes a JSON object to stdin. Fields present depend on the tool:
 |:-------------|:---------------|:----------------|:--------------------------------------|
 | `event_type` | string         | Always          | `"PreToolUse"`, `"PostToolUse"`, etc. |
 | `tool_name`  | string         | Always          | `"Bash"`, `"Write"`, `"Edit"`, etc.   |
-| `command`    | string         | Bash tool       | Shell command being executed           |
+| `command`    | string         | Bash tool       | Shell command being executed          |
 | `file_path`  | string         | Write/Edit/Read | Path to the file being operated on    |
 | `content`    | string         | Write tool      | Content being written                 |
 | `old_string` | string         | Edit tool       | String being replaced                 |
@@ -137,7 +137,7 @@ The plugin writes a JSON response to stdout:
 | Field          | Type              | Required | Description                                         |
 |:---------------|:------------------|:---------|:----------------------------------------------------|
 | `passed`       | bool              | Yes      | Whether validation passed                           |
-| `should_block` | bool              | Yes      | Whether to block the operation (only if not passed)  |
+| `should_block` | bool              | Yes      | Whether to block the operation (only if not passed) |
 | `message`      | string            | No       | Human-readable result message                       |
 | `error_code`   | string            | No       | Unique error identifier for programmatic handling   |
 | `fix_hint`     | string            | No       | Short suggestion for fixing the issue               |

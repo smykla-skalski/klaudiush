@@ -285,7 +285,7 @@ Claude Code can parse the `unpoison` field to automatically add the token to the
 
 Session audit logging records poison and unpoison events for troubleshooting.
 
-### Configuration
+### Audit configuration
 
 Audit logging is enabled by default:
 

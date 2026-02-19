@@ -29,7 +29,7 @@ The backup system creates versioned snapshots of your configuration files before
 | Centralized       | Single backup location for all configs    |
 | Audit trail       | Log of all backup operations              |
 | Doctor checks     | Validate backup system health             |
-| One-command        | Restore with a single command             |
+| One-command       | Restore with a single command             |
 
 ### How it works
 
