@@ -1,29 +1,28 @@
-# Plugin Development Guide
+# Plugin development guide
 
-Complete guide for developing klaudiush exec plugins.
+Guide for developing klaudiush exec plugins.
 
-## Table of Contents
+## Table of contents
 
 - [Overview](#overview)
-- [Quick Start](#quick-start)
-- [Protocol Reference](#protocol-reference)
-- [Plugin Configuration](#plugin-configuration)
-- [Predicate Matching](#predicate-matching)
+- [Quick start](#quick-start)
+- [Protocol reference](#protocol-reference)
+- [Plugin configuration](#plugin-configuration)
+- [Predicate matching](#predicate-matching)
 - [Examples](#examples)
-- [Best Practices](#best-practices)
+- [Best practices](#best-practices)
 - [Troubleshooting](#troubleshooting)
 
 ## Overview
 
-klaudiush plugins extend the validation system with custom logic. Plugins can
-enforce organization-specific rules, integrate with external services, implement
-domain-specific validations, and block or warn about specific patterns.
+klaudiush plugins add custom validation logic. You can enforce org-specific
+rules, call external services, or block specific patterns.
 
 Plugins are standalone executables that communicate with klaudiush via JSON over
 stdin/stdout. Any language that can read stdin and write JSON to stdout works:
 shell scripts, Python, Ruby, Node.js, compiled binaries, etc.
 
-### How It Works
+### How it works
 
 1. klaudiush spawns the plugin executable as a subprocess
 2. A JSON request is written to the plugin's stdin
@@ -33,9 +32,9 @@ shell scripts, Python, Ruby, Node.js, compiled binaries, etc.
 Each invocation is a fresh process, so plugins are stateless by default and
 changes to the script take effect immediately (no restart needed).
 
-## Quick Start
+## Quick start
 
-### 1. Create a Plugin
+### 1. Create a plugin
 
 ```bash
 #!/usr/bin/env bash
@@ -97,9 +96,9 @@ echo '{"tool_name":"Bash","command":"sudo rm -rf /"}' | ./my-plugin.sh
 echo '{"tool_name":"Bash","command":"ls"}' | ./my-plugin.sh
 ```
 
-## Protocol Reference
+## Protocol reference
 
-### Info Request
+### Info request
 
 klaudiush calls the plugin with `--info` to retrieve metadata:
 
@@ -115,7 +114,7 @@ klaudiush calls the plugin with `--info` to retrieve metadata:
 
 Fields `name` and `version` are required. Optional: `description`, `author`, `url`.
 
-### Validate Request
+### Validate request
 
 klaudiush writes a JSON object to stdin. Fields present depend on the tool:
 
@@ -131,7 +130,7 @@ klaudiush writes a JSON object to stdin. Fields present depend on the tool:
 | `pattern`    | string         | Grep/Glob tools | Search pattern                        |
 | `config`     | map[string]any | If configured   | Plugin-specific config from TOML      |
 
-### Validate Response
+### Validate response
 
 The plugin writes a JSON response to stdout:
 
@@ -151,16 +150,16 @@ The plugin writes a JSON response to stdout:
 - `passed: false, should_block: false` -- warning logged, operation proceeds
 - `passed: false, should_block: true` -- operation blocked (exit 2)
 
-### Exit Codes
+### Exit codes
 
 - **Exit 0**: Plugin ran successfully. Result is read from stdout.
 - **Non-zero exit**: Plugin error. klaudiush logs the error and allows the operation (fail-open).
 
 Always exit 0 and communicate validation failures through JSON, not exit codes.
 
-## Plugin Configuration
+## Plugin configuration
 
-### Global Configuration
+### Global configuration
 
 **File**: `~/.klaudiush/config.toml`
 
@@ -186,7 +185,7 @@ command_patterns = ["^git"]
 custom_key = "custom_value"
 ```
 
-### Project Configuration
+### Project configuration
 
 **File**: `.klaudiush/config.toml` (project root)
 
@@ -203,7 +202,7 @@ event_types = ["PreToolUse"]
 file_patterns = ["*.go", "**/*.ts"]
 ```
 
-### Configuration Reference
+### Configuration reference
 
 **Plugin system** (`[plugins]`):
 
@@ -224,12 +223,12 @@ file_patterns = ["*.go", "**/*.ts"]
 | `args`    | string[] | []         | Extra command-line arguments           |
 | `timeout` | duration | inherited  | Per-plugin timeout (overrides default) |
 
-## Predicate Matching
+## Predicate matching
 
 Predicates control when plugins are invoked. All conditions must match (AND
 logic). Omitting a predicate means "match all" for that dimension.
 
-### Event Types
+### Event types
 
 ```toml
 [plugins.plugins.predicate]
@@ -238,7 +237,7 @@ event_types = ["PreToolUse"]  # Most common
 
 Available: `PreToolUse`, `PostToolUse`, `Notification`. Empty matches all.
 
-### Tool Types
+### Tool types
 
 ```toml
 [plugins.plugins.predicate]
@@ -247,7 +246,7 @@ tool_types = ["Bash", "Write", "Edit"]
 
 Available: `Bash`, `Write`, `Edit`, `Read`, `Grep`, `Glob`, `WebFetch`, `WebSearch`. Empty matches all.
 
-### File Patterns
+### File patterns
 
 ```toml
 [plugins.plugins.predicate]
@@ -256,7 +255,7 @@ file_patterns = ["*.go", "**/*.ts", "src/**/*.rs"]
 
 Glob syntax. Only applies to file tools (Write, Edit, Read). Empty matches all.
 
-### Command Patterns
+### Command patterns
 
 ```toml
 [plugins.plugins.predicate]
@@ -265,7 +264,7 @@ command_patterns = ["^git commit", "docker build"]
 
 Regex syntax. Only applies to Bash tool. Empty matches all.
 
-### Common Predicate Combinations
+### Common predicate combinations
 
 ```toml
 # Git commits only
@@ -286,7 +285,7 @@ file_patterns = ["**/*.go"]
 
 ## Examples
 
-### Shell Script with Configuration
+### Shell script with configuration
 
 Plugins receive custom configuration via the `config` field in the request JSON.
 
@@ -332,7 +331,7 @@ tool_types = ["Bash"]
 blocked_patterns = ["rm -rf", "dd if=", "mkfs"]
 ```
 
-### Python Plugin
+### Python plugin
 
 ```python
 #!/usr/bin/env python3
@@ -361,7 +360,7 @@ if __name__ == "__main__":
     main()
 ```
 
-### Passing Extra Arguments
+### Passing extra arguments
 
 ```toml
 [[plugins.plugins]]
@@ -371,39 +370,39 @@ path = "~/.klaudiush/plugins/my-plugin.sh"
 args = ["--strict", "--env=production"]
 ```
 
-### Working Example
+### Working example
 
-A complete working example is available at `examples/plugins/exec-shell/`:
+A working example lives in `examples/plugins/exec-shell/`:
 
 - `file_validator.sh` -- Shell script that validates file operations
 - `README.md` -- Installation, configuration, and testing instructions
 
-## Best Practices
+## Best practices
 
 ### Performance
 
-- **Return early** for non-matching contexts instead of doing unnecessary work.
-- **Use narrow predicates** so the plugin is only spawned when relevant.
-- **Keep startup fast**. Each invocation is a fresh process; avoid heavy initialization.
-- **Set reasonable timeouts**: 1-5s for fast checks, 10-30s for external APIs, never exceed 60s.
+- Return early for non-matching contexts instead of doing unnecessary work.
+- Use narrow predicates so the plugin is only spawned when relevant.
+- Keep startup fast. Each invocation is a fresh process; avoid heavy initialization.
+- Set reasonable timeouts: 1-5s for fast checks, 10-30s for external APIs, never exceed 60s.
 
-### Error Handling
+### Error handling
 
-- **Always return valid JSON** and exit 0. Non-zero exits cause fail-open behavior.
-- **Use error codes** (`error_code`) for programmatic handling and documentation links.
-- **Distinguish blocking vs warning**: use `should_block: true` for critical issues, `false` for advisories.
+- Always return valid JSON and exit 0. Non-zero exits cause fail-open behavior.
+- Use error codes (`error_code`) for programmatic handling and documentation links.
+- Distinguish blocking vs warning: use `should_block: true` for critical issues, `false` for advisories.
 
 ### Configuration
 
-- **Document your config schema** with comments in the TOML example.
-- **Provide sensible defaults**: handle missing config values gracefully.
-- **Validate config early**: return a clear error if required config is missing.
+- Document your config schema with comments in the TOML example.
+- Provide sensible defaults: handle missing config values gracefully.
+- Validate config early: return a clear error if required config is missing.
 
 ### Security
 
-- **Validate inputs**: do not trust `command` or `file_path` values blindly.
-- **Limit resource usage**: respect timeouts, avoid unbounded allocations.
-- **Handle secrets carefully**: never log credentials or include them in responses.
+- Validate inputs: do not trust `command` or `file_path` values blindly.
+- Limit resource usage: respect timeouts, avoid unbounded allocations.
+- Handle secrets carefully: never log credentials or include them in responses.
 
 ### Testing
 
@@ -423,33 +422,33 @@ Test edge cases: empty fields, missing config keys, large inputs, special JSON c
 
 ## Troubleshooting
 
-### Plugin Not Loading
+### Plugin not loading
 
 1. Check `[plugins] enabled = true` in config.
 2. Check plugin instance `enabled` is not `false`.
 3. Verify the path is correct and the file is executable (`chmod +x`).
 4. Check predicates match your context (`klaudiush --debug`).
 
-### Plugin Timeout
+### Plugin timeout
 
 1. Increase timeout: `timeout = "30s"` in the plugin config.
 2. Optimize the plugin (cache operations, return early).
 3. Test directly: `echo '{"tool_name":"Bash"}' | timeout 5s ./my-plugin.sh`
 
-### Wrong Validation Result
+### Wrong validation result
 
 1. Test the plugin directly with `jq` to inspect the JSON output.
 2. Check for **stderr pollution** -- only write the JSON response to stdout. Diagnostics go to stderr (`>&2`).
 3. Validate JSON: `./my-plugin.sh --info | jq . || echo "Invalid JSON"`
 
-### Plugin Not Found
+### Plugin not found
 
 1. Use correct path format: absolute (`/home/...`), home shorthand (`~/.klaudiush/...`), or project-relative (`./scripts/...`).
 2. Verify the file exists and has executable permissions.
 
 ## Resources
 
-- **API Reference**: `pkg/plugin/api.go`
-- **Integration Tests**: `internal/plugin/integration_test.go`
-- **Issues**: <https://github.com/smykla-skalski/klaudiush/issues>
-- **Discussions**: <https://github.com/smykla-skalski/klaudiush/discussions>
+- API reference: `pkg/plugin/api.go`
+- Integration tests: `internal/plugin/integration_test.go`
+- [Issues](https://github.com/smykla-skalski/klaudiush/issues)
+- [Discussions](https://github.com/smykla-skalski/klaudiush/discussions)

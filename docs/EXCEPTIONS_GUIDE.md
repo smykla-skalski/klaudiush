@@ -1,40 +1,32 @@
-# Exception Workflow Guide
+# Exception workflow guide
 
 Allow Claude to bypass validation blocks with explicit acknowledgment and audit trail.
 
-## Table of Contents
+## Table of contents
 
 - [Overview](#overview)
-- [Quick Start](#quick-start)
-- [Token Format](#token-format)
-- [Policy Configuration](#policy-configuration)
-- [Rate Limiting](#rate-limiting)
-- [Audit Logging](#audit-logging)
-- [CLI Commands](#cli-commands)
-- [Integration with Rules](#integration-with-rules)
+- [Quick start](#quick-start)
+- [Token format](#token-format)
+- [Policy configuration](#policy-configuration)
+- [Rate limiting](#rate-limiting)
+- [Audit logging](#audit-logging)
+- [CLI commands](#cli-commands)
+- [Integration with rules](#integration-with-rules)
 - [Examples](#examples)
 - [Troubleshooting](#troubleshooting)
 
 ## Overview
 
-The exception workflow allows Claude Code to bypass specific validation blocks when:
+The exception workflow lets Claude Code bypass specific validation blocks when:
 
 1. An exception policy exists for the error code
 2. Claude includes an acknowledgment token in the command
 3. The token includes a valid justification (if required)
 4. Rate limits have not been exceeded
 
-### Key Features
+Exceptions use token-based acknowledgment embedded in commands, with per-error-code policies, hourly/daily rate limits, JSONL audit logging, and configurable justification requirements.
 
-| Feature        | Description                                  |
-|:---------------|:---------------------------------------------|
-| Token-Based    | Explicit acknowledgment embedded in commands |
-| Policy Control | Per-error-code configuration                 |
-| Rate Limiting  | Prevent abuse with hourly/daily limits       |
-| Audit Trail    | JSONL log of all exception attempts          |
-| Configurable   | Justification requirements per policy        |
-
-### How It Works
+### How it works
 
 ```text
 1. Claude runs: git push origin main  # EXC:GIT019:Emergency+hotfix
@@ -46,9 +38,9 @@ The exception workflow allows Claude Code to bypass specific validation blocks w
 7. Audit entry logged
 ```
 
-## Quick Start
+## Quick start
 
-### 1. Enable Exceptions
+### 1. Enable exceptions
 
 Create `.klaudiush/config.toml`:
 
@@ -65,7 +57,7 @@ min_reason_length = 10
 description = "Exception for pushing to protected branches"
 ```
 
-### 2. Bypass a Block
+### 2. Bypass a block
 
 When Claude encounters a block, it can include an exception token:
 
@@ -77,7 +69,7 @@ git push origin main  # EXC:GIT019:Emergency+hotfix+for+production
 KLACK="EXC:GIT019:Emergency+hotfix" git push origin main
 ```
 
-### 3. Verify Configuration
+### 3. Verify configuration
 
 ```bash
 # Check exception configuration
@@ -87,7 +79,7 @@ klaudiush debug exceptions
 klaudiush audit list
 ```
 
-## Token Format
+## Token format
 
 Exception tokens follow this format:
 
@@ -95,7 +87,7 @@ Exception tokens follow this format:
 <PREFIX>:<ERROR_CODE>:<URL_ENCODED_REASON>
 ```
 
-### Components
+### Token components
 
 | Component  | Required | Description                       | Example            |
 |:-----------|:---------|:----------------------------------|:-------------------|
@@ -103,9 +95,9 @@ Exception tokens follow this format:
 | ERROR_CODE | Yes      | Validator error code              | `GIT019`           |
 | REASON     | Depends  | URL-encoded justification         | `Emergency+hotfix` |
 
-### Token Placement
+### Token placement
 
-#### Shell Comment (Recommended)
+#### Shell comment (recommended)
 
 ```bash
 git push origin main  # EXC:GIT019:Emergency+hotfix
@@ -114,7 +106,7 @@ git push origin main  # EXC:GIT019:Emergency+hotfix
 git add . && git commit -sS -m "fix" && git push  # EXC:GIT022:Hotfix
 ```
 
-#### Environment Variable
+#### Environment variable
 
 ```bash
 KLACK="EXC:SEC001:Test+fixture" git commit -sS -m "Add test data"
@@ -124,7 +116,7 @@ export KLACK="EXC:GIT019:Emergency+release"
 git push origin main
 ```
 
-### URL Encoding Reasons
+### URL encoding reasons
 
 Reasons must be URL-encoded to avoid shell parsing issues:
 
@@ -136,15 +128,15 @@ Reasons must be URL-encoded to avoid shell parsing issues:
 | `/`       | `%2F`   |
 | `#`       | `%23`   |
 
-**Examples:**
+Examples:
 
 - `Emergency hotfix` → `Emergency+hotfix`
 - `Fix for issue #123` → `Fix+for+issue+%23123`
 - `Deploy v1.2.3` → `Deploy+v1.2.3`
 
-## Policy Configuration
+## Policy configuration
 
-### ExceptionsConfig Schema
+### ExceptionsConfig schema
 
 ```toml
 [exceptions]
@@ -167,7 +159,7 @@ token_prefix = "EXC"
 # ...audit settings...
 ```
 
-### ExceptionPolicyConfig Schema
+### ExceptionPolicyConfig schema
 
 ```toml
 [exceptions.policies.GIT019]
@@ -194,7 +186,7 @@ max_per_day = 20
 description = "Exception for pushing to protected branches"
 ```
 
-### Policy Options
+### Policy options
 
 | Option              | Type     | Default | Description                             |
 |:--------------------|:---------|:--------|:----------------------------------------|
@@ -207,7 +199,7 @@ description = "Exception for pushing to protected branches"
 | `max_per_day`       | int      | 0       | Max uses per day (0 = unlimited)        |
 | `description`       | string   | ""      | Human-readable description              |
 
-### Valid Reasons List
+### Valid reasons list
 
 When `valid_reasons` is set, only these reasons are accepted:
 
@@ -227,9 +219,9 @@ Matching is case-insensitive and supports prefix matching:
 - `test fixture` matches `test+fixture`, `Test+Fixture`, `TEST+FIXTURE`
 - `test` matches `test+fixture+data` (prefix match)
 
-## Rate Limiting
+## Rate limiting
 
-### Global Rate Limits
+### Global rate limits
 
 ```toml
 [exceptions.rate_limit]
@@ -244,7 +236,7 @@ max_per_day = 50    # default: 50
 state_file = "~/.klaudiush/exception_state.json"
 ```
 
-### Per-Code Rate Limits
+### Per-code rate limits
 
 Set limits for specific error codes:
 
@@ -258,14 +250,11 @@ max_per_hour = 5
 max_per_day = 25
 ```
 
-### How Rate Limiting Works
+### How rate limiting works
 
-1. **Window tracking**: Hourly and daily windows reset automatically
-2. **Global + per-code**: Both limits must pass
-3. **State persistence**: Survives restarts via state file
-4. **Graceful degradation**: Continues if state file is unavailable
+Hourly and daily windows reset automatically. Both global and per-code limits must pass for an exception to go through. State persists across restarts via the state file. If the state file is unavailable, rate limiting degrades gracefully and commands continue.
 
-### Rate Limit State
+### Rate limit state
 
 View current state:
 
@@ -287,9 +276,9 @@ Rate Limit State
     SEC001: 1
 ```
 
-## Audit Logging
+## Audit logging
 
-### Audit Configuration
+### Audit configuration
 
 ```toml
 [exceptions.audit]
@@ -309,9 +298,9 @@ max_age_days = 30
 max_backups = 3
 ```
 
-### Audit Entry Format
+### Audit entry format
 
-Entries are stored in JSONL format (one JSON object per line):
+Each line in the log file is a single JSON object:
 
 ```json
 {
@@ -327,7 +316,7 @@ Entries are stored in JSONL format (one JSON object per line):
 }
 ```
 
-### Audit Entry Fields
+### Audit entry fields
 
 | Field            | Description                          |
 |:-----------------|:-------------------------------------|
@@ -342,9 +331,9 @@ Entries are stored in JSONL format (one JSON object per line):
 | `working_dir`    | Working directory                    |
 | `repository`     | Git repository path                  |
 
-## CLI Commands
+## CLI commands
 
-### Debug Exceptions
+### Debug exceptions
 
 View exception configuration:
 
@@ -356,7 +345,7 @@ klaudiush debug exceptions
 klaudiush debug exceptions --state
 ```
 
-### Audit Commands
+### Audit commands
 
 ```bash
 # List all entries
@@ -382,20 +371,20 @@ klaudiush audit stats
 klaudiush audit cleanup
 ```
 
-## Integration with Rules
+## Integration with rules
 
 Exception tokens work with both built-in validators and custom rules.
 
-### Built-in Validator Errors
+### Built-in validator errors
 
-Built-in validators use error codes like:
+Built-in validators use these error code ranges:
 
 - `GIT001`-`GIT024`: Git validators
 - `FILE001`-`FILE005`: File validators
 - `SEC001`-`SEC005`: Secrets validators
 - `SHELL001`-`SHELL005`: Shell validators
 
-### Custom Rule References
+### Custom rule references
 
 Custom rules can define references for exception support:
 
@@ -425,7 +414,7 @@ valid_reasons = ["approved by SRE", "emergency rollback", "scheduled release"]
 
 ## Examples
 
-### Emergency Hotfix Workflow
+### Emergency hotfix workflow
 
 Configuration:
 
@@ -449,7 +438,7 @@ git add . && git commit -sS -m "fix: critical security patch"
 git push origin main  # EXC:GIT019:Critical+security+patch+CVE-2025-1234
 ```
 
-### Test Fixture Secrets
+### Test fixture secrets
 
 Configuration:
 
@@ -473,7 +462,7 @@ KLACK="EXC:SEC001:test+fixture" cat > test/fixtures/config.json << 'EOF'
 EOF
 ```
 
-### Strict Policy (No Exceptions)
+### Strict policy (no exceptions)
 
 ```toml
 [exceptions.policies.SEC003]
@@ -482,7 +471,7 @@ allow_exception = false
 description = "Never allow exceptions for private key commits"
 ```
 
-### Rate-Limited Policy
+### Rate-limited policy
 
 ```toml
 [exceptions.policies.GIT022]
@@ -495,65 +484,57 @@ description = "Limited exceptions for commit message format"
 
 ## Troubleshooting
 
-### Exception Not Allowed
+### Exception not allowed
 
-**Symptoms:** Block not bypassed despite token present
+Block not bypassed despite token present.
 
-**Check:**
+1. Confirm a policy exists: `klaudiush debug exceptions`
+2. Verify the token format is `EXC:CODE:reason`
+3. Make sure the token code matches the block code exactly
+4. Check that `enabled = true` and `allow_exception = true` in the policy
+5. If `require_reason = true`, make sure you included a reason
 
-1. **Policy exists:** `klaudiush debug exceptions`
-2. **Token format:** Verify `EXC:CODE:reason` format
-3. **Error code match:** Token code must match block code
-4. **Policy enabled:** Check `enabled = true` and `allow_exception = true`
-5. **Reason provided:** If `require_reason = true`, include reason
+### Rate limit exceeded
 
-### Rate Limit Exceeded
+You see a "Rate limit exceeded" message.
 
-**Symptoms:** "Rate limit exceeded" message
+1. Check current state: `klaudiush debug exceptions --state`
+2. Review global `max_per_hour` and `max_per_day` settings
+3. Review policy-specific limits for the error code
+4. Wait for reset -- hourly resets on the hour, daily at midnight
 
-**Check:**
+### Audit log issues
 
-1. **Current state:** `klaudiush debug exceptions --state`
-2. **Global limits:** Check `max_per_hour` and `max_per_day`
-3. **Per-code limits:** Check policy-specific limits
-4. **Wait for reset:** Hourly resets on the hour, daily at midnight
+Entries not appearing, or the log is too large.
 
-### Audit Log Issues
+1. Check that `audit.enabled = true`
+2. Verify the `audit.log_file` path exists and is writable
+3. Run `klaudiush audit cleanup` to clear old entries
+4. Review the `max_size_mb` rotation setting
 
-**Symptoms:** Entries not appearing or log too large
+### Token not detected
 
-**Check:**
+Token is in the command but the exception is not processed.
 
-1. **Logging enabled:** Check `audit.enabled = true`
-2. **File location:** Verify `audit.log_file` path
-3. **Run cleanup:** `klaudiush audit cleanup`
-4. **Check rotation:** Review `max_size_mb` setting
+1. Check comment format: use `# EXC:CODE:reason` (space after `#`)
+2. URL-encode special characters in the reason
+3. Use the env var name `KLACK` exactly
+4. Match the configured `token_prefix` (default: `EXC`)
 
-### Token Not Detected
+### Common mistakes
 
-**Symptoms:** Token in command but exception not processed
-
-**Check:**
-
-1. **Comment format:** Ensure `# EXC:CODE:reason` (space after `#`)
-2. **URL encoding:** Encode special characters in reason
-3. **Env var name:** Use `KLACK` exactly
-4. **Token prefix:** Match configured `token_prefix` (default: `EXC`)
-
-### Common Mistakes
-
-1. **Missing space after #:**
+1. Missing space after `#`:
    - Wrong: `git push #EXC:GIT019:reason`
    - Correct: `git push # EXC:GIT019:reason`
 
-2. **Unencoded spaces:**
+2. Unencoded spaces:
    - Wrong: `EXC:GIT019:Emergency hotfix`
    - Correct: `EXC:GIT019:Emergency+hotfix`
 
-3. **Wrong error code:**
+3. Wrong error code:
    - Check the error reference in the block message
    - Error codes are case-sensitive
 
-4. **Policy not loaded:**
+4. Policy not loaded:
    - Project config: `.klaudiush/config.toml`
    - Global config: `~/.klaudiush/config.toml`

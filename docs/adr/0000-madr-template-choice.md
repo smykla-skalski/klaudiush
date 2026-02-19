@@ -1,38 +1,38 @@
-# 0. We will use MADR for Architectural Decision Records
+# 0. We will use MADR for architectural decision records
 
 * Status: proposed
 * Deciders: @bartsmykla
 * Date: 2025-11-29
 
-## Context and Problem Statement
+## Context and problem statement
 
 We want to record architectural decisions made in this project.
 Which format and structure should we use for that?
 
-## Decision Drivers
+## Decision drivers
 
-* We need a lightweight format that is easy to learn and use.
-* The format should be structured to ensure all important aspects of a decision are captured.
-* The resulting documents should be easy to read and understand.
-* We want to follow a standard that is recognized and used by the community.
+* The format should be lightweight and easy to learn.
+* It should capture all the important parts of a decision without extra overhead.
+* The resulting documents should be readable at a glance.
+* We prefer a format the community already recognizes and uses.
 
-## Considered Options
+## Considered options
 
 * [MADR](https://adr.github.io/madr/)
 * [Michael Nygard's template](http://thinkrelevance.com/blog/2011/11/15/documenting-architecture-decisions)
-* [Other templates listed at adr.github.io](httpss://adr.github.io/)
+* [Other templates listed at adr.github.io](https://adr.github.io/)
 
-## Decision Outcome
+## Decision outcome
 
-Chosen option: "MADR", because it provides a good balance between structure and simplicity. It is lightweight and has a clear focus on the decision itself, the context, and the consequences. The template is well-defined and easy to follow.
+Chosen option: "MADR", because it is structured enough to be useful without getting in the way. It focuses on the decision, the context, and the consequences. The template is straightforward to follow.
 
-### Positive Consequences
+### Positive consequences
 
-* We have a clear and structured way to document architectural decisions.
-* The decisions are easy to find, read, and understand.
-* The format is well-known and supported by tools.
+* Architectural decisions get documented in a consistent place with a consistent shape.
+* Decisions are easy to find and read.
+* Tooling already supports the format.
 
-### Negative Consequences
+### Negative consequences
 
 * None identified.
 

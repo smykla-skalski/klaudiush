@@ -1,16 +1,14 @@
-# FILE005: Markdown Lint Validation Failed
+# FILE005: Markdown lint validation failed
 
 ## Error
 
-Markdown file has formatting issues.
+Markdown file has formatting issues that may affect rendering.
 
-## Why This Matters
+## Why this matters
 
-- Consistent Markdown renders correctly across platforms
-- Proper formatting improves readability
-- Some issues (like tables) break rendering entirely
+Inconsistent Markdown renders differently across platforms, and some issues (like malformed tables) break rendering entirely.
 
-## How to Fix
+## How to fix
 
 ### Tables
 

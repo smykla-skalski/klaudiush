@@ -1,20 +1,20 @@
-# FILE001: Shellcheck Validation Failed
+# FILE001: Shellcheck validation failed
 
 ## Error
 
 Shell script failed shellcheck static analysis.
 
-## Why This Matters
+## Why this matters
 
-Shellcheck detects common shell scripting bugs, portability issues, and style problems that can cause:
+Shellcheck catches shell scripting bugs, portability issues, and style problems:
 
-- Unexpected behavior in different shells
-- Security vulnerabilities (injection, globbing)
-- Quoting errors that break with special characters
+- Broken behavior across different shells
+- Security holes (injection, globbing)
+- Quoting errors that break on special characters
 
-## How to Fix
+## How to fix
 
-1. Run shellcheck directly to see detailed errors:
+1. Run shellcheck directly to see the errors:
 
    ```bash
    shellcheck your-script.sh
@@ -22,14 +22,14 @@ Shellcheck detects common shell scripting bugs, portability issues, and style pr
 
 2. Fix each issue as indicated by the SC code
 
-3. For legitimate cases, add inline ignores:
+3. To suppress a finding, add an inline ignore:
 
    ```bash
    # shellcheck disable=SC2086
    command $unquoted_var
    ```
 
-## Common Issues
+## Common issues
 
 | Code   | Issue                | Fix                             |
 |:-------|:---------------------|:--------------------------------|
@@ -41,7 +41,7 @@ Shellcheck detects common shell scripting bugs, portability issues, and style pr
 
 ## Configuration
 
-Adjust timeout in `config.toml`:
+Timeout is configurable in `config.toml`:
 
 ```toml
 [validators.file.shellscript]
@@ -49,9 +49,9 @@ timeout = "15s"
 context_lines = 2
 ```
 
-## Skipped Scripts
+## Skipped scripts
 
-Fish shell scripts (`.fish` extension or fish shebang) are automatically skipped since shellcheck only supports POSIX-like shells.
+Fish shell scripts (`.fish` extension or fish shebang) are skipped because shellcheck only supports POSIX-like shells.
 
 ## Related
 

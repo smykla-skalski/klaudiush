@@ -1,45 +1,32 @@
-# Dynamic Validation Rules Guide
+# Dynamic validation rules
 
-Configure klaudiush validators dynamically without modifying code.
+Configure klaudiush validators without modifying code.
 
-## Table of Contents
+## Table of contents
 
 - [Overview](#overview)
-- [Quick Start](#quick-start)
-- [Rule Configuration](#rule-configuration)
-- [Pattern Matching](#pattern-matching)
-- [Match Conditions](#match-conditions)
+- [Quick start](#quick-start)
+- [Rule configuration](#rule-configuration)
+- [Pattern matching](#pattern-matching)
+- [Match conditions](#match-conditions)
 - [Actions](#actions)
-- [Configuration Precedence](#configuration-precedence)
-- [Validator Types](#validator-types)
+- [Configuration precedence](#configuration-precedence)
+- [Validator types](#validator-types)
 - [Examples](#examples)
-- [Exceptions Integration](#exceptions-integration)
+- [Exceptions integration](#exceptions-integration)
 - [Troubleshooting](#troubleshooting)
 
 ## Overview
 
-The rule engine allows users to define custom validation behavior through TOML configuration. Rules can:
+The rule engine defines validation behavior through TOML configuration. Rules can block operations based on patterns (repository, branch, file, command), warn about risky operations, allow operations that built-in validators would block, or apply different logic per validator type.
 
-- Block operations based on patterns (repository, branch, file, command)
-- Warn about potentially dangerous operations
-- Allow operations that would otherwise be blocked
-- Apply different validation logic per validator type
+The engine auto-detects glob and regex patterns, evaluates rules by priority (highest first), merges project config over global config, and stops on the first matching rule by default. Rules can target specific validators or apply to all of them.
 
-### Key Features
+## Quick start
 
-| Feature           | Description                                           |
-|:------------------|:------------------------------------------------------|
-| Pattern Matching  | Auto-detect glob or regex patterns                    |
-| Priority System   | Higher priority rules evaluate first                  |
-| Config Precedence | Project config overrides global config                |
-| Validator Scoping | Apply rules to specific or all validators             |
-| First-Match       | Stop evaluation on first matching rule (configurable) |
+### 1. Create a configuration file
 
-## Quick Start
-
-### 1. Create Configuration File
-
-**Project-level** (`.klaudiush/config.toml`):
+Project-level (`.klaudiush/config.toml`):
 
 ```toml
 [rules]
@@ -47,7 +34,7 @@ enabled = true
 
 [[rules.rules]]
 name = "block-main-push"
-description = "Prevent direct pushes to main branch"
+description = "Block direct pushes to main"
 priority = 100
 
 [rules.rules.match]
@@ -60,7 +47,7 @@ type = "block"
 message = "Direct push to main branch is not allowed. Use a pull request."
 ```
 
-**Global** (`~/.klaudiush/config.toml`):
+Global (`~/.klaudiush/config.toml`):
 
 ```toml
 [rules]
@@ -68,7 +55,7 @@ enabled = true
 
 [[rules.rules]]
 name = "warn-force-push"
-description = "Warn about force pushes"
+description = "Flag force pushes"
 priority = 50
 
 [rules.rules.match]
@@ -77,19 +64,19 @@ command_pattern = "*--force*"
 
 [rules.rules.action]
 type = "warn"
-message = "Force push detected. Ensure you have the latest changes."
+message = "Force push detected. Check that you have the latest changes."
 ```
 
-### 2. Verify Rules Load
+### 2. Verify rules load
 
 ```bash
 # Run with debug logging
 klaudiush --debug
 ```
 
-## Rule Configuration
+## Rule configuration
 
-### RulesConfig Schema
+### RulesConfig
 
 ```toml
 [rules]
@@ -104,36 +91,36 @@ stop_on_first_match = true
 # ...rule definitions...
 ```
 
-### RuleConfig Schema
+### RuleConfig
 
 ```toml
 [[rules.rules]]
-# Required: Unique identifier for override precedence
+# Required: unique identifier for override precedence
 name = "my-rule"
 
-# Optional: Human-readable description
+# Optional: description
 description = "What this rule does"
 
-# Optional: Enable/disable this rule (default: true)
+# Optional: enable/disable this rule (default: true)
 enabled = true
 
-# Optional: Evaluation order, higher = first (default: 0)
+# Optional: evaluation order, higher = first (default: 0)
 priority = 100
 
-# Required: Match conditions (all must match)
+# Required: match conditions (all must match)
 [rules.rules.match]
 # ...match conditions...
 
-# Required: Action to take when rule matches
+# Required: action to take when rule matches
 [rules.rules.action]
 # ...action configuration...
 ```
 
-## Pattern Matching
+## Pattern matching
 
-The rule engine automatically detects pattern type:
+The rule engine detects the pattern type automatically:
 
-### Glob Patterns
+### Glob patterns
 
 Simple wildcard patterns using `*` and `**`:
 
@@ -152,7 +139,7 @@ branch_pattern = "release-*"
 repo_pattern = "**/myorg/**"
 ```
 
-**Glob syntax:**
+Glob syntax:
 
 - `*` - matches any sequence of characters (except path separator)
 - `**` - matches any sequence of characters including path separators
@@ -160,9 +147,9 @@ repo_pattern = "**/myorg/**"
 - `[abc]` - matches any character in the set
 - `{a,b}` - matches either pattern
 
-### Regex Patterns
+### Regex patterns
 
-Automatically detected when pattern contains regex indicators:
+Detected when the pattern contains regex indicators:
 
 ```toml
 # Match semantic version branches
@@ -175,7 +162,7 @@ command_pattern = ".*JIRA-[0-9]+.*"
 file_pattern = ".*\\.(tf|tfvars)$"
 ```
 
-**Regex indicators** (trigger regex mode):
+Regex indicators (trigger regex mode):
 
 - `^` `$` - anchors
 - `(?` - non-capturing groups
@@ -185,13 +172,13 @@ file_pattern = ".*\\.(tf|tfvars)$"
 - `|` - alternation
 - `+` `.+` `.*` - quantifiers
 
-## Match Conditions
+## Match conditions
 
 All non-empty conditions must match (AND logic).
 
-### ValidatorType
+### validator_type
 
-Filter by validator type:
+Filter by validator:
 
 ```toml
 # Specific validator
@@ -204,9 +191,9 @@ validator_type = "git.*"
 validator_type = "*"
 ```
 
-### RepoPattern
+### repo_pattern
 
-Match against repository root path:
+Match against the repository root path:
 
 ```toml
 # Match organization repositories
@@ -216,7 +203,7 @@ repo_pattern = "**/myorg/**"
 repo_pattern = "**/my-project"
 ```
 
-### Remote
+### remote
 
 Exact match against git remote name:
 
@@ -228,7 +215,7 @@ remote = "origin"
 remote = "upstream"
 ```
 
-### BranchPattern
+### branch_pattern
 
 Match against branch name:
 
@@ -243,7 +230,7 @@ branch_pattern = "feat/*"
 branch_pattern = "^release/v[0-9]+$"
 ```
 
-### FilePattern
+### file_pattern
 
 Match against file path:
 
@@ -258,7 +245,7 @@ file_pattern = "*.tf"
 file_pattern = ".github/workflows/*.yml"
 ```
 
-### ContentPattern
+### content_pattern
 
 Match against file content (always regex):
 
@@ -270,7 +257,7 @@ content_pattern = "(?i)password\\s*=\\s*[\"'][^\"']+[\"']"
 content_pattern = "TODO|FIXME|HACK"
 ```
 
-### CommandPattern
+### command_pattern
 
 Match against bash command:
 
@@ -285,9 +272,9 @@ command_pattern = "*--force*"
 command_pattern = "rm\\s+-rf\\s+/"
 ```
 
-### ToolType and EventType
+### tool_type and event_type (hook context)
 
-Match against hook context:
+Match against the hook context:
 
 ```toml
 # Match bash commands
@@ -302,9 +289,9 @@ event_type = "PreToolUse"
 
 ## Actions
 
-### Block
+### block
 
-Stop the operation with an error:
+Stops the operation with an error:
 
 ```toml
 [rules.rules.action]
@@ -313,9 +300,9 @@ message = "This operation is not allowed"
 reference = "RULE001"  # Optional error code
 ```
 
-### Warn
+### warn
 
-Log a warning but allow the operation:
+Logs a warning but allows the operation:
 
 ```toml
 [rules.rules.action]
@@ -323,9 +310,9 @@ type = "warn"
 message = "This operation might cause issues"
 ```
 
-### Allow
+### allow
 
-Explicitly allow the operation (skip further rules and built-in validation):
+Allows the operation outright, skipping further rules and built-in validation:
 
 ```toml
 [rules.rules.action]
@@ -333,22 +320,19 @@ type = "allow"
 message = "Operation allowed by rule"  # Optional
 ```
 
-## Configuration Precedence
+## Configuration precedence
 
-Rules are loaded and merged from multiple sources:
+Rules load and merge from multiple sources:
 
-1. **CLI Flags** (highest priority)
-2. **Environment Variables** (`KLAUDIUSH_*`)
-3. **Project Config** (`.klaudiush/config.toml`)
-4. **Global Config** (`~/.klaudiush/config.toml`)
-5. **Defaults** (lowest priority)
+1. CLI flags (highest priority)
+2. Environment variables (`KLAUDIUSH_*`)
+3. Project config (`.klaudiush/config.toml`)
+4. Global config (`~/.klaudiush/config.toml`)
+5. Defaults (lowest priority)
 
-### Rule Merge Semantics
+### Rule merge behavior
 
-When loading rules from multiple sources:
-
-- **Same name**: Project rule overrides global rule
-- **Different names**: Rules are combined
+When rules exist in both project and global config, rules with the same name merge (project wins), and rules with different names are combined.
 
 ```toml
 # Global config: ~/.klaudiush/config.toml
@@ -368,9 +352,9 @@ name = "block-main"     # Different name = add to list
 # ...
 ```
 
-### Priority-Based Evaluation
+### Evaluation order
 
-Rules evaluate in priority order (highest first):
+Rules evaluate by priority, highest first:
 
 ```toml
 [[rules.rules]]
@@ -390,9 +374,9 @@ content_pattern = "password"
 type = "block"
 ```
 
-## Validator Types
+## Validator types
 
-### Git Validators
+### Git validators
 
 | Type            | Description            |
 |:----------------|:-----------------------|
@@ -405,7 +389,7 @@ type = "block"
 | `git.no_verify` | --no-verify flag usage |
 | `git.*`         | All git validators     |
 
-### File Validators
+### File validators
 
 | Type             | Description               |
 |:-----------------|:--------------------------|
@@ -415,7 +399,7 @@ type = "block"
 | `file.workflow`  | GitHub Actions workflow   |
 | `file.*`         | All file validators       |
 
-### Other Validators
+### Other validators
 
 | Type                | Description                |
 |:--------------------|:---------------------------|
@@ -426,12 +410,12 @@ type = "block"
 
 ## Examples
 
-### Block Direct Push to Main
+### Block direct pushes to main
 
 ```toml
 [[rules.rules]]
 name = "block-main-push"
-description = "Prevent direct pushes to main branch"
+description = "Block direct pushes to main"
 priority = 100
 
 [rules.rules.match]
@@ -441,11 +425,11 @@ remote = "origin"
 
 [rules.rules.action]
 type = "block"
-message = "Direct push to main is not allowed. Please use a pull request."
+message = "Direct push to main is not allowed. Use a pull request instead."
 reference = "GIT019"
 ```
 
-### Allow Test File Secrets
+### Allow test file secrets
 
 ```toml
 [[rules.rules]]
@@ -461,12 +445,12 @@ file_pattern = "**/test/**"
 type = "allow"
 ```
 
-### Warn About Upstream Push
+### Warn on upstream push
 
 ```toml
 [[rules.rules]]
 name = "warn-upstream-push"
-description = "Warn when pushing to upstream remote"
+description = "Flag pushes to upstream remote"
 priority = 50
 
 [rules.rules.match]
@@ -475,10 +459,10 @@ remote = "upstream"
 
 [rules.rules.action]
 type = "warn"
-message = "Pushing to upstream remote. Ensure this is intentional."
+message = "Pushing to upstream remote. Confirm this is intentional."
 ```
 
-### Require Ticket Reference
+### Require ticket reference
 
 ```toml
 [[rules.rules]]
@@ -495,12 +479,12 @@ type = "block"
 message = "Commits to main must reference a JIRA ticket (e.g., JIRA-123)"
 ```
 
-### Strict Docs Formatting
+### Strict docs formatting
 
 ```toml
 [[rules.rules]]
 name = "strict-docs"
-description = "Enforce strict markdown formatting in docs"
+description = "Require strict markdown formatting in docs"
 priority = 100
 
 [rules.rules.match]
@@ -509,16 +493,16 @@ file_pattern = "docs/**/*.md"
 
 [rules.rules.action]
 type = "block"
-message = "Documentation files must pass strict markdown validation"
+message = "Documentation files must pass markdown validation"
 ```
 
-### Organization-Specific Rules
+### Organization rules
 
 ```toml
 # Block pushing to origin in organization repositories (forks)
 [[rules.rules]]
 name = "block-org-origin"
-description = "Block push to origin in organization repos"
+description = "Block push to origin in org repos"
 priority = 100
 
 [rules.rules.match]
@@ -531,7 +515,7 @@ type = "block"
 message = "Organization repos use 'upstream' for main repository. Push to your fork."
 ```
 
-### Disable Rule
+### Disable a rule
 
 ```toml
 [[rules.rules]]
@@ -539,21 +523,20 @@ name = "block-org-origin"
 enabled = false  # Disable this rule
 ```
 
-## Exceptions Integration
+## Exceptions integration
 
-Rules work alongside the exception workflow system. When a rule blocks an operation,
-Claude can use an exception token to bypass it (if configured).
+Rules work with the exception workflow. When a rule blocks an operation, an exception token can bypass the block if configured.
 
-### How Rules and Exceptions Interact
+### How it works
 
-1. **Rule evaluates** - If a rule matches, it returns block/warn/allow
-2. **Block triggers exception check** - If blocked, klaudiush checks for exception token
-3. **Exception evaluated** - If token present and valid, block becomes warning
-4. **Audit logged** - Exception usage is logged for compliance
+1. Rule evaluates and returns block/warn/allow
+2. On block, klaudiush checks for an exception token
+3. If the token is present and valid, the block becomes a warning
+4. Exception usage is recorded in the audit log
 
-### Allowing Exceptions for Rule Blocks
+### Allowing exceptions for rule blocks
 
-To allow exceptions for a rule-generated block, ensure the rule includes a `reference`:
+For a rule block to support exceptions, the rule needs a `reference`:
 
 ```toml
 [[rules.rules]]
@@ -581,9 +564,9 @@ min_reason_length = 15
 description = "Exception for direct push to main"
 ```
 
-### Bypassing with Exception Token
+### Bypassing with an exception token
 
-When a rule blocks with a reference, Claude can include an exception token:
+When a rule blocks with a reference, include an exception token to bypass it:
 
 ```bash
 # In shell comment
@@ -593,18 +576,18 @@ git push origin main  # EXC:RULE001:Emergency+hotfix+approved+by+lead
 KLACK="EXC:RULE001:Hotfix+deployment" git push origin main
 ```
 
-See [EXCEPTIONS_GUIDE.md](EXCEPTIONS_GUIDE.md) for complete exception configuration.
+See [EXCEPTIONS_GUIDE.md](EXCEPTIONS_GUIDE.md) for exception configuration details.
 
 ## Troubleshooting
 
-### Rule Not Matching
+### Rule not matching
 
-1. **Check pattern type**: Ensure glob vs regex is correctly detected
-2. **Check all conditions**: All non-empty conditions must match
-3. **Check priority**: Higher priority rules evaluate first
-4. **Enable debug logging**: `klaudiush --debug`
+1. Check pattern type -- confirm glob vs regex is correctly detected
+2. Check all conditions -- all non-empty conditions must match
+3. Check priority -- higher priority rules evaluate first
+4. Enable debug logging: `klaudiush --debug`
 
-### Rule Conflicts
+### Rule conflicts
 
 If rules conflict, the first matching rule wins (by priority):
 
@@ -624,13 +607,13 @@ priority = 500
 type = "block"
 ```
 
-### Config Not Loading
+### Config not loading
 
-1. **Check file location**: `.klaudiush/config.toml` (project) or `~/.klaudiush/config.toml` (global)
-2. **Check TOML syntax**: Validate with `toml` command or online validator
-3. **Check permissions**: Ensure file is readable
+1. Check file location: `.klaudiush/config.toml` (project) or `~/.klaudiush/config.toml` (global)
+2. Check TOML syntax: validate with a `toml` linter or online validator
+3. Check permissions: the file must be readable
 
-### Pattern Debugging
+### Pattern debugging
 
 Test patterns in isolation:
 
@@ -642,20 +625,20 @@ glob.Compile("**/myorg/**", '/')
 regexp.Compile("^release/v[0-9]+$")
 ```
 
-### Common Mistakes
+### Common mistakes
 
-1. **Missing separator in glob**: Use `/` as path separator
+1. Missing separator in glob: use `/` as path separator
    - Wrong: `**\test\**`
    - Correct: `**/test/**`
 
-2. **Unescaped regex characters**: Escape special characters
+2. Unescaped regex characters: escape special characters
    - Wrong: `.*\.tf`
    - Correct: `.*\\.tf`
 
-3. **Wrong pattern type**: Check if pattern is detected as glob or regex
+3. Wrong pattern type: check if pattern is detected as glob or regex
    - `feat/*` -> glob
    - `feat/.*` -> regex (due to `.*`)
 
-4. **Missing quotes**: TOML strings need quotes
+4. Missing quotes: TOML strings need quotes
    - Wrong: `pattern = **/test/**`
    - Correct: `pattern = "**/test/**"`

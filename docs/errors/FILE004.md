@@ -1,29 +1,26 @@
-# FILE004: Actionlint Validation Failed
+# FILE004: Actionlint validation failed
 
 ## Error
 
-GitHub Actions workflow file has issues detected by actionlint or digest pinning validation.
+actionlint or digest pinning validation found problems in a GitHub Actions workflow file.
 
-## Why This Matters
+## Why this matters
 
-- Catches workflow syntax errors before pushing
-- Enforces security best practices (digest pinning)
-- Validates action inputs and outputs
-- Ensures expression syntax is correct
+Workflow files that reach GitHub with syntax errors, bad expressions, or unpinned action references will either fail at runtime or expose the repository to tag-hijacking attacks. Catching these locally saves a push-and-wait cycle and keeps the CI supply chain pinned to known-good digests.
 
-## How to Fix
+## How to fix
 
-### Actionlint Issues
+### Actionlint issues
 
-Run actionlint to see detailed errors:
+Run actionlint to see what went wrong:
 
 ```bash
 actionlint .github/workflows/your-workflow.yml
 ```
 
-### Digest Pinning Issues
+### Digest pinning issues
 
-Use SHA digest instead of tags for security:
+Pin actions by SHA digest instead of a mutable tag:
 
 ```yaml
 # Wrong (vulnerable to tag hijacking):
@@ -61,9 +58,9 @@ Disable digest pinning enforcement:
 enforce_digest_pinning = false
 ```
 
-## Getting Digests
+## Getting digests
 
-Use `gh` CLI to find action digests:
+Look up the commit SHA behind a tag with `gh`:
 
 ```bash
 gh api repos/actions/checkout/git/ref/tags/v4.1.1 --jq '.object.sha'

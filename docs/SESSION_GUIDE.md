@@ -1,8 +1,8 @@
-# Session Tracking Guide
+# Session tracking guide
 
-Session tracking enables fast-fail behavior for Claude Code sessions. When klaudiush blocks a command (exit 2), subsequent commands in the same session are immediately rejected with a reference to the original error.
+Session tracking adds fast-fail behavior to Claude Code sessions. When klaudiush blocks a command (exit 2), subsequent commands in the same session are immediately rejected with a reference to the original error.
 
-## Problem Statement
+## The problem
 
 Without session tracking:
 
@@ -13,9 +13,9 @@ Without session tracking:
 5. Command B may also fail, wasting time
 6. This repeats for all queued commands
 
-**Result**: Poor UX as each command fails one-by-one, with delays between each failure.
+Each command fails one-by-one, with delays between each failure.
 
-## Solution
+## How session tracking helps
 
 With session tracking:
 
@@ -26,13 +26,13 @@ With session tracking:
 5. klaudiush immediately fails with: "Blocked: session poisoned by GIT001 at 10:30:05"
 6. All subsequent commands in `abc-123` fail immediately
 
-**Result**: Fast-fail behavior, immediate feedback, no wasted time.
+Commands fail fast, giving immediate feedback instead of evaluating each one.
 
-## Configuration Options
+## Configuration
 
-### Default Behavior
+### Defaults
 
-Session tracking is enabled by default with these settings:
+Session tracking is enabled by default:
 
 ```toml
 [session]
@@ -41,7 +41,7 @@ state_file = "~/.klaudiush/session_state.json"
 max_session_age = "24h"
 ```
 
-### Disabling Session Tracking
+### Disabling session tracking
 
 To disable (not recommended):
 
@@ -50,9 +50,9 @@ To disable (not recommended):
 enabled = false
 ```
 
-### Custom State File
+### Custom state file
 
-Store session state in a custom location:
+To store session state elsewhere:
 
 ```toml
 [session]
@@ -61,9 +61,9 @@ state_file = "/custom/path/session_state.json"
 
 The state file path supports home directory expansion (`~`).
 
-### Session Expiration
+### Session expiration
 
-Control how long sessions are tracked before automatic cleanup:
+Set how long sessions are tracked before cleanup:
 
 ```toml
 [session]
@@ -72,13 +72,9 @@ max_session_age = "48h"  # Keep sessions for 48 hours
 
 Valid duration formats: `1h`, `30m`, `24h`, `7d`, etc.
 
-Expired sessions are automatically removed:
+Expired sessions are removed automatically when klaudiush starts, during `IsPoisoned` checks, and on `RecordCommand` calls.
 
-- On load (when klaudiush starts)
-- During `IsPoisoned` checks
-- On `RecordCommand` for expired sessions
-
-## Error Code: SESS001
+## Error code: SESS001
 
 When a session is poisoned, subsequent commands receive error `SESS001`:
 
@@ -94,13 +90,13 @@ Fix: Acknowledge violations to unpoison: KLACK="SESS:GIT001,GIT002" your_command
 Documentation: https://klaudiu.sh/SESS001
 ```
 
-The error includes machine-parseable unpoison instructions in the `unpoison` field that Claude Code can use to automatically acknowledge violations.
+The `unpoison` field contains machine-parseable instructions that Claude Code can use to automatically acknowledge violations.
 
-## Session Lifecycle
+## Session lifecycle
 
-### Clean State
+### Clean state
 
-New sessions start in a clean state:
+New sessions start clean:
 
 ```text
 Session: abc-123
@@ -116,7 +112,7 @@ Status: Clean
 Commands executed: 3
 ```
 
-### Poisoned State
+### Poisoned state
 
 When a validator returns a blocking error:
 
@@ -131,9 +127,9 @@ Commands executed: 3
 
 All subsequent commands in this session immediately fail with `SESS001`.
 
-### Unpoisoned State
+### Unpoisoned state
 
-When you acknowledge the violations, the session returns to clean state:
+Acknowledging the violations returns the session to clean state:
 
 ```text
 Session: abc-123
@@ -141,9 +137,9 @@ Status: Clean (unpoisoned)
 Commands executed: 4
 ```
 
-The session can now proceed with normal validation.
+Normal validation resumes from here.
 
-### Session Expiry
+### Session expiry
 
 After `max_session_age` (default: 24h):
 
@@ -156,46 +152,33 @@ If Claude Code resumes an expired session, it starts fresh in a clean state.
 
 ## Troubleshooting
 
-### Session Still Poisoned After Fix
+### Session still poisoned after fix
 
-**Problem**: Fixed the original error but still getting `SESS001`.
+You fixed the original error but still get `SESS001`.
 
-**Solutions**:
+Add an unpoison token to your next command:
 
-1. **Unpoison the session** (recommended): Add unpoison token to your next command:
+```bash
+KLACK="SESS:GIT001" git commit -sS -m "fix"
+```
 
-   ```bash
-   KLACK="SESS:GIT001" git commit -sS -m "fix"
-   ```
+Or start a new Claude Code session. Session state persists across klaudiush invocations but is tied to the Claude Code session ID.
 
-2. **Start new session**: Start a new Claude Code session. Session state persists across klaudiush invocations but is tied to the Claude Code session ID.
+### Session state file corrupted
 
-### Session State File Corrupted
+If the state file can't be loaded, klaudiush recovers by creating a fresh state. All sessions reset to clean. Corrupted state files are logged but don't block operation.
 
-**Problem**: Error loading session state file.
+### Old sessions not cleaning up
 
-**Solution**: klaudiush automatically recovers by creating a fresh state. All sessions reset to clean state.
-
-Corrupted state files are logged but don't block operation.
-
-### Old Sessions Not Cleaning Up
-
-**Problem**: State file growing with old session data.
-
-**Solution**: Session cleanup is automatic based on `max_session_age`. To manually verify:
+If the state file keeps growing with old session data, check that cleanup is working. Cleanup runs automatically based on `max_session_age`. To verify manually:
 
 1. Check state file: `cat ~/.klaudiush/session_state.json`
 2. Verify `max_session_age` in config
 3. Old sessions are removed on next klaudiush invocation
 
-### Session Tracking Not Working
+### Session tracking not working
 
-**Symptoms**:
-
-- Commands don't fast-fail after blocking error
-- No `SESS001` errors appearing
-
-**Diagnosis**:
+If commands don't fast-fail after a blocking error and no `SESS001` errors appear:
 
 1. Check if enabled:
 
@@ -216,56 +199,56 @@ Corrupted state files are logged but don't block operation.
    ls -l ~/.klaudiush/session_state.json
    ```
 
-**Solutions**:
+Fixes:
 
-- If `enabled = false`: Remove or set to `true`
-- If session_id missing: Update Claude Code (requires session_id support)
-- If state file missing: Normal on first run, will be created automatically
+- `enabled = false` in config: remove or set to `true`
+- `session_id` missing from hook JSON: update Claude Code (requires session_id support)
+- State file missing: normal on first run, created automatically
 
-### Graceful Fallback
+### Graceful fallback
 
-If Claude Code doesn't provide `session_id`, klaudiush gracefully degrades to original behavior (no session tracking). This ensures compatibility with older Claude Code versions.
+If Claude Code doesn't provide `session_id`, klaudiush falls back to its original behavior (no session tracking). This keeps it compatible with older Claude Code versions.
 
-## Unpoisoning a Session
+## Unpoisoning a session
 
-When a session is poisoned, you can acknowledge the violations to unpoison it and continue working. This is useful when you've understood the error and want to proceed with a fix.
+To unpoison a session, acknowledge the violations that caused it. This lets you continue working after you've understood the error.
 
-### Token Format
+### Token format
 
-Unpoison tokens use the format `SESS:<CODE1>[,<CODE2>,...]`:
+Unpoison tokens use the format `SESS:<CODE1>[,<CODE2>,...]`.
 
-**Environment Variable** (recommended):
+As an environment variable (recommended):
 
 ```bash
 KLACK="SESS:GIT001" git commit -sS -m "fix"
 ```
 
-**Shell Comment**:
+As a shell comment:
 
 ```bash
 git commit -sS -m "fix"  # SESS:GIT001
 ```
 
-### Multiple Codes
+### Multiple codes
 
-When a session is poisoned by multiple violations, you must acknowledge ALL codes:
+When a session is poisoned by multiple violations, acknowledge all codes:
 
 ```bash
 # Session poisoned by GIT001 and GIT002
 KLACK="SESS:GIT001,GIT002" git push origin feature
 ```
 
-Partial acknowledgment (only some codes) is not accepted - the session remains poisoned.
+Partial acknowledgment (only some codes) is rejected and the session stays poisoned.
 
-### How It Works
+### How unpoisoning works
 
 1. Session is poisoned with one or more error codes (e.g., `GIT001`, `GIT002`)
-2. User adds unpoison token to next command
-3. Dispatcher checks if all poison codes are acknowledged
-4. If all codes match → session unpoisoned, command proceeds to validation
-5. If partial match → session remains poisoned, error shows unacknowledged codes
+2. You add an unpoison token to the next command
+3. Dispatcher checks whether all poison codes are acknowledged
+4. All codes match -- session unpoisoned, command proceeds to validation
+5. Partial match -- session stays poisoned, error shows unacknowledged codes
 
-### Example Workflow
+### Example
 
 ```text
 # Step 1: Command blocked, session poisoned
@@ -282,9 +265,9 @@ $ KLACK="SESS:GIT001" git commit -sS -m "fix"
 # Session unpoisoned, command proceeds to validation
 ```
 
-### Error Message with Unpoison Instructions
+### Error message with unpoison instructions
 
-When a session is poisoned, the error includes machine-parseable unpoison instructions:
+Poisoned session errors include machine-parseable unpoison instructions:
 
 ```text
 Blocked: session poisoned by GIT001, GIT002 at 2025-12-04 10:30:05
@@ -298,13 +281,13 @@ Fix: Acknowledge violations to unpoison: KLACK="SESS:GIT001,GIT002" your_command
 
 Claude Code can parse the `unpoison` field to automatically add the token to the next command attempt.
 
-## Audit Logging
+## Audit logging
 
-Session audit logging provides a complete trail of poison and unpoison events for troubleshooting and compliance.
+Session audit logging records poison and unpoison events for troubleshooting.
 
 ### Configuration
 
-Session audit logging is enabled by default:
+Audit logging is enabled by default:
 
 ```toml
 [session.audit]
@@ -315,16 +298,16 @@ max_age_days = 30
 max_backups = 5
 ```
 
-### Disabling Audit Logging
+### Disabling audit logging
 
 ```toml
 [session.audit]
 enabled = false
 ```
 
-### Audit Entry Format
+### Entry format
 
-Each audit entry is a JSON object on a single line (JSONL format):
+Each entry is a single-line JSON object (JSONL):
 
 ```json
 {
@@ -350,7 +333,7 @@ Each audit entry is a JSON object on a single line (JSONL format):
 }
 ```
 
-### Audit Entry Fields
+### Entry fields
 
 | Field            | Description                                                |
 |------------------|------------------------------------------------------------|
@@ -363,19 +346,15 @@ Each audit entry is a JSON object on a single line (JSONL format):
 | `poison_message` | Original error message (poison only)                       |
 | `working_dir`    | Working directory                                          |
 
-### Log Rotation
+### Log rotation
 
-- Rotation triggers when log exceeds `max_size_mb`
-- Backup files named `session_audit.YYYYMMDD-HHMMSS.jsonl`
-- Oldest backups deleted when exceeding `max_backups`
+Rotation triggers when the log exceeds `max_size_mb`. Rotated files are named `session_audit.YYYYMMDD-HHMMSS.jsonl`. The oldest backups are deleted when the count exceeds `max_backups`.
 
-### Log Cleanup
+### Log cleanup
 
-- Entries older than `max_age_days` are removed during cleanup
-- Cleanup runs automatically on rotation
-- Manual cleanup: restart klaudiush or trigger rotation
+Entries older than `max_age_days` are removed during rotation. To trigger cleanup manually, restart klaudiush or force a rotation.
 
-### Viewing Audit Logs
+### Viewing audit logs
 
 ```bash
 # View recent entries
@@ -391,11 +370,11 @@ jq 'select(.session_id == "abc-123")' ~/.klaudiush/session_audit.jsonl
 jq -s 'group_by(.action) | map({action: .[0].action, count: length})' ~/.klaudiush/session_audit.jsonl
 ```
 
-## Implementation Details
+## Implementation details
 
-### Session Context Fields
+### Session context fields
 
-The following fields are extracted from Claude Code hook JSON:
+These fields are extracted from the Claude Code hook JSON:
 
 ```json
 {
@@ -414,17 +393,11 @@ ctx.TranscriptPath // Path to session transcript
 ctx.HasSessionID() // Check if session ID present
 ```
 
-### State Persistence
+### State persistence
 
-Session state is persisted to disk:
+Session state is persisted to `~/.klaudiush/session_state.json` (configurable) as JSON. Writes use the tmp + rename pattern for atomicity. File permissions are 0600, directory permissions 0700. Access is thread-safe via `sync.RWMutex`.
 
-- **Location**: `~/.klaudiush/session_state.json` (configurable)
-- **Format**: JSON
-- **Atomicity**: Writes use tmp + rename pattern
-- **Permissions**: File 0600, directory 0700
-- **Thread-safe**: Protected by `sync.RWMutex`
-
-State file example:
+Example state file:
 
 ```json
 {
@@ -443,9 +416,9 @@ State file example:
 }
 ```
 
-### Integration with Dispatcher
+### Dispatcher integration
 
-Session tracking integrates with the dispatcher flow:
+Session tracking fits into the dispatcher flow like this:
 
 ```text
 1. Hook JSON → Parser → Context (with session fields)
@@ -462,29 +435,17 @@ Session tracking integrates with the dispatcher flow:
 6. RecordCommand(ctx.SessionID) on success/warning
 ```
 
-## Best Practices
+## Tips
 
-### Configuration Recommendations
+For configuration: leave session tracking enabled, use the default state file path, and stick with the 24h expiry unless you have a reason to change it.
 
-- **Leave enabled**: Session tracking improves UX with no downsides
-- **Default state file**: Use default path unless specific reason to change
-- **Reasonable expiry**: 24h default balances cleanup vs false-resets
+For testing: use unique session IDs to avoid cross-contamination, reset the state file between test runs, and use `WithTimeFunc` for deterministic expiry tests.
 
-### Development
+For production: check that the state file has proper permissions (0600), search logs for `SESS001` to spot repeated failures, and include the state file in your backup strategy if session continuity matters.
 
-- **Test sessions**: Use unique session IDs in tests to avoid cross-contamination
-- **Clean state**: Reset state file between test runs if needed
-- **Mock time**: Use `WithTimeFunc` option for deterministic expiry tests
+## Related documentation
 
-### Production
-
-- **Monitor state file**: Ensure proper permissions (0600)
-- **Log analysis**: Search logs for `SESS001` to identify repeated failures
-- **State file backup**: Include in backup strategy if session continuity critical
-
-## Related Documentation
-
-- **Architecture**: See `CLAUDE.md` → Architecture → Session Tracking
-- **Configuration**: See `pkg/config/session.go` for schema
-- **Implementation**: See `internal/session/` for code details
-- **Error codes**: See `.claude/validator-error-format-policy.md` for SESS001 details
+- Architecture: `CLAUDE.md`, "Session Tracking" section
+- Configuration schema: `pkg/config/session.go`
+- Implementation: `internal/session/`
+- Error codes: `.claude/validator-error-format-policy.md` (SESS001)

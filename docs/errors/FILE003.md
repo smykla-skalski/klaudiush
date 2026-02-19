@@ -1,10 +1,10 @@
-# FILE003: TFLint Validation Failed
+# FILE003: TFLint validation failed
 
 ## Error
 
-Terraform/OpenTofu file has issues detected by tflint.
+tflint found issues in a Terraform/OpenTofu file.
 
-## Why This Matters
+## Why this matters
 
 TFLint detects:
 
@@ -13,17 +13,17 @@ TFLint detects:
 - Potential errors before `terraform plan`
 - Security and compliance issues
 
-## How to Fix
+## How to fix
 
-1. Run tflint to see detailed issues:
+1. Run tflint to see what it caught:
 
    ```bash
    tflint path/to/file.tf
    ```
 
-2. Fix each issue based on the rule name
+2. Fix each issue -- the rule name tells you what to change
 
-3. For false positives, add ignores:
+3. For false positives, suppress with an ignore comment:
 
    ```hcl
    # tflint-ignore: aws_instance_invalid_type
@@ -49,7 +49,7 @@ Disable tflint:
 use_tflint = false
 ```
 
-## TFLint Configuration
+## TFLint configuration
 
 Create `.tflint.hcl` in your project root:
 
@@ -67,5 +67,5 @@ plugin "aws" {
 
 ## Related
 
-- [FILE002](FILE002.md) - Terraform Format Validation
-- [TFLint Documentation](https://github.com/terraform-linters/tflint)
+- [FILE002](FILE002.md) - Terraform format validation
+- [TFLint documentation](https://github.com/terraform-linters/tflint)

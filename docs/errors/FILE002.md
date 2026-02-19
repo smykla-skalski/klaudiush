@@ -1,16 +1,14 @@
-# FILE002: Terraform Format Validation Failed
+# FILE002: Terraform format validation failed
 
 ## Error
 
 Terraform/OpenTofu file has formatting issues detected by `terraform fmt` or `tofu fmt`.
 
-## Why This Matters
+## Why this matters
 
-- Consistent formatting improves code readability
-- Standard format reduces diff noise in reviews
-- Many teams require formatted code in CI checks
+Unformatted Terraform files create noisy diffs and tend to fail CI checks that enforce `terraform fmt` or `tofu fmt`.
 
-## How to Fix
+## How to fix
 
 Run the formatter for your tool:
 
@@ -25,17 +23,13 @@ tofu fmt -recursive
 terraform fmt path/to/file.tf
 ```
 
-## Tool Detection
+## Tool detection
 
-klaudiush automatically detects which tool is available:
-
-1. Checks for `tofu` first (OpenTofu)
-2. Falls back to `terraform` if tofu not found
-3. Skips validation if neither is available
+klaudiush checks for `tofu` first, falls back to `terraform`, and skips this validation if neither is installed.
 
 ## Configuration
 
-Configure in `config.toml`:
+In `config.toml`:
 
 ```toml
 [validators.file.terraform]
@@ -45,7 +39,7 @@ timeout = "10s"           # Command timeout
 context_lines = 2         # Lines of context for edit validation
 ```
 
-Disable format checking:
+To disable format checking:
 
 ```toml
 [validators.file.terraform]
@@ -54,4 +48,4 @@ check_format = false
 
 ## Related
 
-- [FILE003](FILE003.md) - TFLint Validation
+- [FILE003](FILE003.md) - tflint validation

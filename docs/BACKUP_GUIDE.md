@@ -1,39 +1,37 @@
-# Backup System Guide
+# Backup system guide
 
-Automatic configuration backup with version history, delta compression, and one-command restoration.
+Automatic configuration backup with version history, delta compression, and single-command restore.
 
-## Table of Contents
+## Table of contents
 
 - [Overview](#overview)
-- [Quick Start](#quick-start)
-- [Storage Architecture](#storage-architecture)
+- [Quick start](#quick-start)
+- [Storage architecture](#storage-architecture)
 - [Configuration](#configuration)
-- [CLI Commands](#cli-commands)
-- [Backup Operations](#backup-operations)
-- [Restore Operations](#restore-operations)
-- [Retention Policies](#retention-policies)
-- [Audit Logging](#audit-logging)
-- [Doctor Integration](#doctor-integration)
+- [CLI commands](#cli-commands)
+- [Backup operations](#backup-operations)
+- [Restore operations](#restore-operations)
+- [Retention policies](#retention-policies)
+- [Audit logging](#audit-logging)
+- [Doctor integration](#doctor-integration)
 - [Examples](#examples)
 - [Troubleshooting](#troubleshooting)
 
 ## Overview
 
-The backup system protects your configuration files from accidental deletion or modification by automatically creating versioned snapshots. It uses delta compression to minimize storage usage while maintaining complete version history.
-
-### Key Features
+The backup system creates versioned snapshots of your configuration files before each write. If a config is deleted or broken, you can restore it from any previous snapshot. Delta compression keeps storage usage low.
 
 | Feature           | Description                               |
 |:------------------|:------------------------------------------|
-| Automatic Backups | Snapshot before every config write        |
-| Delta Compression | 70-85% storage savings using patches      |
+| Automatic backups | Snapshot before every config write        |
+| Delta compression | 70-85% storage savings using patches      |
 | Deduplication     | Skip backups when content unchanged       |
 | Centralized       | Single backup location for all configs    |
-| Audit Trail       | Complete history of all backup operations |
-| Doctor Checks     | Validate backup system health             |
-| One-Command       | Simple restore with safety features       |
+| Audit trail       | Log of all backup operations              |
+| Doctor checks     | Validate backup system health             |
+| One-command        | Restore with a single command             |
 
-### How It Works
+### How it works
 
 ```text
 1. klaudiush init --force (existing config)
@@ -51,9 +49,9 @@ The backup system protects your configuration files from accidental deletion or 
    └─→ Config restored
 ```
 
-## Quick Start
+## Quick start
 
-### 1. Enable Backups
+### 1. Enable backups
 
 Backups are enabled by default. Configure in `.klaudiush/config.toml`:
 
@@ -66,7 +64,7 @@ max_age = "720h"  # 30 days
 async_backup = true
 ```
 
-### 2. View Backups
+### 2. View backups
 
 ```bash
 # List all backups
@@ -79,7 +77,7 @@ klaudiush backup list --project /path/to/project
 klaudiush backup list --global
 ```
 
-### 3. Restore Config
+### 3. Restore config
 
 ```bash
 # Preview restore
@@ -92,7 +90,7 @@ klaudiush backup restore abc123def456
 klaudiush backup restore abc123def456 --force
 ```
 
-### 4. Check Health
+### 4. Check health
 
 ```bash
 # Validate backup system
@@ -102,9 +100,9 @@ klaudiush doctor --category backup
 klaudiush doctor --category backup --fix
 ```
 
-## Storage Architecture
+## Storage architecture
 
-### Directory Structure
+### Directory structure
 
 ```text
 ~/.klaudiush/.backups/
@@ -124,23 +122,20 @@ klaudiush doctor --category backup --fix
 └── .retention
 ```
 
-### Storage Types
+### Storage types
 
 | Type  | Description                         | Use Case                    |
 |:------|:------------------------------------|:----------------------------|
 | Full  | Complete configuration file         | All snapshots in Phase 1    |
 | Patch | Unified diff from previous snapshot | Future delta implementation |
 
-### Centralized Benefits
+### Why centralized storage
 
-- **Single Location**: All backups in `~/.klaudiush/.backups/`
-- **No Project Clutter**: No `.backups/` directories in projects
-- **Easy Management**: One place to backup/restore/clean
-- **Cross-Project**: Global config alongside project configs
+All backups live in `~/.klaudiush/.backups/`, so there are no `.backups/` directories scattered across projects. You manage everything -- backup, restore, cleanup -- from one location, and global config sits alongside project configs.
 
 ## Configuration
 
-### BackupConfig Schema
+### BackupConfig schema
 
 ```toml
 [backup]
@@ -170,15 +165,15 @@ full_snapshot_interval = 10
 full_snapshot_max_age = "168h"  # 7 days
 ```
 
-### Configuration Precedence
+### Configuration precedence
 
-1. CLI Flags (highest)
-2. Environment Variables (`KLAUDIUSH_BACKUP_*`)
-3. Project Config (`.klaudiush/config.toml`)
-4. Global Config (`~/.klaudiush/config.toml`)
+1. CLI flags (highest)
+2. Environment variables (`KLAUDIUSH_BACKUP_*`)
+3. Project config (`.klaudiush/config.toml`)
+4. Global config (`~/.klaudiush/config.toml`)
 5. Defaults (lowest)
 
-### Environment Variables
+### Environment variables
 
 ```bash
 # Enable/disable backups
@@ -194,11 +189,11 @@ export KLAUDIUSH_BACKUP_MAX_BACKUPS=20
 export KLAUDIUSH_BACKUP_ASYNC_BACKUP=false
 ```
 
-## CLI Commands
+## CLI commands
 
 ### backup list
 
-List all backup snapshots.
+List backup snapshots, optionally filtered by scope.
 
 ```bash
 # All backups
@@ -217,7 +212,7 @@ klaudiush backup list --all
 klaudiush backup list --format json
 ```
 
-**Output:**
+Example output:
 
 ```text
 SEQ TYPE TIMESTAMP           SIZE   TRIGGER    DESCRIPTION
@@ -230,7 +225,7 @@ Total: 153KB storage (3 snapshots)
 
 ### backup create
 
-Manually create a backup snapshot.
+Create a backup snapshot on demand.
 
 ```bash
 # Basic backup
@@ -245,7 +240,7 @@ klaudiush backup create --config /path/to/config.toml
 
 ### backup restore
 
-Restore a configuration from a snapshot.
+Restore a config from a snapshot.
 
 ```bash
 # Dry-run (preview changes)
@@ -261,16 +256,11 @@ klaudiush backup restore abc123def456 --force
 klaudiush backup restore abc123def456 --no-validate
 ```
 
-**Safety Features:**
-
-- Creates backup of current config before restore
-- Validates snapshot checksum before restore
-- Reconstructs patches if needed (future)
-- Provides dry-run preview
+Before restoring, the system backs up your current config, validates the snapshot checksum, and reconstructs patches if needed (future). Use `--dry-run` to preview changes first.
 
 ### backup delete
 
-Delete specific backup snapshots.
+Delete one or more backup snapshots.
 
 ```bash
 # Delete by ID
@@ -285,7 +275,7 @@ klaudiush backup delete abc123 --confirm
 
 ### backup prune
 
-Apply retention policies and remove old snapshots.
+Remove old snapshots according to retention policies.
 
 ```bash
 # Dry-run (show what would be deleted)
@@ -300,13 +290,13 @@ klaudiush backup prune --force
 
 ### backup status
 
-Show backup system status and statistics.
+Show backup status and storage statistics.
 
 ```bash
 klaudiush backup status
 ```
 
-**Output:**
+Example output:
 
 ```text
 Backup System Status
@@ -328,7 +318,7 @@ Total: 10 snapshots, 500KB storage
 
 ### backup audit
 
-View audit log of backup operations.
+View the audit log of backup operations.
 
 ```bash
 # All entries
@@ -350,11 +340,11 @@ klaudiush backup audit stats
 klaudiush backup audit cleanup
 ```
 
-## Backup Operations
+## Backup operations
 
-### Automatic Backups
+### Automatic backups
 
-Automatic backups occur before configuration writes:
+When `auto_backup` is enabled, a snapshot is created before each config write:
 
 ```bash
 # Init command with --force
@@ -366,9 +356,9 @@ klaudiush init --force
 # Writer automatically creates backup before write
 ```
 
-### Manual Backups
+### Manual backups
 
-Create backups on-demand:
+You can also create backups manually:
 
 ```bash
 # Before risky changes
@@ -382,7 +372,7 @@ klaudiush backup create \
 
 ### Deduplication
 
-The system automatically skips backups when content is unchanged:
+The system skips backups when content hasn't changed. It computes a SHA256 hash of the config file, checks whether that hash already exists in metadata, and returns the existing snapshot ID if so. This avoids duplicate snapshots and saves storage.
 
 ```text
 1. Read config file, compute SHA256
@@ -391,41 +381,25 @@ The system automatically skips backups when content is unchanged:
 4. If new: create new snapshot
 ```
 
-**Benefits:**
+### Async vs sync backups
 
-- No duplicate snapshots for unchanged files
-- Saves storage space
-- Faster backup operations
-
-### Async vs Sync Backups
-
-**Async (Default):**
+With `async_backup = true` (the default), backups run in a background goroutine and return immediately (~50ms overhead). This works well for interactive use.
 
 ```toml
 [backup]
 async_backup = true
 ```
 
-- Non-blocking: returns immediately
-- ~50ms overhead
-- Background goroutine handles backup
-- Ideal for interactive use
-
-**Sync:**
+With `async_backup = false`, backups block until complete (~100ms overhead). The backup is guaranteed to finish before the config write proceeds.
 
 ```toml
 [backup]
 async_backup = false
 ```
 
-- Blocking: waits for backup completion
-- ~100ms overhead
-- Guaranteed backup before write
-- Ideal for critical operations
+## Restore operations
 
-## Restore Operations
-
-### Basic Restore
+### Basic restore
 
 ```bash
 # List backups to find ID
@@ -435,7 +409,7 @@ klaudiush backup list
 klaudiush backup restore abc123def456
 ```
 
-**Process:**
+The restore process:
 
 1. Validate snapshot exists
 2. Create backup of current config
@@ -444,13 +418,13 @@ klaudiush backup restore abc123def456
 5. Write to config path
 6. Log audit entry
 
-### Dry-Run Preview
+### Dry-run preview
 
 ```bash
 klaudiush backup restore abc123def456 --dry-run
 ```
 
-**Output:**
+Example output:
 
 ```text
 Restore Preview
@@ -468,7 +442,7 @@ Changes: (use 'backup diff' to see details)
 Status: ✓ Valid snapshot, ready to restore
 ```
 
-### Backup-Before-Restore
+### Backup-before-restore
 
 By default, restores create a backup of the current config:
 
@@ -486,9 +460,9 @@ klaudiush backup restore abc123def456 --force
 # ✓ Restored from: abc123def456
 ```
 
-### Checksum Validation
+### Checksum validation
 
-Snapshots include SHA256 checksums for integrity verification:
+Each snapshot stores a SHA256 checksum. On restore, the checksum is verified:
 
 ```bash
 klaudiush backup restore abc123def456
@@ -496,7 +470,7 @@ klaudiush backup restore abc123def456
 # ✓ Restored successfully
 ```
 
-Corrupted snapshot:
+If the snapshot is corrupted:
 
 ```bash
 klaudiush backup restore abc123def456
@@ -504,11 +478,11 @@ klaudiush backup restore abc123def456
 # ✗ Restore failed: corrupted snapshot
 ```
 
-## Retention Policies
+## Retention policies
 
-### Policy Types
+### Policy types
 
-#### Count Policy
+#### Count policy
 
 Keep maximum N snapshots per config:
 
@@ -521,7 +495,7 @@ max_backups = 10
 - Per-directory limit
 - Independent for global vs project configs
 
-#### Age Policy
+#### Age policy
 
 Keep snapshots for maximum duration:
 
@@ -534,7 +508,7 @@ max_age = "720h"  # 30 days
 - Uses snapshot creation timestamp
 - Duration format: `"1h"`, `"24h"`, `"168h"` (7 days), `"720h"` (30 days)
 
-#### Size Policy
+#### Size policy
 
 Keep total storage under limit:
 
@@ -547,7 +521,7 @@ max_size = 52428800  # 50MB
 - Applies to entire backup directory
 - Size in bytes
 
-#### Composite Policy
+#### Composite policy
 
 Combine multiple policies (all must pass):
 
@@ -558,9 +532,9 @@ max_age = "720h"      # AND
 max_size = 52428800   # AND
 ```
 
-### Retention Execution
+### Retention execution
 
-#### Manual Pruning
+#### Manual pruning
 
 ```bash
 # Preview deletions
@@ -570,15 +544,15 @@ klaudiush backup prune --dry-run
 klaudiush backup prune
 ```
 
-#### Automatic Pruning
+#### Automatic pruning
 
-Retention policies applied automatically after:
+Retention is applied automatically after:
 
 - Backup creation (if auto_prune enabled)
 - Manual prune command
 - Doctor fix operations
 
-### Chain-Aware Cleanup
+### Chain-aware cleanup
 
 When deleting snapshots with patches (future):
 
@@ -595,9 +569,9 @@ Delete PATCH-002:
   → Recommend deleting or rebuilding chain
 ```
 
-## Audit Logging
+## Audit logging
 
-### Audit Log Format
+### Audit log format
 
 JSONL (JSON Lines) format in `~/.klaudiush/.backups/audit.jsonl`:
 
@@ -606,7 +580,7 @@ JSONL (JSON Lines) format in `~/.klaudiush/.backups/audit.jsonl`:
 {"timestamp":"2025-01-02T16:00:00Z","operation":"restore","config_path":"/Users/bart/.klaudiush/config.toml","snapshot_id":"abc123","user":"bart","hostname":"macbook","success":true,"error":"","extra":{}}
 ```
 
-### Audit Fields
+### Audit fields
 
 | Field       | Type   | Description                 |
 |:------------|:-------|:----------------------------|
@@ -620,7 +594,7 @@ JSONL (JSON Lines) format in `~/.klaudiush/.backups/audit.jsonl`:
 | error       | string | Error message (if failed)   |
 | extra       | object | Operation-specific metadata |
 
-### Audit Commands
+### Audit commands
 
 ```bash
 # All entries
@@ -639,9 +613,9 @@ klaudiush backup audit stats
 klaudiush backup audit cleanup
 ```
 
-## Doctor Integration
+## Doctor integration
 
-### Backup Health Checks
+### Backup health checks
 
 ```bash
 # Run all backup checks
@@ -654,9 +628,9 @@ klaudiush doctor --category backup --verbose
 klaudiush doctor --category backup --fix
 ```
 
-### Doctor Checkers
+### Doctor checkers
 
-#### Directory Checker
+#### Directory checker
 
 Validates backup directory structure:
 
@@ -667,12 +641,9 @@ Validates backup directory structure:
 ✓ Projects directory exists
 ```
 
-**Auto-Fix:**
+With `--fix`: creates missing directories and corrects permissions to 0700.
 
-- Creates missing directories
-- Fixes incorrect permissions (0700)
-
-#### Metadata Checker
+#### Metadata checker
 
 Validates metadata index integrity:
 
@@ -683,13 +654,9 @@ Validates metadata index integrity:
 ✓ No orphaned snapshot files
 ```
 
-**Auto-Fix:**
+With `--fix`: rebuilds metadata from snapshot files, removes orphaned entries, and repairs corrupted JSON.
 
-- Rebuilds metadata from snapshot files
-- Removes orphaned entries
-- Fixes corrupted JSON
-
-#### Integrity Checker
+#### Integrity checker
 
 Validates snapshot integrity:
 
@@ -700,19 +667,15 @@ Validates snapshot integrity:
 ✓ No corrupted data
 ```
 
-**Auto-Fix:**
+With `--fix`: removes snapshots with invalid checksums, corrects file permissions, and rebuilds metadata.
 
-- Removes snapshots with invalid checksums
-- Fixes file permissions
-- Rebuilds metadata
-
-### Doctor Output
+### Doctor output
 
 ```bash
 klaudiush doctor --category backup
 ```
 
-**Output:**
+Example output:
 
 ```text
 Category: backup
@@ -738,7 +701,7 @@ Summary: All checks passed (3/3)
 
 ## Examples
 
-### Example 1: Basic Workflow
+### Example 1: basic workflow
 
 ```bash
 # Check current backups
@@ -756,7 +719,7 @@ klaudiush backup audit
 klaudiush backup list
 ```
 
-### Example 2: Pre-Emptive Backup
+### Example 2: pre-emptive backup
 
 ```bash
 # Before risky operation
@@ -771,7 +734,7 @@ klaudiush backup list
 klaudiush backup restore abc123def456
 ```
 
-### Example 3: Config Accidentally Deleted
+### Example 3: config accidentally deleted
 
 ```bash
 # Config deleted
@@ -792,7 +755,7 @@ klaudiush doctor
 # ✓ All checks passed
 ```
 
-### Example 4: Compare Versions
+### Example 4: compare versions
 
 ```bash
 # List backups
@@ -808,7 +771,7 @@ klaudiush backup restore abc123 --dry-run
 klaudiush backup restore abc123
 ```
 
-### Example 5: Project-Specific Backups
+### Example 5: project-specific backups
 
 ```bash
 # List project backups
@@ -822,7 +785,7 @@ klaudiush backup create --tag "stable-config"
 klaudiush backup restore def456ghi789
 ```
 
-### Example 6: Retention Management
+### Example 6: retention management
 
 ```bash
 # Check current storage
@@ -842,11 +805,11 @@ klaudiush backup prune
 
 ## Troubleshooting
 
-### Issue: Backups Not Created
+### Issue: backups not created
 
-**Symptoms:** No backups appearing in `backup list`
+Symptoms: No backups appearing in `backup list`
 
-**Solutions:**
+Solutions:
 
 1. Check backup enabled:
 
@@ -874,11 +837,11 @@ klaudiush backup prune
    klaudiush doctor --category backup --fix
    ```
 
-### Issue: Restore Fails with Checksum Error
+### Issue: restore fails with checksum error
 
-**Symptoms:** `Checksum mismatch: expected ..., got ...`
+Symptoms: `Checksum mismatch: expected ..., got ...`
 
-**Solutions:**
+Solutions:
 
 1. Validate snapshot:
 
@@ -903,11 +866,11 @@ klaudiush backup prune
    fsck /dev/sda1
    ```
 
-### Issue: Backup Directory Permission Denied
+### Issue: backup directory permission denied
 
-**Symptoms:** `Permission denied: ~/.klaudiush/.backups/`
+Symptoms: `Permission denied: ~/.klaudiush/.backups/`
 
-**Solutions:**
+Solutions:
 
 1. Fix permissions:
 
@@ -922,11 +885,11 @@ klaudiush backup prune
    klaudiush doctor --category backup --fix
    ```
 
-### Issue: Storage Growing Too Large
+### Issue: storage growing too large
 
-**Symptoms:** `Backup storage > 50MB`
+Symptoms: `Backup storage > 50MB`
 
-**Solutions:**
+Solutions:
 
 1. Check current usage:
 
@@ -957,11 +920,11 @@ klaudiush backup prune
    klaudiush backup delete <old-snapshot-ids>
    ```
 
-### Issue: Async Backups Not Completing
+### Issue: async backups not completing
 
-**Symptoms:** Backups created but empty or incomplete
+Symptoms: Backups created but empty or incomplete
 
-**Solutions:**
+Solutions:
 
 1. Switch to sync backups:
 
@@ -982,11 +945,11 @@ klaudiush backup prune
    df -h ~/.klaudiush/
    ```
 
-### Issue: Metadata Corrupted
+### Issue: metadata corrupted
 
-**Symptoms:** `Invalid metadata format`, `Failed to parse metadata.json`
+Symptoms: `Invalid metadata format`, `Failed to parse metadata.json`
 
-**Solutions:**
+Solutions:
 
 1. Run doctor to rebuild:
 
@@ -1013,11 +976,11 @@ klaudiush backup prune
    klaudiush doctor --category backup --fix
    ```
 
-### Issue: Cannot Find Snapshot After Creation
+### Issue: cannot find snapshot after creation
 
-**Symptoms:** `backup create` succeeds but snapshot not in `backup list`
+Symptoms: `backup create` succeeds but snapshot not in `backup list`
 
-**Solutions:**
+Solutions:
 
 1. Check deduplication:
 
@@ -1038,9 +1001,9 @@ klaudiush backup prune
    tail -n 100 ~/.claude/hooks/dispatcher.log | grep -i backup
    ```
 
-### Debug Mode
+### Debug mode
 
-Enable detailed logging for troubleshooting:
+For more detail, set the log level to debug:
 
 ```bash
 # Enable debug logs
@@ -1053,7 +1016,7 @@ klaudiush backup create
 tail -f ~/.claude/hooks/dispatcher.log
 ```
 
-Enable trace logs for maximum verbosity:
+Or use trace for the most verbose output:
 
 ```bash
 export KLAUDIUSH_LOG_LEVEL=trace
