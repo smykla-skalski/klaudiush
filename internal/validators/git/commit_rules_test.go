@@ -307,3 +307,96 @@ var _ = Describe("CustomPatternRule", func() {
 		Expect(rule.Validate(commit, commit.Title)).To(BeNil())
 	})
 })
+
+var _ = Describe("ListFormattingRule", func() {
+	var rule *git.ListFormattingRule
+
+	BeforeEach(func() {
+		rule = git.NewListFormattingRule()
+	})
+
+	Context("should detect actual list items without preceding blank line", func() {
+		It("detects unordered list directly after title", func() {
+			msg := "feat(api): add endpoint\n- first item\n- second item"
+			commit := &git.ParsedCommit{Title: "feat(api): add endpoint", Valid: true}
+			result := rule.Validate(commit, msg)
+			Expect(result).NotTo(BeNil())
+			Expect(result.Errors).NotTo(BeEmpty())
+		})
+
+		It("detects ordered list directly after title", func() {
+			msg := "feat(api): add endpoint\n1. first item\n2. second item"
+			commit := &git.ParsedCommit{Title: "feat(api): add endpoint", Valid: true}
+			result := rule.Validate(commit, msg)
+			Expect(result).NotTo(BeNil())
+			Expect(result.Errors).NotTo(BeEmpty())
+		})
+
+		It("detects list after prose without blank line", func() {
+			msg := "feat(api): add endpoint\n\nSome description here.\n- first item"
+			commit := &git.ParsedCommit{Title: "feat(api): add endpoint", Valid: true}
+			result := rule.Validate(commit, msg)
+			Expect(result).NotTo(BeNil())
+		})
+	})
+
+	Context("should pass for properly formatted lists", func() {
+		It("passes with blank line before list", func() {
+			msg := "feat(api): add endpoint\n\nChanges:\n\n- first item\n- second item"
+			commit := &git.ParsedCommit{Title: "feat(api): add endpoint", Valid: true}
+			result := rule.Validate(commit, msg)
+			Expect(result).To(BeNil())
+		})
+	})
+
+	Context("should NOT false-positive on prose containing number-dot patterns", func() {
+		It("passes when prose has mid-line number-dot like 0. Only", func() {
+			msg := "feat(output): use JSON stdout\n\n" +
+				"Always exits 0. Only exit 3 remains non-zero."
+			commit := &git.ParsedCommit{Title: "feat(output): use JSON stdout", Valid: true}
+			result := rule.Validate(commit, msg)
+			Expect(result).To(BeNil())
+		})
+
+		It("passes when prose has version numbers like 1.2.3", func() {
+			msg := "fix(deps): update dependency\n\n" +
+				"Updates from version 1.2.3 to version 2.0.0 which\n" +
+				"fixes the compatibility with Go 1.25.4 runtime."
+			commit := &git.ParsedCommit{Title: "fix(deps): update dependency", Valid: true}
+			result := rule.Validate(commit, msg)
+			Expect(result).To(BeNil())
+		})
+
+		It("passes for the actual commit message that triggered GIT016", func() {
+			msg := "feat(output): use JSON stdout instead of exit 2\n\n" +
+				"Claude Code conflates exit-code-2 hook blocks with user\n" +
+				"permission denials, causing stop-and-wait behavior instead\n" +
+				"of self-correction. Using systemMessage alone means Claude\n" +
+				"only sees a generic \"Hook denied this tool\" and never gets\n" +
+				"the actual error or fix hint.\n\n" +
+				"Switches to structured JSON on stdout with permissionDecision,\n" +
+				"permissionDecisionReason, additionalContext, and systemMessage\n" +
+				"fields. Always exits 0. Only exit 3 (crash) remains non-zero.\n\n" +
+				"Adds new hookresponse package that builds the JSON response.\n" +
+				"Bypassed exceptions now use permissionDecision \"allow\" with\n" +
+				"additionalContext instead of the old block then convert flow.\n" +
+				"Removes FormatErrors and related formatting functions from\n" +
+				"the dispatcher package, replaced by hookresponse formatters."
+			commit := &git.ParsedCommit{
+				Title: "feat(output): use JSON stdout instead of exit 2",
+				Valid: true,
+			}
+			result := rule.Validate(commit, msg)
+			Expect(result).To(BeNil())
+		})
+
+		It("passes with Signed-off-by trailer", func() {
+			msg := "feat(output): use JSON stdout\n\n" +
+				"Some description.\n\n" +
+				"Signed-off-by: Test User <test@example.com>"
+			commit := &git.ParsedCommit{Title: "feat(output): use JSON stdout", Valid: true}
+			result := rule.Validate(commit, msg)
+			Expect(result).To(BeNil())
+		})
+	})
+})

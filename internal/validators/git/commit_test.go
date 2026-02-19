@@ -567,6 +567,57 @@ Changes:
 					result.Details["errors"],
 				).To(ContainSubstring("Missing empty line before first list item"))
 			})
+
+			It("should not false-positive on prose with mid-line numbers", func() {
+				message := "feat(output): use JSON stdout\n\n" +
+					"Always exits 0. Only exit 3 remains non-zero.\n" +
+					"Uses permissionDecision and systemMessage fields."
+
+				ctx := &hook.Context{
+					EventType: hook.EventTypePreToolUse,
+					ToolName:  hook.ToolTypeBash,
+					ToolInput: hook.ToolInput{
+						Command: `git commit -sS -a -m "` + message + `"`,
+					},
+				}
+
+				result := validator.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("should not false-positive on Signed-off-by trailer", func() {
+				message := "feat(output): use JSON stdout\n\n" +
+					"Switches to structured JSON on stdout.\n\n" +
+					"Signed-off-by: Test User <test@example.com>"
+
+				ctx := &hook.Context{
+					EventType: hook.EventTypePreToolUse,
+					ToolName:  hook.ToolTypeBash,
+					ToolInput: hook.ToolInput{
+						Command: `git commit -sS -a -m "` + message + `"`,
+					},
+				}
+
+				result := validator.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("should not false-positive on prose with version numbers", func() {
+				message := "fix(deps): update dependency\n\n" +
+					"Updates from version 1.2.3 to version 2.0.0 which\n" +
+					"fixes the compatibility issue with Go 1.25.4 runtime."
+
+				ctx := &hook.Context{
+					EventType: hook.EventTypePreToolUse,
+					ToolName:  hook.ToolTypeBash,
+					ToolInput: hook.ToolInput{
+						Command: `git commit -sS -a -m "` + message + `"`,
+					},
+				}
+
+				result := validator.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
 		})
 
 		Context("when message has trailer-like patterns with commas", func() {
