@@ -109,8 +109,6 @@ func (p *RegexPattern) String() string {
 // CompilePattern compiles a pattern string, auto-detecting the pattern type.
 // Supports negation via ! prefix (e.g., "!*.tmp" matches anything except *.tmp).
 // Returns the compiled Pattern or an error if compilation fails.
-//
-//nolint:ireturn // interface for polymorphism
 func CompilePattern(pattern string) (Pattern, error) {
 	// Handle negated patterns.
 	negated := IsNegated(pattern)
@@ -160,8 +158,6 @@ func NewPatternCache() *PatternCache {
 
 // Get returns a compiled pattern, compiling and caching it if necessary.
 // Returns the cached error if the pattern previously failed to compile.
-//
-//nolint:ireturn // interface for polymorphism
 func (c *PatternCache) Get(patternStr string) (Pattern, error) {
 	// Fast path: check if already cached.
 	c.mu.RLock()
@@ -360,8 +356,6 @@ func (p *MultiPattern) String() string {
 }
 
 // CompileMultiPattern compiles multiple pattern strings into a single MultiPattern.
-//
-//nolint:ireturn // interface for polymorphism
 func CompileMultiPattern(
 	patterns []string,
 	mode MultiPatternMode,
@@ -400,8 +394,6 @@ func CompileMultiPattern(
 
 // CompilePatternWithOptions compiles a pattern with additional options.
 // Supports negation via ! prefix and case-insensitive matching via options.
-//
-//nolint:ireturn // interface for polymorphism
 func CompilePatternWithOptions(pattern string, opts PatternOptions) (Pattern, error) {
 	// Handle negated patterns (both from prefix and options).
 	negated := opts.Negate || IsNegated(pattern)
@@ -449,8 +441,6 @@ func CompilePatternWithOptions(pattern string, opts PatternOptions) (Pattern, er
 var defaultCache = NewPatternCache()
 
 // GetCachedPattern returns a compiled pattern from the default cache.
-//
-//nolint:ireturn // interface for polymorphism
 func GetCachedPattern(pattern string) (Pattern, error) {
 	return defaultCache.Get(pattern)
 }

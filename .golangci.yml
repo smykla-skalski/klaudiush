@@ -217,6 +217,7 @@ linters:
         - empty
         - stdlib
         - "github.com/go-viper/mapstructure"  # DecodeHookFunc is type alias for any; ireturn classifies named external aliases as NamedInterface, not EmptyInterface
+        - "github.com/smykla-skalski/klaudiush/internal/rules.Pattern"  # polymorphic pattern (glob/regex) returned by CompilePattern
 
     nolintlint:
       allow-unused: false
