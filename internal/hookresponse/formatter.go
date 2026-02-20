@@ -80,6 +80,7 @@ const maxTableSuggestionLines = 15
 // formatAdditionalContext builds behavioral framing for Claude.
 func formatAdditionalContext(
 	blocking, warnings, bypassed []*dispatcher.ValidationError,
+	patternWarnings []string,
 ) string {
 	var parts []string
 
@@ -92,7 +93,9 @@ func formatAdditionalContext(
 		} else {
 			parts = append(parts,
 				"Automated klaudiush validation check. "+
-					"Fix the reported errors and retry the same command.")
+					"Fix ALL reported errors at once and retry. "+
+					"Fixing one issue can introduce another "+
+					"(e.g., adding type(scope): prefix makes title exceed 50 chars).")
 		}
 	}
 
@@ -127,6 +130,8 @@ func formatAdditionalContext(
 			break // Only include first suggestion
 		}
 	}
+
+	parts = append(parts, patternWarnings...)
 
 	return strings.Join(parts, " ")
 }

@@ -90,7 +90,6 @@ linters:
     - containedctx   # Detects struct contained context.Context field
     - errchkjson     # Checks types passed to the json encoding functions
     - gocheckcompilerdirectives # Checks that go compiler directive comments are valid
-    - ireturn        # Accept Interfaces, Return Concrete Types
     - wsl_v5         # Whitespace Linter - Add or remove empty lines
 
   exclusions:
@@ -209,21 +208,6 @@ linters:
 
     nestif:
       min-complexity: 5
-
-    ireturn:
-      allow:
-        - anon
-        - error
-        - empty
-        - stdlib
-        - "github.com/go-viper/mapstructure"  # DecodeHookFunc is type alias for any; ireturn classifies named external aliases as NamedInterface, not EmptyInterface
-        - "github.com/smykla-skalski/klaudiush/internal/rules.Pattern"  # polymorphic pattern (glob/regex) returned by CompilePattern
-        - "github.com/smykla-skalski/klaudiush/internal/rules.Matcher"  # polymorphic matcher returned by factory wrappers
-        - "github.com/smykla-skalski/klaudiush/internal/backup.Storage"  # storage provider returns interface for polymorphism
-        - "github.com/smykla-skalski/klaudiush/internal/plugin.Plugin"  # plugin loader returns interface by design
-        - "github.com/smykla-skalski/klaudiush/internal/tui.UI"  # TUI factory returns interface for fallback handling
-        - "github.com/smykla-skalski/klaudiush/internal/doctor.Fixer"  # registry returns interface for polymorphic fixers
-        - "github.com/smykla-skalski/klaudiush/internal/validators/git.GitRunner"  # polymorphic git runner for SDK/CLI fallback
 
     nolintlint:
       allow-unused: false

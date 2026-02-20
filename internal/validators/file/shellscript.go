@@ -298,7 +298,7 @@ func (*ShellScriptValidator) formatShellCheckOutput(output string) string {
 	return "Shellcheck validation failed\n\n" + strings.Join(
 		cleanLines,
 		"\n",
-	) + "\n\nFix these issues before committing."
+	)
 }
 
 // buildShellCheckOptions creates ShellCheckOptions with excludes from config and fragment-specific rules.

@@ -19,6 +19,7 @@ import (
 	"github.com/smykla-skalski/klaudiush/internal/dispatcher"
 	"github.com/smykla-skalski/klaudiush/internal/hookresponse"
 	"github.com/smykla-skalski/klaudiush/internal/parser"
+	"github.com/smykla-skalski/klaudiush/internal/patterns"
 	"github.com/smykla-skalski/klaudiush/internal/session"
 	"github.com/smykla-skalski/klaudiush/pkg/config"
 	"github.com/smykla-skalski/klaudiush/pkg/hook"
@@ -221,8 +222,11 @@ func run(_ *cobra.Command, _ []string) error {
 		}
 	}
 
+	// Run failure pattern tracking
+	patternWarnings := runPatternTracking(cfg, ctx, errs, workDir, log)
+
 	// Build JSON hook response and write to stdout
-	response := hookresponse.Build(hookType, errs)
+	response := hookresponse.BuildWithPatterns(hookType, errs, patternWarnings)
 	if response != nil {
 		data, jsonErr := json.Marshal(response)
 		if jsonErr != nil {
@@ -364,6 +368,94 @@ func initSessionTracker(cfg *config.Config, log logger.Logger) *session.Tracker 
 	)
 
 	return tracker
+}
+
+// runPatternTracking runs the failure pattern advisor and recorder.
+// Returns pattern warnings for blocking errors, or nil if disabled.
+func runPatternTracking(
+	cfg *config.Config,
+	hookCtx *hook.Context,
+	errs []*dispatcher.ValidationError,
+	workDir string,
+	log logger.Logger,
+) []string {
+	patternsCfg := cfg.GetPatterns()
+	if !patternsCfg.IsEnabled() {
+		return nil
+	}
+
+	store, err := initPatternStore(patternsCfg, workDir, log)
+	if err != nil {
+		return nil
+	}
+
+	blockingCodes := extractBlockingCodes(errs)
+
+	// Advisor: generate warnings from known patterns
+	advisor := patterns.NewAdvisor(store, patternsCfg)
+	warnings := advisor.Advise(blockingCodes)
+
+	// Recorder: observe this error sequence for future learning
+	if hookCtx.SessionID != "" {
+		recorder := patterns.NewRecorder(store)
+		recorder.Observe(hookCtx.SessionID, blockingCodes)
+
+		if saveErr := store.Save(); saveErr != nil {
+			log.Debug("failed to save pattern store", "error", saveErr)
+		}
+	}
+
+	return warnings
+}
+
+// initPatternStore creates and loads a pattern store for the given project.
+func initPatternStore(
+	cfg *config.PatternsConfig,
+	workDir string,
+	log logger.Logger,
+) (*patterns.FilePatternStore, error) {
+	projectDir := workDir
+	if projectDir == "" {
+		var err error
+
+		projectDir, err = os.Getwd()
+		if err != nil {
+			log.Debug("failed to get working directory for patterns", "error", err)
+
+			return nil, errors.Wrap(err, "getting working directory")
+		}
+	}
+
+	store := patterns.NewFilePatternStore(cfg, projectDir)
+	if err := store.Load(); err != nil {
+		log.Debug("failed to load pattern store", "error", err)
+	}
+
+	if cfg.IsUseSeedData() {
+		if err := patterns.EnsureSeedData(store); err != nil {
+			log.Debug("failed to ensure seed data", "error", err)
+		}
+	}
+
+	return store, nil
+}
+
+// extractBlockingCodes returns the error codes from blocking validation errors.
+func extractBlockingCodes(errs []*dispatcher.ValidationError) []string {
+	var codes []string
+
+	for _, e := range errs {
+		if !e.ShouldBlock {
+			continue
+		}
+
+		code := e.Reference.Code()
+		if code != "" {
+			codes = append(codes, code)
+		}
+	}
+
+	return codes
 }
 
 // buildFlagsMap converts CLI flags to a map for the config provider.

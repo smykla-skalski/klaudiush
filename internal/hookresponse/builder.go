@@ -7,6 +7,16 @@ import (
 // Build constructs a HookResponse from validation errors.
 // Returns nil when there are no errors (clean pass, no output needed).
 func Build(eventName string, errs []*dispatcher.ValidationError) *HookResponse {
+	return BuildWithPatterns(eventName, errs, nil)
+}
+
+// BuildWithPatterns constructs a HookResponse with optional pattern warnings.
+// Pattern warnings are appended to the additionalContext for blocking errors.
+func BuildWithPatterns(
+	eventName string,
+	errs []*dispatcher.ValidationError,
+	patternWarnings []string,
+) *HookResponse {
 	if len(errs) == 0 {
 		return nil
 	}
@@ -23,19 +33,24 @@ func Build(eventName string, errs []*dispatcher.ValidationError) *HookResponse {
 			HookEventName:            eventName,
 			PermissionDecision:       "deny",
 			PermissionDecisionReason: formatDecisionReason(blocking),
-			AdditionalContext:        formatAdditionalContext(blocking, warnings, bypassed),
+			AdditionalContext: formatAdditionalContext(
+				blocking,
+				warnings,
+				bypassed,
+				patternWarnings,
+			),
 		}
 	case len(bypassed) > 0:
 		resp.HookSpecificOutput = &HookSpecificOutput{
 			HookEventName:      eventName,
 			PermissionDecision: "allow",
-			AdditionalContext:  formatAdditionalContext(nil, warnings, bypassed),
+			AdditionalContext:  formatAdditionalContext(nil, warnings, bypassed, nil),
 		}
 	case len(warnings) > 0:
 		resp.HookSpecificOutput = &HookSpecificOutput{
 			HookEventName:      eventName,
 			PermissionDecision: "allow",
-			AdditionalContext:  formatAdditionalContext(nil, warnings, nil),
+			AdditionalContext:  formatAdditionalContext(nil, warnings, nil, nil),
 		}
 	}
 

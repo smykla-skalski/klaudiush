@@ -26,6 +26,9 @@ type Config struct {
 
 	// CrashDump contains configuration for the crash dump system.
 	CrashDump *CrashDumpConfig `json:"crash_dump,omitempty" koanf:"crash_dump" toml:"crash_dump"`
+
+	// Patterns contains configuration for failure pattern tracking.
+	Patterns *PatternsConfig `json:"patterns,omitempty" koanf:"patterns" toml:"patterns"`
 }
 
 // ValidatorsConfig groups all validator configurations by category.
@@ -201,4 +204,13 @@ func (c *Config) GetCrashDump() *CrashDumpConfig {
 	}
 
 	return c.CrashDump
+}
+
+// GetPatterns returns the patterns config, creating it if it doesn't exist.
+func (c *Config) GetPatterns() *PatternsConfig {
+	if c.Patterns == nil {
+		c.Patterns = &PatternsConfig{}
+	}
+
+	return c.Patterns
 }

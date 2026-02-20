@@ -11,8 +11,6 @@ func NewRepositoryAdapter(repo Repository) *RepositoryAdapter {
 }
 
 // NewSDKRunner creates a Runner backed by the go-git SDK
-//
-//nolint:ireturn,nolintlint // Factory function intentionally returns interface
 func NewSDKRunner() (Runner, error) {
 	repo, err := DiscoverRepository()
 	if err != nil {
@@ -25,8 +23,6 @@ func NewSDKRunner() (Runner, error) {
 // NewSDKRunnerForPath creates a Runner for a specific directory path.
 // Use this when operating on a repository in a specific directory,
 // e.g., when processing git commands with -C flag.
-//
-//nolint:ireturn,nolintlint // Factory function intentionally returns interface
 func NewSDKRunnerForPath(path string) (Runner, error) {
 	repo, err := OpenRepository(path)
 	if err != nil {
