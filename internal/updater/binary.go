@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/cockroachdb/errors"
 )
@@ -61,7 +62,14 @@ func ExtractBinaryFromTarGz(archivePath, binaryName string) (string, func(), err
 			continue
 		}
 
-		path, writeErr := extractToFile(filepath.Join(tmpDir, binaryName), tr)
+		dest, pathErr := safePath(tmpDir, binaryName)
+		if pathErr != nil {
+			cleanup()
+
+			return "", nil, pathErr
+		}
+
+		path, writeErr := extractToFile(dest, tr)
 		if writeErr != nil {
 			cleanup()
 
@@ -103,6 +111,13 @@ func ExtractBinaryFromZip(archivePath, binaryName string) (string, func(), error
 			continue
 		}
 
+		dest, pathErr := safePath(tmpDir, base)
+		if pathErr != nil {
+			cleanup()
+
+			return "", nil, pathErr
+		}
+
 		rc, openErr := f.Open()
 		if openErr != nil {
 			cleanup()
@@ -110,7 +125,7 @@ func ExtractBinaryFromZip(archivePath, binaryName string) (string, func(), error
 			return "", nil, errors.Wrap(openErr, "opening zip entry")
 		}
 
-		path, writeErr := extractToFile(filepath.Join(tmpDir, base), rc)
+		path, writeErr := extractToFile(dest, rc)
 
 		_ = rc.Close()
 
@@ -126,6 +141,22 @@ func ExtractBinaryFromZip(archivePath, binaryName string) (string, func(), error
 	cleanup()
 
 	return "", nil, errors.Errorf("binary %q not found in zip archive", binaryName)
+}
+
+// safePath validates that name resolves to a path within baseDir, preventing
+// path traversal (Zip Slip) attacks from crafted archive entries.
+func safePath(baseDir, name string) (string, error) {
+	dest := filepath.Join(baseDir, name)
+
+	// Clean both paths and verify the destination is within baseDir.
+	cleanBase := filepath.Clean(baseDir) + string(os.PathSeparator)
+	cleanDest := filepath.Clean(dest)
+
+	if !strings.HasPrefix(cleanDest, cleanBase) {
+		return "", errors.Errorf("path traversal attempt: %q escapes %q", name, baseDir)
+	}
+
+	return cleanDest, nil
 }
 
 // extractToFile writes data from reader to destPath with executable permissions.

@@ -1,93 +1,74 @@
-package updater
+package updater_test
 
 import (
 	"runtime"
-	"strings"
-	"testing"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+
+	"github.com/smykla-skalski/klaudiush/internal/updater"
 )
 
-func TestDetectPlatform(t *testing.T) {
-	p := DetectPlatform()
+var _ = Describe("DetectPlatform", func() {
+	It("returns current OS and architecture", func() {
+		p := updater.DetectPlatform()
+		Expect(p.OS).To(Equal(runtime.GOOS))
+		Expect(p.Arch).To(Equal(runtime.GOARCH))
+	})
+})
 
-	if p.OS != runtime.GOOS {
-		t.Errorf("OS = %q, want %q", p.OS, runtime.GOOS)
-	}
+var _ = Describe("Platform", func() {
+	Describe("ArchiveName", func() {
+		DescribeTable("returns correct archive name",
+			func(os, arch, version, expected string) {
+				p := updater.Platform{OS: os, Arch: arch}
+				Expect(p.ArchiveName(version)).To(Equal(expected))
+			},
+			Entry("darwin arm64",
+				"darwin", "arm64", "1.13.0",
+				"klaudiush_1.13.0_darwin_arm64.tar.gz",
+			),
+			Entry("linux amd64",
+				"linux", "amd64", "1.13.0",
+				"klaudiush_1.13.0_linux_amd64.tar.gz",
+			),
+			Entry("windows amd64",
+				"windows", "amd64", "1.13.0",
+				"klaudiush_1.13.0_windows_amd64.zip",
+			),
+			Entry("windows arm64",
+				"windows", "arm64", "2.0.0",
+				"klaudiush_2.0.0_windows_arm64.zip",
+			),
+		)
+	})
 
-	if p.Arch != runtime.GOARCH {
-		t.Errorf("Arch = %q, want %q", p.Arch, runtime.GOARCH)
-	}
-}
-
-func TestPlatformArchiveName(t *testing.T) {
-	tests := []struct {
-		name     string
-		platform Platform
-		version  string
-		want     string
-	}{
-		{
-			name:     "darwin arm64",
-			platform: Platform{OS: "darwin", Arch: "arm64"},
-			version:  "1.13.0",
-			want:     "klaudiush_1.13.0_darwin_arm64.tar.gz",
-		},
-		{
-			name:     "linux amd64",
-			platform: Platform{OS: "linux", Arch: "amd64"},
-			version:  "1.13.0",
-			want:     "klaudiush_1.13.0_linux_amd64.tar.gz",
-		},
-		{
-			name:     "windows amd64",
-			platform: Platform{OS: "windows", Arch: "amd64"},
-			version:  "1.13.0",
-			want:     "klaudiush_1.13.0_windows_amd64.zip",
-		},
-		{
-			name:     "windows arm64",
-			platform: Platform{OS: "windows", Arch: "arm64"},
-			version:  "2.0.0",
-			want:     "klaudiush_2.0.0_windows_arm64.zip",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := tt.platform.ArchiveName(tt.version)
-			if got != tt.want {
-				t.Errorf("ArchiveName() = %q, want %q", got, tt.want)
-			}
+	Describe("IsWindows", func() {
+		It("returns true for windows", func() {
+			p := updater.Platform{OS: "windows", Arch: "amd64"}
+			Expect(p.IsWindows()).To(BeTrue())
 		})
-	}
-}
 
-func TestPlatformIsWindows(t *testing.T) {
-	if !(Platform{OS: "windows", Arch: "amd64"}).IsWindows() {
-		t.Error("expected IsWindows() = true for windows platform")
-	}
+		It("returns false for darwin", func() {
+			p := updater.Platform{OS: "darwin", Arch: "arm64"}
+			Expect(p.IsWindows()).To(BeFalse())
+		})
+	})
+})
 
-	if (Platform{OS: "darwin", Arch: "arm64"}).IsWindows() {
-		t.Error("expected IsWindows() = false for darwin platform")
-	}
-}
+var _ = Describe("DownloadURL", func() {
+	It("returns correct URL", func() {
+		url := updater.DownloadURL("v1.13.0", "klaudiush_1.13.0_darwin_arm64.tar.gz")
+		Expect(url).To(Equal(
+			"https://github.com/smykla-skalski/klaudiush/releases/download/v1.13.0/klaudiush_1.13.0_darwin_arm64.tar.gz",
+		))
+	})
+})
 
-func TestDownloadURL(t *testing.T) {
-	url := DownloadURL("v1.13.0", "klaudiush_1.13.0_darwin_arm64.tar.gz")
-	want := "https://github.com/smykla-skalski/klaudiush/releases/download/v1.13.0/klaudiush_1.13.0_darwin_arm64.tar.gz"
-
-	if url != want {
-		t.Errorf("DownloadURL() = %q, want %q", url, want)
-	}
-}
-
-func TestReleaseURL(t *testing.T) {
-	url := ReleaseURL("v1.13.0")
-
-	if !strings.Contains(url, "v1.13.0") {
-		t.Errorf("ReleaseURL() = %q, expected to contain v1.13.0", url)
-	}
-
-	if !strings.HasPrefix(url, "https://github.com/") {
-		t.Errorf("ReleaseURL() = %q, expected to start with https://github.com/", url)
-	}
-}
+var _ = Describe("ReleaseURL", func() {
+	It("returns URL containing the tag", func() {
+		url := updater.ReleaseURL("v1.13.0")
+		Expect(url).To(ContainSubstring("v1.13.0"))
+		Expect(url).To(HavePrefix("https://github.com/"))
+	})
+})

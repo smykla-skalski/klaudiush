@@ -1,133 +1,93 @@
-package updater
+package updater_test
 
 import (
 	"crypto/sha256"
 	"encoding/hex"
 	"os"
 	"strings"
-	"testing"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+
+	"github.com/smykla-skalski/klaudiush/internal/updater"
 )
 
-func TestParseChecksums(t *testing.T) {
-	tests := []struct {
-		name    string
-		content string
-		want    map[string]string
-	}{
-		{
-			name: "standard checksums.txt",
-			content: `abc123def456  klaudiush_1.13.0_darwin_arm64.tar.gz
-789012fed345  klaudiush_1.13.0_linux_amd64.tar.gz
-deadbeef0000  klaudiush_1.13.0_windows_amd64.zip`,
-			want: map[string]string{
+var _ = Describe("ParseChecksums", func() {
+	DescribeTable("parsing checksum content",
+		func(content string, expected map[string]string) {
+			got := updater.ParseChecksums(content)
+			Expect(got).To(HaveLen(len(expected)))
+
+			for key, wantVal := range expected {
+				Expect(got).To(HaveKeyWithValue(key, wantVal))
+			}
+		},
+		Entry("standard checksums.txt",
+			"abc123def456  klaudiush_1.13.0_darwin_arm64.tar.gz\n"+
+				"789012fed345  klaudiush_1.13.0_linux_amd64.tar.gz\n"+
+				"deadbeef0000  klaudiush_1.13.0_windows_amd64.zip",
+			map[string]string{
 				"klaudiush_1.13.0_darwin_arm64.tar.gz": "abc123def456",
 				"klaudiush_1.13.0_linux_amd64.tar.gz":  "789012fed345",
 				"klaudiush_1.13.0_windows_amd64.zip":   "deadbeef0000",
 			},
-		},
-		{
-			name:    "empty content",
-			content: "",
-			want:    map[string]string{},
-		},
-		{
-			name:    "whitespace only",
-			content: "  \n  \n  ",
-			want:    map[string]string{},
-		},
-		{
-			name:    "single space separator is ignored",
-			content: "abc123 filename.tar.gz",
-			want:    map[string]string{},
-		},
-		{
-			name:    "trailing newline",
-			content: "abc123  file.tar.gz\n",
-			want: map[string]string{
-				"file.tar.gz": "abc123",
-			},
-		},
-	}
+		),
+		Entry("empty content", "", map[string]string{}),
+		Entry("whitespace only", "  \n  \n  ", map[string]string{}),
+		Entry("single space separator is ignored",
+			"abc123 filename.tar.gz",
+			map[string]string{},
+		),
+		Entry("trailing newline",
+			"abc123  file.tar.gz\n",
+			map[string]string{"file.tar.gz": "abc123"},
+		),
+	)
+})
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := ParseChecksums(tt.content)
+var _ = Describe("VerifyFileChecksum", func() {
+	var (
+		tmpFile     string
+		expectedHex string
+	)
 
-			if len(got) != len(tt.want) {
-				t.Errorf("ParseChecksums() returned %d entries, want %d", len(got), len(tt.want))
-			}
-
-			for key, wantVal := range tt.want {
-				gotVal, ok := got[key]
-				if !ok {
-					t.Errorf("missing key %q", key)
-
-					continue
-				}
-
-				if gotVal != wantVal {
-					t.Errorf("key %q = %q, want %q", key, gotVal, wantVal)
-				}
-			}
-		})
-	}
-}
-
-func TestVerifyFileChecksum(t *testing.T) {
-	// Create a temp file with known content
-	content := []byte("hello world\n")
-	h := sha256.Sum256(content)
-	expectedHex := hex.EncodeToString(h[:])
-
-	tmpFile := writeTestFile(t, content)
-
-	t.Run("valid checksum", func(t *testing.T) {
-		if err := VerifyFileChecksum(tmpFile, expectedHex); err != nil {
-			t.Errorf("unexpected error: %v", err)
-		}
+	BeforeEach(func() {
+		content := []byte("hello world\n")
+		h := sha256.Sum256(content)
+		expectedHex = hex.EncodeToString(h[:])
+		tmpFile = writeTestFile(content)
 	})
 
-	t.Run("valid checksum uppercase", func(t *testing.T) {
-		if err := VerifyFileChecksum(tmpFile, strings.ToUpper(expectedHex)); err != nil {
-			t.Errorf("unexpected error: %v", err)
-		}
+	It("succeeds with valid checksum", func() {
+		Expect(updater.VerifyFileChecksum(tmpFile, expectedHex)).To(Succeed())
 	})
 
-	t.Run("invalid checksum", func(t *testing.T) {
+	It("succeeds with uppercase checksum", func() {
+		Expect(updater.VerifyFileChecksum(tmpFile, strings.ToUpper(expectedHex))).To(Succeed())
+	})
+
+	It("fails with invalid checksum", func() {
 		wrongHash := "0000000000000000000000000000000000000000000000000000000000000000"
 
-		err := VerifyFileChecksum(tmpFile, wrongHash)
-		if err == nil {
-			t.Error("expected error for mismatched checksum")
-		}
-
-		if !strings.Contains(err.Error(), "checksum mismatch") {
-			t.Errorf("error = %q, want to contain 'checksum mismatch'", err.Error())
-		}
+		err := updater.VerifyFileChecksum(tmpFile, wrongHash)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("checksum mismatch"))
 	})
 
-	t.Run("nonexistent file", func(t *testing.T) {
-		err := VerifyFileChecksum("/nonexistent/path", expectedHex)
-		if err == nil {
-			t.Error("expected error for nonexistent file")
-		}
+	It("fails for nonexistent file", func() {
+		err := updater.VerifyFileChecksum("/nonexistent/path", expectedHex)
+		Expect(err).To(HaveOccurred())
 	})
-}
+})
 
-func writeTestFile(t *testing.T, content []byte) string {
-	t.Helper()
+func writeTestFile(content []byte) string {
+	f, err := os.CreateTemp(GinkgoT().TempDir(), "checksum-test-*")
+	Expect(err).NotTo(HaveOccurred())
 
-	f, err := os.CreateTemp(t.TempDir(), "checksum-test-*")
-	if err != nil {
-		t.Fatalf("creating temp file: %v", err)
-	}
+	_, err = f.Write(content)
+	Expect(err).NotTo(HaveOccurred())
 
-	if _, err := f.Write(content); err != nil {
-		f.Close()
-		t.Fatalf("writing temp file: %v", err)
-	}
-
-	f.Close()
+	Expect(f.Close()).To(Succeed())
 
 	return f.Name()
 }

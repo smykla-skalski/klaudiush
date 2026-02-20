@@ -1,4 +1,4 @@
-package updater
+package updater_test
 
 import (
 	"context"
@@ -8,133 +8,121 @@ import (
 	"path/filepath"
 	"strings"
 	"sync/atomic"
-	"testing"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+
+	"github.com/smykla-skalski/klaudiush/internal/updater"
 )
 
-func TestDownloaderDownloadToFile(t *testing.T) {
-	t.Run("successful download", func(t *testing.T) {
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			w.Header().Set("Content-Length", "13")
-			w.Write([]byte("file contents"))
-		}))
-		defer server.Close()
+var _ = Describe("Downloader", func() {
+	Describe("DownloadToFile", func() {
+		It("downloads file successfully", func() {
+			server := httptest.NewServer(
+				http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+					w.Header().Set("Content-Length", "13")
+					_, _ = w.Write([]byte("file contents"))
+				}),
+			)
+			defer server.Close()
 
-		d := NewDownloader(server.Client())
-		dest := filepath.Join(t.TempDir(), "downloaded")
+			d := updater.NewDownloader(server.Client())
+			dest := filepath.Join(GinkgoT().TempDir(), "downloaded")
 
-		err := d.DownloadToFile(context.Background(), server.URL, dest, nil)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
+			Expect(d.DownloadToFile(context.Background(), server.URL, dest, nil)).To(Succeed())
 
-		data, err := os.ReadFile(dest)
-		if err != nil {
-			t.Fatalf("reading file: %v", err)
-		}
-
-		if string(data) != "file contents" {
-			t.Errorf("content = %q, want %q", string(data), "file contents")
-		}
-	})
-
-	t.Run("progress callback", func(t *testing.T) {
-		body := strings.Repeat("x", 1000)
-
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			w.Header().Set("Content-Length", "1000")
-			w.Write([]byte(body))
-		}))
-		defer server.Close()
-
-		d := NewDownloader(server.Client())
-		dest := filepath.Join(t.TempDir(), "downloaded")
-
-		var callCount atomic.Int32
-
-		err := d.DownloadToFile(context.Background(), server.URL, dest, func(_, total int64) {
-			callCount.Add(1)
-
-			if total != 1000 {
-				t.Errorf("total = %d, want 1000", total)
-			}
+			data, err := os.ReadFile(dest)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(data)).To(Equal("file contents"))
 		})
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
 
-		if callCount.Load() == 0 {
-			t.Error("progress callback was never called")
-		}
+		It("invokes progress callback", func() {
+			body := strings.Repeat("x", 1000)
+
+			server := httptest.NewServer(
+				http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+					w.Header().Set("Content-Length", "1000")
+					_, _ = w.Write([]byte(body))
+				}),
+			)
+			defer server.Close()
+
+			d := updater.NewDownloader(server.Client())
+			dest := filepath.Join(GinkgoT().TempDir(), "downloaded")
+
+			var callCount atomic.Int32
+
+			err := d.DownloadToFile(context.Background(), server.URL, dest, func(_, total int64) {
+				callCount.Add(1)
+				Expect(total).To(Equal(int64(1000)))
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(callCount.Load()).To(BeNumerically(">", 0))
+		})
+
+		It("returns error on HTTP 404", func() {
+			server := httptest.NewServer(
+				http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+					w.WriteHeader(http.StatusNotFound)
+				}),
+			)
+			defer server.Close()
+
+			d := updater.NewDownloader(server.Client())
+			dest := filepath.Join(GinkgoT().TempDir(), "downloaded")
+
+			err := d.DownloadToFile(context.Background(), server.URL, dest, nil)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("404"))
+		})
+
+		It("returns error on context cancellation", func() {
+			server := httptest.NewServer(
+				http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+					_, _ = w.Write([]byte("content"))
+				}),
+			)
+			defer server.Close()
+
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+
+			d := updater.NewDownloader(server.Client())
+			dest := filepath.Join(GinkgoT().TempDir(), "downloaded")
+
+			err := d.DownloadToFile(ctx, server.URL, dest, nil)
+			Expect(err).To(HaveOccurred())
+		})
 	})
 
-	t.Run("HTTP error", func(t *testing.T) {
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			w.WriteHeader(http.StatusNotFound)
-		}))
-		defer server.Close()
+	Describe("DownloadToString", func() {
+		It("downloads content as string", func() {
+			server := httptest.NewServer(
+				http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+					_, _ = w.Write([]byte("string content"))
+				}),
+			)
+			defer server.Close()
 
-		d := NewDownloader(server.Client())
-		dest := filepath.Join(t.TempDir(), "downloaded")
+			d := updater.NewDownloader(server.Client())
 
-		err := d.DownloadToFile(context.Background(), server.URL, dest, nil)
-		if err == nil {
-			t.Fatal("expected error for HTTP 404")
-		}
+			got, err := d.DownloadToString(context.Background(), server.URL)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(got).To(Equal("string content"))
+		})
 
-		if !strings.Contains(err.Error(), "404") {
-			t.Errorf("error = %q, want to contain '404'", err.Error())
-		}
+		It("returns error on HTTP 500", func() {
+			server := httptest.NewServer(
+				http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+					w.WriteHeader(http.StatusInternalServerError)
+				}),
+			)
+			defer server.Close()
+
+			d := updater.NewDownloader(server.Client())
+
+			_, err := d.DownloadToString(context.Background(), server.URL)
+			Expect(err).To(HaveOccurred())
+		})
 	})
-
-	t.Run("context cancellation", func(t *testing.T) {
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			w.Write([]byte("content"))
-		}))
-		defer server.Close()
-
-		ctx, cancel := context.WithCancel(context.Background())
-		cancel()
-
-		d := NewDownloader(server.Client())
-		dest := filepath.Join(t.TempDir(), "downloaded")
-
-		err := d.DownloadToFile(ctx, server.URL, dest, nil)
-		if err == nil {
-			t.Fatal("expected error for cancelled context")
-		}
-	})
-}
-
-func TestDownloaderDownloadToString(t *testing.T) {
-	t.Run("successful download", func(t *testing.T) {
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			w.Write([]byte("string content"))
-		}))
-		defer server.Close()
-
-		d := NewDownloader(server.Client())
-
-		got, err := d.DownloadToString(context.Background(), server.URL)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-
-		if got != "string content" {
-			t.Errorf("content = %q, want %q", got, "string content")
-		}
-	})
-
-	t.Run("HTTP error", func(t *testing.T) {
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			w.WriteHeader(http.StatusInternalServerError)
-		}))
-		defer server.Close()
-
-		d := NewDownloader(server.Client())
-
-		_, err := d.DownloadToString(context.Background(), server.URL)
-		if err == nil {
-			t.Fatal("expected error for HTTP 500")
-		}
-	})
-}
+})

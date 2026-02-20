@@ -1,12 +1,14 @@
-package updater
+package updater_test
 
 import (
 	"context"
-	"testing"
 
 	"github.com/cockroachdb/errors"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 
 	"github.com/smykla-skalski/klaudiush/internal/github"
+	"github.com/smykla-skalski/klaudiush/internal/updater"
 )
 
 // mockClient implements github.Client for testing.
@@ -41,170 +43,133 @@ func (*mockClient) IsAuthenticated() bool {
 	return false
 }
 
-func TestUpdaterCheckLatest(t *testing.T) {
-	t.Run("newer version available", func(t *testing.T) {
-		client := &mockClient{
-			latestRelease: &github.Release{TagName: "v2.0.0"},
-		}
-		up := NewUpdater("1.0.0", client)
+var _ = Describe("Updater", func() {
+	Describe("CheckLatest", func() {
+		It("returns tag when newer version available", func() {
+			client := &mockClient{
+				latestRelease: &github.Release{TagName: "v2.0.0"},
+			}
+			up := updater.NewUpdater("1.0.0", client)
 
-		tag, err := up.CheckLatest(context.Background())
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
+			tag, err := up.CheckLatest(context.Background())
+			Expect(err).NotTo(HaveOccurred())
+			Expect(tag).To(Equal("v2.0.0"))
+		})
 
-		if tag != "v2.0.0" {
-			t.Errorf("tag = %q, want %q", tag, "v2.0.0")
-		}
+		It("returns ErrAlreadyLatest when already up to date", func() {
+			client := &mockClient{
+				latestRelease: &github.Release{TagName: "v1.0.0"},
+			}
+			up := updater.NewUpdater("1.0.0", client)
+
+			_, err := up.CheckLatest(context.Background())
+			Expect(err).To(MatchError(updater.ErrAlreadyLatest))
+		})
+
+		It("returns ErrAlreadyLatest when current is newer", func() {
+			client := &mockClient{
+				latestRelease: &github.Release{TagName: "v1.0.0"},
+			}
+			up := updater.NewUpdater("2.0.0", client)
+
+			_, err := up.CheckLatest(context.Background())
+			Expect(err).To(MatchError(updater.ErrAlreadyLatest))
+		})
+
+		It("always returns latest for dev builds", func() {
+			client := &mockClient{
+				latestRelease: &github.Release{TagName: "v1.0.0"},
+			}
+			up := updater.NewUpdater("dev", client)
+
+			tag, err := up.CheckLatest(context.Background())
+			Expect(err).NotTo(HaveOccurred())
+			Expect(tag).To(Equal("v1.0.0"))
+		})
+
+		It("returns error on API failure", func() {
+			client := &mockClient{
+				latestErr: errors.New("network error"),
+			}
+			up := updater.NewUpdater("1.0.0", client)
+
+			_, err := up.CheckLatest(context.Background())
+			Expect(err).To(HaveOccurred())
+		})
+
+		It("handles version without v prefix", func() {
+			client := &mockClient{
+				latestRelease: &github.Release{TagName: "v2.0.0"},
+			}
+			up := updater.NewUpdater("1.0.0", client)
+
+			tag, err := up.CheckLatest(context.Background())
+			Expect(err).NotTo(HaveOccurred())
+			Expect(tag).To(Equal("v2.0.0"))
+		})
+
+		It("detects patch version differences", func() {
+			client := &mockClient{
+				latestRelease: &github.Release{TagName: "v1.13.1"},
+			}
+			up := updater.NewUpdater("1.13.0", client)
+
+			tag, err := up.CheckLatest(context.Background())
+			Expect(err).NotTo(HaveOccurred())
+			Expect(tag).To(Equal("v1.13.1"))
+		})
 	})
 
-	t.Run("already latest", func(t *testing.T) {
-		client := &mockClient{
-			latestRelease: &github.Release{TagName: "v1.0.0"},
-		}
-		up := NewUpdater("1.0.0", client)
+	Describe("ValidateTargetVersion", func() {
+		var releases map[string]*github.Release
 
-		_, err := up.CheckLatest(context.Background())
-		if !errors.Is(err, ErrAlreadyLatest) {
-			t.Errorf("err = %v, want ErrAlreadyLatest", err)
-		}
+		BeforeEach(func() {
+			releases = map[string]*github.Release{
+				"v1.13.0": {TagName: "v1.13.0"},
+				"v1.12.0": {TagName: "v1.12.0"},
+			}
+		})
+
+		It("accepts version with v prefix", func() {
+			client := &mockClient{tagReleases: releases}
+			up := updater.NewUpdater("1.0.0", client)
+
+			tag, err := up.ValidateTargetVersion(context.Background(), "v1.13.0")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(tag).To(Equal("v1.13.0"))
+		})
+
+		It("accepts version without v prefix", func() {
+			client := &mockClient{tagReleases: releases}
+			up := updater.NewUpdater("1.0.0", client)
+
+			tag, err := up.ValidateTargetVersion(context.Background(), "1.13.0")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(tag).To(Equal("v1.13.0"))
+		})
+
+		It("rejects invalid semver", func() {
+			client := &mockClient{tagReleases: releases}
+			up := updater.NewUpdater("1.0.0", client)
+
+			_, err := up.ValidateTargetVersion(context.Background(), "not-a-version")
+			Expect(err).To(HaveOccurred())
+		})
+
+		It("returns error for nonexistent release", func() {
+			client := &mockClient{tagReleases: releases}
+			up := updater.NewUpdater("1.0.0", client)
+
+			_, err := up.ValidateTargetVersion(context.Background(), "v99.99.99")
+			Expect(err).To(HaveOccurred())
+		})
+
+		It("returns error on API failure", func() {
+			client := &mockClient{tagErr: errors.New("API failure")}
+			up := updater.NewUpdater("1.0.0", client)
+
+			_, err := up.ValidateTargetVersion(context.Background(), "v1.0.0")
+			Expect(err).To(HaveOccurred())
+		})
 	})
-
-	t.Run("current is newer than latest", func(t *testing.T) {
-		client := &mockClient{
-			latestRelease: &github.Release{TagName: "v1.0.0"},
-		}
-		up := NewUpdater("2.0.0", client)
-
-		_, err := up.CheckLatest(context.Background())
-		if !errors.Is(err, ErrAlreadyLatest) {
-			t.Errorf("err = %v, want ErrAlreadyLatest", err)
-		}
-	})
-
-	t.Run("dev build always gets latest", func(t *testing.T) {
-		client := &mockClient{
-			latestRelease: &github.Release{TagName: "v1.0.0"},
-		}
-		up := NewUpdater("dev", client)
-
-		tag, err := up.CheckLatest(context.Background())
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-
-		if tag != "v1.0.0" {
-			t.Errorf("tag = %q, want %q", tag, "v1.0.0")
-		}
-	})
-
-	t.Run("API error", func(t *testing.T) {
-		client := &mockClient{
-			latestErr: errors.New("network error"),
-		}
-		up := NewUpdater("1.0.0", client)
-
-		_, err := up.CheckLatest(context.Background())
-		if err == nil {
-			t.Fatal("expected error")
-		}
-	})
-
-	t.Run("version with v prefix", func(t *testing.T) {
-		client := &mockClient{
-			latestRelease: &github.Release{TagName: "v2.0.0"},
-		}
-		// goreleaser sets version without v prefix
-		up := NewUpdater("1.0.0", client)
-
-		tag, err := up.CheckLatest(context.Background())
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-
-		if tag != "v2.0.0" {
-			t.Errorf("tag = %q, want %q", tag, "v2.0.0")
-		}
-	})
-
-	t.Run("patch version comparison", func(t *testing.T) {
-		client := &mockClient{
-			latestRelease: &github.Release{TagName: "v1.13.1"},
-		}
-		up := NewUpdater("1.13.0", client)
-
-		tag, err := up.CheckLatest(context.Background())
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-
-		if tag != "v1.13.1" {
-			t.Errorf("tag = %q, want %q", tag, "v1.13.1")
-		}
-	})
-}
-
-func TestUpdaterValidateTargetVersion(t *testing.T) {
-	releases := map[string]*github.Release{
-		"v1.13.0": {TagName: "v1.13.0"},
-		"v1.12.0": {TagName: "v1.12.0"},
-	}
-
-	t.Run("valid version with v prefix", func(t *testing.T) {
-		client := &mockClient{tagReleases: releases}
-		up := NewUpdater("1.0.0", client)
-
-		tag, err := up.ValidateTargetVersion(context.Background(), "v1.13.0")
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-
-		if tag != "v1.13.0" {
-			t.Errorf("tag = %q, want %q", tag, "v1.13.0")
-		}
-	})
-
-	t.Run("valid version without v prefix", func(t *testing.T) {
-		client := &mockClient{tagReleases: releases}
-		up := NewUpdater("1.0.0", client)
-
-		tag, err := up.ValidateTargetVersion(context.Background(), "1.13.0")
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-
-		if tag != "v1.13.0" {
-			t.Errorf("tag = %q, want %q", tag, "v1.13.0")
-		}
-	})
-
-	t.Run("invalid semver", func(t *testing.T) {
-		client := &mockClient{tagReleases: releases}
-		up := NewUpdater("1.0.0", client)
-
-		_, err := up.ValidateTargetVersion(context.Background(), "not-a-version")
-		if err == nil {
-			t.Fatal("expected error for invalid semver")
-		}
-	})
-
-	t.Run("release not found", func(t *testing.T) {
-		client := &mockClient{tagReleases: releases}
-		up := NewUpdater("1.0.0", client)
-
-		_, err := up.ValidateTargetVersion(context.Background(), "v99.99.99")
-		if err == nil {
-			t.Fatal("expected error for nonexistent release")
-		}
-	})
-
-	t.Run("API error", func(t *testing.T) {
-		client := &mockClient{tagErr: errors.New("API failure")}
-		up := NewUpdater("1.0.0", client)
-
-		_, err := up.ValidateTargetVersion(context.Background(), "v1.0.0")
-		if err == nil {
-			t.Fatal("expected error")
-		}
-	})
-}
+})

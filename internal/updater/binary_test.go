@@ -1,4 +1,4 @@
-package updater
+package updater_test
 
 import (
 	"archive/tar"
@@ -6,180 +6,122 @@ import (
 	"compress/gzip"
 	"os"
 	"path/filepath"
-	"strings"
-	"testing"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+
+	"github.com/smykla-skalski/klaudiush/internal/updater"
 )
 
-func TestExtractBinaryFromTarGz(t *testing.T) {
-	t.Run("extracts binary at root level", func(t *testing.T) {
-		archivePath := createTestTarGz(t, "klaudiush", []byte("binary-content"))
+var _ = Describe("ExtractBinaryFromTarGz", func() {
+	It("extracts binary at root level", func() {
+		archivePath := createTestTarGz("klaudiush", []byte("binary-content"))
 
-		path, cleanup, err := ExtractBinaryFromTarGz(archivePath, "klaudiush")
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
+		path, cleanup, err := updater.ExtractBinaryFromTarGz(archivePath, "klaudiush")
+		Expect(err).NotTo(HaveOccurred())
 
 		defer cleanup()
 
 		data, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatalf("reading extracted file: %v", err)
-		}
-
-		if string(data) != "binary-content" {
-			t.Errorf("extracted content = %q, want %q", string(data), "binary-content")
-		}
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(data)).To(Equal("binary-content"))
 	})
 
-	t.Run("extracts binary in subdirectory", func(t *testing.T) {
-		archivePath := createTestTarGzWithPath(t, "dist/klaudiush", []byte("nested-binary"))
+	It("extracts binary in subdirectory", func() {
+		archivePath := createTestTarGzWithPath("dist/klaudiush", []byte("nested-binary"))
 
-		path, cleanup, err := ExtractBinaryFromTarGz(archivePath, "klaudiush")
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
+		path, cleanup, err := updater.ExtractBinaryFromTarGz(archivePath, "klaudiush")
+		Expect(err).NotTo(HaveOccurred())
 
 		defer cleanup()
 
 		data, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatalf("reading extracted file: %v", err)
-		}
-
-		if string(data) != "nested-binary" {
-			t.Errorf("extracted content = %q, want %q", string(data), "nested-binary")
-		}
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(data)).To(Equal("nested-binary"))
 	})
 
-	t.Run("binary not found", func(t *testing.T) {
-		archivePath := createTestTarGz(t, "other-binary", []byte("content"))
+	It("returns error when binary not found", func() {
+		archivePath := createTestTarGz("other-binary", []byte("content"))
 
-		_, _, err := ExtractBinaryFromTarGz(archivePath, "klaudiush")
-		if err == nil {
-			t.Fatal("expected error for missing binary")
-		}
-
-		if !strings.Contains(err.Error(), "not found") {
-			t.Errorf("error = %q, want to contain 'not found'", err.Error())
-		}
+		_, _, err := updater.ExtractBinaryFromTarGz(archivePath, "klaudiush")
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("not found"))
 	})
 
-	t.Run("invalid archive", func(t *testing.T) {
-		tmpFile := filepath.Join(t.TempDir(), "bad.tar.gz")
-		if err := os.WriteFile(tmpFile, []byte("not a tar.gz"), 0o644); err != nil {
-			t.Fatal(err)
-		}
+	It("returns error for invalid archive", func() {
+		tmpFile := filepath.Join(GinkgoT().TempDir(), "bad.tar.gz")
+		Expect(os.WriteFile(tmpFile, []byte("not a tar.gz"), 0o644)).To(Succeed())
 
-		_, _, err := ExtractBinaryFromTarGz(tmpFile, "klaudiush")
-		if err == nil {
-			t.Fatal("expected error for invalid archive")
-		}
+		_, _, err := updater.ExtractBinaryFromTarGz(tmpFile, "klaudiush")
+		Expect(err).To(HaveOccurred())
 	})
-}
+})
 
-func TestExtractBinaryFromZip(t *testing.T) {
-	t.Run("extracts binary", func(t *testing.T) {
-		archivePath := createTestZip(t, "klaudiush.exe", []byte("exe-content"))
+var _ = Describe("ExtractBinaryFromZip", func() {
+	It("extracts binary", func() {
+		archivePath := createTestZip("klaudiush.exe", []byte("exe-content"))
 
-		path, cleanup, err := ExtractBinaryFromZip(archivePath, "klaudiush")
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
+		path, cleanup, err := updater.ExtractBinaryFromZip(archivePath, "klaudiush")
+		Expect(err).NotTo(HaveOccurred())
 
 		defer cleanup()
 
 		data, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatalf("reading extracted file: %v", err)
-		}
-
-		if string(data) != "exe-content" {
-			t.Errorf("extracted content = %q, want %q", string(data), "exe-content")
-		}
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(data)).To(Equal("exe-content"))
 	})
 
-	t.Run("binary not found", func(t *testing.T) {
-		archivePath := createTestZip(t, "other.exe", []byte("content"))
+	It("returns error when binary not found", func() {
+		archivePath := createTestZip("other.exe", []byte("content"))
 
-		_, _, err := ExtractBinaryFromZip(archivePath, "klaudiush")
-		if err == nil {
-			t.Fatal("expected error for missing binary")
-		}
+		_, _, err := updater.ExtractBinaryFromZip(archivePath, "klaudiush")
+		Expect(err).To(HaveOccurred())
 	})
-}
+})
 
-func TestReplaceBinary(t *testing.T) {
-	t.Run("replaces binary atomically", func(t *testing.T) {
-		dir := t.TempDir()
+var _ = Describe("ReplaceBinary", func() {
+	It("replaces binary atomically", func() {
+		dir := GinkgoT().TempDir()
 
-		// Create "existing" binary
 		target := filepath.Join(dir, "klaudiush")
-		if err := os.WriteFile(target, []byte("old-binary"), 0o755); err != nil {
-			t.Fatal(err)
-		}
+		Expect(os.WriteFile(target, []byte("old-binary"), 0o755)).To(Succeed())
 
-		// Create "new" binary
 		newBin := filepath.Join(dir, "new-klaudiush")
-		if err := os.WriteFile(newBin, []byte("new-binary"), 0o755); err != nil {
-			t.Fatal(err)
-		}
+		Expect(os.WriteFile(newBin, []byte("new-binary"), 0o755)).To(Succeed())
 
-		if err := ReplaceBinary(newBin, target); err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
+		Expect(updater.ReplaceBinary(newBin, target)).To(Succeed())
 
 		data, err := os.ReadFile(target)
-		if err != nil {
-			t.Fatalf("reading replaced file: %v", err)
-		}
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(data)).To(Equal("new-binary"))
 
-		if string(data) != "new-binary" {
-			t.Errorf("content = %q, want %q", string(data), "new-binary")
-		}
-
-		// Verify the file is executable
 		info, err := os.Stat(target)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		if info.Mode()&0o111 == 0 {
-			t.Error("replaced binary is not executable")
-		}
+		Expect(err).NotTo(HaveOccurred())
+		Expect(info.Mode()&0o111).NotTo(BeZero(), "replaced binary should be executable")
 	})
 
-	t.Run("target does not exist", func(t *testing.T) {
-		dir := t.TempDir()
+	It("returns error when target does not exist", func() {
+		dir := GinkgoT().TempDir()
 		newBin := filepath.Join(dir, "new")
+		Expect(os.WriteFile(newBin, []byte("content"), 0o755)).To(Succeed())
 
-		if err := os.WriteFile(newBin, []byte("content"), 0o755); err != nil {
-			t.Fatal(err)
-		}
-
-		err := ReplaceBinary(newBin, filepath.Join(dir, "nonexistent"))
-		if err == nil {
-			t.Error("expected error when target does not exist")
-		}
+		err := updater.ReplaceBinary(newBin, filepath.Join(dir, "nonexistent"))
+		Expect(err).To(HaveOccurred())
 	})
-}
+})
 
-// createTestTarGz creates a tar.gz archive with a single file.
-func createTestTarGz(t *testing.T, name string, content []byte) string {
-	t.Helper()
-
-	return createTestTarGzWithPath(t, name, content)
+// createTestTarGz creates a tar.gz archive with a single file at root level.
+func createTestTarGz(name string, content []byte) string {
+	return createTestTarGzWithPath(name, content)
 }
 
 // createTestTarGzWithPath creates a tar.gz archive with a file at the given path.
-func createTestTarGzWithPath(t *testing.T, name string, content []byte) string {
-	t.Helper()
-
-	path := filepath.Join(t.TempDir(), "test.tar.gz")
+func createTestTarGzWithPath(name string, content []byte) string {
+	path := filepath.Join(GinkgoT().TempDir(), "test.tar.gz")
 
 	f, err := os.Create(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	Expect(err).NotTo(HaveOccurred())
+
 	defer f.Close()
 
 	gw := gzip.NewWriter(f)
@@ -194,40 +136,31 @@ func createTestTarGzWithPath(t *testing.T, name string, content []byte) string {
 		Mode: 0o755,
 	}
 
-	if err := tw.WriteHeader(header); err != nil {
-		t.Fatal(err)
-	}
+	Expect(tw.WriteHeader(header)).To(Succeed())
 
-	if _, err := tw.Write(content); err != nil {
-		t.Fatal(err)
-	}
+	_, err = tw.Write(content)
+	Expect(err).NotTo(HaveOccurred())
 
 	return path
 }
 
 // createTestZip creates a zip archive with a single file.
-func createTestZip(t *testing.T, name string, content []byte) string {
-	t.Helper()
-
-	path := filepath.Join(t.TempDir(), "test.zip")
+func createTestZip(name string, content []byte) string {
+	path := filepath.Join(GinkgoT().TempDir(), "test.zip")
 
 	f, err := os.Create(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	Expect(err).NotTo(HaveOccurred())
+
 	defer f.Close()
 
 	zw := zip.NewWriter(f)
 	defer zw.Close()
 
 	w, err := zw.Create(name)
-	if err != nil {
-		t.Fatal(err)
-	}
+	Expect(err).NotTo(HaveOccurred())
 
-	if _, err := w.Write(content); err != nil {
-		t.Fatal(err)
-	}
+	_, err = w.Write(content)
+	Expect(err).NotTo(HaveOccurred())
 
 	return path
 }
