@@ -203,7 +203,7 @@ var _ = Describe("CommitValidator", func() {
 
 				result := validator.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeFalse())
-				Expect(result.Message).To(ContainSubstring("Commit message validation failed"))
+				Expect(result.Message).To(ContainSubstring("Title exceeds 50 characters"))
 				Expect(result.Details["errors"]).To(ContainSubstring("Title exceeds 50 characters"))
 			})
 
@@ -235,7 +235,7 @@ var _ = Describe("CommitValidator", func() {
 
 				result := validator.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeFalse())
-				Expect(result.Message).To(ContainSubstring("Commit message validation failed"))
+				Expect(result.Message).To(ContainSubstring("Title exceeds 50 characters"))
 				Expect(
 					result.Details["errors"],
 				).To(ContainSubstring("Title exceeds 50 characters (51 chars)"))
@@ -1086,7 +1086,7 @@ Signed-off-by: Test User <test@klaudiu.sh>`
 			).To(ContainSubstring("doesn't follow conventional commits format"))
 		})
 
-		It("should fail when file does not exist", func() {
+		It("should warn when file does not exist", func() {
 			ctx := &hook.Context{
 				EventType: hook.EventTypePreToolUse,
 				ToolName:  hook.ToolTypeBash,
@@ -1097,6 +1097,7 @@ Signed-off-by: Test User <test@klaudiu.sh>`
 
 			result := validator.Validate(context.Background(), ctx)
 			Expect(result.Passed).To(BeFalse())
+			Expect(result.ShouldBlock).To(BeFalse())
 			Expect(result.Message).To(ContainSubstring("Failed to read commit message"))
 		})
 

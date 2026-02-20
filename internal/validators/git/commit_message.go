@@ -236,9 +236,13 @@ func (*CommitValidator) buildErrorResult(results []*RuleResult, message string) 
 	details.WriteString(message)
 	details.WriteString("\n---")
 
+	// Use the first error from the highest-priority result as the message.
+	// summarizeMessage() in the formatter will strip emoji prefixes.
+	firstError := results[0].Errors[0]
+
 	return validator.FailWithRef(
 		ref,
-		"Commit message validation failed",
+		firstError,
 	).AddDetail("errors", details.String())
 }
 

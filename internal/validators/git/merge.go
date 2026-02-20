@@ -268,13 +268,19 @@ func (v *MergeValidator) validateMergeMessage(pr *PRDetails) *validator.Result {
 
 	// Build result
 	if len(allErrors) > 0 {
-		message := "PR merge message validation failed\n\n" + strings.Join(allErrors, "\n")
-		message += fmt.Sprintf("\n\n📝 PR #%d: %s", pr.Number, pr.Title)
+		var details strings.Builder
+
+		for _, e := range allErrors {
+			details.WriteString(e)
+			details.WriteString("\n")
+		}
+
+		fmt.Fprintf(&details, "\n📝 PR #%d: %s", pr.Number, pr.Title)
 
 		return validator.FailWithRef(
 			validator.RefGitMergeMessage,
-			"PR merge message validation failed",
-		).AddDetail("errors", message)
+			allErrors[0],
+		).AddDetail("errors", details.String())
 	}
 
 	log.Debug("Merge message validation passed")

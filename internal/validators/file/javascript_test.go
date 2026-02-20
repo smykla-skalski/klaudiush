@@ -117,7 +117,7 @@ console.log("Hello, World!");
 
 			result := v.Validate(context.Background(), ctx)
 			Expect(result.Passed).To(BeFalse())
-			Expect(result.Message).To(ContainSubstring("Oxlint validation failed"))
+			Expect(result.Message).To(Not(BeEmpty()))
 		})
 
 		It("should fail for undefined variable", func() {
@@ -146,7 +146,7 @@ console.log("Hello, World!");
 
 			result := v.Validate(context.Background(), ctx)
 			Expect(result.Passed).To(BeFalse())
-			Expect(result.Message).To(ContainSubstring("Oxlint validation failed"))
+			Expect(result.Message).To(Not(BeEmpty()))
 		})
 	})
 

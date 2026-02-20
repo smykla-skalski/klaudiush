@@ -319,7 +319,8 @@ func (v *BranchValidator) validateBranchName(branchName string) *validator.Resul
 			},
 		)
 
-		return validator.FailWithRef(validator.RefGitBranchName, message)
+		return validator.FailWithRef(validator.RefGitBranchName, message).
+			WithFixHint("Use: " + strings.ToLower(branchName))
 	}
 
 	requireType := v.isRequireType()

@@ -86,7 +86,6 @@ var _ = Describe("FetchValidator", func() {
 				ctx := createContext("git fetch nonexistent")
 				result := validator.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeFalse())
-				Expect(result.Message).To(ContainSubstring("Git fetch validation failed"))
 				Expect(result.Message).To(ContainSubstring("Remote 'nonexistent' does not exist"))
 				Expect(result.Message).To(ContainSubstring("Available remotes:"))
 				Expect(result.Message).To(ContainSubstring("origin"))

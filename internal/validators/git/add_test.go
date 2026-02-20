@@ -53,7 +53,7 @@ var _ = Describe("GitAddValidator", func() {
 
 				Expect(result.Passed).To(BeFalse())
 				Expect(result.ShouldBlock).To(BeTrue())
-				Expect(result.Message).To(ContainSubstring("blocked files"))
+				Expect(result.Message).To(ContainSubstring("Blocked files in git add"))
 				Expect(result.Reference).To(Equal(validator.RefGitBlockedFiles))
 				Expect(result.FixHint).To(ContainSubstring("Do not stage these files"))
 				Expect(result.Details).To(HaveKey("help"))

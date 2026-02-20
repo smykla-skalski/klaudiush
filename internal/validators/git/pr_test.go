@@ -558,7 +558,6 @@ EOF
 
 			result := validator.Validate(context.Background(), ctx)
 			Expect(result.Passed).To(BeFalse())
-			Expect(result.Message).To(ContainSubstring("PR validation failed"))
 			Expect(
 				result.Message,
 			).To(ContainSubstring("doesn't follow conventional commits format"))
@@ -607,7 +606,9 @@ EOF
 			Expect(result.Passed).To(BeFalse())
 			Expect(result.Message).To(ContainSubstring("missing '## Implementation information'"))
 			// Supporting documentation missing is now a warning, not an error
-			Expect(result.Message).To(ContainSubstring("missing '## Supporting documentation'"))
+			Expect(
+				result.Details["errors"],
+			).To(ContainSubstring("missing '## Supporting documentation'"))
 		})
 
 		It("should fail for non-main base without label", func() {

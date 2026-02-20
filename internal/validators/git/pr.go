@@ -478,30 +478,30 @@ func validateBaseBranchLabels(data PRData, allErrors *[]string) {
 // buildResult builds the final validation result
 func (*PRValidator) buildResult(allErrors, allWarnings []string, title string) *validator.Result {
 	if len(allErrors) > 0 {
-		// Build message with all errors (used by tests and displayed to user)
-		var message strings.Builder
-
-		message.WriteString("PR validation failed")
-		message.WriteString("\n\n")
+		// Build details with all errors
+		var details strings.Builder
 
 		for _, err := range allErrors {
-			message.WriteString(err)
-			message.WriteString("\n")
+			details.WriteString(err)
+			details.WriteString("\n")
 		}
 
 		if len(allWarnings) > 0 {
-			message.WriteString("\nWarnings:\n")
+			details.WriteString("\nWarnings:\n")
 
 			for _, warn := range allWarnings {
-				message.WriteString(warn)
-				message.WriteString("\n")
+				details.WriteString(warn)
+				details.WriteString("\n")
 			}
 		}
 
-		message.WriteString("\nPR title: ")
-		message.WriteString(title)
+		details.WriteString("\nPR title: ")
+		details.WriteString(title)
 
-		return validator.FailWithRef(validator.RefGitPRValidation, message.String())
+		return validator.FailWithRef(
+			validator.RefGitPRValidation,
+			allErrors[0],
+		).AddDetail("errors", details.String())
 	}
 
 	if len(allWarnings) > 0 {

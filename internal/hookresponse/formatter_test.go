@@ -192,15 +192,14 @@ var _ = Describe("Decision reason summarization", func() {
 	})
 
 	It("summarizes rich remote-not-found message", func() {
-		msg := "\U0001F6AB Git fetch validation failed:\n\n" +
-			"\u274c Remote 'origin' does not exist\n\n" +
+		msg := "\u274c Remote 'origin' does not exist\n\n" +
 			"Available remotes:\n" +
 			"  Automaat  git@github.com:Automaat/klaudiush.git\n" +
 			"  upstream  git@github.com:smykla-skalski/klaudiush.git\n\n" +
 			"Use 'git remote -v' to list all configured remotes."
 		reason := buildReason(msg)
 		Expect(reason).To(Equal(
-			"[GIT024] Git fetch validation failed: Remote 'origin' does not exist"))
+			"[GIT024] Remote 'origin' does not exist"))
 	})
 
 	It("strips supplementary 'Use' and 'Example' paragraphs", func() {

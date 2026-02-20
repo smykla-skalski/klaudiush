@@ -212,7 +212,7 @@ func (*JavaScriptValidator) formatOxlintOutput(result *linters.LintResult) strin
 			}
 		}
 
-		return "Oxlint validation failed\n\n" + strings.Join(cleanLines, "\n")
+		return strings.Join(cleanLines, "\n")
 	}
 
 	lines := make([]string, 0, len(result.Findings))
@@ -227,7 +227,7 @@ func (*JavaScriptValidator) formatOxlintOutput(result *linters.LintResult) strin
 		lines = append(lines, line)
 	}
 
-	return "Oxlint validation failed\n\n" + strings.Join(lines, "\n")
+	return strings.Join(lines, "\n")
 }
 
 // buildOxlintOptions creates OxlintCheckOptions with excludes from config and fragment-specific rules.

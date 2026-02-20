@@ -28,9 +28,9 @@ var DefaultSuggestions = map[Reference]string{
 	RefGitBranchName:         "Use lowercase kebab-case for branch names (e.g., feat/my-feature)",
 	RefGitNoVerify:           "Remove --no-verify flag and fix any pre-commit hook issues",
 	RefGitKongOrgPush:        "Push to 'upstream' remote instead: git push upstream <branch>",
-	RefGitPRValidation:       "Fix PR title, body, markdown formatting, or labels per validation errors",
+	RefGitPRValidation:       "Fix the issue and retry gh pr create",
 	RefGitFetchNoRemote:      "Specify valid remote: git fetch <remote> (use 'git remote -v' to list remotes)",
-	RefGitBlockedRemote:      "Use an allowed remote instead (see error message for suggested alternatives)",
+	RefGitBlockedRemote:      "Use an allowed remote for push",
 
 	// File suggestions
 	RefShellcheck:   "Run 'shellcheck <file>' to see detailed errors",
@@ -52,7 +52,7 @@ var DefaultSuggestions = map[Reference]string{
 	RefSecretsConnString: "Use environment variables for database connection strings",
 
 	// Shell suggestions
-	RefShellBackticks: "Use HEREDOC (git commit -m \"$(cat <<'EOF'\\n...\\nEOF\\n)\") or file-based input (--body-file)",
+	RefShellBackticks: "Use HEREDOC syntax or file-based input (git commit -F file.txt)",
 
 	// GitHub CLI suggestions
 	RefGHIssueValidation: "Fix markdown formatting in issue body (empty lines around headings, proper list spacing)",

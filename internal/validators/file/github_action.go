@@ -162,24 +162,19 @@ func (v *WorkflowValidator) Validate(ctx context.Context, hookCtx *hook.Context)
 
 	// Report errors (blocking)
 	if len(allErrors) > 0 {
-		message := "GitHub Actions workflow/action validation failed"
-		details := map[string]string{
-			"file":   filepath.Base(filePath),
-			"errors": strings.Join(allErrors, "\n"),
-			"help": `Requirements:
+		return validator.FailWithRef(
+			validator.RefActionlint,
+			allErrors[0],
+		).AddDetail("file", filepath.Base(filePath)).
+			AddDetail("errors", strings.Join(allErrors, "\n")).
+			AddDetail("help", `Requirements:
   - Use digest-pinned actions with version or branch comments:
     uses: actions/checkout@abc123... # v4.1.7
     uses: Homebrew/actions/setup-homebrew@abc123... # master
 
   - Or provide explanation when digest pinning not possible:
     # Cannot pin by digest: marketplace action with frequent updates
-    uses: vendor/custom-action@v1`,
-		}
-
-		return validator.FailWithRef(
-			validator.RefActionlint,
-			message,
-		).AddDetail("file", details["file"]).AddDetail("errors", details["errors"]).AddDetail("help", details["help"])
+    uses: vendor/custom-action@v1`)
 	}
 
 	return validator.Pass()

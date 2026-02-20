@@ -92,7 +92,6 @@ func (v *FetchValidator) validateFetchCommand(
 		remote,
 		runner,
 		validator.RefGitFetchNoRemote,
-		"🚫 Git fetch validation failed:",
 	)
 }
 

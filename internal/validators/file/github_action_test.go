@@ -154,10 +154,7 @@ jobs:
 				result := validator.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeFalse())
 				Expect(result.ShouldBlock).To(BeTrue())
-				Expect(
-					result.Message,
-				).To(ContainSubstring("GitHub Actions workflow/action validation failed"))
-				Expect(result.Details["errors"]).To(ContainSubstring("missing version comment"))
+				Expect(result.Message).To(ContainSubstring("missing version comment"))
 			})
 
 			It(

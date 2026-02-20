@@ -74,7 +74,6 @@ echo "done"
 `
 			result := v.Validate(context.Background(), ctx)
 			Expect(result.Passed).To(BeFalse())
-			Expect(result.Message).To(ContainSubstring("Shellcheck validation failed"))
 		})
 
 		It("should fail for syntax error", func() {
@@ -86,7 +85,6 @@ fi
 `
 			result := v.Validate(context.Background(), ctx)
 			Expect(result.Passed).To(BeFalse())
-			Expect(result.Message).To(ContainSubstring("Shellcheck validation failed"))
 		})
 	})
 
@@ -250,7 +248,6 @@ cleanup
 
 			result := v.Validate(context.Background(), ctx)
 			Expect(result.Passed).To(BeFalse())
-			Expect(result.Message).To(ContainSubstring("Shellcheck validation failed"))
 		})
 
 		It("should detect shell type from env shebang", func() {

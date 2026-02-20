@@ -279,7 +279,7 @@ func (*GofumptValidator) formatGofumptOutput(output string) string {
 	return "Go code formatting issues detected\n\n" + strings.Join(
 		cleanLines,
 		"\n",
-	) + "\n\nRun 'gofumpt -w <file>' to auto-fix."
+	)
 }
 
 // getTimeout returns the configured timeout for gofumpt operations

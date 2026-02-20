@@ -36,7 +36,6 @@ func (*RemoteHelper) ValidateRemoteExists(
 	remote string,
 	runner GitRunner,
 	ref validator.Reference,
-	headerMsg string,
 ) *validator.Result {
 	_, err := runner.GetRemoteURL(remote)
 	if err != nil {
@@ -44,13 +43,13 @@ func (*RemoteHelper) ValidateRemoteExists(
 		if remoteErr != nil {
 			return validator.FailWithRef(
 				ref,
-				headerMsg+"\n\n❌ Remote '"+remote+"' does not exist",
+				"Remote '"+remote+"' does not exist",
 			)
 		}
 
 		return validator.FailWithRef(
 			ref,
-			headerMsg+"\n\n"+FormatRemoteNotFoundError(remote, remotes),
+			FormatRemoteNotFoundError(remote, remotes),
 		)
 	}
 

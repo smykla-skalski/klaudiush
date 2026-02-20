@@ -81,7 +81,6 @@ var _ = Describe("PushValidator", func() {
 				ctx := createContext("git push nonexistent main")
 				result := validator.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeFalse())
-				Expect(result.Message).To(ContainSubstring("Git push validation failed"))
 				Expect(result.Message).To(ContainSubstring("Remote 'nonexistent' does not exist"))
 				Expect(result.Message).To(ContainSubstring("Available remotes:"))
 				Expect(result.Message).To(ContainSubstring("origin"))

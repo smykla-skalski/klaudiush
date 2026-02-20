@@ -138,7 +138,7 @@ func (v *CommitValidator) validateGitCommit(
 	commitMsg, err := v.extractCommitMessage(gitCmd)
 	if err != nil {
 		log.Error("Failed to extract commit message", "error", err)
-		return validator.Fail(fmt.Sprintf("Failed to read commit message: %v", err))
+		return validator.Warn(fmt.Sprintf("Failed to read commit message: %v", err))
 	}
 
 	if commitMsg == "" {

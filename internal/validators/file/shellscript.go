@@ -284,7 +284,6 @@ func (*ShellScriptValidator) isFishScript(filePath, content string) bool {
 
 // formatShellCheckOutput formats shellcheck output for display.
 func (*ShellScriptValidator) formatShellCheckOutput(output string) string {
-	// Clean up the output - remove empty lines
 	lines := strings.Split(output, "\n")
 
 	var cleanLines []string
@@ -295,10 +294,11 @@ func (*ShellScriptValidator) formatShellCheckOutput(output string) string {
 		}
 	}
 
-	return "Shellcheck validation failed\n\n" + strings.Join(
-		cleanLines,
-		"\n",
-	)
+	if len(cleanLines) == 0 {
+		return "Shellcheck validation failed"
+	}
+
+	return strings.Join(cleanLines, "\n")
 }
 
 // buildShellCheckOptions creates ShellCheckOptions with excludes from config and fragment-specific rules.

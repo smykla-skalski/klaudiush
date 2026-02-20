@@ -254,7 +254,7 @@ func (v *IssueValidator) handleMissingBody(log logger.Logger) *validator.Result 
 	return validator.FailWithRef(
 		validator.RefGHIssueValidation,
 		"Issue body is required - ensure you're using --body or --body-file flag",
-	)
+	).WithFixHint("Add --body or --body-file flag to gh issue create")
 }
 
 // validateMarkdown validates the issue body markdown content.

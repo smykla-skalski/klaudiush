@@ -101,9 +101,11 @@ func (v *AddValidator) Validate(ctx context.Context, hookCtx *hook.Context) *val
 			},
 		)
 
+		msg := "Blocked files in git add: " + strings.Join(blockedFiles, ", ")
+
 		return validator.FailWithRef(
 			validator.RefGitBlockedFiles,
-			"Attempting to add blocked files",
+			msg,
 		).AddDetail("help", message)
 	}
 

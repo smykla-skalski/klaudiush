@@ -203,7 +203,7 @@ func (v *PushValidator) validateNotBlockedRemote(
 		}
 	}
 
-	return validator.FailWithRef(
+	result := validator.FailWithRef(
 		validator.RefGitBlockedRemote,
 		templates.MustExecute(
 			templates.PushBlockedRemoteTemplate,
@@ -215,6 +215,14 @@ func (v *PushValidator) validateNotBlockedRemote(
 			},
 		),
 	)
+
+	if len(suggestedRemoteNames) > 0 {
+		result = result.WithFixHint(
+			"Push to '" + suggestedRemoteNames[0] + "' instead: git push " + suggestedRemoteNames[0] + " <branch>",
+		)
+	}
+
+	return result
 }
 
 // validateRemoteExists checks if the remote exists
@@ -225,7 +233,6 @@ func (*PushValidator) validateRemoteExists(remote string, runner GitRunner) *val
 		remote,
 		runner,
 		validator.RefGitNoRemote,
-		"🚫 Git push validation failed:",
 	)
 }
 

@@ -2,7 +2,6 @@ package file
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -318,10 +317,7 @@ func (*RustValidator) formatRustfmtOutput(result *linters.LintResult) string {
 		return "Rust code formatting issues detected"
 	}
 
-	return fmt.Sprintf(
-		"Rust code formatting issues detected\n\n%s\n\nRun 'rustfmt <file>' to auto-fix.",
-		strings.Join(cleanLines, "\n"),
-	)
+	return "Rust code formatting issues detected\n\n" + strings.Join(cleanLines, "\n")
 }
 
 // getTimeout returns the configured timeout for rustfmt operations.
