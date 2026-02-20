@@ -209,7 +209,7 @@ func (v *BaseValidator) Name() string {
 
 // Logger returns the logger.
 //
-//nolint:ireturn // interface for polymorphism
+
 func (v *BaseValidator) Logger() logger.Logger {
 	return v.logger
 }

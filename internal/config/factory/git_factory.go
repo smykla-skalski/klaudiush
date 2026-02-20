@@ -24,8 +24,6 @@ func NewGitValidatorFactory(log logger.Logger) *GitValidatorFactory {
 }
 
 // getGitRunner returns the shared cached git runner, creating it lazily.
-//
-//nolint:ireturn,nolintlint // Method intentionally returns interface for flexibility
 func (f *GitValidatorFactory) getGitRunner() git.Runner {
 	if f.gitRunner == nil {
 		// Create a cached runner wrapping the default git runner.

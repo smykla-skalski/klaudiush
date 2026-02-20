@@ -59,8 +59,6 @@ type branchRemoteCacheEntry struct {
 
 // NewCachedRunner creates a new CachedRunner that wraps the given Runner.
 // The cached runner memoizes results for the duration of its lifetime.
-//
-//nolint:ireturn,nolintlint // Factory function intentionally returns interface
 func NewCachedRunner(delegate Runner) Runner {
 	return &CachedRunner{
 		delegate:          delegate,
