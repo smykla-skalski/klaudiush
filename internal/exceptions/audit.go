@@ -175,6 +175,11 @@ func (a *AuditLogger) writeEntryLocked(data []byte) error {
 		return errors.Wrap(writeErr, "writing audit entry")
 	}
 
+	// Sync to ensure the entry is flushed to disk before we return.
+	if syncErr := file.Sync(); syncErr != nil {
+		return errors.Wrap(syncErr, "syncing audit file")
+	}
+
 	a.logger.Debug("audit entry logged",
 		"path", path,
 	)

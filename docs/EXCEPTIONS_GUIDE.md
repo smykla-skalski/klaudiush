@@ -232,8 +232,8 @@ enabled = true
 max_per_hour = 10   # default: 10
 max_per_day = 50    # default: 50
 
-# State file location (default: ~/.klaudiush/exception_state.json)
-state_file = "~/.klaudiush/exception_state.json"
+# State file location (default: ~/.klaudiush/exceptions/state.json)
+state_file = "~/.klaudiush/exceptions/state.json"
 ```
 
 ### Per-code rate limits

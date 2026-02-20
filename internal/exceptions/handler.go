@@ -20,6 +20,7 @@ type Handler struct {
 	auditLogger *AuditLogger
 	config      *config.ExceptionsConfig
 	logger      logger.Logger
+	projectDir  string
 }
 
 // HandlerOption configures the Handler.
@@ -30,6 +31,15 @@ func WithHandlerLogger(log logger.Logger) HandlerOption {
 	return func(h *Handler) {
 		if log != nil {
 			h.logger = log
+		}
+	}
+}
+
+// WithHandlerProjectDir sets the project directory for per-project state scoping.
+func WithHandlerProjectDir(dir string) HandlerOption {
+	return func(h *Handler) {
+		if dir != "" {
+			h.projectDir = dir
 		}
 	}
 }
@@ -86,7 +96,12 @@ func NewHandler(cfg *config.ExceptionsConfig, opts ...HandlerOption) *Handler {
 			rateCfg = cfg.RateLimit
 		}
 
-		h.rateLimiter = NewRateLimiter(rateCfg, cfg, WithRateLimiterLogger(h.logger))
+		rlOpts := []RateLimiterOption{WithRateLimiterLogger(h.logger)}
+		if h.projectDir != "" {
+			rlOpts = append(rlOpts, WithProjectDir(h.projectDir))
+		}
+
+		h.rateLimiter = NewRateLimiter(rateCfg, cfg, rlOpts...)
 	}
 
 	if h.auditLogger == nil {

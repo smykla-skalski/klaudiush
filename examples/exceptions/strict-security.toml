@@ -60,7 +60,7 @@ description = "Commit format violations not allowed"
 enabled = true
 max_per_hour = 5
 max_per_day = 15
-state_file = "~/.klaudiush/exception_state.json"
+state_file = "~/.klaudiush/exceptions/state.json"
 
 # Audit logging - longer retention for compliance
 [exceptions.audit]

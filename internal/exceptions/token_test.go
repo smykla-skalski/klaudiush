@@ -260,6 +260,58 @@ EOF
 		})
 	})
 
+	Describe("Word boundary matching", func() {
+		It("rejects substring match with prefix", func() {
+			result, err := parser.Parse("git push # NOEXC:GIT019:fake+reason")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.Found).To(BeFalse())
+		})
+
+		It("finds valid token after non-matching prefix", func() {
+			result, err := parser.Parse(
+				"git push # NOEXC:skip EXC:GIT019:Emergency+production+hotfix",
+			)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.Found).To(BeTrue())
+			Expect(result.Token.ErrorCode).To(Equal("GIT019"))
+			Expect(result.Token.Reason).To(Equal("Emergency production hotfix"))
+		})
+
+		It("rejects token embedded in another word", func() {
+			result, err := parser.Parse("git push # xEXC:GIT019:reason")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.Found).To(BeFalse())
+		})
+
+		It("accepts token after tab", func() {
+			result, err := parser.Parse("git push #\tEXC:GIT019:reason")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.Found).To(BeTrue())
+			Expect(result.Token.ErrorCode).To(Equal("GIT019"))
+		})
+	})
+
+	Describe("Variable expansion rejection", func() {
+		It("rejects variable expansion in env var value", func() {
+			result, err := parser.Parse(`KLACK="EXC:${CODE}:reason" git push`)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.Found).To(BeFalse())
+		})
+
+		It("rejects command substitution in env var value", func() {
+			result, err := parser.Parse(`KLACK="EXC:$(echo GIT022):reason" git push`)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.Found).To(BeFalse())
+		})
+
+		It("accepts literal string in double quotes", func() {
+			result, err := parser.Parse(`KLACK="EXC:GIT022:reason" git push`)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.Found).To(BeTrue())
+			Expect(result.Token.ErrorCode).To(Equal("GIT022"))
+		})
+	})
+
 	Describe("TokenSource String()", func() {
 		It("returns correct string for comment source", func() {
 			Expect(exceptions.TokenSourceComment.String()).To(Equal("comment"))

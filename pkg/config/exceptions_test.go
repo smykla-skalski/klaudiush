@@ -273,7 +273,7 @@ var _ = Describe("ExceptionRateLimitConfig", func() {
 	Describe("GetStateFile", func() {
 		It("should return default when StateFile is empty", func() {
 			cfg := &config.ExceptionRateLimitConfig{}
-			Expect(cfg.GetStateFile()).To(Equal("~/.klaudiush/exception_state.json"))
+			Expect(cfg.GetStateFile()).To(Equal("~/.klaudiush/exceptions/state.json"))
 		})
 
 		It("should return the configured value", func() {
@@ -283,7 +283,7 @@ var _ = Describe("ExceptionRateLimitConfig", func() {
 
 		It("should return default for nil config", func() {
 			var cfg *config.ExceptionRateLimitConfig
-			Expect(cfg.GetStateFile()).To(Equal("~/.klaudiush/exception_state.json"))
+			Expect(cfg.GetStateFile()).To(Equal("~/.klaudiush/exceptions/state.json"))
 		})
 	})
 })

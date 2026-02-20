@@ -227,11 +227,22 @@ var _ = Describe("PolicyMatcher", func() {
 				Expect(decision.Allowed).To(BeTrue())
 			})
 
-			It("allows prefix match", func() {
+			It("rejects prefix match (exact match only)", func() {
 				decision := matcher.Match(&exceptions.ExceptionRequest{
 					Token: &exceptions.Token{
 						ErrorCode: "GIT022",
 						Reason:    "Approved by @manager",
+					},
+				})
+				Expect(decision.Allowed).To(BeFalse())
+				Expect(decision.Reason).To(ContainSubstring("not in approved list"))
+			})
+
+			It("allows exact match from valid reasons", func() {
+				decision := matcher.Match(&exceptions.ExceptionRequest{
+					Token: &exceptions.Token{
+						ErrorCode: "GIT022",
+						Reason:    "Approved by",
 					},
 				})
 				Expect(decision.Allowed).To(BeTrue())
@@ -247,6 +258,99 @@ var _ = Describe("PolicyMatcher", func() {
 				Expect(decision.Allowed).To(BeFalse())
 				Expect(decision.Reason).To(ContainSubstring("not in approved list"))
 			})
+		})
+	})
+
+	Describe("RequireExplicitPolicy", func() {
+		Context("when require_explicit_policy is true", func() {
+			BeforeEach(func() {
+				requireExplicit := true
+				matcher = exceptions.NewPolicyMatcher(&config.ExceptionsConfig{
+					RequireExplicitPolicy: &requireExplicit,
+					Policies: map[string]*config.ExceptionPolicyConfig{
+						"GIT022": {},
+					},
+				})
+			})
+
+			It("allows configured error code", func() {
+				decision := matcher.Match(&exceptions.ExceptionRequest{
+					Token: &exceptions.Token{ErrorCode: "GIT022"},
+				})
+				Expect(decision.Allowed).To(BeTrue())
+			})
+
+			It("denies unconfigured error code", func() {
+				decision := matcher.Match(&exceptions.ExceptionRequest{
+					Token: &exceptions.Token{ErrorCode: "SEC001"},
+				})
+				Expect(decision.Allowed).To(BeFalse())
+				Expect(decision.Reason).To(ContainSubstring("no explicit policy"))
+			})
+		})
+
+		Context("when require_explicit_policy is false (default)", func() {
+			BeforeEach(func() {
+				matcher = exceptions.NewPolicyMatcher(&config.ExceptionsConfig{
+					Policies: map[string]*config.ExceptionPolicyConfig{
+						"GIT022": {},
+					},
+				})
+			})
+
+			It("allows unconfigured error code", func() {
+				decision := matcher.Match(&exceptions.ExceptionRequest{
+					Token: &exceptions.Token{ErrorCode: "SEC001"},
+				})
+				Expect(decision.Allowed).To(BeTrue())
+			})
+		})
+	})
+
+	Describe("Rune count for reason length", func() {
+		It("counts CJK characters as single runes", func() {
+			required := true
+			minLen := 5
+			matcher = exceptions.NewPolicyMatcher(&config.ExceptionsConfig{
+				Policies: map[string]*config.ExceptionPolicyConfig{
+					"GIT022": {
+						RequireReason:   &required,
+						MinReasonLength: &minLen,
+					},
+				},
+			})
+
+			// 5 CJK characters = 5 runes but 15 bytes
+			decision := matcher.Match(&exceptions.ExceptionRequest{
+				Token: &exceptions.Token{
+					ErrorCode: "GIT022",
+					Reason:    "\u4e00\u4e8c\u4e09\u56db\u4e94",
+				},
+			})
+			Expect(decision.Allowed).To(BeTrue())
+		})
+
+		It("rejects CJK reason with insufficient rune count", func() {
+			required := true
+			minLen := 5
+			matcher = exceptions.NewPolicyMatcher(&config.ExceptionsConfig{
+				Policies: map[string]*config.ExceptionPolicyConfig{
+					"GIT022": {
+						RequireReason:   &required,
+						MinReasonLength: &minLen,
+					},
+				},
+			})
+
+			// 4 CJK characters = 4 runes but 12 bytes (>5 bytes)
+			decision := matcher.Match(&exceptions.ExceptionRequest{
+				Token: &exceptions.Token{
+					ErrorCode: "GIT022",
+					Reason:    "\u4e00\u4e8c\u4e09\u56db",
+				},
+			})
+			Expect(decision.Allowed).To(BeFalse())
+			Expect(decision.Reason).To(ContainSubstring("too short"))
 		})
 	})
 

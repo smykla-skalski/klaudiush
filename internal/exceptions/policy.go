@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/smykla-skalski/klaudiush/pkg/config"
 )
@@ -44,6 +45,15 @@ func (m *PolicyMatcher) Match(req *ExceptionRequest) *PolicyDecision {
 
 	// Get the policy for this error code
 	policy := m.getPolicy(req.Token.ErrorCode)
+
+	// Check if explicit policy is required but none exists
+	if m.config != nil && m.config.IsRequireExplicitPolicy() &&
+		!m.HasExplicitPolicy(req.Token.ErrorCode) {
+		return &PolicyDecision{
+			Allowed: false,
+			Reason:  "no explicit policy for " + req.Token.ErrorCode,
+		}
+	}
 
 	// Check if policy is enabled
 	if !policy.IsPolicyEnabled() {
@@ -107,9 +117,9 @@ func (m *PolicyMatcher) validateReason(
 		}
 	}
 
-	// Check minimum length
+	// Check minimum length (rune count, not byte count)
 	minLength := policy.GetMinReasonLength()
-	if len(reason) < minLength {
+	if utf8.RuneCountInString(reason) < minLength {
 		return &PolicyDecision{
 			Allowed:        false,
 			Reason:         "reason too short (minimum " + strconv.Itoa(minLength) + " characters)",
@@ -138,24 +148,12 @@ func (m *PolicyMatcher) validateReason(
 }
 
 // isValidReason checks if the reason matches any of the valid reasons.
-// Comparison is case-insensitive and supports prefix matching.
+// Comparison is case-insensitive, exact match only.
 func (*PolicyMatcher) isValidReason(validReasons []string, reason string) bool {
 	reasonLower := strings.ToLower(strings.TrimSpace(reason))
 
 	return slices.ContainsFunc(validReasons, func(valid string) bool {
-		validLower := strings.ToLower(strings.TrimSpace(valid))
-
-		// Exact match (case-insensitive)
-		if reasonLower == validLower {
-			return true
-		}
-
-		// Prefix match for approved reasons
-		if strings.HasPrefix(reasonLower, validLower) {
-			return true
-		}
-
-		return false
+		return reasonLower == strings.ToLower(strings.TrimSpace(valid))
 	})
 }
 

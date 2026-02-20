@@ -631,4 +631,141 @@ var _ = Describe("RateLimiter", func() {
 			Expect(result.Allowed).To(BeTrue())
 		})
 	})
+
+	Describe("Concurrent Save and Record", func() {
+		BeforeEach(func() {
+			limiter = exceptions.NewRateLimiter(
+				nil,
+				nil,
+				exceptions.WithStateFile(stateFile),
+				exceptions.WithTimeFunc(timeFunc),
+			)
+		})
+
+		It("handles concurrent Save and Record without race", func() {
+			done := make(chan bool)
+			count := 50
+
+			// Concurrent Record calls
+			for range count {
+				go func() {
+					_ = limiter.Record("GIT022")
+
+					done <- true
+				}()
+			}
+
+			// Concurrent Save calls
+			for range count {
+				go func() {
+					_ = limiter.Save()
+
+					done <- true
+				}()
+			}
+
+			for range 2 * count {
+				<-done
+			}
+
+			state := limiter.GetState()
+			Expect(state.GlobalHourlyCount).To(Equal(count))
+		})
+	})
+
+	Describe("Local midnight daily reset", func() {
+		It("resets daily counter at local midnight, not UTC midnight", func() {
+			// Use UTC-8 timezone where 11pm local = 7am next day UTC
+			loc := time.FixedZone("UTC-8", -8*60*60)
+			localTime := time.Date(2025, 11, 29, 23, 30, 0, 0, loc)
+			timeFunc = func() time.Time { return localTime }
+
+			limiter = exceptions.NewRateLimiter(
+				nil,
+				nil,
+				exceptions.WithStateFile(stateFile),
+				exceptions.WithTimeFunc(timeFunc),
+			)
+
+			_ = limiter.Record("GIT022")
+
+			state := limiter.GetState()
+			Expect(state.GlobalDailyCount).To(Equal(1))
+
+			// Advance 25 min to 23:55 - still same local day
+			localTime = localTime.Add(25 * time.Minute)
+
+			// Should NOT reset daily counter (still Nov 29 local time)
+			_ = limiter.Check("GIT022")
+			state = limiter.GetState()
+			Expect(state.GlobalDailyCount).To(Equal(1))
+
+			// Advance past local midnight to 00:01 Nov 30
+			localTime = localTime.Add(6 * time.Minute)
+
+			// Should reset daily counter (now Nov 30 local time)
+			_ = limiter.Check("GIT022")
+			state = limiter.GetState()
+			Expect(state.GlobalDailyCount).To(Equal(0))
+		})
+	})
+
+	Describe("Per-project state", func() {
+		It("uses different state files for different project dirs", func() {
+			limiter1 := exceptions.NewRateLimiter(
+				nil,
+				nil,
+				exceptions.WithStateFile(filepath.Join(tempDir, "state.json")),
+				exceptions.WithProjectDir("/project/alpha"),
+				exceptions.WithTimeFunc(timeFunc),
+			)
+
+			limiter2 := exceptions.NewRateLimiter(
+				nil,
+				nil,
+				exceptions.WithStateFile(filepath.Join(tempDir, "state.json")),
+				exceptions.WithProjectDir("/project/beta"),
+				exceptions.WithTimeFunc(timeFunc),
+			)
+
+			_ = limiter1.Record("GIT022")
+			_ = limiter1.Record("GIT022")
+			err := limiter1.Save()
+			Expect(err).NotTo(HaveOccurred())
+
+			_ = limiter2.Record("SEC001")
+			err = limiter2.Save()
+			Expect(err).NotTo(HaveOccurred())
+
+			// Load into fresh limiters
+			fresh1 := exceptions.NewRateLimiter(
+				nil,
+				nil,
+				exceptions.WithStateFile(filepath.Join(tempDir, "state.json")),
+				exceptions.WithProjectDir("/project/alpha"),
+				exceptions.WithTimeFunc(timeFunc),
+			)
+			err = fresh1.Load()
+			Expect(err).NotTo(HaveOccurred())
+
+			fresh2 := exceptions.NewRateLimiter(
+				nil,
+				nil,
+				exceptions.WithStateFile(filepath.Join(tempDir, "state.json")),
+				exceptions.WithProjectDir("/project/beta"),
+				exceptions.WithTimeFunc(timeFunc),
+			)
+			err = fresh2.Load()
+			Expect(err).NotTo(HaveOccurred())
+
+			// Each should have independent state
+			state1 := fresh1.GetState()
+			Expect(state1.GlobalHourlyCount).To(Equal(2))
+			Expect(state1.HourlyUsage["GIT022"]).To(Equal(2))
+
+			state2 := fresh2.GetState()
+			Expect(state2.GlobalHourlyCount).To(Equal(1))
+			Expect(state2.HourlyUsage["SEC001"]).To(Equal(1))
+		})
+	})
 })

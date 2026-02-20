@@ -2,6 +2,8 @@
 package exceptions
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"maps"
 	"os"
@@ -37,6 +39,10 @@ type RateLimiter struct {
 	// stateFile is the resolved path for state persistence.
 	stateFile string
 
+	// projectDir is the project directory used for per-project state scoping.
+	// When set, the state file path incorporates a hash of this directory.
+	projectDir string
+
 	// now is a function that returns the current time.
 	// Used for testing to control time.
 	now func() time.Time
@@ -58,6 +64,17 @@ func WithRateLimiterLogger(log logger.Logger) RateLimiterOption {
 func WithStateFile(path string) RateLimiterOption {
 	return func(r *RateLimiter) {
 		r.stateFile = path
+	}
+}
+
+// WithProjectDir sets the project directory for per-project state scoping.
+// When set, the state file path incorporates a hash of this directory so
+// each project gets its own rate limit counters.
+func WithProjectDir(dir string) RateLimiterOption {
+	return func(r *RateLimiter) {
+		if dir != "" {
+			r.projectDir = dir
+		}
 	}
 }
 
@@ -99,7 +116,7 @@ func NewRateLimiter(
 	// This ensures tests with custom time functions get correct initial windows.
 	now := r.now()
 	r.state.HourStartTime = now.Truncate(time.Hour)
-	r.state.DayStartTime = now.Truncate(hoursPerDay * time.Hour)
+	r.state.DayStartTime = truncateToLocalDay(now)
 	r.state.LastUpdated = now
 
 	return r
@@ -309,9 +326,19 @@ func (r *RateLimiter) Load() error {
 }
 
 // Save persists the current rate limit state to the configured state file.
+//
+// Save performs a deep copy of the state under RLock, then releases the lock
+// before doing file I/O. This means concurrent Record() calls between the
+// copy and the write are not captured in this save - an acceptable
+// approximation for cross-process rate limiting where exact counts are
+// best-effort.
 func (r *RateLimiter) Save() error {
 	r.mu.RLock()
-	state := r.state
+	state := *r.state
+	state.HourlyUsage = make(map[string]int, len(r.state.HourlyUsage))
+	state.DailyUsage = make(map[string]int, len(r.state.DailyUsage))
+	maps.Copy(state.HourlyUsage, r.state.HourlyUsage)
+	maps.Copy(state.DailyUsage, r.state.DailyUsage)
 	path := r.resolveStatePath()
 	r.mu.RUnlock()
 
@@ -321,7 +348,7 @@ func (r *RateLimiter) Save() error {
 		return errors.Wrap(err, "creating state directory")
 	}
 
-	data, err := json.MarshalIndent(state, "", "  ")
+	data, err := json.MarshalIndent(&state, "", "  ")
 	if err != nil {
 		return errors.Wrap(err, "marshaling state")
 	}
@@ -357,7 +384,7 @@ func (r *RateLimiter) Reset() {
 	// Update times with the current time function
 	now := r.now()
 	r.state.HourStartTime = now.Truncate(time.Hour)
-	r.state.DayStartTime = now.Truncate(hoursPerDay * time.Hour)
+	r.state.DayStartTime = truncateToLocalDay(now)
 	r.state.LastUpdated = now
 
 	r.logger.Debug("rate limit state reset")
@@ -383,7 +410,7 @@ func (r *RateLimiter) GetState() RateLimitState {
 func (r *RateLimiter) resetIfExpiredLocked() {
 	now := r.now()
 	currentHour := now.Truncate(time.Hour)
-	currentDay := now.Truncate(hoursPerDay * time.Hour)
+	currentDay := truncateToLocalDay(now)
 
 	// Reset hourly counters if hour has changed
 	if currentHour.After(r.state.HourStartTime) {
@@ -443,7 +470,18 @@ func (r *RateLimiter) getPolicyLimits(errorCode string) (int, int) {
 	return policy.GetMaxPerHour(), policy.GetMaxPerDay()
 }
 
+// truncateToLocalDay returns midnight of the given time in its location.
+// Unlike time.Truncate(24h) which truncates relative to the zero time in UTC,
+// this correctly handles time zones where local midnight != UTC midnight.
+func truncateToLocalDay(t time.Time) time.Time {
+	y, m, d := t.Date()
+
+	return time.Date(y, m, d, 0, 0, 0, 0, t.Location())
+}
+
 // resolveStatePath expands ~ in the state file path.
+// When projectDir is set, it incorporates a hash of the project directory
+// into the filename for per-project state isolation.
 func (r *RateLimiter) resolveStatePath() string {
 	path := r.stateFile
 	if len(path) > 1 && path[0] == '~' && path[1] == '/' {
@@ -453,5 +491,22 @@ func (r *RateLimiter) resolveStatePath() string {
 		}
 	}
 
+	// Incorporate project hash into filename for per-project scoping
+	if r.projectDir != "" {
+		dir := filepath.Dir(path)
+		ext := filepath.Ext(path)
+		base := filepath.Base(path)
+		base = base[:len(base)-len(ext)]
+		hash := hashProjectDir(r.projectDir)
+		path = filepath.Join(dir, base+"_"+hash+ext)
+	}
+
 	return path
+}
+
+// hashProjectDir returns a short hex hash of the project directory path.
+func hashProjectDir(dir string) string {
+	h := sha256.Sum256([]byte(dir))
+
+	return hex.EncodeToString(h[:8])
 }

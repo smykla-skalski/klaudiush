@@ -651,7 +651,7 @@ func defaultExceptionsMap() map[string]any {
 			"enabled":      true,
 			"max_per_hour": defaultExceptionRateLimitPerH,
 			"max_per_day":  defaultExceptionRateLimitPerD,
-			"state_file":   "~/.klaudiush/exception_state.json",
+			"state_file":   "~/.klaudiush/exceptions/state.json",
 		},
 		"audit": map[string]any{
 			"enabled":      true,

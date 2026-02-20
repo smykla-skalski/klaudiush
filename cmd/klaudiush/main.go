@@ -17,6 +17,7 @@ import (
 	"github.com/smykla-skalski/klaudiush/internal/config/factory"
 	"github.com/smykla-skalski/klaudiush/internal/crashdump"
 	"github.com/smykla-skalski/klaudiush/internal/dispatcher"
+	"github.com/smykla-skalski/klaudiush/internal/exceptions"
 	"github.com/smykla-skalski/klaudiush/internal/hookresponse"
 	"github.com/smykla-skalski/klaudiush/internal/parser"
 	"github.com/smykla-skalski/klaudiush/internal/patterns"
@@ -204,47 +205,78 @@ func run(_ *cobra.Command, _ []string) error {
 	// Create and initialize session tracker if enabled
 	sessionTracker := initSessionTracker(cfg, log)
 
-	// Create dispatcher with session tracker
+	// Create and initialize exception checker if enabled
+	exceptionHandler, exceptionChecker := initExceptionChecker(cfg, workDir, log)
+
+	// Create dispatcher with session tracker and exception checker
 	disp := dispatcher.NewDispatcherWithOptions(
 		registry,
 		log,
 		dispatcher.NewSequentialExecutor(log),
 		dispatcher.WithSessionTracker(sessionTracker),
+		dispatcher.WithExceptionChecker(exceptionChecker),
 	)
 
 	// Dispatch validation
 	errs := disp.Dispatch(context.Background(), ctx)
 
-	// Save session state after dispatch
+	// Save persistent state after dispatch
+	savePersistentState(sessionTracker, exceptionHandler, log)
+
+	// Run failure pattern tracking
+	patternWarnings := runPatternTracking(cfg, ctx, errs, workDir, log)
+
+	// Build and write response
+	return writeResponse(hookType, errs, patternWarnings, log)
+}
+
+// savePersistentState saves session and exception state after dispatch.
+func savePersistentState(
+	sessionTracker *session.Tracker,
+	exceptionHandler *exceptions.Handler,
+	log logger.Logger,
+) {
 	if sessionTracker != nil {
 		if err := sessionTracker.Save(); err != nil {
 			log.Info("failed to save session state", "error", err)
 		}
 	}
 
-	// Run failure pattern tracking
-	patternWarnings := runPatternTracking(cfg, ctx, errs, workDir, log)
+	if exceptionHandler != nil {
+		if err := exceptionHandler.SaveState(); err != nil {
+			log.Info("failed to save exception state", "error", err)
+		}
+	}
+}
 
-	// Build JSON hook response and write to stdout
+// writeResponse builds and writes the JSON hook response to stdout.
+func writeResponse(
+	hookType string,
+	errs []*dispatcher.ValidationError,
+	patternWarnings []string,
+	log logger.Logger,
+) error {
 	response := hookresponse.BuildWithPatterns(hookType, errs, patternWarnings)
-	if response != nil {
-		data, jsonErr := json.Marshal(response)
-		if jsonErr != nil {
-			log.Error("failed to marshal hook response", "error", jsonErr)
-
-			return errors.Wrap(jsonErr, "marshal hook response")
-		}
-
-		//nolint:errcheck,gosec // G705: data is internal JSON from json.Marshal, not user-controlled HTML
-		fmt.Fprintf(os.Stdout, "%s\n", data)
-
-		if dispatcher.ShouldBlock(errs) {
-			log.Error("validation blocked", "errorCount", len(errs))
-		} else {
-			log.Info("validation passed with warnings", "warningCount", len(errs))
-		}
-	} else {
+	if response == nil {
 		log.Info("validation passed")
+
+		return nil
+	}
+
+	data, jsonErr := json.Marshal(response)
+	if jsonErr != nil {
+		log.Error("failed to marshal hook response", "error", jsonErr)
+
+		return errors.Wrap(jsonErr, "marshal hook response")
+	}
+
+	//nolint:errcheck,gosec // G705: data is internal JSON from json.Marshal, not user-controlled HTML
+	fmt.Fprintf(os.Stdout, "%s\n", data)
+
+	if dispatcher.ShouldBlock(errs) {
+		log.Error("validation blocked", "errorCount", len(errs))
+	} else {
+		log.Info("validation passed with warnings", "warningCount", len(errs))
 	}
 
 	return nil
@@ -368,6 +400,48 @@ func initSessionTracker(cfg *config.Config, log logger.Logger) *session.Tracker 
 	)
 
 	return tracker
+}
+
+// initExceptionChecker creates and initializes an exception checker if enabled in the config.
+func initExceptionChecker(
+	cfg *config.Config,
+	workDir string,
+	log logger.Logger,
+) (*exceptions.Handler, dispatcher.ExceptionChecker) {
+	exCfg := cfg.GetExceptions()
+	if !exCfg.IsEnabled() {
+		return nil, nil
+	}
+
+	// Resolve project directory for per-project state scoping
+	projectDir := workDir
+	if projectDir == "" {
+		var err error
+
+		projectDir, err = os.Getwd()
+		if err != nil {
+			log.Info("failed to get working directory for exceptions", "error", err)
+
+			return nil, nil
+		}
+	}
+
+	handler := exceptions.NewHandler(exCfg,
+		exceptions.WithHandlerLogger(log),
+		exceptions.WithHandlerProjectDir(projectDir),
+	)
+
+	if err := handler.LoadState(); err != nil {
+		log.Info("failed to load exception state, starting fresh", "error", err)
+	}
+
+	checker := dispatcher.NewExceptionChecker(handler,
+		dispatcher.WithExceptionCheckerLogger(log),
+	)
+
+	log.Debug("exception checker initialized")
+
+	return handler, checker
 }
 
 // runPatternTracking runs the failure pattern advisor and recorder.

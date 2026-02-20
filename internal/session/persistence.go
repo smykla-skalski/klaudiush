@@ -60,7 +60,19 @@ func (t *Tracker) Load() error {
 // Save persists the current session state to the configured state file.
 func (t *Tracker) Save() error {
 	t.mu.RLock()
-	state := t.state
+	state := *t.state
+	state.Sessions = make(map[string]*SessionInfo, len(t.state.Sessions))
+
+	for k, v := range t.state.Sessions {
+		infoCopy := *v
+		if v.PoisonedAt != nil {
+			poisonedAtCopy := *v.PoisonedAt
+			infoCopy.PoisonedAt = &poisonedAtCopy
+		}
+
+		state.Sessions[k] = &infoCopy
+	}
+
 	path := t.resolveStatePath()
 	t.mu.RUnlock()
 
@@ -70,7 +82,7 @@ func (t *Tracker) Save() error {
 		return errors.Wrap(err, "creating state directory")
 	}
 
-	data, err := json.MarshalIndent(state, "", "  ")
+	data, err := json.MarshalIndent(&state, "", "  ")
 	if err != nil {
 		return errors.Wrap(err, "marshaling state")
 	}

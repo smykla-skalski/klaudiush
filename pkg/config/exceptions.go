@@ -40,6 +40,11 @@ type ExceptionsConfig struct {
 	// Audit configures exception audit logging.
 	Audit *ExceptionAuditConfig `json:"audit,omitempty" koanf:"audit" toml:"audit"`
 
+	// RequireExplicitPolicy requires an explicit policy entry for each error code.
+	// When true, exception tokens for error codes without a policy entry are denied.
+	// Default: false
+	RequireExplicitPolicy *bool `json:"require_explicit_policy,omitempty" koanf:"require_explicit_policy" toml:"require_explicit_policy"`
+
 	// TokenPrefix is the prefix used for exception tokens.
 	// Default: "EXC"
 	TokenPrefix string `json:"token_prefix,omitempty" koanf:"token_prefix" toml:"token_prefix"`
@@ -94,7 +99,7 @@ type ExceptionRateLimitConfig struct {
 	MaxPerDay *int `json:"max_per_day,omitempty" koanf:"max_per_day" toml:"max_per_day"`
 
 	// StateFile is the path to the rate limit state file.
-	// Default: "~/.klaudiush/exception_state.json"
+	// Default: "~/.klaudiush/exceptions/state.json"
 	StateFile string `json:"state_file,omitempty" koanf:"state_file" toml:"state_file"`
 }
 
@@ -129,6 +134,16 @@ func (e *ExceptionsConfig) IsEnabled() bool {
 	}
 
 	return *e.Enabled
+}
+
+// IsRequireExplicitPolicy returns true if explicit policies are required.
+// Returns false if RequireExplicitPolicy is nil (default behavior).
+func (e *ExceptionsConfig) IsRequireExplicitPolicy() bool {
+	if e == nil || e.RequireExplicitPolicy == nil {
+		return false
+	}
+
+	return *e.RequireExplicitPolicy
 }
 
 // GetTokenPrefix returns the token prefix, defaulting to "EXC".
@@ -241,10 +256,12 @@ func (r *ExceptionRateLimitConfig) GetMaxPerDay() int {
 }
 
 // GetStateFile returns the state file path.
-// Returns "~/.klaudiush/exception_state.json" if StateFile is empty.
+// Returns "~/.klaudiush/exceptions/state.json" if StateFile is empty.
+// When used with per-project scoping, a project hash is appended to the
+// base filename by the rate limiter.
 func (r *ExceptionRateLimitConfig) GetStateFile() string {
 	if r == nil || r.StateFile == "" {
-		return "~/.klaudiush/exception_state.json"
+		return "~/.klaudiush/exceptions/state.json"
 	}
 
 	return r.StateFile

@@ -155,6 +155,7 @@ type RateLimitState struct {
 // NewRateLimitState creates a new rate limit state with initialized maps.
 func NewRateLimitState() *RateLimitState {
 	now := time.Now()
+	y, m, d := now.Date()
 
 	return &RateLimitState{
 		HourlyUsage:       make(map[string]int),
@@ -162,7 +163,7 @@ func NewRateLimitState() *RateLimitState {
 		GlobalHourlyCount: 0,
 		GlobalDailyCount:  0,
 		HourStartTime:     now.Truncate(time.Hour),
-		DayStartTime:      now.Truncate(hoursPerDay * time.Hour),
+		DayStartTime:      time.Date(y, m, d, 0, 0, 0, 0, now.Location()),
 		LastUpdated:       now,
 	}
 }

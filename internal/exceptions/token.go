@@ -233,23 +233,34 @@ func (p *Parser) findTokenInComments(file *syntax.File) *ParseResult {
 }
 
 // parseTokenFromComment extracts a token from a comment string.
+// It requires the token to appear at a word boundary (start of string or
+// preceded by whitespace) to avoid matching substrings like "NOEXC:GIT019".
 func (p *Parser) parseTokenFromComment(text string) (*Token, error) {
-	// Find the token pattern in the comment
-	tokenStart := strings.Index(text, p.tokenPrefix+":")
-	if tokenStart == -1 {
-		return nil, ErrTokenNotFound
+	prefix := p.tokenPrefix + ":"
+	searchFrom := 0
+
+	for {
+		idx := strings.Index(text[searchFrom:], prefix)
+		if idx == -1 {
+			return nil, ErrTokenNotFound
+		}
+
+		tokenStart := searchFrom + idx
+
+		// Check word boundary: must be at start of string or preceded by whitespace
+		if tokenStart == 0 || text[tokenStart-1] == ' ' || text[tokenStart-1] == '\t' {
+			tokenStr := text[tokenStart:]
+
+			tokenEnd := strings.IndexAny(tokenStr, " \t\n")
+			if tokenEnd != -1 {
+				tokenStr = tokenStr[:tokenEnd]
+			}
+
+			return p.parseToken(tokenStr)
+		}
+
+		searchFrom = tokenStart + len(prefix)
 	}
-
-	// Extract the token substring
-	tokenStr := text[tokenStart:]
-
-	// Find the end of the token (next space or end of string)
-	tokenEnd := strings.IndexAny(tokenStr, " \t\n")
-	if tokenEnd != -1 {
-		tokenStr = tokenStr[:tokenEnd]
-	}
-
-	return p.parseToken(tokenStr)
 }
 
 // parseToken parses a raw token string into a Token struct.
@@ -312,7 +323,9 @@ func (p *Parser) isValidErrorCode(code string) bool {
 	return p.errorCodeExpr.MatchString(code)
 }
 
-// wordToString converts a syntax.Word to a string.
+// wordToString converts a syntax.Word to a string, returning "" if it
+// contains any variable expansions or command substitutions. This prevents
+// tokens like EXC:${CODE}:reason from being silently resolved to literals.
 func wordToString(word *syntax.Word) string {
 	if word == nil {
 		return ""
@@ -328,10 +341,17 @@ func wordToString(word *syntax.Word) string {
 			result.WriteString(p.Value)
 		case *syntax.DblQuoted:
 			for _, dqPart := range p.Parts {
-				if lit, ok := dqPart.(*syntax.Lit); ok {
+				switch lit := dqPart.(type) {
+				case *syntax.Lit:
 					result.WriteString(lit.Value)
+				default:
+					// Variable expansion, command substitution, etc.
+					return ""
 				}
 			}
+		default:
+			// Unknown part type (parameter expansion, arithmetic, etc.)
+			return ""
 		}
 	}
 
