@@ -5,6 +5,19 @@ All notable changes to klaudiush will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.20.1](https://github.com/smykla-skalski/klaudiush/compare/v1.20.0...v1.20.1) (2026-02-20)
+
+### Bug Fixes
+
+* **config:** deep merge preserves defaults ([2fdce20](https://github.com/smykla-skalski/klaudiush/commit/2fdce2055f25655bbc80c02b1e4a85e106e2fe46))
+* **config:** env vars with underscored field names ([d805f44](https://github.com/smykla-skalski/klaudiush/commit/d805f44463f4bb2ee5235dccf1e213dd96e40630))
+* **markdown:** skip Claude Code internal files ([8bc7faa](https://github.com/smykla-skalski/klaudiush/commit/8bc7faa928cb35ad36d5086e9bd9154c0fff05f6))
+* **validators:** specific error messages ([6857b96](https://github.com/smykla-skalski/klaudiush/commit/6857b96b659fffd441eb552424c34df5a97c7632))
+
+### Code Refactoring
+
+* **refs:** move error URLs to /e/ path prefix ([0a6577c](https://github.com/smykla-skalski/klaudiush/commit/0a6577c0459243ba2144ecc6dd785fad0dffadc4))
+
 ## [1.20.0](https://github.com/smykla-skalski/klaudiush/compare/v1.19.1...v1.20.0) (2026-02-20)
 
 ### Features
