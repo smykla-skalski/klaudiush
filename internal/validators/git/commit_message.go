@@ -189,7 +189,20 @@ func (*CommitValidator) validateMarkdownInBody(lines []string) []string {
 		return nil
 	}
 
-	body := strings.Join(lines[bodyStartIdx:], "\n")
+	bodyLines := lines[bodyStartIdx:]
+
+	// Strip git trailer lines before markdown analysis to prevent
+	// false positives (e.g., Signed-off-by: triggering list detection)
+	footerStart := findFooterStartIndex(bodyLines)
+	if footerStart < len(bodyLines) {
+		bodyLines = bodyLines[:footerStart]
+	}
+
+	if len(bodyLines) == 0 {
+		return nil
+	}
+
+	body := strings.Join(bodyLines, "\n")
 	markdownResult := validators.AnalyzeMarkdown(body, nil)
 
 	return markdownResult.Warnings

@@ -349,6 +349,36 @@ var _ = Describe("ListFormattingRule", func() {
 		})
 	})
 
+	Context("should NOT false-positive on git trailer lines", func() {
+		It("passes with Signed-off-by directly after body text", func() {
+			msg := "feat(api): add endpoint\n\nSome body text.\nSigned-off-by: Test User <test@example.com>"
+			commit := &git.ParsedCommit{Title: "feat(api): add endpoint", Valid: true}
+			result := rule.Validate(commit, msg)
+			Expect(result).To(BeNil())
+		})
+
+		It("passes with Co-authored-by trailer", func() {
+			msg := "feat(api): add endpoint\n\nSome body text.\n\nCo-authored-by: Other User <other@example.com>"
+			commit := &git.ParsedCommit{Title: "feat(api): add endpoint", Valid: true}
+			result := rule.Validate(commit, msg)
+			Expect(result).To(BeNil())
+		})
+
+		It("passes with multiple trailers after body", func() {
+			msg := "feat(api): add endpoint\n\nSome body text.\n\nSigned-off-by: Test User <test@example.com>\nCo-authored-by: Other <o@e.com>"
+			commit := &git.ParsedCommit{Title: "feat(api): add endpoint", Valid: true}
+			result := rule.Validate(commit, msg)
+			Expect(result).To(BeNil())
+		})
+
+		It("passes with BREAKING CHANGE trailer", func() {
+			msg := "feat(api)!: remove endpoint\n\nRemoved the old endpoint.\n\nBREAKING CHANGE: API v1 removed"
+			commit := &git.ParsedCommit{Title: "feat(api)!: remove endpoint", Valid: true}
+			result := rule.Validate(commit, msg)
+			Expect(result).To(BeNil())
+		})
+	})
+
 	Context("should NOT false-positive on prose containing number-dot patterns", func() {
 		It("passes when prose has mid-line number-dot like 0. Only", func() {
 			msg := "feat(output): use JSON stdout\n\n" +

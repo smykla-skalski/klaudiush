@@ -296,11 +296,13 @@ func (r *BodyLineLengthRule) Validate(_ *ParsedCommit, message string) *RuleResu
 // ListFormattingRule validates list item formatting.
 type ListFormattingRule struct {
 	listItemRegex *regexp.Regexp
+	trailerRegex  *regexp.Regexp
 }
 
 func NewListFormattingRule() *ListFormattingRule {
 	return &ListFormattingRule{
 		listItemRegex: regexp.MustCompile(`^\s*[-*]\s+|^\s*[0-9]+\.\s+`),
+		trailerRegex:  regexp.MustCompile(`^[A-Za-z][-A-Za-z0-9 ]*:\s`),
 	}
 }
 
@@ -324,6 +326,11 @@ func (r *ListFormattingRule) Validate(_ *ParsedCommit, message string) *RuleResu
 		if strings.TrimSpace(line) == "" {
 			prevLineEmpty = true
 
+			continue
+		}
+
+		// Skip git trailer lines (Signed-off-by:, Co-authored-by:, etc.)
+		if r.trailerRegex.MatchString(line) {
 			continue
 		}
 
