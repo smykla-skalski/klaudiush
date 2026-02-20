@@ -5,6 +5,21 @@ All notable changes to klaudiush will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.20.0](https://github.com/smykla-skalski/klaudiush/compare/v1.19.1...v1.20.0) (2026-02-20)
+
+### Features
+
+* **doctor:** interactive output with table ([#314](https://github.com/smykla-skalski/klaudiush/issues/314)) ([e41d30c](https://github.com/smykla-skalski/klaudiush/commit/e41d30ccb774bc2e5eba8bad9adae15670a198f9))
+* **patterns:** add failure pattern tracking ([#313](https://github.com/smykla-skalski/klaudiush/issues/313)) ([4683568](https://github.com/smykla-skalski/klaudiush/commit/468356851f022644ba893618301519e0243d86c6))
+
+### Bug Fixes
+
+* **doctor:** improve skip UX and tool detection ([34eabae](https://github.com/smykla-skalski/klaudiush/commit/34eabae1ae8a371c3b07663bbb2dd2050c920c50))
+* **git:** skip trailer lines in list detection ([#311](https://github.com/smykla-skalski/klaudiush/issues/311)) ([5beea9e](https://github.com/smykla-skalski/klaudiush/commit/5beea9e7cbce287a430f1251c7180805ff81ab6c))
+* **hookresponse:** preserve empty lines in details ([5102b42](https://github.com/smykla-skalski/klaudiush/commit/5102b4270c49bc58615d6e84e5f6166a2acb800c))
+* **markdown:** warn for cosmetic table issues ([#310](https://github.com/smykla-skalski/klaudiush/issues/310)) ([aac6cd7](https://github.com/smykla-skalski/klaudiush/commit/aac6cd7e5de9cd0bf7459fc4c7a8fdf2c2448605))
+* **validators:** improve error messages for agent ([#312](https://github.com/smykla-skalski/klaudiush/issues/312)) ([ecf8675](https://github.com/smykla-skalski/klaudiush/commit/ecf86756919455a14bec9e6f6c57ca3a4a16b004))
+
 ## [1.19.1](https://github.com/smykla-skalski/klaudiush/compare/v1.19.0...v1.19.1) (2026-02-20)
 
 ### Bug Fixes
