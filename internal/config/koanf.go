@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/cockroachdb/errors"
+	"github.com/knadh/koanf/maps"
 	tomlparser "github.com/knadh/koanf/parsers/toml/v2"
 	"github.com/knadh/koanf/providers/confmap"
 	"github.com/knadh/koanf/providers/env/v2"
@@ -15,6 +16,14 @@ import (
 
 	"github.com/smykla-skalski/klaudiush/pkg/config"
 )
+
+// deepMergeOpt enables recursive map merging for koanf.Load calls.
+// Without this, koanf replaces entire sub-maps when a higher-priority source
+// sets any key in a nested map, wiping defaults for unset keys.
+var deepMergeOpt = koanf.WithMergeFunc(func(src, dest map[string]any) error {
+	maps.Merge(src, dest)
+	return nil
+})
 
 var (
 	// ErrConfigNotFound is returned when no configuration file is found.
@@ -185,14 +194,14 @@ func (l *KoanfLoader) LoadWithoutValidation(flags map[string]any) (*config.Confi
 		TransformFunc: l.envTransform,
 	}
 
-	if err := l.k.Load(env.Provider(".", envOpt), nil); err != nil {
+	if err := l.k.Load(env.Provider(".", envOpt), nil, deepMergeOpt); err != nil {
 		return nil, errors.Wrap(err, "failed to load env vars")
 	}
 
 	// 5. CLI flags (highest priority)
 	if len(flags) > 0 {
 		flagConfig := l.flagsToConfig(flags)
-		if err := l.k.Load(confmap.Provider(flagConfig, "."), nil); err != nil {
+		if err := l.k.Load(confmap.Provider(flagConfig, "."), nil, deepMergeOpt); err != nil {
 			return nil, errors.Wrap(err, "failed to load flags")
 		}
 	}
@@ -336,7 +345,7 @@ func (l *KoanfLoader) loadTOMLFile(path string) error {
 		)
 	}
 
-	return l.k.Load(file.Provider(path), tomlparser.Parser())
+	return l.k.Load(file.Provider(path), tomlparser.Parser(), deepMergeOpt)
 }
 
 // envTransform transforms environment variable names to config paths.

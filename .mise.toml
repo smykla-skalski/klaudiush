@@ -40,3 +40,7 @@ buf = "1.65.0"
 [env]
 # Ensure Go binaries are in PATH
 _.path = ["{{ env.HOME }}/.local/share/mise/installs/go/*/bin"]
+# CrowdStrike Falcon kills Go test binaries compiled in the default TMPDIR
+# (/var/folders/.../T/) because it scans new executables from temp dirs.
+# Redirect Go's temp build dir to avoid this.
+GOTMPDIR = "{{ env.HOME }}/.cache/go-tmp"
