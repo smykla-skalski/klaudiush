@@ -278,7 +278,43 @@ var _ = Describe("FilePatternStore", func() {
 			Expect(store2.Load()).To(Succeed())
 
 			all := store2.GetAllPatterns()
-			Expect(len(all)).To(BeNumerically(">=", 4))
+			// 4 original + 9 new cross-category seeds
+			Expect(len(all)).To(BeNumerically(">=", 13))
+		})
+
+		It("includes cross-category seed patterns", func() {
+			err := patterns.EnsureSeedData(store)
+			Expect(err).NotTo(HaveOccurred())
+
+			store2 := patterns.NewFilePatternStore(cfg, tmpDir)
+			Expect(store2.Load()).To(Succeed())
+
+			// Check SEC->SHELL cascade
+			followUps := store2.GetFollowUps("SEC001", 1)
+
+			var found bool
+
+			for _, fp := range followUps {
+				if fp.TargetCode == "SHELL001" {
+					found = true
+
+					Expect(fp.Seed).To(BeTrue())
+				}
+			}
+
+			Expect(found).To(BeTrue(), "SEC001->SHELL001 seed not found")
+
+			// Check FILE->FILE cascade
+			followUps = store2.GetFollowUps("FILE006", 1)
+			found = false
+
+			for _, fp := range followUps {
+				if fp.TargetCode == "FILE005" {
+					found = true
+				}
+			}
+
+			Expect(found).To(BeTrue(), "FILE006->FILE005 seed not found")
 		})
 
 		It("skips when project file already exists", func() {

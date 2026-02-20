@@ -15,16 +15,18 @@ var categoryOrder = []doctor.Category{
 	doctor.CategoryHook,
 	doctor.CategoryConfig,
 	doctor.CategoryTools,
+	doctor.CategoryPatterns,
 	doctor.CategoryBackup,
 }
 
 // categoryNames maps categories to display names
 var categoryNames = map[doctor.Category]string{
-	doctor.CategoryBinary: "Binary",
-	doctor.CategoryHook:   "Hook Registration",
-	doctor.CategoryConfig: "Configuration",
-	doctor.CategoryTools:  "Optional Tools",
-	doctor.CategoryBackup: "Backup",
+	doctor.CategoryBinary:   "Binary",
+	doctor.CategoryHook:     "Hook Registration",
+	doctor.CategoryConfig:   "Configuration",
+	doctor.CategoryTools:    "Optional Tools",
+	doctor.CategoryPatterns: "Patterns",
+	doctor.CategoryBackup:   "Backup",
 }
 
 // SimpleReporter provides simple checklist-style output

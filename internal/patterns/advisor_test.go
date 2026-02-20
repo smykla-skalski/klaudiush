@@ -114,4 +114,61 @@ var _ = Describe("Advisor", func() {
 			Expect(w).NotTo(ContainSubstring("GIT999"))
 		}
 	})
+
+	It("includes descriptions for non-git codes", func() {
+		// Record enough SEC001->SHELL001 to exceed min count
+		for range 10 {
+			store.RecordSequence("SEC001", "SHELL001")
+		}
+
+		warnings := advisor.Advise([]string{"SEC001"})
+		Expect(warnings).NotTo(BeEmpty())
+		Expect(warnings[0]).To(ContainSubstring("API key detected"))
+		Expect(warnings[0]).To(ContainSubstring("backtick substitution"))
+	})
+
+	It("includes descriptions for FILE codes", func() {
+		for range 10 {
+			store.RecordSequence("FILE006", "FILE005")
+		}
+
+		warnings := advisor.Advise([]string{"FILE006"})
+		Expect(warnings).NotTo(BeEmpty())
+		Expect(warnings[0]).To(ContainSubstring("gofumpt"))
+		Expect(warnings[0]).To(ContainSubstring("markdown lint"))
+	})
+})
+
+var _ = Describe("CodeDescriptions", func() {
+	It("returns a copy of the descriptions map", func() {
+		desc := patterns.CodeDescriptions()
+		Expect(desc).NotTo(BeEmpty())
+		Expect(desc["GIT013"]).To(Equal("conventional format"))
+	})
+
+	It("covers all known code prefixes", func() {
+		desc := patterns.CodeDescriptions()
+
+		prefixes := map[string]bool{}
+
+		for code := range desc {
+			if len(code) >= 3 {
+				// Extract prefix (letters before digits)
+				i := 0
+				for i < len(code) && (code[i] < '0' || code[i] > '9') {
+					i++
+				}
+
+				prefixes[code[:i]] = true
+			}
+		}
+
+		Expect(prefixes).To(HaveKey("GIT"))
+		Expect(prefixes).To(HaveKey("FILE"))
+		Expect(prefixes).To(HaveKey("SEC"))
+		Expect(prefixes).To(HaveKey("SHELL"))
+		Expect(prefixes).To(HaveKey("PLUG"))
+		Expect(prefixes).To(HaveKey("SESS"))
+		Expect(prefixes).To(HaveKey("GH"))
+	})
 })

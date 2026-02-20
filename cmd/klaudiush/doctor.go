@@ -16,6 +16,7 @@ import (
 	"github.com/smykla-skalski/klaudiush/internal/doctor/checkers/binary"
 	configchecker "github.com/smykla-skalski/klaudiush/internal/doctor/checkers/config"
 	"github.com/smykla-skalski/klaudiush/internal/doctor/checkers/hook"
+	patternschecker "github.com/smykla-skalski/klaudiush/internal/doctor/checkers/patterns"
 	ruleschecker "github.com/smykla-skalski/klaudiush/internal/doctor/checkers/rules"
 	"github.com/smykla-skalski/klaudiush/internal/doctor/checkers/tools"
 	"github.com/smykla-skalski/klaudiush/internal/doctor/fixers"
@@ -39,6 +40,7 @@ Checks:
 - Binary availability and permissions
 - Hook registration in Claude settings
 - Configuration file validity
+- Pattern learning system health
 - Backup system health
 - Optional tool dependencies (shellcheck, terraform, etc.)
 
@@ -72,7 +74,7 @@ func init() {
 		&categoryFlag,
 		"category",
 		[]string{},
-		"Filter checks by category (binary, hook, config, tools, backup)",
+		"Filter checks by category (binary, hook, config, tools, patterns, backup)",
 	)
 }
 
@@ -171,6 +173,11 @@ func buildDoctorRegistry() *doctor.Registry {
 	registry.RegisterChecker(tools.NewActionlintChecker())
 	registry.RegisterChecker(tools.NewMarkdownlintChecker())
 
+	// Register patterns checkers
+	registry.RegisterChecker(patternschecker.NewSeedDataChecker())
+	registry.RegisterChecker(patternschecker.NewDataFileChecker())
+	registry.RegisterChecker(patternschecker.NewDescriptionChecker())
+
 	// Register backup checkers
 	registry.RegisterChecker(backupchecker.NewDirectoryChecker())
 	registry.RegisterChecker(backupchecker.NewMetadataChecker())
@@ -186,6 +193,7 @@ func registerFixers(registry *doctor.Registry, prompter prompt.Prompter) {
 	registry.RegisterFixer(fixers.NewConfigFixer(prompter))
 	registry.RegisterFixer(fixers.NewInstallBinaryFixer(prompter))
 	registry.RegisterFixer(fixers.NewRulesFixer(prompter))
+	registry.RegisterFixer(fixers.NewPatternsFixer(prompter))
 	registry.RegisterFixer(fixers.NewBackupFixer(prompter))
 }
 
@@ -196,11 +204,12 @@ func parseCategories(names []string) []doctor.Category {
 	}
 
 	categoryMap := map[string]doctor.Category{
-		"binary": doctor.CategoryBinary,
-		"hook":   doctor.CategoryHook,
-		"config": doctor.CategoryConfig,
-		"tools":  doctor.CategoryTools,
-		"backup": doctor.CategoryBackup,
+		"binary":   doctor.CategoryBinary,
+		"hook":     doctor.CategoryHook,
+		"config":   doctor.CategoryConfig,
+		"tools":    doctor.CategoryTools,
+		"patterns": doctor.CategoryPatterns,
+		"backup":   doctor.CategoryBackup,
 	}
 
 	var categories []doctor.Category

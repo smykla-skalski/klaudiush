@@ -2,6 +2,7 @@ package patterns
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 
 	"github.com/smykla-skalski/klaudiush/pkg/config"
@@ -9,11 +10,69 @@ import (
 
 // codeDescriptions maps error codes to short human-readable labels.
 var codeDescriptions = map[string]string{
+	// Git
+	"GIT001": "missing signoff",
+	"GIT002": "missing GPG sign",
+	"GIT003": "no staged files",
 	"GIT004": "title too long",
 	"GIT005": "body line too long",
 	"GIT006": "infra scope misuse",
+	"GIT007": "missing remote",
+	"GIT008": "missing branch",
+	"GIT009": "file not found",
+	"GIT010": "missing flags",
+	"GIT011": "PR ref in commit",
+	"GIT012": "Claude attribution",
 	"GIT013": "conventional format",
+	"GIT014": "forbidden pattern",
+	"GIT015": "signoff mismatch",
 	"GIT016": "list format",
+	"GIT017": "merge message",
+	"GIT018": "merge signoff",
+	"GIT019": "blocked files",
+	"GIT020": "branch naming",
+	"GIT021": "no-verify flag",
+	"GIT022": "Kong org push",
+	"GIT023": "PR validation",
+	"GIT024": "fetch no remote",
+	"GIT025": "blocked remote",
+	// File
+	"FILE001": "shellcheck",
+	"FILE002": "terraform fmt",
+	"FILE003": "tflint",
+	"FILE004": "actionlint",
+	"FILE005": "markdown lint",
+	"FILE006": "gofumpt",
+	"FILE007": "ruff",
+	"FILE008": "oxlint",
+	"FILE009": "rustfmt",
+	"FILE010": "linter ignore",
+	// Security
+	"SEC001": "API key detected",
+	"SEC002": "password detected",
+	"SEC003": "private key detected",
+	"SEC004": "token detected",
+	"SEC005": "connection string",
+	// Shell
+	"SHELL001": "backtick substitution",
+	// GitHub
+	"GH001": "issue validation",
+	// Plugin
+	"PLUG001": "path traversal",
+	"PLUG002": "path not allowed",
+	"PLUG003": "invalid extension",
+	"PLUG004": "insecure remote",
+	"PLUG005": "dangerous chars",
+	// Session
+	"SESS001": "session poisoned",
+}
+
+// CodeDescriptions returns a copy of the code descriptions map.
+func CodeDescriptions() map[string]string {
+	result := make(map[string]string, len(codeDescriptions))
+	maps.Copy(result, codeDescriptions)
+
+	return result
 }
 
 // Advisor generates pattern-based warnings from known failure sequences.
