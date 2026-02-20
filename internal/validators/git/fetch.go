@@ -59,7 +59,10 @@ func (v *FetchValidator) Validate(ctx context.Context, hookCtx *hook.Context) *v
 }
 
 // validateFetchCommand validates a single git fetch command.
-func (v *FetchValidator) validateFetchCommand(gitCmd *parser.GitCommand) *validator.Result {
+func (v *FetchValidator) validateFetchCommand(
+	gitCmd *parser.GitCommand,
+	pendingRemotes map[string]bool,
+) *validator.Result {
 	log := v.Logger()
 
 	// Use path-specific runner if -C flag is present
@@ -74,6 +77,13 @@ func (v *FetchValidator) validateFetchCommand(gitCmd *parser.GitCommand) *valida
 	remote := v.extractRemote(gitCmd)
 	if remote == "" {
 		log.Debug("no remote specified, skipping validation")
+
+		return validator.Pass()
+	}
+
+	// Skip remote existence check if a preceding command adds this remote
+	if pendingRemotes[remote] {
+		log.Debug("remote being added by preceding command, skipping check", "remote", remote)
 
 		return validator.Pass()
 	}

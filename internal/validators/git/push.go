@@ -63,7 +63,10 @@ func (v *PushValidator) Validate(ctx context.Context, hookCtx *hook.Context) *va
 }
 
 // validatePushCommand validates a single git push command
-func (v *PushValidator) validatePushCommand(gitCmd *parser.GitCommand) *validator.Result {
+func (v *PushValidator) validatePushCommand(
+	gitCmd *parser.GitCommand,
+	pendingRemotes map[string]bool,
+) *validator.Result {
 	log := v.Logger()
 
 	// Use path-specific runner if -C flag is present
@@ -83,6 +86,14 @@ func (v *PushValidator) validatePushCommand(gitCmd *parser.GitCommand) *validato
 	// Check if remote is blocked (before checking if it exists)
 	if result := v.validateNotBlockedRemote(remote, runner); !result.Passed {
 		return result
+	}
+
+	// Skip remote existence check if a preceding command adds this remote
+	if pendingRemotes[remote] {
+		v.Logger().
+			Debug("remote being added by preceding command, skipping check", "remote", remote)
+
+		return validator.Pass()
 	}
 
 	return v.validateRemoteExists(remote, runner)
