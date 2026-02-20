@@ -92,6 +92,35 @@ func (v *MarkdownValidator) isSkipPlanDocuments() bool {
 	return true // default: skip plan documents
 }
 
+// isSkipClaudeCodeFiles returns whether Claude Code internal file skipping is enabled
+func (v *MarkdownValidator) isSkipClaudeCodeFiles() bool {
+	if v.config != nil && v.config.SkipClaudeCodeFiles != nil {
+		return *v.config.SkipClaudeCodeFiles
+	}
+
+	return true // default: skip Claude Code internal files
+}
+
+// claudeCodeInternalPaths are path segments that indicate Claude Code internal directories.
+// Files in these directories are auto-generated and should not be validated.
+var claudeCodeInternalPaths = []string{
+	"/.claude/plans/",
+	"/.claude/projects/",
+	"/.claude/teams/",
+	"/.claude/tasks/",
+}
+
+// isClaudeCodeInternalFile checks if a file path is inside Claude Code's internal directories.
+func isClaudeCodeInternalFile(path string) bool {
+	for _, segment := range claudeCodeInternalPaths {
+		if strings.Contains(path, segment) {
+			return true
+		}
+	}
+
+	return false
+}
+
 // Validate checks Markdown formatting rules
 func (v *MarkdownValidator) Validate(ctx context.Context, hookCtx *hook.Context) *validator.Result {
 	log := v.Logger()
@@ -103,7 +132,15 @@ func (v *MarkdownValidator) Validate(ctx context.Context, hookCtx *hook.Context)
 		}
 	}
 
-	// Skip validation for Claude Code plan documents
+	// Skip validation for Claude Code internal files (plans, memory, etc.)
+	if v.isSkipClaudeCodeFiles() && isClaudeCodeInternalFile(hookCtx.GetFilePath()) {
+		log.Debug("skipping markdown validation for internal file",
+			"path", hookCtx.GetFilePath())
+
+		return validator.Pass()
+	}
+
+	// Legacy: skip plan documents specifically (backward compat if new option is disabled)
 	if v.isSkipPlanDocuments() && strings.Contains(hookCtx.GetFilePath(), ".claude/plans/") {
 		log.Debug("skipping markdown validation for plan document", "path", hookCtx.GetFilePath())
 		return validator.Pass()

@@ -63,8 +63,15 @@ type MarkdownValidatorConfig struct {
 	// SkipPlanDocuments skips markdown validation for Claude Code plan files
 	// written to ~/.claude/plans/. These are ephemeral working documents where
 	// linting is counterproductive.
+	// Superseded by SkipClaudeCodeFiles which covers all internal directories.
 	// Default: true
 	SkipPlanDocuments *bool `json:"skip_plan_documents,omitempty" koanf:"skip_plan_documents" toml:"skip_plan_documents"`
+
+	// SkipClaudeCodeFiles skips markdown validation for all Claude Code
+	// internal files (plans, memory, projects). These are auto-generated
+	// working documents where linting is counterproductive.
+	// Default: true
+	SkipClaudeCodeFiles *bool `json:"skip_claude_code_files,omitempty" koanf:"skip_claude_code_files" toml:"skip_claude_code_files"`
 
 	// MarkdownlintPath is the path to the markdownlint binary.
 	// Default: "" (use PATH)
