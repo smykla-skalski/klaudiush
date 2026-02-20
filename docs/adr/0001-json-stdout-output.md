@@ -39,7 +39,7 @@ Chosen option: "Switch entirely to JSON stdout, always exit 0," because it clean
     "permissionDecisionReason": "[GIT001] Missing -s flag. Add -s flag: git commit -sS -m \"message\"",
     "additionalContext": "Automated klaudiush validation check. Fix the reported errors and retry the same command."
   },
-  "systemMessage": "\n❌ Validation Failed: commit\n\nMissing -s flag\n   Fix: Add -s flag\n   Reference: https://klaudiu.sh/GIT001\n\n"
+  "systemMessage": "\n❌ Validation Failed: commit\n\nMissing -s flag\n   Fix: Add -s flag\n   Reference: https://klaudiu.sh/e/GIT001\n\n"
 }
 ```
 

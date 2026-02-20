@@ -33,7 +33,7 @@ var _ = Describe("FormatSystemMessage", func() {
 		Expect(result).To(ContainSubstring("Validation Failed:"))
 		Expect(result).To(ContainSubstring("Missing -s flag"))
 		Expect(result).To(ContainSubstring("Fix: Add -s flag"))
-		Expect(result).To(ContainSubstring("Reference: https://klaudiu.sh/GIT001"))
+		Expect(result).To(ContainSubstring("Reference: https://klaudiu.sh/e/GIT001"))
 	})
 
 	It("formats warnings with warning emoji header", func() {
@@ -177,7 +177,7 @@ var _ = Describe("Decision reason summarization", func() {
 				Validator:   "test",
 				Message:     msg,
 				ShouldBlock: true,
-				Reference:   "https://klaudiu.sh/GIT024",
+				Reference:   "https://klaudiu.sh/e/GIT024",
 			},
 		}
 
@@ -307,7 +307,7 @@ var _ = Describe("Emoji stripping edge cases", func() {
 				Validator:   "test",
 				Message:     msg,
 				ShouldBlock: true,
-				Reference:   "https://klaudiu.sh/TEST001",
+				Reference:   "https://klaudiu.sh/e/TEST001",
 			},
 		}
 

@@ -70,7 +70,7 @@ var _ = Describe("Dispatcher Exception Integration", func() {
 			reg.Register(
 				&mockBlockingValidator{
 					name:      "git.push",
-					reference: "https://klaudiu.sh/GIT022",
+					reference: "https://klaudiu.sh/e/GIT022",
 				},
 				validator.And(
 					validator.EventTypeIs(hook.EventTypePreToolUse),
@@ -118,7 +118,7 @@ var _ = Describe("Dispatcher Exception Integration", func() {
 			reg.Register(
 				&mockBlockingValidator{
 					name:      "git.push",
-					reference: "https://klaudiu.sh/GIT022",
+					reference: "https://klaudiu.sh/e/GIT022",
 				},
 				validator.And(
 					validator.EventTypeIs(hook.EventTypePreToolUse),
@@ -221,7 +221,7 @@ var _ = Describe("Dispatcher Exception Integration", func() {
 			reg.Register(
 				&mockBlockingValidator{
 					name:      "git.push",
-					reference: "https://klaudiu.sh/GIT022",
+					reference: "https://klaudiu.sh/e/GIT022",
 				},
 				validator.And(
 					validator.EventTypeIs(hook.EventTypePreToolUse),
@@ -268,7 +268,7 @@ var _ = Describe("Dispatcher Exception Integration", func() {
 			reg.Register(
 				&mockBlockingValidator{
 					name:      "git.push",
-					reference: "https://klaudiu.sh/GIT022",
+					reference: "https://klaudiu.sh/e/GIT022",
 				},
 				validator.And(
 					validator.EventTypeIs(hook.EventTypePreToolUse),

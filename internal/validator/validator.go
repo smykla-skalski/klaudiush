@@ -70,7 +70,7 @@ type Result struct {
 	ShouldBlock bool
 
 	// Reference is the URL that uniquely identifies this error type.
-	// Format: https://klaudiu.sh/{CODE} (e.g., https://klaudiu.sh/GIT001).
+	// Format: https://klaudiu.sh/e/{CODE} (e.g., https://klaudiu.sh/e/GIT001).
 	Reference Reference
 
 	// FixHint provides a short suggestion for fixing the issue.

@@ -155,7 +155,7 @@ var _ = Describe("ExceptionChecker", func() {
 					Validator:   "git.push",
 					Message:     "cannot push to protected branch",
 					ShouldBlock: true,
-					Reference:   "https://klaudiu.sh/GIT022",
+					Reference:   "https://klaudiu.sh/e/GIT022",
 				}
 				hookCtx := &hook.Context{
 					ToolInput: hook.ToolInput{
@@ -178,7 +178,7 @@ var _ = Describe("ExceptionChecker", func() {
 					Validator:   "git.push",
 					Message:     "cannot push",
 					ShouldBlock: true,
-					Reference:   "https://klaudiu.sh/GIT022",
+					Reference:   "https://klaudiu.sh/e/GIT022",
 					Details:     map[string]string{"branch": "main"},
 					FixHint:     "use a feature branch",
 				}
@@ -192,7 +192,9 @@ var _ = Describe("ExceptionChecker", func() {
 				Expect(bypassed).To(BeTrue())
 				Expect(result.Details).To(HaveKey("branch"))
 				Expect(result.FixHint).To(Equal("use a feature branch"))
-				Expect(result.Reference).To(Equal(validator.Reference("https://klaudiu.sh/GIT022")))
+				Expect(result.Reference).To(Equal(
+					validator.Reference("https://klaudiu.sh/e/GIT022"),
+				))
 			})
 
 			It("handles reference URL with trailing slash", func() {
@@ -200,7 +202,7 @@ var _ = Describe("ExceptionChecker", func() {
 					Validator:   "git.push",
 					Message:     "cannot push to protected branch",
 					ShouldBlock: true,
-					Reference:   "https://klaudiu.sh/GIT022/", // Trailing slash
+					Reference:   "https://klaudiu.sh/e/GIT022/", // Trailing slash
 				}
 				hookCtx := &hook.Context{
 					ToolInput: hook.ToolInput{
@@ -227,7 +229,7 @@ var _ = Describe("ExceptionChecker", func() {
 					Validator:   "git.push",
 					Message:     "cannot push",
 					ShouldBlock: true,
-					Reference:   "https://klaudiu.sh/GIT022",
+					Reference:   "https://klaudiu.sh/e/GIT022",
 				}
 				hookCtx := &hook.Context{
 					ToolInput: hook.ToolInput{

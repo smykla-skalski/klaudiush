@@ -25,17 +25,17 @@ type Result struct {
 
 ## Reference System
 
-References are URLs that uniquely identify error types: `https://klaudiu.sh/{CODE}`
+References are URLs that uniquely identify error types: `https://klaudiu.sh/e/{CODE}`
 
 ```go
 type Reference string
 
-const ReferenceBaseURL = "https://klaudiu.sh"
+const ReferenceBaseURL = "https://klaudiu.sh/e"
 
 // Example references
-RefGitNoSignoff   Reference = "https://klaudiu.sh/GIT001"
-RefGitMissingFlags Reference = "https://klaudiu.sh/GIT010"
-RefShellcheck     Reference = "https://klaudiu.sh/FILE001"
+RefGitNoSignoff   Reference = "https://klaudiu.sh/e/GIT001"
+RefGitMissingFlags Reference = "https://klaudiu.sh/e/GIT010"
+RefShellcheck     Reference = "https://klaudiu.sh/e/FILE001"
 ```
 
 ### Reference Methods
@@ -191,7 +191,7 @@ The dispatcher maps validation results to structured JSON on stdout. klaudiush a
     "permissionDecisionReason": "[GIT010] Git commit missing required flags: -S. Add -sS flags: git commit -sS -m \"message\"",
     "additionalContext": "Automated klaudiush validation check. Fix the reported errors and retry the same command."
   },
-  "systemMessage": "\n❌ Validation Failed: commit\n\nGit commit missing required flags: -S\n   Fix: Add -sS flags\n   Reference: https://klaudiu.sh/GIT010\n\n"
+  "systemMessage": "\n❌ Validation Failed: commit\n\nGit commit missing required flags: -S\n   Fix: Add -sS flags\n   Reference: https://klaudiu.sh/e/GIT010\n\n"
 }
 ```
 
@@ -233,7 +233,7 @@ func (v *CommitValidator) checkFlags(gitCmd *parser.GitCommand) *validator.Resul
 **Result:**
 
 - ✅ Automatic `FixHint`: "Add -sS flags: git commit -sS -m \"message\""
-- ✅ Reference: `https://klaudiu.sh/GIT010`
+- ✅ Reference: `https://klaudiu.sh/e/GIT010`
 - ✅ Details with help message
 - ✅ Blocks operation
 
@@ -300,7 +300,7 @@ func (v *ShellScriptValidator) Validate(
 **Automatic:**
 
 - ✅ `FixHint`: "Run 'shellcheck' to see detailed errors"
-- ✅ `Reference`: `https://klaudiu.sh/FILE001`
+- ✅ `Reference`: `https://klaudiu.sh/e/FILE001`
 - ✅ Formatted linter output in message
 
 ## Plugin Error Handling

@@ -371,7 +371,7 @@ y = 2  # type: ignore
 				ctx.ToolInput.Content = `x = 1  # noqa`
 				result := v.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeFalse())
-				Expect(string(result.Reference)).To(Equal("https://klaudiu.sh/FILE010"))
+				Expect(string(result.Reference)).To(Equal("https://klaudiu.sh/e/FILE010"))
 			})
 
 			It("includes fix hint", func() {

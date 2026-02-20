@@ -131,21 +131,11 @@ func (c *DefaultExceptionChecker) IsEnabled() bool {
 }
 
 // extractErrorCode extracts the error code from a reference URL.
-// Reference format: https://klaudiu.sh/{CODE}
+// Reference format: https://klaudiu.sh/e/{CODE}
 func extractErrorCode(ref validator.Reference) string {
-	if ref == "" {
-		return ""
-	}
+	trimmed := validator.Reference(strings.TrimSuffix(string(ref), "/"))
 
-	refStr := string(ref)
-
-	const prefix = "https://klaudiu.sh/"
-
-	if !strings.HasPrefix(refStr, prefix) {
-		return ""
-	}
-
-	return strings.TrimSuffix(refStr[len(prefix):], "/")
+	return trimmed.Code()
 }
 
 // formatBypassedMessage formats the message to indicate it was bypassed.

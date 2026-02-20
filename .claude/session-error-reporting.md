@@ -13,7 +13,7 @@ Added structured error references, fix suggestions, and documentation URLs to va
 
 Reference URLs combine error code and documentation link into a single field:
 
-- Format: `https://klaudiu.sh/{CODE}` (e.g., `https://klaudiu.sh/GIT001`)
+- Format: `https://klaudiu.sh/e/{CODE}` (e.g., `https://klaudiu.sh/e/GIT001`)
 - The redirect service (future) resolves to full documentation
 
 Error codes organized by category with numeric suffixes:

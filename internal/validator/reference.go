@@ -3,11 +3,11 @@ package validator
 import "strings"
 
 // Reference is a URL that uniquely identifies a validation error.
-// Format: https://klaudiu.sh/{CODE} where CODE is like GIT001, FILE001, SEC001.
+// Format: https://klaudiu.sh/e/{CODE} where CODE is like GIT001, FILE001, SEC001.
 type Reference string
 
 // ReferenceBaseURL is the base URL for error references.
-const ReferenceBaseURL = "https://klaudiu.sh"
+const ReferenceBaseURL = "https://klaudiu.sh/e"
 
 // Git-related references (GIT001-GIT025).
 const (
@@ -183,7 +183,7 @@ func (r Reference) String() string {
 }
 
 // Code extracts the error code from the URL.
-// Example: "GIT001" from "https://klaudiu.sh/GIT001".
+// Example: "GIT001" from "https://klaudiu.sh/e/GIT001".
 func (r Reference) Code() string {
 	s := string(r)
 	if idx := strings.LastIndex(s, "/"); idx != -1 {

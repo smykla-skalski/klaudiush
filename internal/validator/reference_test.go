@@ -10,9 +10,9 @@ import (
 var _ = Describe("Reference", func() {
 	Describe("String", func() {
 		It("returns the URL string", func() {
-			Expect(validator.RefGitNoSignoff.String()).To(Equal("https://klaudiu.sh/GIT001"))
-			Expect(validator.RefShellcheck.String()).To(Equal("https://klaudiu.sh/FILE001"))
-			Expect(validator.RefSecretsAPIKey.String()).To(Equal("https://klaudiu.sh/SEC001"))
+			Expect(validator.RefGitNoSignoff.String()).To(Equal("https://klaudiu.sh/e/GIT001"))
+			Expect(validator.RefShellcheck.String()).To(Equal("https://klaudiu.sh/e/FILE001"))
+			Expect(validator.RefSecretsAPIKey.String()).To(Equal("https://klaudiu.sh/e/SEC001"))
 		})
 	})
 
@@ -64,7 +64,7 @@ var _ = Describe("Suggestions", func() {
 		})
 
 		It("returns empty string for unknown references", func() {
-			unknownRef := validator.Reference("https://klaudiu.sh/UNKNOWN999")
+			unknownRef := validator.Reference("https://klaudiu.sh/e/UNKNOWN999")
 			suggestion := validator.GetSuggestion(unknownRef)
 			Expect(suggestion).To(BeEmpty())
 		})

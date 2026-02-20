@@ -86,7 +86,7 @@ When a session is poisoned, subsequent commands receive error `SESS001` as a JSO
     "permissionDecisionReason": "[SESS001] Session poisoned by GIT001, GIT002 at 2025-12-04 10:30:05. Acknowledge violations to unpoison: KLACK=\"SESS:GIT001,GIT002\" your_command",
     "additionalContext": "Automated klaudiush validation check. Fix the reported errors and retry."
   },
-  "systemMessage": "Blocked: session poisoned by GIT001, GIT002 at 2025-12-04 10:30:05\n\nDetails:\n  original_error: git commit -sS flag missing\n  unpoison: To unpoison: KLACK=\"SESS:GIT001,GIT002\" command  # or comment: # SESS:GIT001,GIT002\n\nFix: Acknowledge violations to unpoison: KLACK=\"SESS:GIT001,GIT002\" your_command\n\nDocumentation: https://klaudiu.sh/SESS001"
+  "systemMessage": "Blocked: session poisoned by GIT001, GIT002 at 2025-12-04 10:30:05\n\nDetails:\n  original_error: git commit -sS flag missing\n  unpoison: To unpoison: KLACK=\"SESS:GIT001,GIT002\" command  # or comment: # SESS:GIT001,GIT002\n\nFix: Acknowledge violations to unpoison: KLACK=\"SESS:GIT001,GIT002\" your_command\n\nDocumentation: https://klaudiu.sh/e/SESS001"
 }
 ```
 
