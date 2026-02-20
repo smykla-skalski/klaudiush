@@ -72,6 +72,28 @@ var _ = Describe("Profile", func() {
 	})
 })
 
+var _ = Describe("IsTerminal", func() {
+	It("returns false for a pipe", func() {
+		r, w, err := os.Pipe()
+		Expect(err).NotTo(HaveOccurred())
+
+		defer r.Close()
+		defer w.Close()
+
+		Expect(color.IsTerminal(r)).To(BeFalse())
+	})
+
+	It("returns false for a regular file", func() {
+		f, err := os.CreateTemp("", "color-test-*")
+		Expect(err).NotTo(HaveOccurred())
+
+		defer os.Remove(f.Name())
+		defer f.Close()
+
+		Expect(color.IsTerminal(f)).To(BeFalse())
+	})
+})
+
 var _ = Describe("NewTheme", func() {
 	It("creates a theme with color styles that have foreground set", func() {
 		theme := color.NewTheme(true)

@@ -282,8 +282,16 @@ func calcColumnWidths(
 	results []doctor.CheckResult,
 	verbose bool,
 ) map[int]int {
-	w := termWidth()
+	return calcColumnWidthsFor(termWidth(), results, verbose)
+}
 
+// calcColumnWidthsFor computes per-column content widths for a given terminal
+// width. Extracted from calcColumnWidths to allow testing with injected widths.
+func calcColumnWidthsFor(
+	w int,
+	results []doctor.CheckResult,
+	verbose bool,
+) map[int]int {
 	const minTableW = 40
 
 	if w < minTableW {
