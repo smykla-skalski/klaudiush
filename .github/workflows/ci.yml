@@ -15,6 +15,9 @@ permissions:
 env:
   # renovate: datasource=github-releases depName=golangci/golangci-lint
   GOLANGCI_LINT_VERSION: "2.10.1"
+  # Race-instrumented builds create large temp artifacts that can get
+  # corrupted in /tmp under parallel load. Use runner temp instead.
+  GOTMPDIR: /home/runner/work/_temp/go-tmp
 
 jobs:
   test:
@@ -47,6 +50,7 @@ jobs:
 
       - name: Run tests
         run: |
+          mkdir -p "$GOTMPDIR"
           # Testscript tests (cmd/klaudiush) use testscript.Main which copies the
           # test binary to a temp dir. Under high parallel load, the binary becomes
           # unavailable for some subtests. Run them separately to avoid this.
