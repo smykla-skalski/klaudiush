@@ -247,6 +247,21 @@ tasks:
       - mise exec -- go mod download
       - mise exec -- go mod tidy
 
+  schema:generate:
+    desc: Generate JSON Schema for config
+    deps:
+      - build
+    cmds:
+      - ./bin/klaudiush debug schema --output schema/config.schema.json
+
+  schema:verify:
+    desc: Verify committed schema matches generated
+    deps:
+      - build
+    cmds:
+      - ./bin/klaudiush debug schema --output /tmp/klaudiush-schema-check.json
+      - diff schema/config.schema.json /tmp/klaudiush-schema-check.json
+
   verify:
     desc: Run all verification tasks
     cmds:

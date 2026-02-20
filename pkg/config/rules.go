@@ -98,11 +98,11 @@ type RuleMatchConfig struct {
 
 	// ToolType matches against the hook tool type.
 	// Examples: "Bash", "Write", "Edit"
-	ToolType string `json:"tool_type,omitempty" koanf:"tool_type" toml:"tool_type"`
+	ToolType string `json:"tool_type,omitempty" jsonschema:"enum=Bash,enum=Write,enum=Edit,enum=MultiEdit,enum=Grep,enum=Read,enum=Glob" koanf:"tool_type" toml:"tool_type"`
 
 	// EventType matches against the hook event type.
 	// Examples: "PreToolUse", "PostToolUse"
-	EventType string `json:"event_type,omitempty" koanf:"event_type" toml:"event_type"`
+	EventType string `json:"event_type,omitempty" jsonschema:"enum=PreToolUse,enum=PostToolUse,enum=Notification" koanf:"event_type" toml:"event_type"`
 
 	// CaseInsensitive enables case-insensitive pattern matching for all patterns.
 	// Default: false
@@ -110,7 +110,7 @@ type RuleMatchConfig struct {
 
 	// PatternMode specifies how multiple patterns are combined when using pattern lists.
 	// Values: "any" (OR logic, default), "all" (AND logic)
-	PatternMode string `json:"pattern_mode,omitempty" koanf:"pattern_mode" toml:"pattern_mode"`
+	PatternMode string `json:"pattern_mode,omitempty" jsonschema:"enum=any,enum=all" koanf:"pattern_mode" toml:"pattern_mode"`
 }
 
 // IsCaseInsensitive returns true if case-insensitive matching is enabled.
@@ -159,7 +159,7 @@ func (m *RuleMatchConfig) HasMatchConditions() bool {
 type RuleActionConfig struct {
 	// Type is the action to take (block, warn, allow).
 	// Default: "block"
-	Type string `json:"type,omitempty" koanf:"type" toml:"type"`
+	Type string `json:"type,omitempty" jsonschema:"enum=allow,enum=block,enum=warn" koanf:"type" toml:"type"`
 
 	// Message is the human-readable message to display.
 	Message string `json:"message,omitempty" koanf:"message" toml:"message"`

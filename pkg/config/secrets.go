@@ -1,5 +1,11 @@
 package config
 
+import (
+	"encoding/json"
+
+	"github.com/invopop/jsonschema"
+)
+
 // SecretsConfig groups all secrets-related validator configurations.
 type SecretsConfig struct {
 	// Secrets validator configuration
@@ -69,6 +75,16 @@ const (
 
 // DefaultMaxFileSize is the default maximum file size for secrets scanning.
 const DefaultMaxFileSize = MB
+
+// JSONSchema returns the JSON Schema for the ByteSize type.
+func (ByteSize) JSONSchema() *jsonschema.Schema {
+	return &jsonschema.Schema{
+		Type:        "integer",
+		Minimum:     json.Number("0"),
+		Description: "Size in bytes",
+		Examples:    []any{1048576, 10485760},
+	}
+}
 
 // IsUseGitleaksEnabled returns whether gitleaks integration is enabled.
 func (c *SecretsValidatorConfig) IsUseGitleaksEnabled() bool {

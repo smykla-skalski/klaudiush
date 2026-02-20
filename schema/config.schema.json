@@ -1,0 +1,1521 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/smykla-skalski/klaudiush/pkg/config/config",
+  "$defs": {
+    "AddValidatorConfig": {
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "severity": {
+          "$ref": "#/$defs/Severity"
+        },
+        "rules_enabled": {
+          "type": "boolean"
+        },
+        "blocked_patterns": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "BacktickValidatorConfig": {
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "severity": {
+          "$ref": "#/$defs/Severity"
+        },
+        "rules_enabled": {
+          "type": "boolean"
+        },
+        "check_all_commands": {
+          "type": "boolean"
+        },
+        "check_unquoted": {
+          "type": "boolean"
+        },
+        "suggest_single_quotes": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "BackupConfig": {
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "auto_backup": {
+          "type": "boolean"
+        },
+        "max_backups": {
+          "type": "integer"
+        },
+        "max_age": {
+          "$ref": "#/$defs/Duration"
+        },
+        "max_size": {
+          "type": "integer"
+        },
+        "async_backup": {
+          "type": "boolean"
+        },
+        "delta": {
+          "$ref": "#/$defs/DeltaConfig"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "BellValidatorConfig": {
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "severity": {
+          "$ref": "#/$defs/Severity"
+        },
+        "rules_enabled": {
+          "type": "boolean"
+        },
+        "custom_command": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "BranchValidatorConfig": {
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "severity": {
+          "$ref": "#/$defs/Severity"
+        },
+        "rules_enabled": {
+          "type": "boolean"
+        },
+        "protected_branches": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "valid_types": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "require_type": {
+          "type": "boolean"
+        },
+        "allow_uppercase": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "ByteSize": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Size in bytes",
+      "examples": [
+        1048576,
+        10485760
+      ]
+    },
+    "CommitMessageConfig": {
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "title_max_length": {
+          "type": "integer"
+        },
+        "allow_unlimited_revert_title": {
+          "type": "boolean"
+        },
+        "body_max_line_length": {
+          "type": "integer"
+        },
+        "body_line_tolerance": {
+          "type": "integer"
+        },
+        "conventional_commits": {
+          "type": "boolean"
+        },
+        "valid_types": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "require_scope": {
+          "type": "boolean"
+        },
+        "block_infra_scope_misuse": {
+          "type": "boolean"
+        },
+        "block_pr_references": {
+          "type": "boolean"
+        },
+        "block_ai_attribution": {
+          "type": "boolean"
+        },
+        "commit_style": {
+          "type": "string",
+          "enum": [
+            "conventional",
+            "scope-only",
+            "none",
+            "custom",
+            "auto"
+          ]
+        },
+        "title_pattern": {
+          "type": "string"
+        },
+        "forbidden_patterns": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "expected_signoff": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "CommitValidatorConfig": {
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "severity": {
+          "$ref": "#/$defs/Severity"
+        },
+        "rules_enabled": {
+          "type": "boolean"
+        },
+        "required_flags": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "check_staging_area": {
+          "type": "boolean"
+        },
+        "message": {
+          "$ref": "#/$defs/CommitMessageConfig"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "CrashDumpConfig": {
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "dump_dir": {
+          "type": "string"
+        },
+        "max_dumps": {
+          "type": "integer"
+        },
+        "max_age": {
+          "$ref": "#/$defs/Duration"
+        },
+        "include_config": {
+          "type": "boolean"
+        },
+        "include_context": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "CustomPatternConfig": {
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "regex": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "name",
+        "description",
+        "regex"
+      ]
+    },
+    "DeltaConfig": {
+      "properties": {
+        "full_snapshot_interval": {
+          "type": "integer"
+        },
+        "full_snapshot_max_age": {
+          "$ref": "#/$defs/Duration"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "Duration": {
+      "type": "string",
+      "pattern": "^([0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h))+$",
+      "description": "Go duration string (e.g. \"10s\", \"1h30m\", \"500ms\")",
+      "examples": [
+        "10s",
+        "1h30m",
+        "500ms",
+        "5m"
+      ]
+    },
+    "ExceptionAuditConfig": {
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "log_file": {
+          "type": "string"
+        },
+        "max_size_mb": {
+          "type": "integer"
+        },
+        "max_age_days": {
+          "type": "integer"
+        },
+        "max_backups": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "ExceptionPolicyConfig": {
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "allow_exception": {
+          "type": "boolean"
+        },
+        "require_reason": {
+          "type": "boolean"
+        },
+        "min_reason_length": {
+          "type": "integer"
+        },
+        "valid_reasons": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "max_per_hour": {
+          "type": "integer"
+        },
+        "max_per_day": {
+          "type": "integer"
+        },
+        "description": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "ExceptionRateLimitConfig": {
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "max_per_hour": {
+          "type": "integer"
+        },
+        "max_per_day": {
+          "type": "integer"
+        },
+        "state_file": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "ExceptionsConfig": {
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "policies": {
+          "additionalProperties": {
+            "$ref": "#/$defs/ExceptionPolicyConfig"
+          },
+          "type": "object"
+        },
+        "rate_limit": {
+          "$ref": "#/$defs/ExceptionRateLimitConfig"
+        },
+        "audit": {
+          "$ref": "#/$defs/ExceptionAuditConfig"
+        },
+        "require_explicit_policy": {
+          "type": "boolean"
+        },
+        "token_prefix": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "FetchValidatorConfig": {
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "severity": {
+          "$ref": "#/$defs/Severity"
+        },
+        "rules_enabled": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "FileConfig": {
+      "properties": {
+        "markdown": {
+          "$ref": "#/$defs/MarkdownValidatorConfig"
+        },
+        "shellscript": {
+          "$ref": "#/$defs/ShellScriptValidatorConfig"
+        },
+        "terraform": {
+          "$ref": "#/$defs/TerraformValidatorConfig"
+        },
+        "workflow": {
+          "$ref": "#/$defs/WorkflowValidatorConfig"
+        },
+        "gofumpt": {
+          "$ref": "#/$defs/GofumptValidatorConfig"
+        },
+        "python": {
+          "$ref": "#/$defs/PythonValidatorConfig"
+        },
+        "javascript": {
+          "$ref": "#/$defs/JavaScriptValidatorConfig"
+        },
+        "rust": {
+          "$ref": "#/$defs/RustValidatorConfig"
+        },
+        "linter_ignore": {
+          "$ref": "#/$defs/LinterIgnoreValidatorConfig"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "GitConfig": {
+      "properties": {
+        "commit": {
+          "$ref": "#/$defs/CommitValidatorConfig"
+        },
+        "push": {
+          "$ref": "#/$defs/PushValidatorConfig"
+        },
+        "fetch": {
+          "$ref": "#/$defs/FetchValidatorConfig"
+        },
+        "add": {
+          "$ref": "#/$defs/AddValidatorConfig"
+        },
+        "pr": {
+          "$ref": "#/$defs/PRValidatorConfig"
+        },
+        "merge": {
+          "$ref": "#/$defs/MergeValidatorConfig"
+        },
+        "branch": {
+          "$ref": "#/$defs/BranchValidatorConfig"
+        },
+        "no_verify": {
+          "$ref": "#/$defs/NoVerifyValidatorConfig"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "GitHubConfig": {
+      "properties": {
+        "issue": {
+          "$ref": "#/$defs/IssueValidatorConfig"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "GlobalConfig": {
+      "properties": {
+        "use_sdk_git": {
+          "type": "boolean"
+        },
+        "default_timeout": {
+          "$ref": "#/$defs/Duration"
+        },
+        "parallel_execution": {
+          "type": "boolean"
+        },
+        "max_cpu_workers": {
+          "type": "integer"
+        },
+        "max_io_workers": {
+          "type": "integer"
+        },
+        "max_git_workers": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "GofumptValidatorConfig": {
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "severity": {
+          "$ref": "#/$defs/Severity"
+        },
+        "rules_enabled": {
+          "type": "boolean"
+        },
+        "timeout": {
+          "$ref": "#/$defs/Duration"
+        },
+        "extra_rules": {
+          "type": "boolean"
+        },
+        "lang": {
+          "type": "string"
+        },
+        "modpath": {
+          "type": "string"
+        },
+        "gofumpt_path": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "IssueValidatorConfig": {
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "severity": {
+          "$ref": "#/$defs/Severity"
+        },
+        "rules_enabled": {
+          "type": "boolean"
+        },
+        "require_body": {
+          "type": "boolean"
+        },
+        "markdown_disabled_rules": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "timeout": {
+          "$ref": "#/$defs/Duration"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "JavaScriptValidatorConfig": {
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "severity": {
+          "$ref": "#/$defs/Severity"
+        },
+        "rules_enabled": {
+          "type": "boolean"
+        },
+        "timeout": {
+          "$ref": "#/$defs/Duration"
+        },
+        "context_lines": {
+          "type": "integer"
+        },
+        "use_oxlint": {
+          "type": "boolean"
+        },
+        "oxlint_path": {
+          "type": "string"
+        },
+        "exclude_rules": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "oxlint_config": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "LinterIgnoreValidatorConfig": {
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "severity": {
+          "$ref": "#/$defs/Severity"
+        },
+        "rules_enabled": {
+          "type": "boolean"
+        },
+        "patterns": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "MarkdownValidatorConfig": {
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "severity": {
+          "$ref": "#/$defs/Severity"
+        },
+        "rules_enabled": {
+          "type": "boolean"
+        },
+        "timeout": {
+          "$ref": "#/$defs/Duration"
+        },
+        "context_lines": {
+          "type": "integer"
+        },
+        "heading_spacing": {
+          "type": "boolean"
+        },
+        "code_block_formatting": {
+          "type": "boolean"
+        },
+        "list_formatting": {
+          "type": "boolean"
+        },
+        "use_markdownlint": {
+          "type": "boolean"
+        },
+        "skip_plan_documents": {
+          "type": "boolean"
+        },
+        "skip_claude_code_files": {
+          "type": "boolean"
+        },
+        "markdownlint_path": {
+          "type": "string"
+        },
+        "markdownlint_rules": {
+          "additionalProperties": {
+            "type": "boolean"
+          },
+          "type": "object"
+        },
+        "markdownlint_config": {
+          "type": "string"
+        },
+        "table_formatting": {
+          "type": "boolean"
+        },
+        "table_formatting_mode": {
+          "type": "string",
+          "enum": [
+            "display_width",
+            "byte_width"
+          ]
+        },
+        "table_formatting_severity": {
+          "type": "string",
+          "enum": [
+            "warning",
+            "error"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "MergeMessageConfig": {
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "title_max_length": {
+          "type": "integer"
+        },
+        "allow_unlimited_revert_title": {
+          "type": "boolean"
+        },
+        "body_max_line_length": {
+          "type": "integer"
+        },
+        "body_line_tolerance": {
+          "type": "integer"
+        },
+        "conventional_commits": {
+          "type": "boolean"
+        },
+        "valid_types": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "require_scope": {
+          "type": "boolean"
+        },
+        "block_infra_scope_misuse": {
+          "type": "boolean"
+        },
+        "block_pr_references": {
+          "type": "boolean"
+        },
+        "block_ai_attribution": {
+          "type": "boolean"
+        },
+        "forbidden_patterns": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "MergeValidatorConfig": {
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "severity": {
+          "$ref": "#/$defs/Severity"
+        },
+        "rules_enabled": {
+          "type": "boolean"
+        },
+        "message": {
+          "$ref": "#/$defs/MergeMessageConfig"
+        },
+        "validate_automerge": {
+          "type": "boolean"
+        },
+        "require_signoff": {
+          "type": "boolean"
+        },
+        "expected_signoff": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "NoVerifyValidatorConfig": {
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "severity": {
+          "$ref": "#/$defs/Severity"
+        },
+        "rules_enabled": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "NotificationConfig": {
+      "properties": {
+        "bell": {
+          "$ref": "#/$defs/BellValidatorConfig"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "PRValidatorConfig": {
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "severity": {
+          "$ref": "#/$defs/Severity"
+        },
+        "rules_enabled": {
+          "type": "boolean"
+        },
+        "title_max_length": {
+          "type": "integer"
+        },
+        "allow_unlimited_revert_title": {
+          "type": "boolean"
+        },
+        "title_conventional_commits": {
+          "type": "boolean"
+        },
+        "valid_types": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "require_changelog": {
+          "type": "boolean"
+        },
+        "check_ci_labels": {
+          "type": "boolean"
+        },
+        "require_body": {
+          "type": "boolean"
+        },
+        "markdown_disabled_rules": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "title_style": {
+          "type": "string",
+          "enum": [
+            "conventional",
+            "scope-only",
+            "none",
+            "custom",
+            "auto"
+          ]
+        },
+        "title_pattern": {
+          "type": "string"
+        },
+        "forbidden_patterns": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "PatternsConfig": {
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "min_count": {
+          "type": "integer"
+        },
+        "max_age": {
+          "$ref": "#/$defs/Duration"
+        },
+        "max_warnings_per_error": {
+          "type": "integer"
+        },
+        "max_warnings_total": {
+          "type": "integer"
+        },
+        "project_data_file": {
+          "type": "string"
+        },
+        "global_data_dir": {
+          "type": "string"
+        },
+        "session_max_age": {
+          "$ref": "#/$defs/Duration"
+        },
+        "use_seed_data": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "PluginConfig": {
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "directory": {
+          "type": "string"
+        },
+        "plugins": {
+          "items": {
+            "$ref": "#/$defs/PluginInstanceConfig"
+          },
+          "type": "array"
+        },
+        "default_timeout": {
+          "$ref": "#/$defs/Duration"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "PluginInstanceConfig": {
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "$ref": "#/$defs/PluginType"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "path": {
+          "type": "string"
+        },
+        "args": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "timeout": {
+          "$ref": "#/$defs/Duration"
+        },
+        "predicate": {
+          "$ref": "#/$defs/PluginPredicate"
+        },
+        "config": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "name",
+        "type"
+      ]
+    },
+    "PluginPredicate": {
+      "properties": {
+        "event_types": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "tool_types": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "file_patterns": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "command_patterns": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "PluginType": {
+      "type": "string",
+      "enum": [
+        "exec"
+      ]
+    },
+    "PushValidatorConfig": {
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "severity": {
+          "$ref": "#/$defs/Severity"
+        },
+        "rules_enabled": {
+          "type": "boolean"
+        },
+        "blocked_remotes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "allowed_remote_priority": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "require_tracking": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "PythonValidatorConfig": {
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "severity": {
+          "$ref": "#/$defs/Severity"
+        },
+        "rules_enabled": {
+          "type": "boolean"
+        },
+        "timeout": {
+          "$ref": "#/$defs/Duration"
+        },
+        "context_lines": {
+          "type": "integer"
+        },
+        "use_ruff": {
+          "type": "boolean"
+        },
+        "ruff_path": {
+          "type": "string"
+        },
+        "exclude_rules": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "ruff_config": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "RuleActionConfig": {
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "allow",
+            "block",
+            "warn"
+          ]
+        },
+        "message": {
+          "type": "string"
+        },
+        "reference": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "RuleConfig": {
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "priority": {
+          "type": "integer"
+        },
+        "match": {
+          "$ref": "#/$defs/RuleMatchConfig"
+        },
+        "action": {
+          "$ref": "#/$defs/RuleActionConfig"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "RuleMatchConfig": {
+      "properties": {
+        "validator_type": {
+          "type": "string"
+        },
+        "repo_pattern": {
+          "type": "string"
+        },
+        "repo_patterns": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "remote": {
+          "type": "string"
+        },
+        "branch_pattern": {
+          "type": "string"
+        },
+        "branch_patterns": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "file_pattern": {
+          "type": "string"
+        },
+        "file_patterns": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "content_pattern": {
+          "type": "string"
+        },
+        "content_patterns": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "command_pattern": {
+          "type": "string"
+        },
+        "command_patterns": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "tool_type": {
+          "type": "string",
+          "enum": [
+            "Bash",
+            "Write",
+            "Edit",
+            "MultiEdit",
+            "Grep",
+            "Read",
+            "Glob"
+          ]
+        },
+        "event_type": {
+          "type": "string",
+          "enum": [
+            "PreToolUse",
+            "PostToolUse",
+            "Notification"
+          ]
+        },
+        "case_insensitive": {
+          "type": "boolean"
+        },
+        "pattern_mode": {
+          "type": "string",
+          "enum": [
+            "any",
+            "all"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "RulesConfig": {
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "stop_on_first_match": {
+          "type": "boolean"
+        },
+        "rules": {
+          "items": {
+            "$ref": "#/$defs/RuleConfig"
+          },
+          "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "RustValidatorConfig": {
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "severity": {
+          "$ref": "#/$defs/Severity"
+        },
+        "rules_enabled": {
+          "type": "boolean"
+        },
+        "timeout": {
+          "$ref": "#/$defs/Duration"
+        },
+        "context_lines": {
+          "type": "integer"
+        },
+        "use_rustfmt": {
+          "type": "boolean"
+        },
+        "edition": {
+          "type": "string",
+          "enum": [
+            "2015",
+            "2018",
+            "2021",
+            "2024"
+          ]
+        },
+        "rustfmt_path": {
+          "type": "string"
+        },
+        "rustfmt_config": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "SecretsConfig": {
+      "properties": {
+        "secrets": {
+          "$ref": "#/$defs/SecretsValidatorConfig"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "SecretsValidatorConfig": {
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "severity": {
+          "$ref": "#/$defs/Severity"
+        },
+        "rules_enabled": {
+          "type": "boolean"
+        },
+        "use_gitleaks": {
+          "type": "boolean"
+        },
+        "gitleaks_path": {
+          "type": "string"
+        },
+        "max_file_size": {
+          "$ref": "#/$defs/ByteSize"
+        },
+        "block_on_detection": {
+          "type": "boolean"
+        },
+        "allow_list": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "custom_patterns": {
+          "items": {
+            "$ref": "#/$defs/CustomPatternConfig"
+          },
+          "type": "array"
+        },
+        "disabled_patterns": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "SessionAuditConfig": {
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "log_file": {
+          "type": "string"
+        },
+        "max_size_mb": {
+          "type": "integer"
+        },
+        "max_age_days": {
+          "type": "integer"
+        },
+        "max_backups": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "SessionConfig": {
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "state_file": {
+          "type": "string"
+        },
+        "max_session_age": {
+          "$ref": "#/$defs/Duration"
+        },
+        "audit": {
+          "$ref": "#/$defs/SessionAuditConfig"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "Severity": {
+      "type": "string",
+      "enum": [
+        "unknown",
+        "error",
+        "warning"
+      ],
+      "default": "error"
+    },
+    "ShellConfig": {
+      "properties": {
+        "backtick": {
+          "$ref": "#/$defs/BacktickValidatorConfig"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "ShellScriptValidatorConfig": {
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "severity": {
+          "$ref": "#/$defs/Severity"
+        },
+        "rules_enabled": {
+          "type": "boolean"
+        },
+        "timeout": {
+          "$ref": "#/$defs/Duration"
+        },
+        "context_lines": {
+          "type": "integer"
+        },
+        "use_shellcheck": {
+          "type": "boolean"
+        },
+        "shellcheck_severity": {
+          "type": "string",
+          "enum": [
+            "error",
+            "warning",
+            "info",
+            "style"
+          ]
+        },
+        "exclude_rules": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "shellcheck_path": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "TerraformValidatorConfig": {
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "severity": {
+          "$ref": "#/$defs/Severity"
+        },
+        "rules_enabled": {
+          "type": "boolean"
+        },
+        "timeout": {
+          "$ref": "#/$defs/Duration"
+        },
+        "context_lines": {
+          "type": "integer"
+        },
+        "tool_preference": {
+          "type": "string",
+          "enum": [
+            "tofu",
+            "terraform",
+            "auto"
+          ]
+        },
+        "check_format": {
+          "type": "boolean"
+        },
+        "use_tflint": {
+          "type": "boolean"
+        },
+        "terraform_path": {
+          "type": "string"
+        },
+        "tofu_path": {
+          "type": "string"
+        },
+        "tflint_path": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "ValidatorsConfig": {
+      "properties": {
+        "git": {
+          "$ref": "#/$defs/GitConfig"
+        },
+        "github": {
+          "$ref": "#/$defs/GitHubConfig"
+        },
+        "file": {
+          "$ref": "#/$defs/FileConfig"
+        },
+        "notification": {
+          "$ref": "#/$defs/NotificationConfig"
+        },
+        "secrets": {
+          "$ref": "#/$defs/SecretsConfig"
+        },
+        "shell": {
+          "$ref": "#/$defs/ShellConfig"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "WorkflowValidatorConfig": {
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "severity": {
+          "$ref": "#/$defs/Severity"
+        },
+        "rules_enabled": {
+          "type": "boolean"
+        },
+        "timeout": {
+          "$ref": "#/$defs/Duration"
+        },
+        "gh_api_timeout": {
+          "$ref": "#/$defs/Duration"
+        },
+        "enforce_digest_pinning": {
+          "type": "boolean"
+        },
+        "require_version_comment": {
+          "type": "boolean"
+        },
+        "check_latest_version": {
+          "type": "boolean"
+        },
+        "use_actionlint": {
+          "type": "boolean"
+        },
+        "actionlint_path": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    }
+  },
+  "properties": {
+    "validators": {
+      "$ref": "#/$defs/ValidatorsConfig"
+    },
+    "global": {
+      "$ref": "#/$defs/GlobalConfig"
+    },
+    "plugins": {
+      "$ref": "#/$defs/PluginConfig"
+    },
+    "rules": {
+      "$ref": "#/$defs/RulesConfig"
+    },
+    "exceptions": {
+      "$ref": "#/$defs/ExceptionsConfig"
+    },
+    "backup": {
+      "$ref": "#/$defs/BackupConfig"
+    },
+    "session": {
+      "$ref": "#/$defs/SessionConfig"
+    },
+    "crash_dump": {
+      "$ref": "#/$defs/CrashDumpConfig"
+    },
+    "patterns": {
+      "$ref": "#/$defs/PatternsConfig"
+    }
+  },
+  "additionalProperties": false,
+  "type": "object",
+  "title": "klaudiush configuration"
+}

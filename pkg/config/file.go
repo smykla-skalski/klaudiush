@@ -101,7 +101,7 @@ type MarkdownValidatorConfig struct {
 	//   - "byte_width": Uses byte length for width calculations.
 	//     Tables will pass markdownlint MD060 but may not be visually aligned for Unicode.
 	// Default: "display_width"
-	TableFormattingMode string `json:"table_formatting_mode,omitempty" koanf:"table_formatting_mode" toml:"table_formatting_mode"`
+	TableFormattingMode string `json:"table_formatting_mode,omitempty" jsonschema:"enum=display_width,enum=byte_width" koanf:"table_formatting_mode" toml:"table_formatting_mode"`
 
 	// TableFormattingSeverity controls how cosmetic table formatting issues
 	// (column width padding differences) are treated.
@@ -112,7 +112,7 @@ type MarkdownValidatorConfig struct {
 	// Structural issues (column count mismatch, missing cell padding) always block
 	// regardless of this setting.
 	// Default: "warning"
-	TableFormattingSeverity string `json:"table_formatting_severity,omitempty" koanf:"table_formatting_severity" toml:"table_formatting_severity"`
+	TableFormattingSeverity string `json:"table_formatting_severity,omitempty" jsonschema:"enum=warning,enum=error" koanf:"table_formatting_severity" toml:"table_formatting_severity"`
 }
 
 // ShellScriptValidatorConfig configures the shell script validator.
@@ -134,7 +134,7 @@ type ShellScriptValidatorConfig struct {
 	// ShellcheckSeverity is the minimum severity level for shellcheck findings.
 	// Options: "error", "warning", "info", "style"
 	// Default: "warning"
-	ShellcheckSeverity string `json:"shellcheck_severity,omitempty" koanf:"shellcheck_severity" toml:"shellcheck_severity"`
+	ShellcheckSeverity string `json:"shellcheck_severity,omitempty" jsonschema:"enum=error,enum=warning,enum=info,enum=style" koanf:"shellcheck_severity" toml:"shellcheck_severity"`
 
 	// ExcludeRules is a list of shellcheck rules to exclude (e.g., ["SC2086", "SC2154"]).
 	// Default: []
@@ -160,7 +160,7 @@ type TerraformValidatorConfig struct {
 	// ToolPreference specifies which tool to use when both are available.
 	// Options: "tofu", "terraform", "auto" (prefers tofu)
 	// Default: "auto"
-	ToolPreference string `json:"tool_preference,omitempty" koanf:"tool_preference" toml:"tool_preference"`
+	ToolPreference string `json:"tool_preference,omitempty" jsonschema:"enum=tofu,enum=terraform,enum=auto" koanf:"tool_preference" toml:"tool_preference"`
 
 	// CheckFormat enables terraform/tofu format checking.
 	// Default: true
@@ -321,7 +321,7 @@ type RustValidatorConfig struct {
 	// Edition is the Rust edition (2015, 2018, 2021, 2024).
 	// If not specified, auto-detected from Cargo.toml if available.
 	// Default: "2021"
-	Edition string `json:"edition,omitempty" koanf:"edition" toml:"edition"`
+	Edition string `json:"edition,omitempty" jsonschema:"enum=2015,enum=2018,enum=2021,enum=2024" koanf:"edition" toml:"edition"`
 
 	// RustfmtPath is the path to the rustfmt binary.
 	// Default: "" (use PATH)

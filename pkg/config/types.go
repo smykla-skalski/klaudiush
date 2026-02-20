@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
+	"github.com/invopop/jsonschema"
 )
 
 //go:generate enumer -type=Severity -trimprefix=Severity -transform=lower -json -text -yaml -sql
@@ -32,6 +33,15 @@ const (
 	SeverityWarning
 )
 
+// JSONSchema returns the JSON Schema for the Severity type.
+func (Severity) JSONSchema() *jsonschema.Schema {
+	return &jsonschema.Schema{
+		Type:    "string",
+		Enum:    []any{"unknown", "error", "warning"},
+		Default: "error",
+	}
+}
+
 // ShouldBlock returns true if the severity should block the operation.
 func (s Severity) ShouldBlock() bool {
 	return s == SeverityError
@@ -56,6 +66,16 @@ func ParseSeverity(s string) (Severity, error) {
 
 // Duration wraps time.Duration for TOML parsing.
 type Duration time.Duration
+
+// JSONSchema returns the JSON Schema for the Duration type.
+func (Duration) JSONSchema() *jsonschema.Schema {
+	return &jsonschema.Schema{
+		Type:        "string",
+		Pattern:     `^([0-9]+(\.[0-9]+)?(ns|us|ms|s|m|h))+$`,
+		Description: "Go duration string (e.g. \"10s\", \"1h30m\", \"500ms\")",
+		Examples:    []any{"10s", "1h30m", "500ms", "5m"},
+	}
+}
 
 // UnmarshalText implements encoding.TextUnmarshaler for TOML parsing.
 func (d *Duration) UnmarshalText(text []byte) error {

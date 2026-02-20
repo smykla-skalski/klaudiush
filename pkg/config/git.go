@@ -101,7 +101,7 @@ type CommitMessageConfig struct {
 	//   "custom"       - match TitlePattern regex
 	//   "auto"         - detect style from recent git history
 	// Default: "conventional"
-	CommitStyle string `json:"commit_style,omitempty" koanf:"commit_style" toml:"commit_style"`
+	CommitStyle string `json:"commit_style,omitempty" jsonschema:"enum=conventional,enum=scope-only,enum=none,enum=custom,enum=auto" koanf:"commit_style" toml:"commit_style"`
 
 	// TitlePattern is a custom regex the commit title must match.
 	// Required when CommitStyle is "custom".
@@ -200,7 +200,7 @@ type PRValidatorConfig struct {
 	//   "custom"       - match TitlePattern regex
 	//   "auto"         - detect style from recent git history
 	// Default: "" (falls back to TitleConventionalCommits for backwards compatibility)
-	TitleStyle string `json:"title_style,omitempty" koanf:"title_style" toml:"title_style"`
+	TitleStyle string `json:"title_style,omitempty" jsonschema:"enum=conventional,enum=scope-only,enum=none,enum=custom,enum=auto" koanf:"title_style" toml:"title_style"`
 
 	// TitlePattern is a custom regex the PR title must match.
 	// Required when TitleStyle is "custom".

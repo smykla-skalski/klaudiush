@@ -6,6 +6,8 @@ import (
 	"slices"
 	"time"
 
+	"github.com/invopop/jsonschema"
+
 	"github.com/smykla-skalski/klaudiush/pkg/hook"
 )
 
@@ -74,6 +76,14 @@ const (
 	// PluginTypeExec executes plugins as subprocesses with JSON I/O.
 	PluginTypeExec PluginType = "exec"
 )
+
+// JSONSchema returns the JSON Schema for the PluginType type.
+func (PluginType) JSONSchema() *jsonschema.Schema {
+	return &jsonschema.Schema{
+		Type: "string",
+		Enum: []any{"exec"},
+	}
+}
 
 // PluginPredicate configures when a plugin should be invoked.
 type PluginPredicate struct {
