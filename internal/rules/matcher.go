@@ -664,7 +664,7 @@ func (b *matcherBuilder) addAdvancedPatternMatcher(
 
 // result returns the final matcher or error.
 //
-//nolint:nilnil,ireturn // returning nil, nil is intentional; interface for polymorphism
+//nolint:nilnil // returning nil, nil is intentional
 func (b *matcherBuilder) result() (Matcher, error) {
 	if b.err != nil {
 		return nil, b.err
@@ -682,30 +682,26 @@ func (b *matcherBuilder) result() (Matcher, error) {
 
 // Pattern matcher factory wrappers.
 //
-//nolint:ireturn // interface for polymorphism
+
 func wrapRepoMatcher(p string) (Matcher, error) { return NewRepoPatternMatcher(p) }
 
-//nolint:ireturn // interface for polymorphism
 func wrapBranchMatcher(p string) (Matcher, error) { return NewBranchPatternMatcher(p) }
 
-//nolint:ireturn // interface for polymorphism
 func wrapFileMatcher(p string) (Matcher, error) { return NewFilePatternMatcher(p) }
 
-//nolint:ireturn // interface for polymorphism
 func wrapContentMatcher(p string) (Matcher, error) { return NewContentPatternMatcher(p) }
 
-//nolint:ireturn // interface for polymorphism
 func wrapCommandMatcher(p string) (Matcher, error) { return NewCommandPatternMatcher(p) }
 
 // Advanced pattern matcher factory wrappers.
 //
-//nolint:ireturn // interface for polymorphism
+
 func wrapRepoMatcherWithOpts(p string, opts PatternOptions) (Matcher, error) {
 	return NewRepoPatternMatcherWithOpts(p, opts)
 }
 
 //
-//nolint:ireturn // interface for polymorphism
+
 func wrapRepoMultiMatcher(
 	patterns []string,
 	mode MultiPatternMode,
@@ -714,13 +710,12 @@ func wrapRepoMultiMatcher(
 	return NewRepoMultiPatternMatcher(patterns, mode, opts)
 }
 
-//nolint:ireturn // interface for polymorphism
 func wrapBranchMatcherWithOpts(p string, opts PatternOptions) (Matcher, error) {
 	return NewBranchPatternMatcherWithOpts(p, opts)
 }
 
 //
-//nolint:ireturn // interface for polymorphism
+
 func wrapBranchMultiMatcher(
 	patterns []string,
 	mode MultiPatternMode,
@@ -729,13 +724,12 @@ func wrapBranchMultiMatcher(
 	return NewBranchMultiPatternMatcher(patterns, mode, opts)
 }
 
-//nolint:ireturn // interface for polymorphism
 func wrapFileMatcherWithOpts(p string, opts PatternOptions) (Matcher, error) {
 	return NewFilePatternMatcherWithOpts(p, opts)
 }
 
 //
-//nolint:ireturn // interface for polymorphism
+
 func wrapFileMultiMatcher(
 	patterns []string,
 	mode MultiPatternMode,
@@ -744,13 +738,12 @@ func wrapFileMultiMatcher(
 	return NewFileMultiPatternMatcher(patterns, mode, opts)
 }
 
-//nolint:ireturn // interface for polymorphism
 func wrapContentMatcherWithOpts(p string, opts PatternOptions) (Matcher, error) {
 	return NewContentPatternMatcherWithOpts(p, opts)
 }
 
 //
-//nolint:ireturn // interface for polymorphism
+
 func wrapContentMultiMatcher(
 	patterns []string,
 	mode MultiPatternMode,
@@ -759,13 +752,12 @@ func wrapContentMultiMatcher(
 	return NewContentMultiPatternMatcher(patterns, mode, opts)
 }
 
-//nolint:ireturn // interface for polymorphism
 func wrapCommandMatcherWithOpts(p string, opts PatternOptions) (Matcher, error) {
 	return NewCommandPatternMatcherWithOpts(p, opts)
 }
 
 //
-//nolint:ireturn // interface for polymorphism
+
 func wrapCommandMultiMatcher(
 	patterns []string,
 	mode MultiPatternMode,
@@ -787,7 +779,7 @@ func parsePatternMode(mode string) MultiPatternMode {
 // BuildMatcher creates a composite matcher from RuleMatch conditions.
 // Returns nil if no conditions are specified.
 //
-//nolint:nilnil,ireturn // returning nil, nil is intentional; interface for polymorphism
+//nolint:nilnil // returning nil, nil is intentional
 func BuildMatcher(match *RuleMatch) (Matcher, error) {
 	if match == nil {
 		return nil, nil
@@ -812,7 +804,7 @@ func BuildMatcher(match *RuleMatch) (Matcher, error) {
 
 // buildMatcherLegacy builds a matcher using the legacy (simple) approach.
 //
-//nolint:ireturn // interface for polymorphism
+
 func buildMatcherLegacy(match *RuleMatch) (Matcher, error) {
 	b := &matcherBuilder{}
 
@@ -845,7 +837,7 @@ func buildMatcherLegacy(match *RuleMatch) (Matcher, error) {
 
 // buildMatcherAdvanced builds a matcher using advanced pattern features.
 //
-//nolint:ireturn // interface for polymorphism
+
 func buildMatcherAdvanced(match *RuleMatch) (Matcher, error) {
 	opts := PatternOptions{
 		CaseInsensitive: match.CaseInsensitive,
