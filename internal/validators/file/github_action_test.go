@@ -27,6 +27,13 @@ func (*mockGitHubClient) GetLatestRelease(
 	return nil, github.ErrNoReleases
 }
 
+func (*mockGitHubClient) GetReleaseByTag(
+	_ context.Context,
+	_, _, _ string,
+) (*github.Release, error) {
+	return nil, github.ErrNoReleases
+}
+
 func (*mockGitHubClient) GetTags(
 	_ context.Context,
 	_, _ string,

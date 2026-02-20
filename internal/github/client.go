@@ -51,6 +51,8 @@ type Tag struct {
 type Client interface {
 	// GetLatestRelease retrieves the latest release for a repository
 	GetLatestRelease(ctx context.Context, owner, repo string) (*Release, error)
+	// GetReleaseByTag retrieves a specific release by its tag name
+	GetReleaseByTag(ctx context.Context, owner, repo, tag string) (*Release, error)
 	// GetTags retrieves all tags for a repository
 	GetTags(ctx context.Context, owner, repo string) ([]*Tag, error)
 	// IsAuthenticated returns whether the client is authenticated
@@ -155,6 +157,35 @@ func (c *SDKClient) GetLatestRelease(
 	}
 
 	release, resp, err := c.client.Repositories.GetLatestRelease(ctx, owner, repo)
+	if err != nil {
+		return nil, c.handleError(resp, err)
+	}
+
+	result := &Release{
+		TagName: release.GetTagName(),
+		Name:    release.GetName(),
+		HTMLURL: release.GetHTMLURL(),
+	}
+
+	c.cache.Set(cacheKey, result)
+
+	return result, nil
+}
+
+// GetReleaseByTag retrieves a specific release by its tag name
+func (c *SDKClient) GetReleaseByTag(
+	ctx context.Context,
+	owner, repo, tag string,
+) (*Release, error) {
+	cacheKey := fmt.Sprintf("release:%s/%s:%s", owner, repo, tag)
+
+	if cached, ok := c.cache.Get(cacheKey); ok {
+		if rel, ok := cached.(*Release); ok {
+			return rel, nil
+		}
+	}
+
+	release, resp, err := c.client.Repositories.GetReleaseByTag(ctx, owner, repo, tag)
 	if err != nil {
 		return nil, c.handleError(resp, err)
 	}
