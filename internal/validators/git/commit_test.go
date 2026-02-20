@@ -3,6 +3,7 @@ package git_test
 import (
 	"context"
 	"os"
+	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -1546,6 +1547,47 @@ Signed-off-by: Test User <test@klaudiu.sh>`
 					result.Details["errors"],
 				).To(ContainSubstring("doesn't match the required pattern"))
 			})
+		})
+	})
+
+	Describe("Error result formatting", func() {
+		It("prefixes details with issue count and fix-all instruction", func() {
+			ctx := &hook.Context{
+				EventType: hook.EventTypePreToolUse,
+				ToolName:  hook.ToolTypeBash,
+				ToolInput: hook.ToolInput{
+					Command: `git commit -sS -a -m "Add new feature"`,
+				},
+			}
+
+			result := validator.Validate(context.Background(), ctx)
+			Expect(result.Passed).To(BeFalse())
+			Expect(result.Details["errors"]).To(HavePrefix("Found"))
+			Expect(result.Details["errors"]).To(ContainSubstring("Fix ALL at once"))
+		})
+
+		It("orders format errors before length errors", func() {
+			// Title that is both non-conventional AND too long
+			longBadTitle := "this is a plain title without any conventional format and it is way too long for the limit"
+			ctx := &hook.Context{
+				EventType: hook.EventTypePreToolUse,
+				ToolName:  hook.ToolTypeBash,
+				ToolInput: hook.ToolInput{
+					Command: `git commit -sS -a -m "` + longBadTitle + `"`,
+				},
+			}
+
+			result := validator.Validate(context.Background(), ctx)
+			Expect(result.Passed).To(BeFalse())
+
+			errors := result.Details["errors"]
+			// GIT013 (conventional format) should appear before GIT004 (title length)
+			conventionalIdx := strings.Index(errors, "conventional commits format")
+			titleLenIdx := strings.Index(errors, "Title exceeds")
+
+			Expect(conventionalIdx).To(BeNumerically(">", -1))
+			Expect(titleLenIdx).To(BeNumerically(">", -1))
+			Expect(conventionalIdx).To(BeNumerically("<", titleLenIdx))
 		})
 	})
 })

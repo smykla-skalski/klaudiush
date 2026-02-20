@@ -39,7 +39,7 @@ var _ = Describe("Build", func() {
 		).To(ContainSubstring("Missing -s flag"))
 		Expect(
 			resp.HookSpecificOutput.AdditionalContext,
-		).To(ContainSubstring("Fix the reported errors"))
+		).To(ContainSubstring("Fix ALL reported errors at once"))
 		Expect(resp.SystemMessage).NotTo(BeEmpty())
 	})
 

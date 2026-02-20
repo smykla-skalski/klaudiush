@@ -92,7 +92,9 @@ func formatAdditionalContext(
 		} else {
 			parts = append(parts,
 				"Automated klaudiush validation check. "+
-					"Fix the reported errors and retry the same command.")
+					"Fix ALL reported errors at once and retry. "+
+					"Fixing one issue can introduce another "+
+					"(e.g., adding type(scope): prefix makes title exceed 50 chars).")
 		}
 	}
 

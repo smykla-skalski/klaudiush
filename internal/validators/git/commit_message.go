@@ -2,7 +2,9 @@ package git
 
 import (
 	"context"
+	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/smykla-skalski/klaudiush/internal/validator"
@@ -210,11 +212,17 @@ func (*CommitValidator) validateMarkdownInBody(lines []string) []string {
 
 // buildErrorResult constructs the error result with details.
 // It selects the most appropriate reference based on what rules failed.
+// Results are sorted by fix priority so Claude sees the most actionable errors first.
 func (*CommitValidator) buildErrorResult(results []*RuleResult, message string) *validator.Result {
 	var details strings.Builder
 
+	// Sort results by fix priority
+	sortResultsByFixOrder(results)
+
 	// Collect all errors and determine the primary reference
 	ref := selectPrimaryReference(results)
+
+	fmt.Fprintf(&details, "Found %d issue(s). Fix ALL at once:\n\n", len(results))
 
 	for _, result := range results {
 		for _, err := range result.Errors {
@@ -232,6 +240,46 @@ func (*CommitValidator) buildErrorResult(results []*RuleResult, message string) 
 		ref,
 		"Commit message validation failed",
 	).AddDetail("errors", details.String())
+}
+
+// referenceFixOrder defines the sort priority for error results.
+// References earlier in the slice have higher fix priority.
+// This reuses the same order as selectPrimaryReference.
+var referenceFixOrder = []validator.Reference{
+	validator.RefGitConventionalCommit, // GIT013
+	validator.RefGitFeatCI,             // GIT006
+	validator.RefGitBadTitle,           // GIT004
+	validator.RefGitBadBody,            // GIT005
+	validator.RefGitListFormat,         // GIT016
+	validator.RefGitPRRef,              // GIT011
+	validator.RefGitClaudeAttr,         // GIT012
+	validator.RefGitForbiddenPattern,   // GIT014
+	validator.RefGitSignoffMismatch,    // GIT015
+}
+
+// sortResultsByFixOrder sorts rule results by fix priority.
+// Errors that should be fixed first appear earlier in the list.
+func sortResultsByFixOrder(results []*RuleResult) {
+	orderIndex := make(map[validator.Reference]int, len(referenceFixOrder))
+	for i, ref := range referenceFixOrder {
+		orderIndex[ref] = i
+	}
+
+	fallback := len(referenceFixOrder)
+
+	slices.SortStableFunc(results, func(a, b *RuleResult) int {
+		orderA, okA := orderIndex[a.Reference]
+		if !okA {
+			orderA = fallback
+		}
+
+		orderB, okB := orderIndex[b.Reference]
+		if !okB {
+			orderB = fallback
+		}
+
+		return orderA - orderB
+	})
 }
 
 // selectPrimaryReference selects the most appropriate reference from rule results.

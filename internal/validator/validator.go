@@ -167,6 +167,14 @@ func (r *Result) AddDetail(key, value string) *Result {
 	return r
 }
 
+// WithFixHint overrides the auto-populated FixHint from the suggestions registry.
+// Use this when a validator needs a dynamic hint with context-specific info.
+func (r *Result) WithFixHint(hint string) *Result {
+	r.FixHint = hint
+
+	return r
+}
+
 // String returns a string representation of the result.
 func (r *Result) String() string {
 	if r.Passed {

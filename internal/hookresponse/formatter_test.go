@@ -392,6 +392,21 @@ var _ = Describe("Additional context formatting", func() {
 			ContainSubstring("properly formatted table"))
 	})
 
+	It("includes cascading failure warning in non-session-poisoned context", func() {
+		errs := []*dispatcher.ValidationError{
+			{
+				Validator:   "git.commit",
+				Message:     "Missing -s flag",
+				ShouldBlock: true,
+				Reference:   validator.RefGitNoSignoff,
+			},
+		}
+
+		resp := hookresponse.Build("PreToolUse", errs)
+		ctx := resp.HookSpecificOutput.AdditionalContext
+		Expect(ctx).To(ContainSubstring("type(scope): prefix makes title exceed 50 chars"))
+	})
+
 	It("truncates large table suggestions", func() {
 		// Build a suggestion with more than 15 lines
 		lines := make([]string, 0, 22)
