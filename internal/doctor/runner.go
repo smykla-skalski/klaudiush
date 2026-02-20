@@ -58,24 +58,27 @@ func NewRunner(
 func (r *Runner) Run(ctx context.Context, opts RunOptions) error {
 	r.logger.Info("starting doctor run", "verbose", opts.Verbose, "autoFix", opts.AutoFix)
 
-	// Step 1: Execute checks
+	// Step 1: Execute checks and report
 	var results []CheckResult
 
-	if len(opts.Categories) > 0 {
+	if sr, ok := r.reporter.(StreamingReporter); ok {
+		// StreamingReporter handles both execution and display
+		results = sr.RunAndReport(ctx, r.registry, opts.Verbose, opts.Categories)
+	} else if len(opts.Categories) > 0 {
 		// Run specific categories
 		for _, category := range opts.Categories {
 			categoryResults := r.registry.RunCategory(ctx, category)
 			results = append(results, categoryResults...)
 		}
+
+		r.reporter.Report(results, opts.Verbose)
 	} else {
 		// Run all checks
 		results = r.registry.RunAll(ctx)
+		r.reporter.Report(results, opts.Verbose)
 	}
 
 	r.logger.Info("checks completed", "total", len(results))
-
-	// Step 2: Report results
-	r.reporter.Report(results, opts.Verbose)
 
 	// Step 3: Check if there are errors with fixes available
 	fixableErrors := r.collectFixableResults(results)

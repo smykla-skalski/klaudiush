@@ -152,3 +152,47 @@ func (r *Registry) FixerCount() int {
 
 	return len(r.fixers)
 }
+
+// Checkers returns all registered health checkers as a flat slice.
+func (r *Registry) Checkers() []HealthChecker {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	total := 0
+	for _, checkers := range r.checkers {
+		total += len(checkers)
+	}
+
+	all := make([]HealthChecker, 0, total)
+	for _, checkers := range r.checkers {
+		all = append(all, checkers...)
+	}
+
+	return all
+}
+
+// CheckersForCategories returns checkers matching the given categories.
+// If categories is empty, returns all checkers.
+func (r *Registry) CheckersForCategories(categories []Category) []HealthChecker {
+	if len(categories) == 0 {
+		return r.Checkers()
+	}
+
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	catSet := make(map[Category]bool, len(categories))
+	for _, c := range categories {
+		catSet[c] = true
+	}
+
+	var result []HealthChecker
+
+	for cat, checkers := range r.checkers {
+		if catSet[cat] {
+			result = append(result, checkers...)
+		}
+	}
+
+	return result
+}

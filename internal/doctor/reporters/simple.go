@@ -15,6 +15,7 @@ var categoryOrder = []doctor.Category{
 	doctor.CategoryHook,
 	doctor.CategoryConfig,
 	doctor.CategoryTools,
+	doctor.CategoryBackup,
 }
 
 // categoryNames maps categories to display names
@@ -23,6 +24,7 @@ var categoryNames = map[doctor.Category]string{
 	doctor.CategoryHook:   "Hook Registration",
 	doctor.CategoryConfig: "Configuration",
 	doctor.CategoryTools:  "Optional Tools",
+	doctor.CategoryBackup: "Backup",
 }
 
 // SimpleReporter provides simple checklist-style output
