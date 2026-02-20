@@ -211,8 +211,7 @@ func (*PythonValidator) formatRuffOutput(result *linters.LintResult) string {
 			}
 		}
 
-		return "Ruff validation failed\n\n" + strings.Join(cleanLines, "\n") +
-			"\n\nFix these issues before committing."
+		return "Ruff validation failed\n\n" + strings.Join(cleanLines, "\n")
 	}
 
 	lines := make([]string, 0, len(result.Findings))
@@ -227,8 +226,7 @@ func (*PythonValidator) formatRuffOutput(result *linters.LintResult) string {
 		lines = append(lines, line)
 	}
 
-	return "Ruff validation failed\n\n" + strings.Join(lines, "\n") +
-		"\n\nFix these issues before committing."
+	return "Ruff validation failed\n\n" + strings.Join(lines, "\n")
 }
 
 // buildRuffOptions creates RuffCheckOptions with excludes from config and fragment-specific rules.

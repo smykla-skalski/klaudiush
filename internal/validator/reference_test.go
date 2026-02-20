@@ -88,6 +88,24 @@ var _ = Describe("FailWithRef", func() {
 	})
 })
 
+var _ = Describe("WithFixHint", func() {
+	It("overrides the auto-populated FixHint", func() {
+		result := validator.FailWithRef(validator.RefGitMissingFlags, "test").
+			WithFixHint("custom hint")
+
+		Expect(result.FixHint).To(Equal("custom hint"))
+	})
+
+	It("chains with AddDetail", func() {
+		result := validator.FailWithRef(validator.RefGitMissingFlags, "test").
+			AddDetail("key", "val").
+			WithFixHint("custom hint")
+
+		Expect(result.FixHint).To(Equal("custom hint"))
+		Expect(result.Details["key"]).To(Equal("val"))
+	})
+})
+
 var _ = Describe("WarnWithRef", func() {
 	It("creates a warning result with reference", func() {
 		result := validator.WarnWithRef(validator.RefShellcheck, "test warning")

@@ -6,6 +6,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/smykla-skalski/klaudiush/internal/validator"
 	"github.com/smykla-skalski/klaudiush/internal/validators/git"
 )
 
@@ -428,5 +429,65 @@ var _ = Describe("ListFormattingRule", func() {
 			result := rule.Validate(commit, msg)
 			Expect(result).To(BeNil())
 		})
+	})
+})
+
+var _ = Describe("TitleLengthRule cascading warning", func() {
+	It("includes 50-char limit cause hint when title is too long", func() {
+		rule := &git.TitleLengthRule{MaxLength: 50, AllowUnlimitedRevertTitle: true}
+		commit := &git.ParsedCommit{
+			Title: "feat(api): this is a very long commit title that exceeds fifty chars",
+			Valid: true,
+		}
+
+		result := rule.Validate(commit, commit.Title)
+		Expect(result).NotTo(BeNil())
+		Expect(result.Reference).To(Equal(validator.RefGitBadTitle))
+
+		joined := strings.Join(result.Errors, "\n")
+		Expect(
+			joined,
+		).To(ContainSubstring("Common cause: type(scope): prefix is part of the 50-char limit"))
+	})
+})
+
+var _ = Describe("ConventionalFormatRule cascading warning", func() {
+	var rule *git.ConventionalFormatRule
+
+	BeforeEach(func() {
+		rule = &git.ConventionalFormatRule{
+			ValidTypes:   []string{"feat", "fix", "chore"},
+			RequireScope: true,
+		}
+	})
+
+	It("includes 50-char limit warning for invalid format", func() {
+		commit := &git.ParsedCommit{
+			Title:      "Add new feature",
+			Valid:      false,
+			ParseError: "no type prefix found",
+		}
+
+		result := rule.Validate(commit, commit.Title)
+		Expect(result).NotTo(BeNil())
+		Expect(result.Reference).To(Equal(validator.RefGitConventionalCommit))
+
+		joined := strings.Join(result.Errors, "\n")
+		Expect(joined).To(ContainSubstring("type(scope): prefix counts toward 50-char limit"))
+	})
+
+	It("includes 50-char limit warning for missing scope", func() {
+		commit := &git.ParsedCommit{
+			Title: "feat: add endpoint",
+			Valid: true,
+			Type:  "feat",
+			Scope: "",
+		}
+
+		result := rule.Validate(commit, commit.Title)
+		Expect(result).NotTo(BeNil())
+
+		joined := strings.Join(result.Errors, "\n")
+		Expect(joined).To(ContainSubstring("type(scope): prefix counts toward 50-char limit"))
 	})
 })

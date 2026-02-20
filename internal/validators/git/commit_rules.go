@@ -57,6 +57,7 @@ func (r *TitleLengthRule) Validate(commit *ParsedCommit, _ string) *RuleResult {
 				titleLength,
 				commit.Title,
 			),
+			"   Common cause: type(scope): prefix is part of the 50-char limit.",
 			"   Note: Revert commits (Revert \"...\") are exempt from this limit",
 		},
 	}
@@ -90,6 +91,10 @@ func (r *ConventionalFormatRule) Validate(commit *ParsedCommit, _ string) *RuleR
 		errors = append(errors, "   Valid types: "+strings.Join(r.ValidTypes, ", "))
 		errors = append(errors, "   Alternative: Revert \"original commit title\"")
 		errors = append(errors, fmt.Sprintf("   Current title: '%s'", commit.Title))
+		errors = append(
+			errors,
+			"   Note: type(scope): prefix counts toward 50-char limit. Keep the description short.",
+		)
 
 		return &RuleResult{
 			Reference: validator.RefGitConventionalCommit,
@@ -107,6 +112,7 @@ func (r *ConventionalFormatRule) Validate(commit *ParsedCommit, _ string) *RuleR
 				"   Valid types: " + strings.Join(r.ValidTypes, ", "),
 				"   Alternative: Revert \"original commit title\"",
 				fmt.Sprintf("   Current title: '%s'", commit.Title),
+				"   Note: type(scope): prefix counts toward 50-char limit. Keep the description short.",
 			},
 		}
 	}
