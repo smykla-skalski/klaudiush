@@ -25,11 +25,13 @@ type LintFinding struct {
 
 // LintResult represents the result of running a linter
 type LintResult struct {
-	Success        bool
-	Findings       []LintFinding
-	RawOut         string
-	Err            error
-	TableSuggested map[int]string // Line number -> suggested formatted table
+	Success                bool
+	Findings               []LintFinding
+	RawOut                 string
+	Err                    error
+	TableSuggested         map[int]string // Line number -> suggested formatted table (blocking)
+	CosmeticTableWarnings  []string       // Non-blocking cosmetic table warnings
+	CosmeticTableSuggested map[int]string // Line number -> suggested table for cosmetic issues
 }
 
 // HasErrors returns true if the result contains any error-level findings

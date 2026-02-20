@@ -73,6 +73,10 @@ func formatSingleReason(e *dispatcher.ValidationError) string {
 	return s
 }
 
+// maxTableSuggestionLines limits how many lines of a table suggestion
+// are included in additionalContext to avoid bloating the context.
+const maxTableSuggestionLines = 15
+
 // formatAdditionalContext builds behavioral framing for Claude.
 func formatAdditionalContext(
 	blocking, warnings, bypassed []*dispatcher.ValidationError,
@@ -110,7 +114,31 @@ func formatAdditionalContext(
 			"klaudiush warning: "+e.Message+". Not blocking.")
 	}
 
+	// Include table suggestions in context so Claude can see the correctly
+	// formatted table. Check both blocking and warning errors.
+	allErrs := make([]*dispatcher.ValidationError, 0, len(blocking)+len(warnings))
+	allErrs = append(allErrs, blocking...)
+	allErrs = append(allErrs, warnings...)
+
+	for _, e := range allErrs {
+		if suggestion, ok := e.Details["suggested_table"]; ok && suggestion != "" {
+			parts = append(parts, truncateTableSuggestion(suggestion))
+
+			break // Only include first suggestion
+		}
+	}
+
 	return strings.Join(parts, " ")
+}
+
+// truncateTableSuggestion caps a table suggestion to maxTableSuggestionLines.
+func truncateTableSuggestion(suggestion string) string {
+	lines := strings.Split(suggestion, "\n")
+	if len(lines) <= maxTableSuggestionLines {
+		return suggestion
+	}
+
+	return strings.Join(lines[:maxTableSuggestionLines], "\n") + "\n..."
 }
 
 // FormatSystemMessage builds the human-readable message shown in the UI.

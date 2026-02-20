@@ -100,7 +100,7 @@ func (v *FetchValidator) validateFetchCommand(
 // If the command specifies a working directory with -C, creates a runner for that path.
 // Otherwise, returns the default cached runner.
 //
-//nolint:ireturn // Returns interface for flexibility between cached and path-specific runners
+
 func (v *FetchValidator) getRunnerForCommand(gitCmd *parser.GitCommand) GitRunner {
 	workDir := gitCmd.GetWorkingDirectory()
 	if workDir != "" {

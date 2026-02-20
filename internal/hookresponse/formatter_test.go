@@ -355,4 +355,89 @@ var _ = Describe("Additional context formatting", func() {
 		Expect(resp.HookSpecificOutput.AdditionalContext).To(
 			ContainSubstring("no reason provided"))
 	})
+
+	It("includes table suggestion in additionalContext for blocking errors", func() {
+		errs := []*dispatcher.ValidationError{
+			{
+				Validator:   "validate-markdown",
+				Message:     "Line 3: Inconsistent spacing in table row",
+				ShouldBlock: true,
+				Reference:   validator.RefMarkdownLint,
+				Details: map[string]string{
+					"errors":          "Line 3: Inconsistent spacing in table row",
+					"suggested_table": "Line 3 - Use this properly formatted table:\n\n| A | B |\n|:--|:--|\n| x | y |\n",
+				},
+			},
+		}
+
+		resp := hookresponse.Build("PreToolUse", errs)
+		Expect(resp.HookSpecificOutput.AdditionalContext).To(
+			ContainSubstring("properly formatted table"))
+	})
+
+	It("includes table suggestion in additionalContext for warning errors", func() {
+		errs := []*dispatcher.ValidationError{
+			{
+				Validator:   "validate-markdown",
+				Message:     "Line 1: Table column widths inconsistent",
+				ShouldBlock: false,
+				Details: map[string]string{
+					"suggested_table": "Line 1 - Use this properly formatted table:\n\n| Name | Age |\n|:-----|:----|\n",
+				},
+			},
+		}
+
+		resp := hookresponse.Build("PreToolUse", errs)
+		Expect(resp.HookSpecificOutput.AdditionalContext).To(
+			ContainSubstring("properly formatted table"))
+	})
+
+	It("truncates large table suggestions", func() {
+		// Build a suggestion with more than 15 lines
+		lines := make([]string, 0, 22)
+
+		lines = append(lines, "Line 1 - Use this properly formatted table:")
+
+		lines = append(lines, "")
+		for i := range 20 {
+			lines = append(lines, "| row"+strings.Repeat("x", i)+" |")
+		}
+
+		suggestion := strings.Join(lines, "\n")
+
+		errs := []*dispatcher.ValidationError{
+			{
+				Validator:   "validate-markdown",
+				Message:     "Table issue",
+				ShouldBlock: true,
+				Reference:   validator.RefMarkdownLint,
+				Details: map[string]string{
+					"suggested_table": suggestion,
+				},
+			},
+		}
+
+		resp := hookresponse.Build("PreToolUse", errs)
+		ctx := resp.HookSpecificOutput.AdditionalContext
+		// Should be truncated
+		Expect(ctx).To(ContainSubstring("..."))
+	})
+
+	It("shows specific permissionDecisionReason for markdown errors", func() {
+		errs := []*dispatcher.ValidationError{
+			{
+				Validator:   "validate-markdown",
+				Message:     "Line 3: Table column widths inconsistent",
+				ShouldBlock: true,
+				Reference:   validator.RefMarkdownLint,
+				FixHint:     "Fix the formatting issue and retry",
+			},
+		}
+
+		resp := hookresponse.Build("PreToolUse", errs)
+		reason := resp.HookSpecificOutput.PermissionDecisionReason
+		// Should be specific, not generic
+		Expect(reason).To(ContainSubstring("Table column widths"))
+		Expect(reason).NotTo(Equal("Markdown formatting errors"))
+	})
 })
