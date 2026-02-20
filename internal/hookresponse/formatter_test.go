@@ -227,4 +227,116 @@ var _ = Describe("Decision reason summarization", func() {
 		reason := buildReason(msg)
 		Expect(reason).To(Equal("[GIT024] Commit blocked. No staged files found"))
 	})
+
+	It("skips paragraphs where stripEmoji produces empty string", func() {
+		// Paragraph made entirely of emoji - stripEmoji returns ""
+		msg := "Header line\n\n\U0001F6AB\n\nActual content"
+		reason := buildReason(msg)
+		Expect(reason).To(Equal("[GIT024] Header line. Actual content"))
+	})
+
+	It("returns raw message when all lines are empty", func() {
+		msg := "\n\n\n\n"
+		reason := buildReason(msg)
+		Expect(reason).To(Equal("[GIT024] \n\n\n\n"))
+	})
+
+	It("strips transport & map emoji", func() {
+		msg := "\U0001F680 Rocket launch"
+		reason := buildReason(msg)
+		Expect(reason).To(Equal("[GIT024] Rocket launch"))
+	})
+
+	It("strips misc symbols & pictographs", func() {
+		msg := "\U0001F4E6 Package update"
+		reason := buildReason(msg)
+		Expect(reason).To(Equal("[GIT024] Package update"))
+	})
+
+	It("strips supplemental symbols", func() {
+		msg := "\U0001F9EA Test tube result"
+		reason := buildReason(msg)
+		Expect(reason).To(Equal("[GIT024] Test tube result"))
+	})
+
+	It("strips misc symbols like warning sign", func() {
+		msg := "\u26A0 Warning detected"
+		reason := buildReason(msg)
+		Expect(reason).To(Equal("[GIT024] Warning detected"))
+	})
+
+	It("strips variation selector and zero-width joiner", func() {
+		msg := "\u26A0\uFE0F\u200D Warning with selectors"
+		reason := buildReason(msg)
+		Expect(reason).To(Equal("[GIT024] Warning with selectors"))
+	})
+
+	It("handles message with only empty paragraphs after filtering", func() {
+		// All paragraphs are supplementary
+		msg := "See docs for details\n\nNote: this is expected\n\nTip: try again"
+		reason := buildReason(msg)
+		Expect(reason).To(Equal("[GIT024] See docs for details"))
+	})
+
+	It("handles single paragraph with leading blank lines", func() {
+		msg := "\n\nActual content here"
+		reason := buildReason(msg)
+		Expect(reason).To(Equal("[GIT024] Actual content here"))
+	})
+})
+
+var _ = Describe("Emoji stripping edge cases", func() {
+	buildReason := func(msg string) string {
+		errs := []*dispatcher.ValidationError{
+			{
+				Validator:   "test",
+				Message:     msg,
+				ShouldBlock: true,
+				Reference:   "https://klaudiu.sh/TEST001",
+			},
+		}
+
+		resp := hookresponse.Build("PreToolUse", errs)
+
+		return resp.HookSpecificOutput.PermissionDecisionReason
+	}
+
+	It("strips emoticon range emoji", func() {
+		// U+1F600 = grinning face (emoticons range 0x1F600-0x1F64F)
+		msg := "\U0001F600 Smiling error"
+		reason := buildReason(msg)
+		Expect(reason).To(Equal("[TEST001] Smiling error"))
+	})
+
+	It("strips non-printable control characters", func() {
+		// \x01 = SOH, non-printable non-space
+		msg := "Error\x01message"
+		reason := buildReason(msg)
+		Expect(reason).To(Equal("[TEST001] Errormessage"))
+	})
+
+	It("preserves plain ASCII text unchanged", func() {
+		msg := "just plain text"
+		reason := buildReason(msg)
+		Expect(reason).To(Equal("[TEST001] just plain text"))
+	})
+})
+
+var _ = Describe("Additional context formatting", func() {
+	It("uses default reason for bypassed error without bypass reason", func() {
+		errs := []*dispatcher.ValidationError{
+			{
+				Validator:    "git.push",
+				Message:      "push blocked [BYPASSED]",
+				ShouldBlock:  false,
+				Reference:    validator.RefGitKongOrgPush,
+				Bypassed:     true,
+				BypassReason: "",
+			},
+		}
+
+		resp := hookresponse.Build("PreToolUse", errs)
+		Expect(resp.HookSpecificOutput.AdditionalContext).To(
+			ContainSubstring("no reason provided"))
+	})
 })
