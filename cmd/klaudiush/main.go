@@ -474,6 +474,9 @@ func runPatternTracking(
 		recorder := patterns.NewRecorder(store)
 		recorder.Observe(hookCtx.SessionID, blockingCodes)
 
+		store.Cleanup(patternsCfg.GetMaxAge())
+		store.CleanupSessions(patternsCfg.GetSessionMaxAge())
+
 		if saveErr := store.Save(); saveErr != nil {
 			log.Debug("failed to save pattern store", "error", saveErr)
 		}

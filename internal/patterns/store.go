@@ -38,12 +38,60 @@ type FailurePattern struct {
 	Seed       bool      `json:"seed,omitempty"`
 }
 
+// SessionEntry tracks error codes for a session with a timestamp.
+type SessionEntry struct {
+	Codes    []string  `json:"codes"`
+	LastSeen time.Time `json:"last_seen"`
+}
+
 // PatternData is the on-disk format for pattern storage.
 type PatternData struct {
 	Patterns    map[string]*FailurePattern `json:"patterns"`
-	Sessions    map[string][]string        `json:"sessions,omitempty"`
+	Sessions    map[string]*SessionEntry   `json:"sessions,omitempty"`
 	LastUpdated time.Time                  `json:"last_updated"`
 	Version     int                        `json:"version"`
+}
+
+// UnmarshalJSON handles backward compatibility with the old session format
+// where Sessions was map[string][]string instead of map[string]*SessionEntry.
+func (pd *PatternData) UnmarshalJSON(data []byte) error {
+	// Try the current format first.
+	type patternDataAlias PatternData
+
+	var current patternDataAlias
+	if err := json.Unmarshal(data, &current); err == nil && current.Sessions != nil {
+		*pd = PatternData(current)
+		return nil
+	}
+
+	// Fall back to legacy format with bare []string sessions.
+	var legacy struct {
+		Patterns    map[string]*FailurePattern `json:"patterns"`
+		Sessions    map[string][]string        `json:"sessions,omitempty"`
+		LastUpdated time.Time                  `json:"last_updated"`
+		Version     int                        `json:"version"`
+	}
+
+	if err := json.Unmarshal(data, &legacy); err != nil {
+		return errors.Wrap(err, "parsing pattern data")
+	}
+
+	pd.Patterns = legacy.Patterns
+	pd.LastUpdated = legacy.LastUpdated
+	pd.Version = legacy.Version
+
+	if len(legacy.Sessions) > 0 {
+		pd.Sessions = make(map[string]*SessionEntry, len(legacy.Sessions))
+
+		for id, codes := range legacy.Sessions {
+			pd.Sessions[id] = &SessionEntry{
+				Codes:    codes,
+				LastSeen: time.Time{}, // zero time - will be cleaned up on next run
+			}
+		}
+	}
+
+	return nil
 }
 
 // PatternStore reads and writes failure patterns.
@@ -180,16 +228,24 @@ func (s *FilePatternStore) GetSessionCodes(sessionID string) []string {
 		return nil
 	}
 
-	return s.globalData.Sessions[sessionID]
+	entry := s.globalData.Sessions[sessionID]
+	if entry == nil {
+		return nil
+	}
+
+	return entry.Codes
 }
 
 // SetSessionCodes stores the blocking codes for a session.
 func (s *FilePatternStore) SetSessionCodes(sessionID string, codes []string) {
 	if s.globalData.Sessions == nil {
-		s.globalData.Sessions = make(map[string][]string)
+		s.globalData.Sessions = make(map[string]*SessionEntry)
 	}
 
-	s.globalData.Sessions[sessionID] = codes
+	s.globalData.Sessions[sessionID] = &SessionEntry{
+		Codes:    codes,
+		LastSeen: time.Now(),
+	}
 }
 
 // ClearSessionCodes removes stored codes for a session.
@@ -199,6 +255,46 @@ func (s *FilePatternStore) ClearSessionCodes(sessionID string) {
 	}
 
 	delete(s.globalData.Sessions, sessionID)
+}
+
+// CleanupSessions removes sessions older than maxAge from global storage.
+// Returns the number of sessions removed.
+func (s *FilePatternStore) CleanupSessions(maxAge time.Duration) int {
+	cutoff := time.Now().Add(-maxAge)
+	removed := 0
+
+	for id, entry := range s.globalData.Sessions {
+		if entry.LastSeen.Before(cutoff) {
+			delete(s.globalData.Sessions, id)
+
+			removed++
+		}
+	}
+
+	return removed
+}
+
+// GetActiveSessions returns the number of active sessions in global storage.
+func (s *FilePatternStore) GetActiveSessions() int {
+	return len(s.globalData.Sessions)
+}
+
+// GetSessions returns a copy of all session entries from global storage.
+func (s *FilePatternStore) GetSessions() map[string]*SessionEntry {
+	if s.globalData.Sessions == nil {
+		return nil
+	}
+
+	result := make(map[string]*SessionEntry, len(s.globalData.Sessions))
+
+	for id, entry := range s.globalData.Sessions {
+		result[id] = &SessionEntry{
+			Codes:    append([]string(nil), entry.Codes...),
+			LastSeen: entry.LastSeen,
+		}
+	}
+
+	return result
 }
 
 // SetProjectData sets the project-local pattern data directly.

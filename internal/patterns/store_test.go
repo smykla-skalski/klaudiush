@@ -176,6 +176,19 @@ var _ = Describe("FilePatternStore", func() {
 			Expect(codes).To(Equal([]string{"GIT013"}))
 		})
 
+		It("sets LastSeen timestamp on session entries", func() {
+			before := time.Now()
+
+			store.SetSessionCodes("sess1", []string{"GIT013"})
+
+			after := time.Now()
+
+			sessions := store.GetSessions()
+			Expect(sessions).To(HaveKey("sess1"))
+			Expect(sessions["sess1"].LastSeen).To(BeTemporally(">=", before))
+			Expect(sessions["sess1"].LastSeen).To(BeTemporally("<=", after))
+		})
+
 		It("clears session codes", func() {
 			store.SetSessionCodes("sess1", []string{"GIT013"})
 			store.ClearSessionCodes("sess1")
@@ -195,11 +208,143 @@ var _ = Describe("FilePatternStore", func() {
 			Expect(codes).To(Equal([]string{"GIT013", "GIT004"}))
 		})
 
+		It("persists session timestamps across save/load", func() {
+			store.SetSessionCodes("sess1", []string{"GIT013"})
+			Expect(store.Save()).To(Succeed())
+
+			store2 := patterns.NewFilePatternStore(cfg, tmpDir)
+			Expect(store2.Load()).To(Succeed())
+
+			sessions := store2.GetSessions()
+			Expect(sessions).To(HaveKey("sess1"))
+			Expect(sessions["sess1"].LastSeen).NotTo(BeZero())
+		})
+
 		It("clears session codes without crashing on empty store", func() {
 			store.ClearSessionCodes("nonexistent")
 
 			codes := store.GetSessionCodes("nonexistent")
 			Expect(codes).To(BeNil())
+		})
+
+		It("reports active session count", func() {
+			Expect(store.GetActiveSessions()).To(Equal(0))
+
+			store.SetSessionCodes("sess1", []string{"GIT013"})
+			store.SetSessionCodes("sess2", []string{"GIT004"})
+			Expect(store.GetActiveSessions()).To(Equal(2))
+
+			store.ClearSessionCodes("sess1")
+			Expect(store.GetActiveSessions()).To(Equal(1))
+		})
+
+		It("returns a copy from GetSessions", func() {
+			store.SetSessionCodes("sess1", []string{"GIT013"})
+
+			sessions := store.GetSessions()
+			sessions["sess1"].Codes = []string{"MODIFIED"}
+
+			codes := store.GetSessionCodes("sess1")
+			Expect(codes).To(Equal([]string{"GIT013"}))
+		})
+	})
+
+	Describe("CleanupSessions", func() {
+		It("removes expired sessions", func() {
+			store.SetSessionCodes("sess1", []string{"GIT013"})
+			Expect(store.GetActiveSessions()).To(Equal(1))
+
+			// maxAge=0 means everything is expired
+			removed := store.CleanupSessions(0)
+			Expect(removed).To(Equal(1))
+			Expect(store.GetActiveSessions()).To(Equal(0))
+		})
+
+		It("keeps recent sessions", func() {
+			store.SetSessionCodes("sess1", []string{"GIT013"})
+
+			removed := store.CleanupSessions(time.Hour)
+			Expect(removed).To(Equal(0))
+			Expect(store.GetActiveSessions()).To(Equal(1))
+		})
+
+		It("handles empty sessions map", func() {
+			removed := store.CleanupSessions(time.Hour)
+			Expect(removed).To(Equal(0))
+		})
+
+		It("works together with pattern Cleanup", func() {
+			store.RecordSequence("OLD", "PAT")
+			store.SetSessionCodes("sess1", []string{"GIT013"})
+
+			// Both pattern and session are recent
+			pRemoved := store.Cleanup(time.Hour)
+			sRemoved := store.CleanupSessions(time.Hour)
+
+			Expect(pRemoved).To(Equal(0))
+			Expect(sRemoved).To(Equal(0))
+			Expect(store.GetAllPatterns()).To(HaveLen(1))
+			Expect(store.GetActiveSessions()).To(Equal(1))
+
+			// Both expired
+			pRemoved = store.Cleanup(0)
+			sRemoved = store.CleanupSessions(0)
+
+			Expect(pRemoved).To(Equal(1))
+			Expect(sRemoved).To(Equal(1))
+			Expect(store.GetAllPatterns()).To(BeEmpty())
+			Expect(store.GetActiveSessions()).To(Equal(0))
+		})
+	})
+
+	Describe("Backward compatibility", func() {
+		It("migrates old session format on load", func() {
+			// Write old format: sessions as map[string][]string
+			oldData := `{
+				"patterns": {},
+				"sessions": {
+					"old-sess": ["GIT013", "GIT004"]
+				},
+				"last_updated": "2026-01-01T00:00:00Z",
+				"version": 1
+			}`
+
+			store.RecordSequence("A", "B")
+			Expect(store.Save()).To(Succeed())
+
+			// Find and overwrite the global file with old format
+			globalDir := filepath.Join(tmpDir, "global")
+			entries, err := os.ReadDir(globalDir)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(entries).NotTo(BeEmpty())
+
+			globalFile := filepath.Join(globalDir, entries[0].Name())
+			Expect(os.WriteFile(globalFile, []byte(oldData), 0o600)).To(Succeed())
+
+			// Load should migrate
+			store2 := patterns.NewFilePatternStore(cfg, tmpDir)
+			Expect(store2.Load()).To(Succeed())
+
+			codes := store2.GetSessionCodes("old-sess")
+			Expect(codes).To(Equal([]string{"GIT013", "GIT004"}))
+
+			// Migrated sessions get zero timestamps so they expire on cleanup
+			sessions := store2.GetSessions()
+			Expect(sessions["old-sess"].LastSeen).To(BeZero())
+		})
+
+		It("loads current format normally", func() {
+			store.SetSessionCodes("sess1", []string{"GIT013"})
+			Expect(store.Save()).To(Succeed())
+
+			store2 := patterns.NewFilePatternStore(cfg, tmpDir)
+			Expect(store2.Load()).To(Succeed())
+
+			codes := store2.GetSessionCodes("sess1")
+			Expect(codes).To(Equal([]string{"GIT013"}))
+
+			sessions := store2.GetSessions()
+			Expect(sessions["sess1"].LastSeen).NotTo(BeZero())
 		})
 	})
 

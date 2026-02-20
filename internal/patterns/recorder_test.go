@@ -2,6 +2,7 @@ package patterns_test
 
 import (
 	"path/filepath"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -109,6 +110,35 @@ var _ = Describe("Recorder", func() {
 		recorder2.Observe("sess1", []string{"GIT004"})
 
 		all := store2.GetAllPatterns()
+		Expect(all).To(HaveLen(1))
+		Expect(all[0].SourceCode).To(Equal("GIT013"))
+		Expect(all[0].TargetCode).To(Equal("GIT004"))
+	})
+
+	It("sets LastSeen on session entries during Observe", func() {
+		before := time.Now()
+
+		recorder.Observe("sess1", []string{"GIT013"})
+
+		after := time.Now()
+
+		sessions := store.GetSessions()
+		Expect(sessions).To(HaveKey("sess1"))
+		Expect(sessions["sess1"].LastSeen).To(BeTemporally(">=", before))
+		Expect(sessions["sess1"].LastSeen).To(BeTemporally("<=", after))
+	})
+
+	It("session cleanup does not break recording flow", func() {
+		recorder.Observe("sess1", []string{"GIT013"})
+
+		// Cleanup with a long maxAge keeps the session
+		removed := store.CleanupSessions(time.Hour)
+		Expect(removed).To(Equal(0))
+
+		// Recording still works
+		recorder.Observe("sess1", []string{"GIT004"})
+
+		all := store.GetAllPatterns()
 		Expect(all).To(HaveLen(1))
 		Expect(all[0].SourceCode).To(Equal("GIT013"))
 		Expect(all[0].TargetCode).To(Equal("GIT004"))

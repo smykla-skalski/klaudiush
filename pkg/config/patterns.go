@@ -21,6 +21,9 @@ const (
 
 	// DefaultPatternsGlobalDataDir is the default global data directory.
 	DefaultPatternsGlobalDataDir = "~/.klaudiush/patterns"
+
+	// DefaultPatternsSessionMaxAge is how long session codes are kept before cleanup.
+	DefaultPatternsSessionMaxAge = 24 * time.Hour
 )
 
 // PatternsConfig contains configuration for failure pattern tracking.
@@ -52,6 +55,10 @@ type PatternsConfig struct {
 	// GlobalDataDir is the directory for global per-project pattern files.
 	// Default: "~/.klaudiush/patterns"
 	GlobalDataDir string `json:"global_data_dir,omitempty" koanf:"global_data_dir" toml:"global_data_dir"`
+
+	// SessionMaxAge is how long session codes are kept before cleanup.
+	// Default: "24h"
+	SessionMaxAge Duration `json:"session_max_age,omitempty" koanf:"session_max_age" toml:"session_max_age"`
 
 	// UseSeedData controls whether built-in seed patterns are loaded.
 	// Default: true
@@ -86,6 +93,16 @@ func (p *PatternsConfig) GetMaxAge() time.Duration {
 	}
 
 	return time.Duration(p.MaxAge)
+}
+
+// GetSessionMaxAge returns the maximum session age as time.Duration.
+// Returns DefaultPatternsSessionMaxAge if not set.
+func (p *PatternsConfig) GetSessionMaxAge() time.Duration {
+	if p == nil || p.SessionMaxAge == 0 {
+		return DefaultPatternsSessionMaxAge
+	}
+
+	return time.Duration(p.SessionMaxAge)
 }
 
 // GetMaxWarningsPerError returns the per-error warning cap.

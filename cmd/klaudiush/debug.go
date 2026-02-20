@@ -47,7 +47,8 @@ Subcommands:
   config      Show loaded configuration
   rules       Show loaded validation rules
   exceptions  Show exception workflow configuration
-  crash       Manage crash dumps`,
+  crash       Manage crash dumps
+  patterns    Show pattern learning status`,
 }
 
 var debugRulesCmd = &cobra.Command{
@@ -101,6 +102,7 @@ func init() {
 	debugCmd.AddCommand(debugRulesCmd)
 	debugCmd.AddCommand(debugExceptionsCmd)
 	debugCmd.AddCommand(debugCrashCmd)
+	debugCmd.AddCommand(debugPatternsCmd)
 
 	// Add crash subcommands
 	debugCrashCmd.AddCommand(debugCrashListCmd)
