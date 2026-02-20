@@ -15,9 +15,6 @@ permissions:
 env:
   # renovate: datasource=github-releases depName=golangci/golangci-lint
   GOLANGCI_LINT_VERSION: "2.10.1"
-  # Race-instrumented builds create large temp artifacts that can get
-  # corrupted in /tmp under parallel load. Use runner temp instead.
-  GOTMPDIR: /home/runner/work/_temp/go-tmp
 
 jobs:
   test:
@@ -49,6 +46,11 @@ jobs:
         run: go mod verify
 
       - name: Run tests
+        env:
+          # Race-instrumented builds create large artifacts that can get
+          # corrupted in /tmp under parallel load. Use runner work dir instead.
+          # Set here (not workflow-level) so actions/setup-go doesn't see it.
+          GOTMPDIR: /home/runner/work/_temp/go-tmp
         run: |
           mkdir -p "$GOTMPDIR"
           # Testscript tests (cmd/klaudiush) use testscript.Main which copies the
