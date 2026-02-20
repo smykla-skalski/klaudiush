@@ -85,8 +85,6 @@ func (*SecretsValidatorFactory) getSecretsConfig(
 }
 
 // createDetector creates a pattern detector with custom patterns if configured.
-//
-//nolint:ireturn // interface for polymorphism
 func (f *SecretsValidatorFactory) createDetector(
 	cfg *config.SecretsValidatorConfig,
 ) secrets.Detector {
@@ -130,8 +128,6 @@ func (f *SecretsValidatorFactory) buildCustomPatterns(
 }
 
 // createGitleaksChecker creates a gitleaks checker.
-//
-//nolint:ireturn // interface for polymorphism
 func (*SecretsValidatorFactory) createGitleaksChecker(
 	timeout time.Duration,
 ) linters.GitleaksChecker {

@@ -184,8 +184,6 @@ func (r *CLIGitRunnerWithPath) GetRemotes() (map[string]string, error) {
 // Set KLAUDIUSH_USE_SDK_GIT to "false" or "0" to use CLI-based implementation
 // Falls back to CLI if SDK initialization fails
 // This function always returns a valid GitRunner instance
-//
-//nolint:ireturn,nolintlint // Factory function intentionally returns interface
 func NewGitRunner() GitRunner {
 	useSDK := os.Getenv("KLAUDIUSH_USE_SDK_GIT")
 
@@ -211,8 +209,6 @@ func NewGitRunner() GitRunner {
 // Uses SDK implementation with EnableDotGitCommonDir option to properly
 // support linked worktrees. Falls back to CLI if SDK fails.
 // See: https://github.com/go-git/go-git/issues/225
-//
-//nolint:ireturn,nolintlint // Factory function intentionally returns interface
 func NewGitRunnerForPath(path string) GitRunner {
 	useSDK := os.Getenv("KLAUDIUSH_USE_SDK_GIT")
 

@@ -26,8 +26,6 @@ type SDKConfigReader struct {
 }
 
 // NewConfigReader creates a new SDKConfigReader from a discovered repository.
-//
-//nolint:ireturn,nolintlint // Returning interface is intentional for dependency injection
 func NewConfigReader() (ConfigReader, error) {
 	repo, err := DiscoverRepository()
 	if err != nil {
@@ -38,8 +36,6 @@ func NewConfigReader() (ConfigReader, error) {
 }
 
 // NewConfigReaderFromRepo creates a new SDKConfigReader from an existing repository.
-//
-//nolint:ireturn,nolintlint // Returning interface is intentional for dependency injection
 func NewConfigReaderFromRepo(repo *SDKRepository) ConfigReader {
 	return &SDKConfigReader{repo: repo.repo}
 }

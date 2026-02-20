@@ -919,7 +919,6 @@ func outputBackupAuditTable(entries []backup.AuditEntry) {
 	}
 }
 
-//nolint:ireturn // Logger interface return is intentional for flexibility
 func setupBackupManagers() (logger.Logger, []*backup.Manager, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {

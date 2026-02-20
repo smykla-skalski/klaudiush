@@ -234,7 +234,6 @@ func runAuditCleanup(_ *cobra.Command, _ []string) error {
 	return nil
 }
 
-//nolint:ireturn // Logger interface return is intentional for flexibility
 func setupAuditLogger() (logger.Logger, *exceptions.AuditLogger, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {

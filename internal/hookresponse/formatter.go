@@ -80,6 +80,7 @@ const maxTableSuggestionLines = 15
 // formatAdditionalContext builds behavioral framing for Claude.
 func formatAdditionalContext(
 	blocking, warnings, bypassed []*dispatcher.ValidationError,
+	patternWarnings []string,
 ) string {
 	var parts []string
 
@@ -129,6 +130,8 @@ func formatAdditionalContext(
 			break // Only include first suggestion
 		}
 	}
+
+	parts = append(parts, patternWarnings...)
 
 	return strings.Join(parts, " ")
 }

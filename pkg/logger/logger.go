@@ -55,7 +55,7 @@ func (s *SlogAdapter) Error(msg string, args ...any) {
 
 // With returns a new logger with additional key-value pairs.
 //
-//nolint:ireturn // interface for polymorphism
+
 func (s *SlogAdapter) With(args ...any) Logger {
 	return &SlogAdapter{logger: s.logger.With(args...)}
 }
@@ -117,7 +117,7 @@ func (*NoOpLogger) Error(string, ...any) {}
 
 // With returns the same NoOpLogger.
 //
-//nolint:ireturn // interface for polymorphism
+
 func (n *NoOpLogger) With(...any) Logger {
 	return n
 }
@@ -130,7 +130,7 @@ var loggerKey = contextKey{}
 // FromContext retrieves a logger from context.
 // Returns a default logger if none is found.
 //
-//nolint:ireturn // interface for polymorphism
+
 func FromContext(ctx context.Context) Logger {
 	if l, ok := ctx.Value(loggerKey).(Logger); ok {
 		return l
@@ -146,7 +146,7 @@ func WithContext(ctx context.Context, l Logger) context.Context {
 
 // Default returns a default logger that writes to stderr.
 //
-//nolint:ireturn // interface for polymorphism
+
 func Default() Logger {
 	return NewSlogAdapter(slog.New(slog.NewTextHandler(os.Stderr, nil)))
 }
