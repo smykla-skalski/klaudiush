@@ -13,7 +13,19 @@ pre-commit:
 
     test:
       glob: "*.go"
-      run: go test -race -cover -short ./...
+      # Exclude cmd/klaudiush testscript tests from parallel run.
+      # Testscript compiles the binary inline; CrowdStrike Falcon
+      # kills the new executable under parallel load (signal: killed).
+      # Those tests run separately in test-testscript below.
+      run: >-
+        go test -race -cover -short
+        $(go list ./... | grep -v /cmd/klaudiush)
+
+    test-testscript:
+      glob: "*.go"
+      # Run testscript tests individually to avoid CrowdStrike
+      # killing the compiled binary under parallel compilation load.
+      run: go test -race -cover -short -p 1 ./cmd/klaudiush
 
 # Pre-push hook - runs full validation (concise output)
 pre-push:
@@ -23,5 +35,11 @@ pre-push:
       run: golangci-lint run
 
     test:
-      run: go test -race -cover ./...
+      # Same split as pre-commit to avoid CrowdStrike interference.
+      run: >-
+        go test -race -cover
+        $(go list ./... | grep -v /cmd/klaudiush)
+
+    test-testscript:
+      run: go test -race -cover -p 1 ./cmd/klaudiush
 

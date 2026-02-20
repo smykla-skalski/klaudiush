@@ -114,10 +114,11 @@ severity = "warning"
 				writeProjectConfig(workDir, `[validators.file.markdown]
 heading_spacing = false
 `)
-				// Env: markdown enabled=false (use single-word field to avoid
-				// envTransform issue where _ in field names becomes . in koanf path)
-				os.Setenv("KLAUDIUSH_VALIDATORS_FILE_MARKDOWN_ENABLED", "false")
-				DeferCleanup(func() { os.Unsetenv("KLAUDIUSH_VALIDATORS_FILE_MARKDOWN_ENABLED") })
+				// Env: use_markdownlint=false (underscore in field name)
+				os.Setenv("KLAUDIUSH_VALIDATORS_FILE_MARKDOWN_USE_MARKDOWNLINT", "false")
+				DeferCleanup(
+					func() { os.Unsetenv("KLAUDIUSH_VALIDATORS_FILE_MARKDOWN_USE_MARKDOWNLINT") },
+				)
 
 				// Flags: disable shellscript
 				flags := map[string]any{
@@ -128,10 +129,10 @@ heading_spacing = false
 				Expect(err).NotTo(HaveOccurred())
 
 				md := cfg.Validators.File.Markdown
-				Expect(md.IsEnabled()).To(BeFalse(), "from env var")
+				Expect(md.IsEnabled()).To(BeTrue(), "default (no source disabled it)")
 				Expect(md.GetSeverity().String()).To(Equal("warning"), "from global")
 				Expect(*md.HeadingSpacing).To(BeFalse(), "from project")
-				Expect(*md.UseMarkdownlint).To(BeTrue(), "default preserved")
+				Expect(*md.UseMarkdownlint).To(BeFalse(), "from env var (underscored field)")
 				Expect(*md.CodeBlockFormatting).To(BeTrue(), "default preserved")
 				Expect(*md.ListFormatting).To(BeTrue(), "default preserved")
 				Expect(*md.ContextLines).To(Equal(2), "default preserved")
@@ -241,5 +242,98 @@ max_backups = 20
 				Expect(*bk.MaxBackups).To(Equal(20), "max_backups from project")
 			})
 		})
+	})
+
+	Describe("envMatchHierarchy", func() {
+		DescribeTable("maps env var segments to koanf paths",
+			func(envVar, expected string) {
+				loader := &KoanfLoader{}
+				path, _ := loader.envTransform(envVar, "test")
+				Expect(path).To(Equal(expected))
+			},
+			// Simple single-word fields
+			Entry("simple field",
+				"KLAUDIUSH_VALIDATORS_GIT_COMMIT_ENABLED",
+				"validators.git.commit.enabled"),
+			Entry("simple severity",
+				"KLAUDIUSH_VALIDATORS_FILE_MARKDOWN_SEVERITY",
+				"validators.file.markdown.severity"),
+
+			// Underscored field names
+			Entry("use_markdownlint",
+				"KLAUDIUSH_VALIDATORS_FILE_MARKDOWN_USE_MARKDOWNLINT",
+				"validators.file.markdown.use_markdownlint"),
+			Entry("check_staging_area",
+				"KLAUDIUSH_VALIDATORS_GIT_COMMIT_CHECK_STAGING_AREA",
+				"validators.git.commit.check_staging_area"),
+			Entry("title_max_length in message",
+				"KLAUDIUSH_VALIDATORS_GIT_COMMIT_MESSAGE_TITLE_MAX_LENGTH",
+				"validators.git.commit.message.title_max_length"),
+			Entry("heading_spacing",
+				"KLAUDIUSH_VALIDATORS_FILE_MARKDOWN_HEADING_SPACING",
+				"validators.file.markdown.heading_spacing"),
+			Entry("code_block_formatting",
+				"KLAUDIUSH_VALIDATORS_FILE_MARKDOWN_CODE_BLOCK_FORMATTING",
+				"validators.file.markdown.code_block_formatting"),
+			Entry("use_shellcheck",
+				"KLAUDIUSH_VALIDATORS_FILE_SHELLSCRIPT_USE_SHELLCHECK",
+				"validators.file.shellscript.use_shellcheck"),
+			Entry("shellcheck_severity",
+				"KLAUDIUSH_VALIDATORS_FILE_SHELLSCRIPT_SHELLCHECK_SEVERITY",
+				"validators.file.shellscript.shellcheck_severity"),
+			Entry("require_tracking",
+				"KLAUDIUSH_VALIDATORS_GIT_PUSH_REQUIRE_TRACKING",
+				"validators.git.push.require_tracking"),
+			Entry("protected_branches",
+				"KLAUDIUSH_VALIDATORS_GIT_BRANCH_PROTECTED_BRANCHES",
+				"validators.git.branch.protected_branches"),
+			Entry("block_infra_scope_misuse",
+				"KLAUDIUSH_VALIDATORS_GIT_COMMIT_MESSAGE_BLOCK_INFRA_SCOPE_MISUSE",
+				"validators.git.commit.message.block_infra_scope_misuse"),
+
+			// Multi-word hierarchy segments
+			Entry("crash_dump field",
+				"KLAUDIUSH_CRASH_DUMP_MAX_DUMPS",
+				"crash_dump.max_dumps"),
+			Entry("crash_dump enabled",
+				"KLAUDIUSH_CRASH_DUMP_ENABLED",
+				"crash_dump.enabled"),
+			Entry("no_verify enabled",
+				"KLAUDIUSH_VALIDATORS_GIT_NO_VERIFY_ENABLED",
+				"validators.git.no_verify.enabled"),
+			Entry("rate_limit field",
+				"KLAUDIUSH_EXCEPTIONS_RATE_LIMIT_MAX_PER_HOUR",
+				"exceptions.rate_limit.max_per_hour"),
+
+			// Global and session
+			Entry("use_sdk_git",
+				"KLAUDIUSH_GLOBAL_USE_SDK_GIT",
+				"global.use_sdk_git"),
+			Entry("default_timeout",
+				"KLAUDIUSH_GLOBAL_DEFAULT_TIMEOUT",
+				"global.default_timeout"),
+			Entry("session state_file",
+				"KLAUDIUSH_SESSION_STATE_FILE",
+				"session.state_file"),
+			Entry("session max_session_age",
+				"KLAUDIUSH_SESSION_MAX_SESSION_AGE",
+				"session.max_session_age"),
+
+			// Secrets and shell validators
+			Entry("secrets use_gitleaks",
+				"KLAUDIUSH_VALIDATORS_SECRETS_SECRETS_USE_GITLEAKS",
+				"validators.secrets.secrets.use_gitleaks"),
+			Entry("backtick check_all_commands",
+				"KLAUDIUSH_VALIDATORS_SHELL_BACKTICK_CHECK_ALL_COMMANDS",
+				"validators.shell.backtick.check_all_commands"),
+
+			// PR fields
+			Entry("pr title_conventional_commits",
+				"KLAUDIUSH_VALIDATORS_GIT_PR_TITLE_CONVENTIONAL_COMMITS",
+				"validators.git.pr.title_conventional_commits"),
+			Entry("pr markdown_disabled_rules",
+				"KLAUDIUSH_VALIDATORS_GIT_PR_MARKDOWN_DISABLED_RULES",
+				"validators.git.pr.markdown_disabled_rules"),
+		)
 	})
 })

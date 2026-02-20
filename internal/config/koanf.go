@@ -348,14 +348,127 @@ func (l *KoanfLoader) loadTOMLFile(path string) error {
 	return l.k.Load(file.Provider(path), tomlparser.Parser(), deepMergeOpt)
 }
 
+// envHierarchy maps each valid parent path to its known child segment names.
+// Child segments may contain underscores (e.g. "no_verify", "crash_dump").
+// Segments not listed here are treated as leaf field names with underscores preserved.
+var envHierarchy = map[string][]string{
+	"": {
+		"global",
+		"validators",
+		"rules",
+		"exceptions",
+		"session",
+		"backup",
+		"crash_dump",
+		"patterns",
+		"plugins",
+	},
+	"validators": {"git", "file", "notification", "secrets", "shell"},
+	"validators.git": {
+		"commit",
+		"push",
+		"fetch",
+		"add",
+		"pr",
+		"branch",
+		"no_verify",
+		"merge",
+	},
+	"validators.git.commit": {"message"},
+	"validators.git.merge":  {"message"},
+	"validators.file": {
+		"markdown",
+		"shellscript",
+		"terraform",
+		"workflow",
+		"gofumpt",
+		"python",
+		"javascript",
+		"rust",
+		"linter_ignore",
+	},
+	"validators.notification": {"bell"},
+	"validators.secrets":      {"secrets"},
+	"validators.shell":        {"backtick"},
+	"exceptions":              {"rate_limit", "audit", "policies"},
+	"session":                 {"audit"},
+	"backup":                  {"delta"},
+}
+
 // envTransform transforms environment variable names to config paths.
-// KLAUDIUSH_VALIDATORS_GIT_COMMIT_ENABLED → validators.git.commit.enabled
+// It uses the config hierarchy to distinguish path separators from
+// underscores that are part of field names.
+//
+//	KLAUDIUSH_VALIDATORS_GIT_COMMIT_ENABLED → validators.git.commit.enabled
+//	KLAUDIUSH_VALIDATORS_FILE_MARKDOWN_USE_MARKDOWNLINT → validators.file.markdown.use_markdownlint
+//	KLAUDIUSH_CRASH_DUMP_MAX_DUMPS → crash_dump.max_dumps
 func (*KoanfLoader) envTransform(key, value string) (string, any) {
 	key = strings.TrimPrefix(key, "KLAUDIUSH_")
 	key = strings.ToLower(key)
-	key = strings.ReplaceAll(key, "_", ".")
 
-	return key, value
+	parts := strings.Split(key, "_")
+	path := envMatchHierarchy(parts)
+
+	return path, value
+}
+
+// envMatchHierarchy walks the underscore-separated parts and builds a
+// dot-separated koanf path, using envHierarchy to decide which underscores
+// are hierarchy separators vs. part of field names.
+func envMatchHierarchy(parts []string) string {
+	var pathSegments []string
+
+	parent := ""
+	pos := 0
+
+	for pos < len(parts) {
+		children, hasChildren := envHierarchy[parent]
+		if !hasChildren {
+			// No more hierarchy levels - rest is the field name.
+			break
+		}
+
+		matched := false
+
+		// Try longest child segments first (e.g. "crash_dump" before "crash").
+		// Children with more underscores need more parts to match.
+		for _, child := range children {
+			childParts := strings.Split(child, "_")
+			n := len(childParts)
+
+			if pos+n > len(parts) {
+				continue
+			}
+
+			candidate := strings.Join(parts[pos:pos+n], "_")
+			if candidate == child {
+				pathSegments = append(pathSegments, child)
+
+				if parent == "" {
+					parent = child
+				} else {
+					parent = parent + "." + child
+				}
+
+				pos += n
+				matched = true
+
+				break
+			}
+		}
+
+		if !matched {
+			break
+		}
+	}
+
+	// Remaining parts form the field name (underscores preserved).
+	if pos < len(parts) {
+		fieldName := strings.Join(parts[pos:], "_")
+		pathSegments = append(pathSegments, fieldName)
+	}
+
+	return strings.Join(pathSegments, ".")
 }
 
 // GlobalConfigPath returns the path to the global configuration file.

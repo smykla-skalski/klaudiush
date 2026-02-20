@@ -90,15 +90,19 @@ tasks:
     deps:
       - build
     cmds:
-      # Fast, concise output - shows full failure details when tests fail
-      - mise exec -- go test -race -cover ./...
+      # Testscript tests (cmd/klaudiush) compile the binary inline.
+      # CrowdStrike Falcon kills new executables under parallel load,
+      # so these run separately with -p 1 (sequential).
+      - mise exec -- go test -race -cover $(go list ./... | grep -v /cmd/klaudiush)
+      - mise exec -- go test -race -cover -p 1 ./cmd/klaudiush
 
   test:verbose:
     desc: Run all tests with verbose output (shows each test)
     deps:
       - build
     cmds:
-      - mise exec -- go test -v -race -cover ./...
+      - mise exec -- go test -v -race -cover $(go list ./... | grep -v /cmd/klaudiush)
+      - mise exec -- go test -v -race -cover -p 1 ./cmd/klaudiush
 
   test:ginkgo:
     desc: Run ginkgo tests with ginkgo CLI (slower but prettier output)
@@ -110,7 +114,8 @@ tasks:
   test:unit:
     desc: Run unit tests only (short mode)
     cmds:
-      - mise exec -- go test -race -cover -short ./...
+      - mise exec -- go test -race -cover -short $(go list ./... | grep -v /cmd/klaudiush)
+      - mise exec -- go test -race -cover -short -p 1 ./cmd/klaudiush
 
   test:integration:
     desc: Run integration tests only
