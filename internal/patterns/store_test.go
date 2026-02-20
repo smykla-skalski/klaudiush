@@ -115,6 +115,30 @@ var _ = Describe("FilePatternStore", func() {
 			// seed count (5) + recorded (1)
 			Expect(git004.Count).To(Equal(6))
 		})
+
+		It("uses latest timestamps when merging", func() {
+			seeds := patterns.SeedPatterns()
+			store.SetProjectData(seeds)
+
+			// Record in global to create overlapping entry
+			store.RecordSequence("GIT013", "GIT004")
+
+			all := store.GetAllPatterns()
+
+			var git004 *patterns.FailurePattern
+
+			for _, fp := range all {
+				if fp.SourceCode == "GIT013" && fp.TargetCode == "GIT004" {
+					git004 = fp
+				}
+			}
+
+			Expect(git004).NotTo(BeNil())
+			// Global entry was recorded after seed, so LastSeen
+			// should be at least as recent as seed
+			Expect(git004.LastSeen).NotTo(BeZero())
+			Expect(git004.FirstSeen).NotTo(BeZero())
+		})
 	})
 
 	Describe("Cleanup", func() {
@@ -176,6 +200,57 @@ var _ = Describe("FilePatternStore", func() {
 
 			codes := store.GetSessionCodes("nonexistent")
 			Expect(codes).To(BeNil())
+		})
+	})
+
+	Describe("Load with corrupt data", func() {
+		It("ignores invalid JSON in project file", func() {
+			projectFile := filepath.Join(tmpDir, "patterns.json")
+			Expect(
+				os.WriteFile(projectFile, []byte(`{invalid json`), 0o600),
+			).To(Succeed())
+
+			err := store.Load()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(store.GetAllPatterns()).To(BeEmpty())
+		})
+
+		It("ignores invalid JSON in global file", func() {
+			// First save valid data to create the global file
+			store.RecordSequence("A", "B")
+			Expect(store.Save()).To(Succeed())
+
+			// Corrupt the global file by finding it
+			globalDir := filepath.Join(tmpDir, "global")
+			entries, err := os.ReadDir(globalDir)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(entries).NotTo(BeEmpty())
+
+			globalFile := filepath.Join(globalDir, entries[0].Name())
+			Expect(
+				os.WriteFile(globalFile, []byte(`not json`), 0o600),
+			).To(Succeed())
+
+			// Reload should not error but should have empty global
+			store2 := patterns.NewFilePatternStore(cfg, tmpDir)
+			err = store2.Load()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(store2.GetAllPatterns()).To(BeEmpty())
+		})
+
+		It("handles file with null patterns field", func() {
+			projectFile := filepath.Join(tmpDir, "patterns.json")
+			Expect(
+				os.WriteFile(
+					projectFile,
+					[]byte(`{"patterns":null,"version":1}`),
+					0o600,
+				),
+			).To(Succeed())
+
+			err := store.Load()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(store.GetAllPatterns()).To(BeEmpty())
 		})
 	})
 

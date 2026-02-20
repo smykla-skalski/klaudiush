@@ -71,6 +71,22 @@ var _ = Describe("Advisor", func() {
 		Expect(warnings).To(BeEmpty())
 	})
 
+	It("uses code as fallback description for unknown codes", func() {
+		// Record enough to exceed seed counts so CUSTOM099 ranks first
+		for range 20 {
+			store.RecordSequence("GIT013", "CUSTOM099")
+		}
+
+		// Cap at 1 so only the highest count pattern is shown
+		cfg.MaxWarningsPerError = 1
+		advisor = patterns.NewAdvisor(store, cfg)
+
+		warnings := advisor.Advise([]string{"GIT013"})
+		Expect(warnings).To(HaveLen(1))
+		// Unknown code uses the code itself as description
+		Expect(warnings[0]).To(ContainSubstring("CUSTOM099 (CUSTOM099)"))
+	})
+
 	It("shows highest count patterns first when capped", func() {
 		// Add a high-count learned pattern
 		for range 20 {
