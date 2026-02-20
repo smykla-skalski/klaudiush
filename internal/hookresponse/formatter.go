@@ -2,6 +2,7 @@ package hookresponse
 
 import (
 	"strings"
+	"unicode"
 
 	"github.com/smykla-skalski/klaudiush/internal/dispatcher"
 	"github.com/smykla-skalski/klaudiush/internal/validator"
@@ -13,6 +14,17 @@ const (
 
 	// reasonSeparator joins multiple error reasons.
 	reasonSeparator = " | "
+
+	// maxSummaryParagraphs limits how many non-supplementary paragraphs
+	// are kept in the concise summary.
+	maxSummaryParagraphs = 2
+
+	// variationSelector16 is the Unicode variation selector that forces
+	// emoji presentation (U+FE0F).
+	variationSelector16 = 0xFE0F
+
+	// zeroWidthJoiner combines emoji sequences (U+200D).
+	zeroWidthJoiner = 0x200D
 )
 
 // formatDecisionReason builds the permissionDecisionReason string shown to Claude.
@@ -42,7 +54,7 @@ func formatSingleReason(e *dispatcher.ValidationError) string {
 		b.WriteString("] ")
 	}
 
-	b.WriteString(e.Message)
+	b.WriteString(summarizeMessage(e.Message))
 
 	if e.FixHint != "" {
 		if !strings.HasSuffix(e.Message, ".") {
@@ -207,6 +219,156 @@ func isSessionPoisoned(blocking []*dispatcher.ValidationError) bool {
 		if e.Reference == validator.RefSessionPoisoned {
 			return true
 		}
+	}
+
+	return false
+}
+
+// summarizeMessage extracts a concise one-line summary from a rich multiline message.
+// Rich messages from validators may contain emoji headers, available-remotes lists,
+// usage examples, etc. This strips those down so the permissionDecisionReason
+// stays compact while systemMessage retains all the detail.
+func summarizeMessage(msg string) string {
+	if !strings.Contains(msg, "\n") {
+		return stripEmoji(msg)
+	}
+
+	paragraphs := strings.Split(msg, "\n\n")
+
+	var parts []string
+
+	for _, p := range paragraphs {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+
+		if isSupplementaryContext(p) {
+			continue
+		}
+
+		line := firstNonEmptyLine(p)
+		if line == "" {
+			continue
+		}
+
+		line = stripEmoji(line)
+		if line == "" {
+			continue
+		}
+
+		parts = append(parts, line)
+
+		if len(parts) >= maxSummaryParagraphs {
+			break
+		}
+	}
+
+	// Fallback: if everything was supplementary, use the first non-empty line.
+	if len(parts) == 0 {
+		line := firstNonEmptyLine(msg)
+		if line != "" {
+			return stripEmoji(line)
+		}
+
+		return msg
+	}
+
+	if len(parts) == 1 {
+		return parts[0]
+	}
+
+	// Smart join: space after colon, period otherwise.
+	if strings.HasSuffix(parts[0], ":") {
+		return parts[0] + " " + parts[1]
+	}
+
+	return parts[0] + ". " + parts[1]
+}
+
+// supplementaryPrefixes are line prefixes that indicate context paragraphs
+// (remotes lists, usage hints, file listings) that should be excluded from
+// the concise summary.
+var supplementaryPrefixes = []string{
+	"Available remotes:",
+	"Use '",
+	"Use \"",
+	"Use `",
+	"Files being added:",
+	"Current status:",
+	"Example:",
+	"Examples:",
+	"Staged files:",
+	"Modified files:",
+	"Untracked files:",
+	"Tip:",
+	"Note:",
+	"See ",
+}
+
+// isSupplementaryContext returns true when a paragraph starts with a prefix
+// that signals supplementary detail not suitable for the concise reason.
+func isSupplementaryContext(paragraph string) bool {
+	line := firstNonEmptyLine(paragraph)
+	stripped := stripEmoji(line)
+
+	for _, prefix := range supplementaryPrefixes {
+		if strings.HasPrefix(stripped, prefix) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// firstNonEmptyLine returns the first non-blank line from text.
+func firstNonEmptyLine(text string) string {
+	for line := range strings.SplitSeq(text, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed != "" {
+			return trimmed
+		}
+	}
+
+	return ""
+}
+
+// stripEmoji removes emoji characters and variation selectors, then collapses
+// any resulting leading/trailing whitespace.
+func stripEmoji(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+
+	for _, r := range s {
+		if !isEmojiRune(r) {
+			b.WriteRune(r)
+		}
+	}
+
+	return strings.TrimSpace(b.String())
+}
+
+// isEmojiRune returns true for common emoji code points and variation selectors.
+func isEmojiRune(r rune) bool {
+	switch {
+	case r >= 0x1F600 && r <= 0x1F64F: // emoticons
+		return true
+	case r >= 0x1F300 && r <= 0x1F5FF: // misc symbols & pictographs
+		return true
+	case r >= 0x1F680 && r <= 0x1F6FF: // transport & map symbols
+		return true
+	case r >= 0x1F900 && r <= 0x1F9FF: // supplemental symbols
+		return true
+	case r >= 0x2600 && r <= 0x26FF: // misc symbols (⚠ etc.)
+		return true
+	case r >= 0x2700 && r <= 0x27BF: // dingbats (❌ etc.)
+		return true
+	case r == variationSelector16: // emoji presentation
+		return true
+	case r == zeroWidthJoiner: // combines emoji sequences
+		return true
+	case !unicode.IsPrint(r) && !unicode.IsSpace(r): // other non-printable
+		return true
 	}
 
 	return false

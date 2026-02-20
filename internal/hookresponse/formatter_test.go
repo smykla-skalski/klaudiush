@@ -153,3 +153,78 @@ var _ = Describe("Decision reason formatting", func() {
 		Expect(resp.HookSpecificOutput.PermissionDecisionReason).NotTo(ContainSubstring("["))
 	})
 })
+
+var _ = Describe("Decision reason summarization", func() {
+	buildReason := func(msg string) string {
+		errs := []*dispatcher.ValidationError{
+			{
+				Validator:   "test",
+				Message:     msg,
+				ShouldBlock: true,
+				Reference:   "https://klaudiu.sh/GIT024",
+			},
+		}
+
+		resp := hookresponse.Build("PreToolUse", errs)
+
+		return resp.HookSpecificOutput.PermissionDecisionReason
+	}
+
+	It("passes short single-line messages through unchanged", func() {
+		reason := buildReason("Missing -s flag")
+		Expect(reason).To(Equal("[GIT024] Missing -s flag"))
+	})
+
+	It("summarizes rich remote-not-found message", func() {
+		msg := "\U0001F6AB Git fetch validation failed:\n\n" +
+			"\u274c Remote 'origin' does not exist\n\n" +
+			"Available remotes:\n" +
+			"  Automaat  git@github.com:Automaat/klaudiush.git\n" +
+			"  upstream  git@github.com:smykla-skalski/klaudiush.git\n\n" +
+			"Use 'git remote -v' to list all configured remotes."
+		reason := buildReason(msg)
+		Expect(reason).To(Equal(
+			"[GIT024] Git fetch validation failed: Remote 'origin' does not exist"))
+	})
+
+	It("strips supplementary 'Use' and 'Example' paragraphs", func() {
+		msg := "Branch validation failed:\n\n" +
+			"Push to 'production' is restricted\n\n" +
+			"Use 'git push origin feature-branch' instead\n\n" +
+			"Example:\n  git checkout -b fix/my-fix"
+		reason := buildReason(msg)
+		Expect(reason).To(Equal(
+			"[GIT024] Branch validation failed: Push to 'production' is restricted"))
+	})
+
+	It("handles secrets detection concisely", func() {
+		msg := "Potential secrets detected (2 finding(s)):"
+		reason := buildReason(msg)
+		Expect(reason).To(Equal(
+			"[GIT024] Potential secrets detected (2 finding(s)):"))
+	})
+
+	It("strips emoji characters from messages", func() {
+		msg := "\u274c Commit message too long"
+		reason := buildReason(msg)
+		Expect(reason).To(Equal("[GIT024] Commit message too long"))
+	})
+
+	It("falls back to first line when all content is supplementary", func() {
+		msg := "Available remotes:\n  origin  git@github.com:user/repo.git"
+		reason := buildReason(msg)
+		Expect(reason).To(Equal("[GIT024] Available remotes:"))
+	})
+
+	It("joins with space when first part ends with colon", func() {
+		msg := "Validation failed:\n\nMissing required flag"
+		reason := buildReason(msg)
+		Expect(reason).To(Equal("[GIT024] Validation failed: Missing required flag"))
+	})
+
+	It("joins with period when first part does not end with colon", func() {
+		msg := "Commit blocked\n\nNo staged files found"
+		reason := buildReason(msg)
+		Expect(reason).To(Equal("[GIT024] Commit blocked. No staged files found"))
+	})
+})
