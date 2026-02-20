@@ -539,7 +539,8 @@ code
 			It("validates plan documents when skipping is disabled", func() {
 				skipFalse := false
 				cfg := &config.MarkdownValidatorConfig{
-					SkipPlanDocuments: &skipFalse,
+					SkipPlanDocuments:   &skipFalse,
+					SkipClaudeCodeFiles: &skipFalse,
 				}
 				runner := execpkg.NewCommandRunner(10 * time.Second)
 				linter := linters.NewMarkdownLinter(runner)
@@ -554,6 +555,60 @@ code
 			It("validates non-plan markdown files normally", func() {
 				ctx.ToolInput.FilePath = "/Users/test/project/README.md"
 				ctx.ToolInput.Content = "# Header\nText without blank line\n"
+				result := v.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeFalse())
+			})
+		})
+
+		Context("Claude Code internal file skipping", func() {
+			badContent := "# Header\nText without blank line\n"
+
+			It("skips validation for memory files with nil config (default)", func() {
+				ctx.ToolInput.FilePath = "/Users/test/.claude/projects/-Users-test-myproject/memory/MEMORY.md"
+				ctx.ToolInput.Content = badContent
+				result := v.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("skips validation for files in .claude/projects/", func() {
+				ctx.ToolInput.FilePath = "/Users/test/.claude/projects/-Users-test-myproject/memory/patterns.md"
+				ctx.ToolInput.Content = badContent
+				result := v.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("skips validation for files in .claude/teams/", func() {
+				ctx.ToolInput.FilePath = "/Users/test/.claude/teams/my-team/notes.md"
+				ctx.ToolInput.Content = badContent
+				result := v.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("skips validation for files in .claude/tasks/", func() {
+				ctx.ToolInput.FilePath = "/Users/test/.claude/tasks/my-team/task.md"
+				ctx.ToolInput.Content = badContent
+				result := v.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("validates when SkipClaudeCodeFiles is disabled", func() {
+				skipFalse := false
+				cfg := &config.MarkdownValidatorConfig{
+					SkipClaudeCodeFiles: &skipFalse,
+				}
+				runner := execpkg.NewCommandRunner(10 * time.Second)
+				linter := linters.NewMarkdownLinter(runner)
+				vWithCfg := file.NewMarkdownValidator(cfg, linter, logger.NewNoOpLogger(), nil)
+
+				ctx.ToolInput.FilePath = "/Users/test/.claude/projects/-Users-test-myproject/memory/MEMORY.md"
+				ctx.ToolInput.Content = badContent
+				result := vWithCfg.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeFalse())
+			})
+
+			It("still validates project-level .claude/ files normally", func() {
+				ctx.ToolInput.FilePath = "/Users/test/myproject/.claude/docs/guide.md"
+				ctx.ToolInput.Content = badContent
 				result := v.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeFalse())
 			})
