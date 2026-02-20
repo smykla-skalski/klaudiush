@@ -129,7 +129,7 @@ release:
 
     ### Install script
     ```bash
-    curl -sSfL https://raw.githubusercontent.com/smykla-skalski/klaudiush/main/install.sh | sh
+    curl -sSfL https://klaudiu.sh/install.sh | sh
     ```
 
     ### Nix

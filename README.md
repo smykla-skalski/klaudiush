@@ -49,13 +49,13 @@ klaudiush doctor
 
 ```bash
 # Install latest release
-curl -sSfL https://raw.githubusercontent.com/smykla-skalski/klaudiush/main/install.sh | sh
+curl -sSfL https://klaudiu.sh/install.sh | sh
 
 # Install specific version
-curl -sSfL https://raw.githubusercontent.com/smykla-skalski/klaudiush/main/install.sh | sh -s -- -v v1.0.0
+curl -sSfL https://klaudiu.sh/install.sh | sh -s -- -v v1.0.0
 
 # Install to custom directory
-curl -sSfL https://raw.githubusercontent.com/smykla-skalski/klaudiush/main/install.sh | sh -s -- -b /usr/local/bin
+curl -sSfL https://klaudiu.sh/install.sh | sh -s -- -b /usr/local/bin
 ```
 
 ### Nix
