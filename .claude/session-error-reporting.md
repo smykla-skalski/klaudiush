@@ -18,9 +18,13 @@ Reference URLs combine error code and documentation link into a single field:
 
 Error codes organized by category with numeric suffixes:
 
-- **GIT001-GIT016**: Git-related errors (signoff, GPG, staging, commits)
-- **FILE001-FILE005**: File validation errors (shellcheck, terraform, actionlint, markdown)
+- **GIT001-GIT025**: Git-related errors (signoff, GPG, staging, commits, push, branch, PR)
+- **FILE001-FILE010**: File validation errors (shellcheck, terraform, actionlint, markdown, gofumpt, ruff, oxlint, rustfmt, linter ignores)
 - **SEC001-SEC005**: Security errors (API keys, passwords, tokens, connection strings)
+- **SHELL001**: Shell operations (backtick validation)
+- **GH001**: GitHub CLI operations (issue body validation)
+- **PLUG001-PLUG005**: Plugin security (path traversal, allowed dirs, extensions, gRPC, metacharacters)
+- **SESS001**: Session tracking (poisoned session from previous blocking error)
 
 ### Creating References
 
@@ -29,13 +33,15 @@ Error codes organized by category with numeric suffixes:
 ```go
 type Reference string
 
-const ReferenceBaseURL = "https://klaudiu.sh"
+const ReferenceBaseURL = "https://klaudiu.sh/e"
 
 const (
-    RefGitNoSignoff   Reference = ReferenceBaseURL + "/GIT001"
+    RefGitNoSignoff    Reference = ReferenceBaseURL + "/GIT001"
     RefGitMissingFlags Reference = ReferenceBaseURL + "/GIT010"
-    RefShellcheck     Reference = ReferenceBaseURL + "/FILE001"
-    RefSecretsAPIKey  Reference = ReferenceBaseURL + "/SEC001"
+    RefShellcheck      Reference = ReferenceBaseURL + "/FILE001"
+    RefSecretsAPIKey   Reference = ReferenceBaseURL + "/SEC001"
+    RefPluginPathTraversal Reference = ReferenceBaseURL + "/PLUG001"
+    RefSessionPoisoned     Reference = ReferenceBaseURL + "/SESS001"
 )
 
 // Methods

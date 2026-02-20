@@ -46,7 +46,7 @@ RefShellcheck     Reference = "https://klaudiu.sh/e/FILE001"
 
 ### Error Code Organization
 
-**GIT001-GIT023**: Git operations
+**GIT001-GIT025**: Git operations
 
 - GIT001: Missing signoff (`-s`)
 - GIT002: Missing GPG sign (`-S`)
@@ -71,14 +71,21 @@ RefShellcheck     Reference = "https://klaudiu.sh/e/FILE001"
 - GIT021: --no-verify flag not allowed
 - GIT022: Kong org push to origin remote blocked
 - GIT023: PR validation failure (title, body, markdown, or labels)
+- GIT024: Remote doesn't exist for git fetch
+- GIT025: Push to blocked remote
 
-**FILE001-FILE005**: File validation
+**FILE001-FILE010**: File validation
 
 - FILE001: Shellcheck failure
 - FILE002: Terraform fmt failure
 - FILE003: Tflint failure
 - FILE004: Actionlint failure
 - FILE005: Markdown linting failure
+- FILE006: Gofumpt formatting failure
+- FILE007: Ruff Python validation failure
+- FILE008: Oxlint JavaScript/TypeScript validation failure
+- FILE009: Rustfmt formatting failure
+- FILE010: Linter ignore directives detected
 
 **SEC001-SEC005**: Security
 
@@ -88,13 +95,25 @@ RefShellcheck     Reference = "https://klaudiu.sh/e/FILE001"
 - SEC004: Token detected
 - SEC005: Connection string with credentials
 
-**SHELL001-SHELL005**: Shell operations
+**SHELL001**: Shell operations
 
 - SHELL001: Command substitution in double-quoted strings
 
-**GH001-GH005**: GitHub CLI operations
+**GH001**: GitHub CLI operations
 
 - GH001: Issue body validation failure (markdown formatting)
+
+**PLUG001-PLUG005**: Plugin security
+
+- PLUG001: Path traversal in plugin path
+- PLUG002: Plugin path outside allowed directories
+- PLUG003: Invalid plugin file extension
+- PLUG004: Insecure gRPC plugin connection
+- PLUG005: Dangerous characters in plugin path
+
+**SESS001**: Session tracking
+
+- SESS001: Session poisoned by previous blocking error
 
 ## Suggestions Registry
 

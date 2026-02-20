@@ -287,6 +287,368 @@ export KLAUDIUSH_VALIDATORS_NOTIFICATION_BELL_ENABLED=true
 export KLAUDIUSH_VALIDATORS_NOTIFICATION_BELL_CUSTOM_COMMAND="osascript -e 'beep'"
 ```
 
+## Secrets Validator
+
+```bash
+# Enable/disable validator
+export KLAUDIUSH_VALIDATORS_SECRETS_ENABLED=true
+
+# Set severity
+export KLAUDIUSH_VALIDATORS_SECRETS_SEVERITY=error
+
+# Gitleaks integration
+export KLAUDIUSH_VALIDATORS_SECRETS_USE_GITLEAKS=false
+
+# Disabled patterns (comma-separated)
+export KLAUDIUSH_VALIDATORS_SECRETS_DISABLED_PATTERNS="generic-secret"
+
+# Allow list (comma-separated, supports regex)
+export KLAUDIUSH_VALIDATORS_SECRETS_ALLOW_LIST="AKIAIOSFODNN7EXAMPLE,test_.*"
+```
+
+## Shell Validators
+
+### Backtick Validator
+
+```bash
+# Enable/disable validator
+export KLAUDIUSH_VALIDATORS_SHELL_BACKTICK_ENABLED=true
+
+# Set severity
+export KLAUDIUSH_VALIDATORS_SHELL_BACKTICK_SEVERITY=error
+
+# Enable comprehensive mode (all commands)
+export KLAUDIUSH_VALIDATORS_SHELL_BACKTICK_CHECK_ALL_COMMANDS=false
+
+# Check unquoted backticks (comprehensive mode)
+export KLAUDIUSH_VALIDATORS_SHELL_BACKTICK_CHECK_UNQUOTED=false
+
+# Suggest single quotes when no variables present
+export KLAUDIUSH_VALIDATORS_SHELL_BACKTICK_SUGGEST_SINGLE_QUOTES=true
+```
+
+## GitHub Validators
+
+### Issue Validator
+
+```bash
+# Enable/disable validator
+export KLAUDIUSH_VALIDATORS_GITHUB_ISSUE_ENABLED=true
+
+# Set severity
+export KLAUDIUSH_VALIDATORS_GITHUB_ISSUE_SEVERITY=error
+
+# Timeout
+export KLAUDIUSH_VALIDATORS_GITHUB_ISSUE_TIMEOUT=10s
+
+# Require body
+export KLAUDIUSH_VALIDATORS_GITHUB_ISSUE_REQUIRE_BODY=false
+
+# Markdownlint rules to disable (comma-separated)
+export KLAUDIUSH_VALIDATORS_GITHUB_ISSUE_MARKDOWN_DISABLED_RULES="MD013,MD034,MD041,MD047"
+```
+
+## File Validators (additional)
+
+### Gofumpt Validator
+
+```bash
+# Enable/disable validator
+export KLAUDIUSH_VALIDATORS_FILE_GOFUMPT_ENABLED=true
+
+# Set severity
+export KLAUDIUSH_VALIDATORS_FILE_GOFUMPT_SEVERITY=error
+
+# Timeout
+export KLAUDIUSH_VALIDATORS_FILE_GOFUMPT_TIMEOUT=10s
+
+# Enable extra rules
+export KLAUDIUSH_VALIDATORS_FILE_GOFUMPT_EXTRA_RULES=true
+
+# Go language version (auto-detected from go.mod if empty)
+export KLAUDIUSH_VALIDATORS_FILE_GOFUMPT_LANG=""
+
+# Module path (auto-detected from go.mod if empty)
+export KLAUDIUSH_VALIDATORS_FILE_GOFUMPT_MOD_PATH=""
+```
+
+### Python Validator
+
+```bash
+# Enable/disable validator
+export KLAUDIUSH_VALIDATORS_FILE_PYTHON_ENABLED=true
+
+# Set severity
+export KLAUDIUSH_VALIDATORS_FILE_PYTHON_SEVERITY=error
+
+# Enable ruff integration
+export KLAUDIUSH_VALIDATORS_FILE_PYTHON_USE_RUFF=true
+
+# Timeout
+export KLAUDIUSH_VALIDATORS_FILE_PYTHON_TIMEOUT=10s
+
+# Context lines for edit validation
+export KLAUDIUSH_VALIDATORS_FILE_PYTHON_CONTEXT_LINES=2
+
+# Exclude rules (comma-separated)
+export KLAUDIUSH_VALIDATORS_FILE_PYTHON_EXCLUDE_RULES="E501"
+
+# Ruff config file path
+export KLAUDIUSH_VALIDATORS_FILE_PYTHON_RUFF_CONFIG=""
+```
+
+### JavaScript Validator
+
+```bash
+# Enable/disable validator
+export KLAUDIUSH_VALIDATORS_FILE_JAVASCRIPT_ENABLED=true
+
+# Set severity
+export KLAUDIUSH_VALIDATORS_FILE_JAVASCRIPT_SEVERITY=error
+
+# Enable oxlint integration
+export KLAUDIUSH_VALIDATORS_FILE_JAVASCRIPT_USE_OXLINT=true
+
+# Timeout
+export KLAUDIUSH_VALIDATORS_FILE_JAVASCRIPT_TIMEOUT=10s
+
+# Context lines for edit validation
+export KLAUDIUSH_VALIDATORS_FILE_JAVASCRIPT_CONTEXT_LINES=2
+
+# Exclude rules (comma-separated)
+export KLAUDIUSH_VALIDATORS_FILE_JAVASCRIPT_EXCLUDE_RULES=""
+
+# Oxlint config file path
+export KLAUDIUSH_VALIDATORS_FILE_JAVASCRIPT_OXLINT_CONFIG=""
+```
+
+### Rust Validator
+
+```bash
+# Enable/disable validator
+export KLAUDIUSH_VALIDATORS_FILE_RUST_ENABLED=true
+
+# Set severity
+export KLAUDIUSH_VALIDATORS_FILE_RUST_SEVERITY=error
+
+# Enable rustfmt integration
+export KLAUDIUSH_VALIDATORS_FILE_RUST_USE_RUSTFMT=true
+
+# Timeout
+export KLAUDIUSH_VALIDATORS_FILE_RUST_TIMEOUT=10s
+
+# Context lines for edit validation
+export KLAUDIUSH_VALIDATORS_FILE_RUST_CONTEXT_LINES=2
+
+# Rust edition (auto-detected from Cargo.toml if empty)
+export KLAUDIUSH_VALIDATORS_FILE_RUST_EDITION=""
+
+# Rustfmt config file path
+export KLAUDIUSH_VALIDATORS_FILE_RUST_RUSTFMT_CONFIG=""
+```
+
+### Linter Ignore Validator
+
+```bash
+# Enable/disable validator
+export KLAUDIUSH_VALIDATORS_FILE_LINTER_IGNORE_ENABLED=true
+
+# Set severity
+export KLAUDIUSH_VALIDATORS_FILE_LINTER_IGNORE_SEVERITY=error
+```
+
+## Global Settings (additional)
+
+```bash
+# Default timeout for all validators
+export KLAUDIUSH_GLOBAL_DEFAULT_TIMEOUT=10s
+
+# Enable parallel execution
+export KLAUDIUSH_GLOBAL_PARALLEL_EXECUTION=true
+
+# Max CPU workers
+export KLAUDIUSH_GLOBAL_MAX_CPU_WORKERS=4
+
+# Max IO workers
+export KLAUDIUSH_GLOBAL_MAX_IO_WORKERS=4
+
+# Max git workers
+export KLAUDIUSH_GLOBAL_MAX_GIT_WORKERS=2
+```
+
+## Session Tracking
+
+```bash
+# Enable session tracking
+export KLAUDIUSH_SESSION_ENABLED=true
+
+# State file path
+export KLAUDIUSH_SESSION_STATE_FILE="~/.klaudiush/session_state.json"
+
+# Max session age (auto-expire)
+export KLAUDIUSH_SESSION_MAX_SESSION_AGE=24h
+```
+
+### Session Audit
+
+```bash
+# Enable session audit
+export KLAUDIUSH_SESSION_AUDIT_ENABLED=true
+
+# Audit log file
+export KLAUDIUSH_SESSION_AUDIT_LOG_FILE="~/.klaudiush/session_audit.jsonl"
+
+# Max log size in MB
+export KLAUDIUSH_SESSION_AUDIT_MAX_SIZE_MB=10
+
+# Max age in days
+export KLAUDIUSH_SESSION_AUDIT_MAX_AGE_DAYS=30
+
+# Max backup files
+export KLAUDIUSH_SESSION_AUDIT_MAX_BACKUPS=5
+```
+
+## Crash Dump
+
+```bash
+# Enable crash dumps
+export KLAUDIUSH_CRASH_DUMP_ENABLED=true
+
+# Dump directory
+export KLAUDIUSH_CRASH_DUMP_DUMP_DIR="~/.klaudiush/crash_dumps"
+
+# Max dumps to keep
+export KLAUDIUSH_CRASH_DUMP_MAX_DUMPS=10
+
+# Max age (duration format)
+export KLAUDIUSH_CRASH_DUMP_MAX_AGE=720h
+
+# Include sanitized config in dump
+export KLAUDIUSH_CRASH_DUMP_INCLUDE_CONFIG=true
+
+# Include hook context in dump
+export KLAUDIUSH_CRASH_DUMP_INCLUDE_CONTEXT=true
+```
+
+## Exception Workflow
+
+```bash
+# Enable exceptions
+export KLAUDIUSH_EXCEPTIONS_ENABLED=true
+
+# Require explicit policy for each error code
+export KLAUDIUSH_EXCEPTIONS_REQUIRE_EXPLICIT_POLICY=true
+```
+
+### Exception Audit
+
+```bash
+# Enable exception audit
+export KLAUDIUSH_EXCEPTIONS_AUDIT_ENABLED=true
+
+# Audit log file
+export KLAUDIUSH_EXCEPTIONS_AUDIT_LOG_FILE="~/.klaudiush/exception_audit.jsonl"
+
+# Max log size in MB
+export KLAUDIUSH_EXCEPTIONS_AUDIT_MAX_SIZE_MB=10
+
+# Max age in days
+export KLAUDIUSH_EXCEPTIONS_AUDIT_MAX_AGE_DAYS=90
+
+# Max backups
+export KLAUDIUSH_EXCEPTIONS_AUDIT_MAX_BACKUPS=5
+```
+
+### Exception Rate Limiting
+
+```bash
+# Global hourly limit
+export KLAUDIUSH_EXCEPTIONS_RATE_LIMIT_GLOBAL_HOURLY=10
+
+# Global daily limit
+export KLAUDIUSH_EXCEPTIONS_RATE_LIMIT_GLOBAL_DAILY=50
+```
+
+## Backup System
+
+```bash
+# Enable backup
+export KLAUDIUSH_BACKUP_ENABLED=true
+
+# Auto-backup on config changes
+export KLAUDIUSH_BACKUP_AUTO_BACKUP=true
+
+# Max backups to keep
+export KLAUDIUSH_BACKUP_MAX_BACKUPS=10
+
+# Max age in days
+export KLAUDIUSH_BACKUP_MAX_AGE_DAYS=30
+
+# Max total size in MB
+export KLAUDIUSH_BACKUP_MAX_TOTAL_SIZE_MB=50
+
+# Async backup operations
+export KLAUDIUSH_BACKUP_ASYNC=true
+```
+
+## Plugin System
+
+```bash
+# Enable plugins
+export KLAUDIUSH_PLUGINS_ENABLED=true
+
+# Plugin directory
+export KLAUDIUSH_PLUGINS_DIRECTORY="~/.klaudiush/plugins"
+
+# Default plugin timeout
+export KLAUDIUSH_PLUGINS_DEFAULT_TIMEOUT=10s
+```
+
+## Rules System
+
+```bash
+# Enable rules
+export KLAUDIUSH_RULES_ENABLED=true
+
+# Stop on first matching rule
+export KLAUDIUSH_RULES_STOP_ON_FIRST_MATCH=true
+```
+
+## Patterns System
+
+```bash
+# Enable pattern detection
+export KLAUDIUSH_PATTERNS_ENABLED=true
+
+# Minimum occurrence count to trigger
+export KLAUDIUSH_PATTERNS_MIN_COUNT=3
+```
+
+## Standard Environment Variables
+
+These are not prefixed with `KLAUDIUSH_` but affect klaudiush behavior:
+
+```bash
+# Exception/unpoison token (inline with command)
+export KLACK="EXC:GIT019:Emergency+hotfix"
+
+# GitHub token for API calls (workflow validator)
+export GH_TOKEN="..."
+export GITHUB_TOKEN="..."
+
+# Disable color output
+export NO_COLOR=1
+
+# Enable color output
+export CLICOLOR=1
+
+# Terminal type
+export TERM=xterm-256color
+
+# Claude Code tool input (set automatically by Claude Code)
+export CLAUDE_TOOL_INPUT="..."
+```
+
 ## Value Types
 
 ### Boolean Values
