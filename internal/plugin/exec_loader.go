@@ -45,7 +45,7 @@ func NewExecLoader(runner exec.CommandRunner) *ExecLoader {
 
 // Load loads an exec plugin from the specified path.
 //
-//nolint:ireturn // implements Loader interface
+
 func (l *ExecLoader) Load(cfg *config.PluginInstanceConfig) (Plugin, error) {
 	if cfg.Path == "" {
 		return nil, errors.New("path is required for exec plugins")

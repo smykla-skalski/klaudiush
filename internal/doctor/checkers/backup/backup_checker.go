@@ -48,14 +48,14 @@ func NewDefaultStorageProvider() (*DefaultStorageProvider, error) {
 
 // GetGlobalStorage returns the storage for global configs.
 //
-//nolint:ireturn // interface for polymorphism
+
 func (p *DefaultStorageProvider) GetGlobalStorage() (backup.Storage, error) {
 	return backup.NewFilesystemStorage(p.baseDir, backup.ConfigTypeGlobal, "")
 }
 
 // GetProjectStorage returns the storage for project configs.
 //
-//nolint:ireturn // interface for polymorphism
+
 func (p *DefaultStorageProvider) GetProjectStorage(projectPath string) (backup.Storage, error) {
 	return backup.NewFilesystemStorage(p.baseDir, backup.ConfigTypeProject, projectPath)
 }
