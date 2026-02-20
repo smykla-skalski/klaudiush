@@ -5,6 +5,13 @@ All notable changes to klaudiush will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.19.1](https://github.com/smykla-skalski/klaudiush/compare/v1.19.0...v1.19.1) (2026-02-20)
+
+### Bug Fixes
+
+* **git:** skip remote check when added in chain ([#306](https://github.com/smykla-skalski/klaudiush/issues/306)) ([fe70cb0](https://github.com/smykla-skalski/klaudiush/commit/fe70cb037f3f137985e4ca818d376e96ed324a27))
+* **hookresponse:** deduplicate denial output ([#308](https://github.com/smykla-skalski/klaudiush/issues/308)) ([5e6e9ba](https://github.com/smykla-skalski/klaudiush/commit/5e6e9ba76d7e80087b7e3edcaeaa2f3c6d12bee4))
+
 ## [1.19.0](https://github.com/smykla-skalski/klaudiush/compare/v1.18.0...v1.19.0) (2026-02-20)
 
 ### Features
