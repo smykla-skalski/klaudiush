@@ -346,6 +346,45 @@ var _ = Describe("PushValidator", func() {
 			})
 		})
 
+		Context("compound commands with git remote add", func() {
+			It("passes when remote is added in a preceding command", func() {
+				ctx := createContext(
+					"git remote add fork git@github.com:user/repo.git && git push fork main",
+				)
+				result := validator.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("still fails when remote is not added in the chain", func() {
+				ctx := createContext("git status && git push nonexistent main")
+				result := validator.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeFalse())
+				Expect(result.Message).To(ContainSubstring("Remote 'nonexistent' does not exist"))
+			})
+
+			It("only skips the specific remote being added", func() {
+				ctx := createContext(
+					"git remote add fork git@github.com:user/repo.git && git push other-remote main",
+				)
+				result := validator.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeFalse())
+				Expect(result.Message).To(ContainSubstring("Remote 'other-remote' does not exist"))
+			})
+
+			It("still checks blocked remotes even when added in chain", func() {
+				cfg := &config.PushValidatorConfig{}
+				cfg.BlockedRemotes = []string{"fork"}
+				validator = git.NewPushValidator(log, fakeGit, cfg, nil)
+
+				ctx := createContext(
+					"git remote add fork git@github.com:user/repo.git && git push fork main",
+				)
+				result := validator.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeFalse())
+				Expect(result.Message).To(ContainSubstring("Remote 'fork' is blocked"))
+			})
+		})
+
 		Context("with -C flag for different directory", func() {
 			It("passes for git push with -C flag to valid repo", func() {
 				ctx := createContext("git -C /path/to/worktree push origin main")

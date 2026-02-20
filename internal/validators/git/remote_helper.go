@@ -18,7 +18,9 @@ const (
 )
 
 // GitCommandValidatorFunc is a function that validates a parsed git command.
-type GitCommandValidatorFunc func(gitCmd *parser.GitCommand) *validator.Result
+// pendingRemotes contains remote names being added by preceding commands
+// in the same compound command chain (e.g., git remote add <name> && git fetch <name>).
+type GitCommandValidatorFunc func(gitCmd *parser.GitCommand, pendingRemotes map[string]bool) *validator.Result
 
 // RemoteHelper provides shared remote validation logic for git validators.
 type RemoteHelper struct{}
@@ -112,6 +114,11 @@ func ValidateGitSubcommand(
 		return validator.Pass()
 	}
 
+	// Track remotes being added by preceding commands in the chain.
+	// This prevents false positives when "git remote add X && git fetch X"
+	// is used in the same compound command.
+	pendingRemotes := make(map[string]bool)
+
 	for _, cmd := range parseResult.Commands {
 		if cmd.Name != gitCmdName || len(cmd.Args) == 0 {
 			continue
@@ -124,11 +131,18 @@ func ValidateGitSubcommand(
 			continue
 		}
 
+		// Collect remotes from "git remote add <name>" commands
+		if gitCmd.Subcommand == "remote" && len(gitCmd.Args) >= 2 && gitCmd.Args[0] == "add" {
+			pendingRemotes[gitCmd.Args[1]] = true
+
+			continue
+		}
+
 		if gitCmd.Subcommand != subcommand {
 			continue
 		}
 
-		result := validateCmd(gitCmd)
+		result := validateCmd(gitCmd, pendingRemotes)
 		if !result.Passed {
 			return result
 		}

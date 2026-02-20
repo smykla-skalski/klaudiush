@@ -192,6 +192,40 @@ var _ = Describe("FetchValidator", func() {
 			})
 		})
 
+		Context("compound commands with git remote add", func() {
+			It("passes when remote is added in a preceding command", func() {
+				ctx := createContext(
+					"git remote add fork git@github.com:user/repo.git && git fetch fork main",
+				)
+				result := validator.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("passes for full add-fetch-checkout chain", func() {
+				ctx := createContext(
+					"git remote add fork git@github.com:user/repo.git && git fetch fork feat-branch && git checkout -b feat-branch fork/feat-branch",
+				)
+				result := validator.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("still fails when remote is not added in the chain", func() {
+				ctx := createContext("git status && git fetch nonexistent main")
+				result := validator.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeFalse())
+				Expect(result.Message).To(ContainSubstring("Remote 'nonexistent' does not exist"))
+			})
+
+			It("only skips the specific remote being added", func() {
+				ctx := createContext(
+					"git remote add fork git@github.com:user/repo.git && git fetch other-remote main",
+				)
+				result := validator.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeFalse())
+				Expect(result.Message).To(ContainSubstring("Remote 'other-remote' does not exist"))
+			})
+		})
+
 		Context("combined flags", func() {
 			It("handles multiple flags before remote", func() {
 				ctx := createContext("git fetch --prune --tags origin")
