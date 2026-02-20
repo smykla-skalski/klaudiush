@@ -5,6 +5,12 @@ All notable changes to klaudiush will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.22.0](https://github.com/smykla-skalski/klaudiush/compare/v1.21.0...v1.22.0) (2026-02-20)
+
+### Features
+
+* **schema:** add JSON Schema gen for config ([fd6c485](https://github.com/smykla-skalski/klaudiush/commit/fd6c4851cd0cfc19eaf287cb7e08d5ea823c62fd))
+
 ## [1.21.0](https://github.com/smykla-skalski/klaudiush/compare/v1.20.2...v1.21.0) (2026-02-20)
 
 ### Features
