@@ -12,13 +12,15 @@ import (
 
 var _ = Describe("Recorder", func() {
 	var (
+		tmpDir   string
+		cfg      *config.PatternsConfig
 		store    *patterns.FilePatternStore
 		recorder *patterns.Recorder
 	)
 
 	BeforeEach(func() {
-		tmpDir := GinkgoT().TempDir()
-		cfg := &config.PatternsConfig{
+		tmpDir = GinkgoT().TempDir()
+		cfg = &config.PatternsConfig{
 			ProjectDataFile: "patterns.json",
 			GlobalDataDir:   filepath.Join(tmpDir, "global"),
 		}
@@ -91,5 +93,44 @@ var _ = Describe("Recorder", func() {
 		recorder.Observe("sess1", []string{"GIT004"})
 
 		Expect(store.GetAllPatterns()).To(BeEmpty())
+	})
+
+	It("persists session state across save/load cycles", func() {
+		// First invocation: observe GIT013
+		recorder.Observe("sess1", []string{"GIT013"})
+		Expect(store.Save()).To(Succeed())
+
+		// Simulate new process: create fresh store and recorder
+		store2 := patterns.NewFilePatternStore(cfg, tmpDir)
+		Expect(store2.Load()).To(Succeed())
+		recorder2 := patterns.NewRecorder(store2)
+
+		// Second invocation: observe GIT004 -> should record GIT013->GIT004
+		recorder2.Observe("sess1", []string{"GIT004"})
+
+		all := store2.GetAllPatterns()
+		Expect(all).To(HaveLen(1))
+		Expect(all[0].SourceCode).To(Equal("GIT013"))
+		Expect(all[0].TargetCode).To(Equal("GIT004"))
+	})
+
+	It("clears persisted session state on pass", func() {
+		recorder.Observe("sess1", []string{"GIT013"})
+		Expect(store.Save()).To(Succeed())
+
+		// New process: pass (empty codes)
+		store2 := patterns.NewFilePatternStore(cfg, tmpDir)
+		Expect(store2.Load()).To(Succeed())
+		recorder2 := patterns.NewRecorder(store2)
+		recorder2.Observe("sess1", []string{})
+		Expect(store2.Save()).To(Succeed())
+
+		// Third process: new error should not link to GIT013
+		store3 := patterns.NewFilePatternStore(cfg, tmpDir)
+		Expect(store3.Load()).To(Succeed())
+		recorder3 := patterns.NewRecorder(store3)
+		recorder3.Observe("sess1", []string{"GIT005"})
+
+		Expect(store3.GetAllPatterns()).To(BeEmpty())
 	})
 })

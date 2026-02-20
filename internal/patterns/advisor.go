@@ -2,6 +2,7 @@ package patterns
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/smykla-skalski/klaudiush/pkg/config"
 )
@@ -51,6 +52,11 @@ func (a *Advisor) Advise(codes []string) []string {
 		}
 
 		followUps := a.store.GetFollowUps(code, a.minCount)
+
+		slices.SortFunc(followUps, func(a, b *FailurePattern) int {
+			return b.Count - a.Count
+		})
+
 		perError := 0
 
 		for _, fp := range followUps {

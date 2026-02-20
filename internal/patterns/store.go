@@ -41,6 +41,7 @@ type FailurePattern struct {
 // PatternData is the on-disk format for pattern storage.
 type PatternData struct {
 	Patterns    map[string]*FailurePattern `json:"patterns"`
+	Sessions    map[string][]string        `json:"sessions,omitempty"`
 	LastUpdated time.Time                  `json:"last_updated"`
 	Version     int                        `json:"version"`
 }
@@ -171,6 +172,33 @@ func (s *FilePatternStore) Cleanup(maxAge time.Duration) int {
 	}
 
 	return removed
+}
+
+// GetSessionCodes returns the previous blocking codes for a session.
+func (s *FilePatternStore) GetSessionCodes(sessionID string) []string {
+	if s.globalData.Sessions == nil {
+		return nil
+	}
+
+	return s.globalData.Sessions[sessionID]
+}
+
+// SetSessionCodes stores the blocking codes for a session.
+func (s *FilePatternStore) SetSessionCodes(sessionID string, codes []string) {
+	if s.globalData.Sessions == nil {
+		s.globalData.Sessions = make(map[string][]string)
+	}
+
+	s.globalData.Sessions[sessionID] = codes
+}
+
+// ClearSessionCodes removes stored codes for a session.
+func (s *FilePatternStore) ClearSessionCodes(sessionID string) {
+	if s.globalData.Sessions == nil {
+		return
+	}
+
+	delete(s.globalData.Sessions, sessionID)
 }
 
 // SetProjectData sets the project-local pattern data directly.

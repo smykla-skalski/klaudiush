@@ -139,6 +139,46 @@ var _ = Describe("FilePatternStore", func() {
 		})
 	})
 
+	Describe("Session codes", func() {
+		It("returns nil for unknown session", func() {
+			codes := store.GetSessionCodes("unknown")
+			Expect(codes).To(BeNil())
+		})
+
+		It("stores and retrieves session codes", func() {
+			store.SetSessionCodes("sess1", []string{"GIT013"})
+
+			codes := store.GetSessionCodes("sess1")
+			Expect(codes).To(Equal([]string{"GIT013"}))
+		})
+
+		It("clears session codes", func() {
+			store.SetSessionCodes("sess1", []string{"GIT013"})
+			store.ClearSessionCodes("sess1")
+
+			codes := store.GetSessionCodes("sess1")
+			Expect(codes).To(BeNil())
+		})
+
+		It("persists session codes across save/load", func() {
+			store.SetSessionCodes("sess1", []string{"GIT013", "GIT004"})
+			Expect(store.Save()).To(Succeed())
+
+			store2 := patterns.NewFilePatternStore(cfg, tmpDir)
+			Expect(store2.Load()).To(Succeed())
+
+			codes := store2.GetSessionCodes("sess1")
+			Expect(codes).To(Equal([]string{"GIT013", "GIT004"}))
+		})
+
+		It("clears session codes without crashing on empty store", func() {
+			store.ClearSessionCodes("nonexistent")
+
+			codes := store.GetSessionCodes("nonexistent")
+			Expect(codes).To(BeNil())
+		})
+	})
+
 	Describe("HasProjectData", func() {
 		It("returns false when file does not exist", func() {
 			Expect(store.HasProjectData()).To(BeFalse())

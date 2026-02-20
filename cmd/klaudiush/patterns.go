@@ -241,6 +241,12 @@ func setupPatternStore() (*patterns.FilePatternStore, *config.PatternsConfig, er
 		log.Debug("failed to load pattern store", "error", loadErr)
 	}
 
+	if patternsCfg.IsUseSeedData() {
+		if seedErr := patterns.EnsureSeedData(store); seedErr != nil {
+			log.Debug("failed to ensure seed data", "error", seedErr)
+		}
+	}
+
 	return store, patternsCfg, nil
 }
 
@@ -313,7 +319,12 @@ func outputPatternsTable(all []*patterns.FailurePattern) {
 		return
 	}
 
-	fmt.Printf("Found %d patterns:\n\n", len(all))
+	noun := "patterns"
+	if len(all) == 1 {
+		noun = "pattern"
+	}
+
+	fmt.Printf("Found %d %s:\n\n", len(all), noun)
 
 	for _, p := range all {
 		seedTag := ""

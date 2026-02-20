@@ -71,6 +71,22 @@ var _ = Describe("Advisor", func() {
 		Expect(warnings).To(BeEmpty())
 	})
 
+	It("shows highest count patterns first when capped", func() {
+		// Add a high-count learned pattern
+		for range 20 {
+			store.RecordSequence("GIT013", "GIT005")
+		}
+
+		// GIT013 now has: GIT005 (count=20), GIT004 (seed=5), GIT006 (seed=5)
+		// Cap at 1 per error to test which one is picked
+		cfg.MaxWarningsPerError = 1
+		advisor = patterns.NewAdvisor(store, cfg)
+
+		warnings := advisor.Advise([]string{"GIT013"})
+		Expect(warnings).To(HaveLen(1))
+		Expect(warnings[0]).To(ContainSubstring("GIT005"))
+	})
+
 	It("respects minCount threshold", func() {
 		// Record a single observation (below default min_count of 3)
 		store.RecordSequence("GIT004", "GIT999")
