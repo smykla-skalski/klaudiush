@@ -89,6 +89,22 @@ var _ = Describe("FormatSystemMessage", func() {
 		Expect(result).To(ContainSubstring("second line"))
 	})
 
+	It("preserves empty lines in details", func() {
+		errs := []*dispatcher.ValidationError{
+			{
+				Validator:   "test",
+				Message:     "Commit message validation failed",
+				ShouldBlock: true,
+				Details: map[string]string{
+					"errors": "Title exceeds 50 characters\n\n\U0001F4DD Commit message:\n---\nfix(hookresponse): deduplicate hook rejection output\n\npermissionDecisionReason and systemMessage both render\n---",
+				},
+			},
+		}
+
+		result := hookresponse.FormatSystemMessage(errs)
+		Expect(result).To(ContainSubstring("output\n\npermissionDecisionReason"))
+	})
+
 	It("strips validate- prefix from validator names", func() {
 		errs := []*dispatcher.ValidationError{
 			{

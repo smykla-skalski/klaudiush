@@ -186,13 +186,8 @@ func formatSingleError(b *strings.Builder, e *dispatcher.ValidationError) {
 		b.WriteString("\n")
 
 		for _, v := range e.Details {
-			lines := strings.SplitSeq(strings.TrimSpace(v), "\n")
-			for line := range lines {
-				if line != "" {
-					b.WriteString(line)
-					b.WriteString("\n")
-				}
-			}
+			b.WriteString(strings.TrimSpace(v))
+			b.WriteString("\n")
 		}
 	}
 
