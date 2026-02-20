@@ -5,6 +5,13 @@ All notable changes to klaudiush will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.20.2](https://github.com/smykla-skalski/klaudiush/compare/v1.20.1...v1.20.2) (2026-02-20)
+
+### Bug Fixes
+
+* **exceptions:** wire system, fix 11 bugs ([73d5349](https://github.com/smykla-skalski/klaudiush/commit/73d5349165c339f4f320caf8162e1e224c227437))
+* **markdown:** filter context-line false positives ([426a0e3](https://github.com/smykla-skalski/klaudiush/commit/426a0e3f44999b587f797732baa288d5b3845dad))
+
 ## [1.20.1](https://github.com/smykla-skalski/klaudiush/compare/v1.20.0...v1.20.1) (2026-02-20)
 
 ### Bug Fixes
