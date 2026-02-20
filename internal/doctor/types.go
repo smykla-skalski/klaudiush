@@ -102,6 +102,20 @@ type Reporter interface {
 	Report(results []CheckResult, verbose bool)
 }
 
+// StreamingReporter extends Reporter with the ability to run checks and report
+// results live (e.g. with spinners). When the Runner detects this interface,
+// it delegates both execution and display to RunAndReport instead of the
+// batch RunAll + Report path.
+type StreamingReporter interface {
+	Reporter
+	RunAndReport(
+		ctx context.Context,
+		registry *Registry,
+		verbose bool,
+		categories []Category,
+	) []CheckResult
+}
+
 // NewCheckResult creates a new CheckResult with the given parameters
 func NewCheckResult(name string, severity Severity, status Status, message string) CheckResult {
 	return CheckResult{

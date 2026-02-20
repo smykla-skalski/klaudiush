@@ -46,6 +46,7 @@ var (
 	configPath   string
 	globalConfig string
 	disableList  []string
+	noColorFlag  bool
 
 	// crashContext stores the current hook context for crash recovery.
 	// Set during validation dispatch and accessed by panic handler.
@@ -118,6 +119,13 @@ func init() {
 		"disable",
 		[]string{},
 		"Comma-separated list of validators to disable (e.g., commit,markdown)",
+	)
+
+	rootCmd.PersistentFlags().BoolVar(
+		&noColorFlag,
+		"no-color",
+		false,
+		"Disable colored output",
 	)
 }
 

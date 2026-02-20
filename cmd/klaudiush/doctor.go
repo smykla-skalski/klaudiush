@@ -10,6 +10,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/spf13/cobra"
 
+	internalcolor "github.com/smykla-skalski/klaudiush/internal/color"
 	"github.com/smykla-skalski/klaudiush/internal/doctor"
 	backupchecker "github.com/smykla-skalski/klaudiush/internal/doctor/checkers/backup"
 	"github.com/smykla-skalski/klaudiush/internal/doctor/checkers/binary"
@@ -104,8 +105,8 @@ func runDoctor(_ *cobra.Command, _ []string) error {
 	// Register fixers
 	registerFixers(registry, prompter)
 
-	// Create reporter
-	reporter := reporters.NewSimpleReporter()
+	// Create reporter based on terminal capabilities
+	reporter := selectReporter()
 
 	// Create runner
 	runner := doctor.NewRunner(registry, reporter, prompter, log)
@@ -223,4 +224,28 @@ func isInteractive() bool {
 	}
 
 	return (fileInfo.Mode() & os.ModeCharDevice) != 0
+}
+
+// selectReporter picks the right reporter based on TTY and color settings.
+//
+//	TTY + colors     -> InteractiveReporter (spinners + colored table)
+//	TTY + no colors  -> InteractiveReporter (spinners + plain table)
+//	non-TTY + colors -> ColoredReporter (static colored table, no spinners)
+//	non-TTY + no color -> SimpleReporter (plain text, backward compat)
+//
+//nolint:ireturn // factory function selecting reporter implementation by environment
+func selectReporter() doctor.Reporter {
+	colorEnabled := internalcolor.Profile(noColorFlag)
+	tty := internalcolor.IsTerminal(os.Stdout)
+	theme := internalcolor.NewTheme(colorEnabled)
+
+	if tty {
+		return reporters.NewInteractiveReporter(theme)
+	}
+
+	if colorEnabled {
+		return reporters.NewColoredReporter(theme)
+	}
+
+	return reporters.NewSimpleReporter()
 }

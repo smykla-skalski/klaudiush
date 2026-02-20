@@ -197,3 +197,53 @@ func (mr *MockReporterMockRecorder) Report(results, verbose any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Report", reflect.TypeOf((*MockReporter)(nil).Report), results, verbose)
 }
+
+// MockStreamingReporter is a mock of StreamingReporter interface.
+type MockStreamingReporter struct {
+	ctrl     *gomock.Controller
+	recorder *MockStreamingReporterMockRecorder
+	isgomock struct{}
+}
+
+// MockStreamingReporterMockRecorder is the mock recorder for MockStreamingReporter.
+type MockStreamingReporterMockRecorder struct {
+	mock *MockStreamingReporter
+}
+
+// NewMockStreamingReporter creates a new mock instance.
+func NewMockStreamingReporter(ctrl *gomock.Controller) *MockStreamingReporter {
+	mock := &MockStreamingReporter{ctrl: ctrl}
+	mock.recorder = &MockStreamingReporterMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockStreamingReporter) EXPECT() *MockStreamingReporterMockRecorder {
+	return m.recorder
+}
+
+// Report mocks base method.
+func (m *MockStreamingReporter) Report(results []CheckResult, verbose bool) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "Report", results, verbose)
+}
+
+// Report indicates an expected call of Report.
+func (mr *MockStreamingReporterMockRecorder) Report(results, verbose any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Report", reflect.TypeOf((*MockStreamingReporter)(nil).Report), results, verbose)
+}
+
+// RunAndReport mocks base method.
+func (m *MockStreamingReporter) RunAndReport(ctx context.Context, registry *Registry, verbose bool, categories []Category) []CheckResult {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RunAndReport", ctx, registry, verbose, categories)
+	ret0, _ := ret[0].([]CheckResult)
+	return ret0
+}
+
+// RunAndReport indicates an expected call of RunAndReport.
+func (mr *MockStreamingReporterMockRecorder) RunAndReport(ctx, registry, verbose, categories any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunAndReport", reflect.TypeOf((*MockStreamingReporter)(nil).RunAndReport), ctx, registry, verbose, categories)
+}
