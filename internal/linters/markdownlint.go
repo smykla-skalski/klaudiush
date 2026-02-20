@@ -125,6 +125,9 @@ func (l *RealMarkdownLinter) lintInternal(
 
 	tableSuggested := make(map[int]string)
 
+	// Determine if this is a fragment (Edit operation)
+	isFragment := initialState != nil
+
 	// Run custom markdown analysis (built-in rules)
 	analysisResult := validators.AnalyzeMarkdown(
 		content,
@@ -132,6 +135,7 @@ func (l *RealMarkdownLinter) lintInternal(
 		validators.AnalysisOptions{
 			CheckTableFormatting: l.isTableFormattingEnabled(),
 			TableWidthMode:       l.getTableWidthMode(),
+			IsFragment:           isFragment,
 		},
 	)
 	allWarnings = append(allWarnings, analysisResult.Warnings...)
@@ -139,6 +143,14 @@ func (l *RealMarkdownLinter) lintInternal(
 	// Copy table suggestions from analysis result if table formatting is enabled
 	if l.isTableFormattingEnabled() {
 		maps.Copy(tableSuggested, analysisResult.TableSuggested)
+	}
+
+	// Track cosmetic table warnings separately (non-blocking)
+	cosmeticTableWarnings := analysisResult.CosmeticTableWarnings
+	cosmeticTableSuggested := make(map[int]string)
+
+	if l.isTableFormattingEnabled() {
+		maps.Copy(cosmeticTableSuggested, analysisResult.CosmeticTableSuggested)
 	}
 
 	// Run markdownlint if enabled and available
@@ -153,20 +165,25 @@ func (l *RealMarkdownLinter) lintInternal(
 		output := strings.Join(allWarnings, "\n")
 
 		return &LintResult{
-			Success:        false,
-			RawOut:         output,
-			Findings:       []LintFinding{},
-			Err:            ErrMarkdownCustomRules,
-			TableSuggested: tableSuggested,
+			Success:                false,
+			RawOut:                 output,
+			Findings:               []LintFinding{},
+			Err:                    ErrMarkdownCustomRules,
+			TableSuggested:         tableSuggested,
+			CosmeticTableWarnings:  cosmeticTableWarnings,
+			CosmeticTableSuggested: cosmeticTableSuggested,
 		}
 	}
 
+	// No blocking warnings, but there may be cosmetic table warnings
 	return &LintResult{
-		Success:        true,
-		RawOut:         "",
-		Findings:       []LintFinding{},
-		Err:            nil,
-		TableSuggested: nil,
+		Success:                true,
+		RawOut:                 "",
+		Findings:               []LintFinding{},
+		Err:                    nil,
+		TableSuggested:         nil,
+		CosmeticTableWarnings:  cosmeticTableWarnings,
+		CosmeticTableSuggested: cosmeticTableSuggested,
 	}
 }
 

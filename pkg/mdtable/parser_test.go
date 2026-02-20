@@ -366,3 +366,81 @@ var _ = Describe("hasInconsistentSpacing", func() {
 		})
 	})
 })
+
+var _ = Describe("Table edge cases", func() {
+	It("handles table with empty cells", func() {
+		content := `| A | B |
+|---|---|
+|   |   |
+| x |   |`
+
+		result := mdtable.Parse(content)
+
+		Expect(result.Tables).To(HaveLen(1))
+		Expect(result.Tables[0].Rows).To(HaveLen(2))
+	})
+
+	It("handles table with very long cell content", func() {
+		longContent := "This is a very long cell content that exceeds typical column widths and should still be parsed correctly"
+		content := "| Header |\n|--------|\n| " + longContent + " |"
+
+		result := mdtable.Parse(content)
+
+		Expect(result.Tables).To(HaveLen(1))
+		Expect(result.Tables[0].Rows[0][0]).To(Equal(longContent))
+	})
+
+	It("handles table with mixed alignment markers", func() {
+		content := `| Left | Center | Right | Default |
+|:-----|:------:|------:|---------|
+| a    | b      | c     | d       |`
+
+		result := mdtable.Parse(content)
+
+		Expect(result.Tables).To(HaveLen(1))
+		Expect(result.Tables[0].Alignments).To(Equal([]mdtable.Alignment{
+			mdtable.AlignLeft,
+			mdtable.AlignCenter,
+			mdtable.AlignRight,
+			mdtable.AlignLeft, // default
+		}))
+	})
+
+	It("handles table with separator having more dashes than needed", func() {
+		content := `| A | B |
+|:----------------------|:---------------------------|
+| x | y |`
+
+		result := mdtable.Parse(content)
+
+		Expect(result.Tables).To(HaveLen(1))
+		Expect(result.Issues).To(BeEmpty())
+	})
+
+	It("handles table immediately adjacent to other elements", func() {
+		content := `Some text
+| A | B |
+|---|---|
+| 1 | 2 |
+More text`
+
+		result := mdtable.Parse(content)
+
+		Expect(result.Tables).To(HaveLen(1))
+		Expect(result.Tables[0].StartLine).To(Equal(2))
+	})
+
+	It("handles single-column table with alignment", func() {
+		content := `| Name |
+|:-----|
+| Alice |
+| Bob |`
+
+		result := mdtable.Parse(content)
+
+		Expect(result.Tables).To(HaveLen(1))
+		Expect(result.Tables[0].Headers).To(Equal([]string{"Name"}))
+		Expect(result.Tables[0].Rows).To(HaveLen(2))
+		Expect(result.Tables[0].Alignments[0]).To(Equal(mdtable.AlignLeft))
+	})
+})

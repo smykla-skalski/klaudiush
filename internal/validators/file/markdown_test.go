@@ -130,7 +130,7 @@ code
 				result := v.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeFalse())
 				Expect(result.ShouldBlock).To(BeTrue())
-				Expect(result.Message).To(Equal("Markdown formatting errors"))
+				Expect(result.Message).NotTo(BeEmpty())
 				Expect(
 					result.Details["errors"],
 				).To(ContainSubstring("Line 2: Code block should have empty line before it"))
@@ -176,7 +176,7 @@ code2
 				result := v.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeFalse())
 				Expect(result.ShouldBlock).To(BeTrue())
-				Expect(result.Message).To(Equal("Markdown formatting errors"))
+				Expect(result.Message).NotTo(BeEmpty())
 				Expect(
 					result.Details["errors"],
 				).To(ContainSubstring("Line 8: Code block should have empty line before it"))
@@ -192,7 +192,7 @@ code2
 				result := v.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeFalse())
 				Expect(result.ShouldBlock).To(BeTrue())
-				Expect(result.Message).To(Equal("Markdown formatting errors"))
+				Expect(result.Message).NotTo(BeEmpty())
 				Expect(
 					result.Details["errors"],
 				).To(ContainSubstring("Line 2: First list item should have empty line before it"))
@@ -223,7 +223,7 @@ Text
 				result := v.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeFalse())
 				Expect(result.ShouldBlock).To(BeTrue())
-				Expect(result.Message).To(Equal("Markdown formatting errors"))
+				Expect(result.Message).NotTo(BeEmpty())
 				Expect(result.Details["errors"]).To(ContainSubstring("Line 2: First list item"))
 				Expect(result.Details["errors"]).To(ContainSubstring("Line 4: First list item"))
 				Expect(result.Details["errors"]).To(ContainSubstring("Line 6: First list item"))
@@ -238,7 +238,7 @@ Text
 				result := v.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeFalse())
 				Expect(result.ShouldBlock).To(BeTrue())
-				Expect(result.Message).To(Equal("Markdown formatting errors"))
+				Expect(result.Message).NotTo(BeEmpty())
 				Expect(result.Details["errors"]).To(ContainSubstring("Line 2: First list item"))
 			})
 
@@ -264,7 +264,7 @@ Text immediately after
 				result := v.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeFalse())
 				Expect(result.ShouldBlock).To(BeTrue())
-				Expect(result.Message).To(Equal("Markdown formatting errors"))
+				Expect(result.Message).NotTo(BeEmpty())
 				Expect(
 					result.Details["errors"],
 				).To(ContainSubstring("Line 1: Header should have empty line after it"))
@@ -293,7 +293,7 @@ Text
 				result := v.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeFalse())
 				Expect(result.ShouldBlock).To(BeTrue())
-				Expect(result.Message).To(Equal("Markdown formatting errors"))
+				Expect(result.Message).NotTo(BeEmpty())
 				Expect(
 					result.Details["errors"],
 				).To(ContainSubstring("Line 1: Header should have empty line after it"))
@@ -359,7 +359,7 @@ code
 				result := v.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeFalse())
 				Expect(result.ShouldBlock).To(BeTrue())
-				Expect(result.Message).To(Equal("Markdown formatting errors"))
+				Expect(result.Message).NotTo(BeEmpty())
 				Expect(
 					result.Details["errors"],
 				).To(ContainSubstring("Line 1: Header should have empty line after it"))
@@ -415,7 +415,7 @@ Done!
 				result := v.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeFalse())
 				Expect(result.ShouldBlock).To(BeTrue())
-				Expect(result.Message).To(Equal("Markdown formatting errors"))
+				Expect(result.Message).NotTo(BeEmpty())
 				Expect(
 					result.Details["errors"],
 				).To(ContainSubstring("Line 3: Code block in list item should be indented by at least 3 spaces"))
@@ -559,6 +559,133 @@ code
 			})
 		})
 
+		Context("table formatting severity", func() {
+			It("warns (not blocks) for cosmetic table width issues by default", func() {
+				content := `# Test
+
+| Name | Age |
+| ---- | --- |
+| John | 30  |
+| Jane | 25  |
+`
+				ctx.ToolInput.Content = content
+				result := v.Validate(context.Background(), ctx)
+				// Should warn, not block
+				Expect(result.Passed).To(BeFalse())
+				Expect(result.ShouldBlock).To(BeFalse())
+				Expect(result.Message).To(ContainSubstring("Table column widths inconsistent"))
+			})
+
+			It("blocks for cosmetic table issues when severity=error", func() {
+				severityError := "error"
+				cfg := &config.MarkdownValidatorConfig{
+					TableFormattingSeverity: severityError,
+				}
+				runner := execpkg.NewCommandRunner(10 * time.Second)
+				linter := linters.NewMarkdownLinter(runner)
+				vStrict := file.NewMarkdownValidator(cfg, linter, logger.NewNoOpLogger(), nil)
+
+				content := `# Test
+
+| Name | Age |
+| ---- | --- |
+| John | 30  |
+| Jane | 25  |
+`
+				ctx.ToolInput.Content = content
+				result := vStrict.Validate(context.Background(), ctx)
+				// Should block when severity=error
+				Expect(result.Passed).To(BeFalse())
+				Expect(result.ShouldBlock).To(BeTrue())
+			})
+
+			It("blocks for structural table issues regardless of severity setting", func() {
+				// Column count mismatch is structural - always blocks
+				content := `| A | B | C |
+|---|---|---|
+| 1 | 2 |`
+				ctx.ToolInput.Content = content
+				result := v.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeFalse())
+				Expect(result.ShouldBlock).To(BeTrue())
+				Expect(result.Details["errors"]).To(ContainSubstring("column count"))
+			})
+
+			It("passes for well-formatted table", func() {
+				content := `# Test
+
+| Name | Age |
+|:-----|:----|
+| John | 30  |
+| Jane | 25  |
+`
+				ctx.ToolInput.Content = content
+				result := v.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("includes suggested_table in details for cosmetic warnings", func() {
+				content := `# Test
+
+| Name | Age |
+| ---- | --- |
+| John | 30  |
+| Jane | 25  |
+`
+				ctx.ToolInput.Content = content
+				result := v.Validate(context.Background(), ctx)
+				Expect(result.Details).To(HaveKey("suggested_table"))
+				Expect(result.Details["suggested_table"]).To(ContainSubstring("|"))
+			})
+		})
+
+		Context("specific error messages", func() {
+			It("returns specific message instead of generic text", func() {
+				content := `# Header
+Text without blank line
+`
+				ctx.ToolInput.Content = content
+				result := v.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeFalse())
+				// Should be specific, not generic
+				Expect(result.Message).NotTo(Equal("Markdown formatting errors"))
+				Expect(result.Message).To(ContainSubstring("Line"))
+			})
+		})
+
+		Context("false positive regression tests", func() {
+			It("does not block SKILL.md-style table with only padding differences", func() {
+				// This is the case from the original bug report
+				content := `# Skills
+
+| Skill | Description |
+| ----- | ----------- |
+| commit | Create a commit |
+| review | Review a PR |
+`
+				ctx.ToolInput.Content = content
+				result := v.Validate(context.Background(), ctx)
+				// Should not block - only cosmetic padding difference
+				if !result.Passed {
+					Expect(result.ShouldBlock).To(BeFalse())
+				}
+			})
+
+			It("does not block table where only padding differs from ideal", func() {
+				content := `| Phase | Item       | Status      |
+|:------|:-----------|:------------|
+| 1.1   | enumer     | Complete    |
+| 1.2   | slog       | Pending     |
+`
+				ctx.ToolInput.Content = content
+
+				result := v.Validate(context.Background(), ctx)
+				if !result.Passed {
+					Expect(result.ShouldBlock).To(BeFalse())
+				}
+			})
+		})
+
 		Context("multiple empty lines before code block", func() {
 			It("warns when two empty lines before code block", func() {
 				content := `Some text
@@ -571,7 +698,7 @@ code
 				result := v.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeFalse())
 				Expect(result.ShouldBlock).To(BeTrue())
-				Expect(result.Message).To(Equal("Markdown formatting errors"))
+				Expect(result.Message).NotTo(BeEmpty())
 				Expect(
 					result.Details["errors"],
 				).To(ContainSubstring("Line 4: Code block should have only one empty line before it, not multiple"))

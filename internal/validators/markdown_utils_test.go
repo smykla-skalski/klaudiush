@@ -1,6 +1,8 @@
 package validators_test
 
 import (
+	"strings"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -412,7 +414,7 @@ code with no indentation
 
 	Describe("Table validation", func() {
 		Context("when content has malformed tables", func() {
-			It("detects tables with inconsistent spacing", func() {
+			It("detects tables with inconsistent spacing as cosmetic", func() {
 				content := `# Test
 
 | Name | Age |
@@ -422,17 +424,21 @@ code with no indentation
 `
 				result := validators.AnalyzeMarkdown(content, nil)
 
-				// The table has inconsistent formatting, should suggest fix
-				Expect(result.TableSuggested).NotTo(BeEmpty())
+				// Cosmetic issue (width padding), not structural
+				Expect(result.CosmeticTableSuggested).NotTo(BeEmpty())
+				// No structural warnings
+				Expect(result.Warnings).To(BeEmpty())
 			})
 
-			It("provides properly formatted table suggestion", func() {
+			It("provides properly formatted table suggestion for structural issues", func() {
+				// |John|30| has no cell padding - structural issue
 				content := `| Name | Age |
 |---|---|
 |John|30|`
 
 				result := validators.AnalyzeMarkdown(content, nil)
 
+				// Structural issues (missing padding) go to TableSuggested
 				Expect(result.TableSuggested).To(HaveKey(1))
 				suggestion := result.TableSuggested[1]
 
@@ -442,6 +448,7 @@ code with no indentation
 			})
 
 			It("handles tables with emoji correctly", func() {
+				// |✅|Done| has no padding - structural issue
 				content := `| Status | Name |
 |---|---|
 |✅|Done|
@@ -449,6 +456,7 @@ code with no indentation
 
 				result := validators.AnalyzeMarkdown(content, nil)
 
+				// Tables with structural issues get suggestions in TableSuggested
 				if len(result.TableSuggested) > 0 {
 					suggestion := result.TableSuggested[1]
 
@@ -459,7 +467,7 @@ code with no indentation
 			})
 
 			It("handles tables with already escaped pipes in cell content", func() {
-				// When user provides already escaped pipes, they should be preserved
+				// |Test|A\|B\|C| has no padding - structural issue
 				content := `| Name | Data |
 |---|---|
 |Test|A\|B\|C|`
@@ -487,15 +495,15 @@ code with no indentation
 
 				// May still suggest if formatting differs slightly
 				// The key is that any suggestion should be valid
-				if len(result.TableSuggested) > 0 {
-					suggestion := result.TableSuggested[1]
+				if len(result.CosmeticTableSuggested) > 0 {
+					suggestion := result.CosmeticTableSuggested[1]
 					Expect(suggestion).To(ContainSubstring("|"))
 				}
 			})
 		})
 
 		Context("when content has no tables", func() {
-			It("returns empty TableSuggested map", func() {
+			It("returns empty suggestion maps", func() {
 				content := `# Just a heading
 
 Some paragraph text.
@@ -505,6 +513,132 @@ Some paragraph text.
 				result := validators.AnalyzeMarkdown(content, nil)
 
 				Expect(result.TableSuggested).To(BeEmpty())
+				Expect(result.CosmeticTableSuggested).To(BeEmpty())
+			})
+		})
+	})
+
+	Describe("Table severity classification", func() {
+		Context("structural vs cosmetic separation", func() {
+			It("classifies column count mismatch as structural (blocking)", func() {
+				content := `| A | B | C |
+|---|---|---|
+| 1 | 2 |`
+				result := validators.AnalyzeMarkdown(content, nil)
+				// Column count mismatch is structural
+				Expect(result.Warnings).NotTo(BeEmpty())
+
+				found := false
+
+				for _, w := range result.Warnings {
+					if strings.Contains(w, "column count") {
+						found = true
+
+						break
+					}
+				}
+
+				Expect(found).To(BeTrue())
+			})
+
+			It("classifies missing cell padding as structural (blocking)", func() {
+				content := `| A | B |
+|---|---|
+|x  | y |`
+				result := validators.AnalyzeMarkdown(content, nil)
+				// Missing padding is a structural issue
+				Expect(result.Warnings).NotTo(BeEmpty())
+
+				found := false
+
+				for _, w := range result.Warnings {
+					if strings.Contains(w, "spacing") {
+						found = true
+
+						break
+					}
+				}
+
+				Expect(found).To(BeTrue())
+			})
+
+			It("classifies width inconsistency as cosmetic (non-blocking)", func() {
+				content := `| Name | Age |
+| ---- | --- |
+| John | 30  |
+`
+				result := validators.AnalyzeMarkdown(content, nil)
+				// Width inconsistency only - cosmetic
+				Expect(result.Warnings).To(BeEmpty())
+				Expect(result.CosmeticTableWarnings).NotTo(BeEmpty())
+			})
+
+			It("returns no warnings for well-formatted table", func() {
+				content := `| Name | Age |
+|:-----|:----|
+| John | 30  |
+| Jane | 25  |
+`
+				result := validators.AnalyzeMarkdown(content, nil)
+				Expect(result.Warnings).To(BeEmpty())
+				Expect(result.CosmeticTableWarnings).To(BeEmpty())
+			})
+
+			It("handles tables with code in cells without false positives", func() {
+				content := "| Function | Usage      |\n|:---------|:-----------|\n| `map`    | `map(fn)` |\n"
+				result := validators.AnalyzeMarkdown(content, nil)
+				Expect(result.Warnings).To(BeEmpty())
+			})
+
+			It("handles tables with links without false positives", func() {
+				content := "| Name | Link                       |\n|:-----|:---------------------------|\n| Docs | [Link](https://klaudiu.sh) |\n"
+				result := validators.AnalyzeMarkdown(content, nil)
+				Expect(result.Warnings).To(BeEmpty())
+			})
+		})
+
+		Context("fragment mode", func() {
+			It("skips cosmetic checks when IsFragment=true", func() {
+				content := `| Name | Age |
+| ---- | --- |
+| John | 30  |
+`
+				result := validators.AnalyzeMarkdown(content, nil, validators.AnalysisOptions{
+					CheckTableFormatting: true,
+					TableWidthMode:       0,
+					IsFragment:           true,
+				})
+				// Fragment mode skips cosmetic checks
+				Expect(result.CosmeticTableWarnings).To(BeEmpty())
+				Expect(result.CosmeticTableSuggested).To(BeEmpty())
+			})
+
+			It("still catches structural issues in fragment mode", func() {
+				content := `| A | B | C |
+|---|---|---|
+| 1 | 2 |`
+				result := validators.AnalyzeMarkdown(content, nil, validators.AnalysisOptions{
+					CheckTableFormatting: true,
+					TableWidthMode:       0,
+					IsFragment:           true,
+				})
+				// Structural issues still detected
+				Expect(result.Warnings).NotTo(BeEmpty())
+			})
+
+			It("fragment mode does not populate cosmetic suggestions", func() {
+				content := `| Name | Age |
+|---|---|
+|John|30|`
+				result := validators.AnalyzeMarkdown(content, nil, validators.AnalysisOptions{
+					CheckTableFormatting: true,
+					TableWidthMode:       0,
+					IsFragment:           true,
+				})
+				// No cosmetic suggestions in fragment mode
+				Expect(result.CosmeticTableSuggested).To(BeEmpty())
+				// But structural issues still present
+				Expect(result.Warnings).NotTo(BeEmpty())
 			})
 		})
 	})

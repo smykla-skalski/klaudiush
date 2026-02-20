@@ -37,7 +37,7 @@ var DefaultSuggestions = map[Reference]string{
 	RefTerraformFmt: "Run 'terraform fmt' or 'tofu fmt' to fix formatting",
 	RefTflint:       "Run 'tflint' to see detailed linting issues",
 	RefActionlint:   "Run 'actionlint' to see workflow issues",
-	RefMarkdownLint: "Check markdown formatting and structure",
+	RefMarkdownLint: "Fix the formatting issue and retry",
 	RefGofumpt:      "Run 'gofumpt -w <file>' to auto-fix formatting",
 	RefRuffCheck:    "Run 'ruff check <file>' to see Python code quality issues",
 	RefOxlintCheck:  "Run 'oxlint <file>' to see JavaScript/TypeScript code quality issues",

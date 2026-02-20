@@ -137,21 +137,12 @@ func (v *MarkdownValidator) Validate(ctx context.Context, hookCtx *hook.Context)
 	result := v.linter.LintWithPath(lintCtx, content, initialState, displayPath)
 
 	if !result.Success {
-		message := "Markdown formatting errors"
+		return v.buildBlockingResult(result)
+	}
 
-		r := validator.FailWithRef(validator.RefMarkdownLint, message).
-			AddDetail("errors", strings.TrimSpace(result.RawOut))
-
-		// Include table suggestions if available
-		if len(result.TableSuggested) > 0 {
-			for lineNum, suggestion := range result.TableSuggested {
-				r = r.AddDetail("suggested_table", formatTableSuggestion(lineNum, suggestion))
-
-				break // Only include first suggestion in details for now
-			}
-		}
-
-		return r
+	// No blocking errors - check for cosmetic table warnings
+	if len(result.CosmeticTableWarnings) > 0 {
+		return v.buildCosmeticResult(result)
 	}
 
 	return validator.Pass()
@@ -241,6 +232,78 @@ func (v *MarkdownValidator) getContentWithState(
 	}
 
 	return "", nil, errNoContent
+}
+
+// buildBlockingResult creates a blocking (FailWithRef) result from lint output.
+func (*MarkdownValidator) buildBlockingResult(result *linters.LintResult) *validator.Result {
+	message := buildSpecificMessage(result.RawOut)
+
+	r := validator.FailWithRef(validator.RefMarkdownLint, message).
+		AddDetail("errors", strings.TrimSpace(result.RawOut))
+
+	// Include table suggestions from structural issues
+	attachFirstSuggestion(r, result.TableSuggested)
+
+	// Also attach cosmetic suggestions if present
+	attachFirstSuggestion(r, result.CosmeticTableSuggested)
+
+	return r
+}
+
+// buildCosmeticResult creates a result for cosmetic-only table warnings.
+// Returns a blocking or warning result depending on config.
+func (v *MarkdownValidator) buildCosmeticResult(result *linters.LintResult) *validator.Result {
+	errText := strings.Join(result.CosmeticTableWarnings, "\n")
+	message := buildSpecificMessage(errText)
+
+	var r *validator.Result
+
+	if v.isTableFormattingSeverityError() {
+		r = validator.FailWithRef(validator.RefMarkdownLint, message)
+	} else {
+		r = validator.WarnWithRef(validator.RefMarkdownLint, message)
+	}
+
+	r = r.AddDetail("errors", errText)
+	attachFirstSuggestion(r, result.CosmeticTableSuggested)
+
+	return r
+}
+
+// attachFirstSuggestion adds the first table suggestion from the map to the result.
+func attachFirstSuggestion(r *validator.Result, suggestions map[int]string) {
+	for lineNum, suggestion := range suggestions {
+		r.AddDetail("suggested_table", formatTableSuggestion(lineNum, suggestion))
+
+		break // Only include first suggestion
+	}
+}
+
+// isTableFormattingSeverityError returns true if cosmetic table issues should block.
+func (v *MarkdownValidator) isTableFormattingSeverityError() bool {
+	if v.config != nil && v.config.TableFormattingSeverity == "error" {
+		return true
+	}
+
+	return false // default: "warning" (non-blocking)
+}
+
+// buildSpecificMessage extracts a specific, actionable message from lint output.
+// Instead of generic "Markdown formatting errors", returns the first warning.
+func buildSpecificMessage(rawOut string) string {
+	if rawOut == "" {
+		return "Markdown formatting errors"
+	}
+
+	// Use the first non-empty line as the message
+	for line := range strings.SplitSeq(rawOut, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed != "" {
+			return trimmed
+		}
+	}
+
+	return "Markdown formatting errors"
 }
 
 // formatTableSuggestion formats a table suggestion for display in error details.

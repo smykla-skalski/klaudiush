@@ -222,6 +222,8 @@ linters:
         - "github.com/smykla-skalski/klaudiush/internal/backup.Storage"  # storage provider returns interface for polymorphism
         - "github.com/smykla-skalski/klaudiush/internal/plugin.Plugin"  # plugin loader returns interface by design
         - "github.com/smykla-skalski/klaudiush/internal/tui.UI"  # TUI factory returns interface for fallback handling
+        - "github.com/smykla-skalski/klaudiush/internal/doctor.Fixer"  # registry returns interface for polymorphic fixers
+        - "github.com/smykla-skalski/klaudiush/internal/validators/git.GitRunner"  # polymorphic git runner for SDK/CLI fallback
 
     nolintlint:
       allow-unused: false

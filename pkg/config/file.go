@@ -95,6 +95,17 @@ type MarkdownValidatorConfig struct {
 	//     Tables will pass markdownlint MD060 but may not be visually aligned for Unicode.
 	// Default: "display_width"
 	TableFormattingMode string `json:"table_formatting_mode,omitempty" koanf:"table_formatting_mode" toml:"table_formatting_mode"`
+
+	// TableFormattingSeverity controls how cosmetic table formatting issues
+	// (column width padding differences) are treated.
+	// Options:
+	//   - "warning": Non-blocking warning (default). The agent sees a suggestion but
+	//     the command is not blocked.
+	//   - "error": Blocking error (old behavior). Column width mismatches block the operation.
+	// Structural issues (column count mismatch, missing cell padding) always block
+	// regardless of this setting.
+	// Default: "warning"
+	TableFormattingSeverity string `json:"table_formatting_severity,omitempty" koanf:"table_formatting_severity" toml:"table_formatting_severity"`
 }
 
 // ShellScriptValidatorConfig configures the shell script validator.

@@ -61,8 +61,10 @@ type MarkdownState struct {
 
 // MarkdownAnalysisResult contains markdown validation warnings
 type MarkdownAnalysisResult struct {
-	Warnings       []string
-	TableSuggested map[int]string // Line number -> suggested formatted table
+	Warnings               []string
+	CosmeticTableWarnings  []string       // Non-blocking cosmetic issues (column width padding)
+	TableSuggested         map[int]string // Line number -> suggested formatted table
+	CosmeticTableSuggested map[int]string // Line number -> suggested table for cosmetic-only issues
 }
 
 // AnalysisOptions contains options for markdown analysis.
@@ -74,6 +76,11 @@ type AnalysisOptions struct {
 	// TableWidthMode controls how table column widths are calculated.
 	// Default: mdtable.WidthModeDisplay
 	TableWidthMode mdtable.WidthMode
+
+	// IsFragment indicates this content is a fragment (Edit operation).
+	// When true, cosmetic table checks (column width padding) are skipped
+	// because the fragment may not include the full table.
+	IsFragment bool
 }
 
 // DefaultAnalysisOptions returns the default analysis options.
@@ -455,8 +462,10 @@ func AnalyzeMarkdown(
 	opts ...AnalysisOptions,
 ) MarkdownAnalysisResult {
 	result := MarkdownAnalysisResult{
-		Warnings:       []string{},
-		TableSuggested: make(map[int]string),
+		Warnings:               []string{},
+		CosmeticTableWarnings:  []string{},
+		TableSuggested:         make(map[int]string),
+		CosmeticTableSuggested: make(map[int]string),
 	}
 
 	if content == "" {
@@ -471,7 +480,7 @@ func AnalyzeMarkdown(
 
 	// Check for table issues and collect suggestions if enabled
 	if options.CheckTableFormatting {
-		checkTables(content, &result, options.TableWidthMode)
+		checkTables(content, &result, options.TableWidthMode, options.IsFragment)
 	}
 
 	scanner := bufio.NewScanner(strings.NewReader(content))
@@ -730,26 +739,56 @@ func truncate(s string) string {
 }
 
 // checkTables parses markdown tables and checks for formatting issues.
-// When issues are found, it adds warnings and suggests properly formatted tables.
-func checkTables(content string, result *MarkdownAnalysisResult, widthMode mdtable.WidthMode) {
+// Structural issues (column count mismatch, missing padding) are blocking warnings.
+// Cosmetic issues (column width padding differences) are non-blocking.
+// When isFragment is true, cosmetic checks are skipped entirely.
+func checkTables(
+	content string,
+	result *MarkdownAnalysisResult,
+	widthMode mdtable.WidthMode,
+	isFragment bool,
+) {
 	parseResult := mdtable.Parse(content)
 
-	for _, table := range parseResult.Tables {
-		// Check if the table needs reformatting by comparing original vs formatted
-		formatted := mdtable.FormatTableWithMode(&table, widthMode)
-		original := strings.Join(table.RawLines, "\n") + "\n"
+	// Build set of tables that have structural issues (by start line)
+	structuralTables := make(map[int]bool)
 
-		if formatted != original {
-			msg := fmt.Sprintf(
-				"Line %d: Markdown table has formatting issues (use consistent column widths)",
-				table.StartLine,
-			)
-			result.Warnings = append(result.Warnings, msg)
-			result.TableSuggested[table.StartLine] = formatted
+	for _, issue := range parseResult.Issues {
+		for _, table := range parseResult.Tables {
+			if issue.Line >= table.StartLine && issue.Line <= table.EndLine {
+				structuralTables[table.StartLine] = true
+			}
 		}
 	}
 
-	// Add any specific issues from parsing
+	// Compare original vs ideally-formatted for each table.
+	// Skip cosmetic checks for fragments since they may not include the full table.
+	if !isFragment {
+		for _, table := range parseResult.Tables {
+			formatted := mdtable.FormatTableWithMode(&table, widthMode)
+			original := strings.Join(table.RawLines, "\n") + "\n"
+
+			if formatted == original {
+				continue
+			}
+
+			if structuralTables[table.StartLine] {
+				// Table has structural issues - include suggestion with blocking warnings
+				result.TableSuggested[table.StartLine] = formatted
+			} else {
+				// Pure cosmetic issue (column width padding)
+				msg := fmt.Sprintf(
+					"Line %d: Table column widths inconsistent",
+					table.StartLine,
+				)
+				result.CosmeticTableWarnings = append(result.CosmeticTableWarnings, msg)
+				result.CosmeticTableSuggested[table.StartLine] = formatted
+			}
+		}
+	}
+
+	// Structural issues from parsing (column count mismatch, missing cell padding)
+	// are always blocking regardless of fragment mode.
 	for _, issue := range parseResult.Issues {
 		result.Warnings = append(result.Warnings,
 			fmt.Sprintf("Line %d: %s", issue.Line, issue.Message),
