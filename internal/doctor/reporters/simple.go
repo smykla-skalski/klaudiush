@@ -163,7 +163,7 @@ func getStatusIcon(result doctor.CheckResult) string {
 			return "ℹ️"
 		}
 	case doctor.StatusSkipped:
-		return "⊘"
+		return "⏭️"
 	default:
 		return "?"
 	}

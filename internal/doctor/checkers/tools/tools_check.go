@@ -71,10 +71,10 @@ func NewActionlintChecker() *ToolChecker {
 func NewMarkdownlintChecker() *ToolChecker {
 	return &ToolChecker{
 		toolName:        "markdownlint",
-		alternatives:    []string{"markdownlint", "markdownlint-cli"},
+		alternatives:    []string{"markdownlint-cli2", "markdownlint", "markdownlint-cli"},
 		description:     "Markdown linting",
 		severity:        doctor.SeverityWarning,
-		installHint:     "Install with: npm install -g markdownlint-cli or use mise",
+		installHint:     "Install with: npm install -g markdownlint-cli2 (or markdownlint-cli), or use mise",
 		toolCheckerImpl: exec.NewToolChecker(),
 	}
 }

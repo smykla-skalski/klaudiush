@@ -191,7 +191,12 @@ func (c *MetadataChecker) Check(_ context.Context) doctor.CheckResult {
 
 	// If storage doesn't exist, skip
 	if !globalStorage.Exists() {
-		return doctor.Skip("Backup metadata", "Backup directory not initialized yet")
+		return doctor.Skip("Backup metadata", "Backup directory not initialized yet").
+			WithDetails(
+				"Tracks snapshot history and deduplication data for config backups",
+				"Created automatically on first backup",
+				"Run: klaudiush backup create",
+			)
 	}
 
 	// Try loading the index
@@ -264,13 +269,20 @@ func (c *IntegrityChecker) Check(ctx context.Context) doctor.CheckResult {
 
 	// If storage doesn't exist, skip
 	if !globalStorage.Exists() {
-		return doctor.Skip("Backup integrity", "Backup directory not initialized yet")
+		return doctor.Skip("Backup integrity", "Backup directory not initialized yet").
+			WithDetails(
+				"Verifies backup snapshots are complete and not corrupted",
+				"Run: klaudiush backup create",
+			)
 	}
 
 	// Load index
 	index, err := globalStorage.LoadIndex()
 	if err != nil {
-		return doctor.Skip("Backup integrity", "Cannot check without valid metadata")
+		return doctor.Skip("Backup integrity", "Cannot check without valid metadata").
+			WithDetails(
+				"Fix metadata issues first, then re-run doctor",
+			)
 	}
 
 	// Check each snapshot
