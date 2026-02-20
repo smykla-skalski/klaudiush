@@ -27,6 +27,32 @@ const (
 	maxHeadingLevel = 6
 )
 
+// FragmentRange tracks which lines in a fragment are the actual edit vs context.
+// Line numbers are 1-indexed relative to the fragment content.
+type FragmentRange struct {
+	EditStart int // 1-indexed first line of edited region in fragment
+	EditEnd   int // 1-indexed last line of edited region in fragment
+}
+
+// IsContextLine returns true if lineNum (and optionally prevLineNum) fall entirely
+// outside the edit range. When prevLineNum is 0, it is ignored. This prevents
+// suppressing boundary checks where one line is context and the other is in the edit.
+func (r FragmentRange) IsContextLine(lineNum, prevLineNum int) bool {
+	if r.EditStart <= 0 || r.EditEnd <= 0 {
+		return false
+	}
+
+	if lineNum < r.EditStart && (prevLineNum <= 0 || prevLineNum < r.EditStart) {
+		return true
+	}
+
+	if lineNum > r.EditEnd && (prevLineNum <= 0 || prevLineNum > r.EditEnd) {
+		return true
+	}
+
+	return false
+}
+
 // ListItemInfo represents information about a single list item in the stack
 type ListItemInfo struct {
 	MarkerIndent  int    // indentation of the list marker (leading spaces)
@@ -57,6 +83,10 @@ type MarkdownState struct {
 	// Heading context tracking for MD001 (heading-increment) validation
 	// Tracks the last heading level seen before the fragment
 	LastHeadingLevel int // 0 = no heading seen, 1-6 = h1-h6
+
+	// EditRange tracks which lines in the fragment are the actual edit vs context.
+	// Zero value means all lines are validated (Write operation or no range info).
+	EditRange FragmentRange
 }
 
 // MarkdownAnalysisResult contains markdown validation warnings
@@ -81,6 +111,10 @@ type AnalysisOptions struct {
 	// When true, cosmetic table checks (column width padding) are skipped
 	// because the fragment may not include the full table.
 	IsFragment bool
+
+	// FragmentRange tracks which lines are the edit vs context in the fragment.
+	// When set, warnings on context-only lines are suppressed.
+	FragmentRange FragmentRange
 }
 
 // DefaultAnalysisOptions returns the default analysis options.
@@ -480,7 +514,13 @@ func AnalyzeMarkdown(
 
 	// Check for table issues and collect suggestions if enabled
 	if options.CheckTableFormatting {
-		checkTables(content, &result, options.TableWidthMode, options.IsFragment)
+		checkTables(
+			content,
+			&result,
+			options.TableWidthMode,
+			options.IsFragment,
+			options.FragmentRange,
+		)
 	}
 
 	scanner := bufio.NewScanner(strings.NewReader(content))
@@ -516,21 +556,14 @@ func AnalyzeMarkdown(
 		}
 
 		// Check for code block markers and indentation
-		if isCodeBlockMarker(line) {
-			checkCodeBlockIndentation(line, lastList, lineNum, &result.Warnings)
-			checkMultipleEmptyLinesBeforeCodeBlock(
-				prevLine,
-				prevPrevLine,
-				lineNum,
-				&result.Warnings,
-			)
-			inCodeBlock = checkCodeBlock(line, prevLine, lineNum, inCodeBlock, &result.Warnings)
-			// Reset list context after code block
-			if !inCodeBlock {
-				lastList = nil
-			}
-		} else {
-			inCodeBlock = checkCodeBlock(line, prevLine, lineNum, inCodeBlock, &result.Warnings)
+		inCodeBlock = analyzeCodeBlocks(
+			line, prevLine, prevPrevLine, lineNum, lastList,
+			inCodeBlock, &result.Warnings, options.FragmentRange,
+		)
+
+		// Reset list context after code block closes
+		if isCodeBlockMarker(line) && !inCodeBlock {
+			lastList = nil
 		}
 
 		// Skip header/list validation inside code blocks or on code block markers.
@@ -540,8 +573,7 @@ func AnalyzeMarkdown(
 
 		// Validate header/list spacing for non-code-block content after first line
 		if !skipValidation && lineNum > 1 {
-			checkListItem(line, prevLine, lineNum, &result.Warnings)
-			checkHeader(line, prevLine, lineNum, &result.Warnings)
+			analyzeSpacing(line, prevLine, lineNum, &result.Warnings, options.FragmentRange)
 		}
 
 		prevPrevLine = prevLine
@@ -549,6 +581,49 @@ func AnalyzeMarkdown(
 	}
 
 	return result
+}
+
+// analyzeCodeBlocks handles code block marker detection and indentation checks,
+// suppressing warnings on context-only lines.
+func analyzeCodeBlocks(
+	line, prevLine, prevPrevLine string,
+	lineNum int,
+	lastList *listContext,
+	inCodeBlock bool,
+	warnings *[]string,
+	editRange FragmentRange,
+) bool {
+	warningsBefore := len(*warnings)
+
+	if isCodeBlockMarker(line) {
+		checkCodeBlockIndentation(line, lastList, lineNum, warnings)
+		checkMultipleEmptyLinesBeforeCodeBlock(prevLine, prevPrevLine, lineNum, warnings)
+	}
+
+	inCodeBlock = checkCodeBlock(line, prevLine, lineNum, inCodeBlock, warnings)
+
+	if editRange.IsContextLine(lineNum, lineNum-1) {
+		*warnings = (*warnings)[:warningsBefore]
+	}
+
+	return inCodeBlock
+}
+
+// analyzeSpacing validates header and list spacing, suppressing warnings on context-only lines.
+func analyzeSpacing(
+	line, prevLine string,
+	lineNum int,
+	warnings *[]string,
+	editRange FragmentRange,
+) {
+	warningsBefore := len(*warnings)
+
+	checkListItem(line, prevLine, lineNum, warnings)
+	checkHeader(line, prevLine, lineNum, warnings)
+
+	if editRange.IsContextLine(lineNum, lineNum-1) {
+		*warnings = (*warnings)[:warningsBefore]
+	}
 }
 
 // checkCodeBlock checks for code block markers and validates spacing
@@ -613,8 +688,8 @@ func checkMultipleEmptyLinesBeforeCodeBlock(
 	warnings *[]string,
 ) {
 	// Check if we have two consecutive empty lines before the code block
-	// lineNum > 3 ensures we have at least 3 lines processed, so prevPrevLine is from actual content
-	if lineNum > 3 && isEmptyLine(prevLine) && isEmptyLine(prevPrevLine) {
+	// lineNum > 2 ensures we have at least 2 previous lines, so prevPrevLine is from actual content
+	if lineNum > 2 && isEmptyLine(prevLine) && isEmptyLine(prevPrevLine) {
 		*warnings = append(
 			*warnings,
 			fmt.Sprintf(
@@ -742,11 +817,13 @@ func truncate(s string) string {
 // Structural issues (column count mismatch, missing padding) are blocking warnings.
 // Cosmetic issues (column width padding differences) are non-blocking.
 // When isFragment is true, cosmetic checks are skipped entirely.
+// editRange filters out structural issues that occur only in context lines.
 func checkTables(
 	content string,
 	result *MarkdownAnalysisResult,
 	widthMode mdtable.WidthMode,
 	isFragment bool,
+	editRange FragmentRange,
 ) {
 	parseResult := mdtable.Parse(content)
 
@@ -788,8 +865,12 @@ func checkTables(
 	}
 
 	// Structural issues from parsing (column count mismatch, missing cell padding)
-	// are always blocking regardless of fragment mode.
+	// are always blocking regardless of fragment mode, but context-only issues are filtered.
 	for _, issue := range parseResult.Issues {
+		if editRange.IsContextLine(issue.Line, 0) {
+			continue
+		}
+
 		result.Warnings = append(result.Warnings,
 			fmt.Sprintf("Line %d: %s", issue.Line, issue.Message),
 		)

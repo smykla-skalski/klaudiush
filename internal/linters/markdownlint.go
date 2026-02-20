@@ -128,6 +128,12 @@ func (l *RealMarkdownLinter) lintInternal(
 	// Determine if this is a fragment (Edit operation)
 	isFragment := initialState != nil
 
+	// Get edit range from initial state for context filtering
+	var editRange validators.FragmentRange
+	if initialState != nil {
+		editRange = initialState.EditRange
+	}
+
 	// Run custom markdown analysis (built-in rules)
 	analysisResult := validators.AnalyzeMarkdown(
 		content,
@@ -136,6 +142,7 @@ func (l *RealMarkdownLinter) lintInternal(
 			CheckTableFormatting: l.isTableFormattingEnabled(),
 			TableWidthMode:       l.getTableWidthMode(),
 			IsFragment:           isFragment,
+			FragmentRange:        editRange,
 		},
 	)
 	allWarnings = append(allWarnings, analysisResult.Warnings...)
@@ -287,6 +294,7 @@ func (l *RealMarkdownLinter) buildConfigArgs(
 
 // ProcessMarkdownlintOutput processes the output from markdownlint execution.
 // isFragment indicates whether we're validating a fragment (Edit operation) vs full content (Write).
+// editRange filters out errors that occur only in context lines of the fragment.
 func ProcessMarkdownlintOutput(
 	result *execpkg.CommandResult,
 	tempFile string,
@@ -296,6 +304,7 @@ func ProcessMarkdownlintOutput(
 	displayPath string,
 	fragmentContent string,
 	isFragment bool,
+	editRange validators.FragmentRange,
 ) *LintResult {
 	if result.ExitCode == 0 {
 		return &LintResult{
@@ -323,7 +332,7 @@ func ProcessMarkdownlintOutput(
 
 	// For fragments, enhance with actual problematic lines
 	if isFragment && fragmentContent != "" {
-		output = enhanceFragmentErrors(output, fragmentContent, preambleLines)
+		output = enhanceFragmentErrors(output, fragmentContent, preambleLines, editRange)
 	} else if preambleLines > 0 {
 		output = adjustLineNumbers(output, preambleLines, fragmentStartLine)
 	}
@@ -429,6 +438,12 @@ func (l *RealMarkdownLinter) runMarkdownlint(
 		fragmentStartLine = initialState.StartLine
 	}
 
+	// Get edit range from initial state for context filtering
+	var editRangeForOutput validators.FragmentRange
+	if initialState != nil {
+		editRangeForOutput = initialState.EditRange
+	}
+
 	return ProcessMarkdownlintOutput(
 		&result,
 		tempFile,
@@ -438,6 +453,7 @@ func (l *RealMarkdownLinter) runMarkdownlint(
 		displayPath,
 		content,
 		isFragment,
+		editRangeForOutput,
 	)
 }
 
@@ -495,7 +511,12 @@ func filterStatusMessages(output string) string {
 
 // enhanceFragmentErrors enhances markdownlint errors for fragments by including
 // the actual problematic lines from the fragment content.
-func enhanceFragmentErrors(output, fragmentContent string, preambleLines int) string {
+// editRange filters out errors that occur only in context lines.
+func enhanceFragmentErrors(
+	output, fragmentContent string,
+	preambleLines int,
+	editRange validators.FragmentRange,
+) string {
 	lines := strings.Split(output, "\n")
 	result := make([]string, 0, len(lines))
 	fragmentLines := strings.Split(fragmentContent, "\n")
@@ -523,6 +544,11 @@ func enhanceFragmentErrors(output, fragmentContent string, preambleLines int) st
 
 		// Convert to fragment line number (1-indexed)
 		fragmentLineNum := lineNum - preambleLines
+
+		// Skip errors on context-only lines
+		if editRange.IsContextLine(fragmentLineNum, 0) {
+			continue
+		}
 
 		// Remove line number from error message
 		errorMsg := lineNumberRegex.ReplaceAllString(line, "<fragment>")

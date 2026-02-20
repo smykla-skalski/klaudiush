@@ -966,3 +966,99 @@ Content here.
 		})
 	})
 })
+
+var _ = Describe("FragmentRange", func() {
+	Describe("IsContextLine", func() {
+		editRange := validators.FragmentRange{EditStart: 3, EditEnd: 5}
+
+		DescribeTable("boundary checks",
+			func(lineNum, prevLineNum int, expected bool) {
+				Expect(editRange.IsContextLine(lineNum, prevLineNum)).To(Equal(expected))
+			},
+			Entry("both before edit", 2, 1, true),
+			Entry("lineNum at edit start", 3, 2, false),
+			Entry("prevLineNum at edit start", 2, 3, false),
+			Entry("lineNum at edit end", 5, 4, false),
+			Entry("prevLineNum at edit end", 6, 5, false),
+			Entry("both after edit", 7, 6, true),
+			Entry("after edit, prevLineNum ignored", 6, 0, true),
+			Entry("at edit end, prevLineNum ignored", 5, 0, false),
+			Entry("inside edit", 4, 3, false),
+			Entry("before edit, prevLineNum ignored", 1, 0, true),
+		)
+
+		It("returns false when EditStart is 0 (no range set)", func() {
+			zeroRange := validators.FragmentRange{}
+			Expect(zeroRange.IsContextLine(1, 0)).To(BeFalse())
+			Expect(zeroRange.IsContextLine(5, 3)).To(BeFalse())
+		})
+	})
+})
+
+var _ = Describe("AnalyzeMarkdown with FragmentRange", func() {
+	Context("when context lines have pre-existing violations", func() {
+		It("suppresses list spacing warnings on context-only lines", func() {
+			// Fragment: context before, context list, edit list, context after
+			// Line 1: "Some text" (context)
+			// Line 2: "- Item 1" (context)
+			// Line 3: "- Item 2" (edit)
+			// Line 4: "- Item 3" (context)
+			// The "Some text" -> "- Item 1" transition at line 2 is MD032
+			// but both lines are context, so it should be suppressed
+			content := "Some text\n- Item 1\n- Item 2\n- Item 3"
+			result := validators.AnalyzeMarkdown(content, nil, validators.AnalysisOptions{
+				CheckTableFormatting: false,
+				FragmentRange:        validators.FragmentRange{EditStart: 3, EditEnd: 3},
+			})
+			Expect(result.Warnings).To(BeEmpty(),
+				"pre-existing MD032 on context line should be suppressed")
+		})
+
+		It("catches list spacing warnings on edit lines", func() {
+			// Same content but now the bold label is IN the edit range
+			content := "**Bold label**:\n- Item 1\n- Item 2"
+			result := validators.AnalyzeMarkdown(content, nil, validators.AnalysisOptions{
+				CheckTableFormatting: false,
+				FragmentRange:        validators.FragmentRange{EditStart: 1, EditEnd: 3},
+			})
+			Expect(result.Warnings).NotTo(BeEmpty(),
+				"MD032 on edit line should still be caught")
+		})
+
+		It("suppresses header spacing warnings on context-only lines", func() {
+			// Context: header without blank line after (pre-existing violation)
+			// Edit: just the content line
+			content := "## Heading\nDirect content"
+			result := validators.AnalyzeMarkdown(content, nil, validators.AnalysisOptions{
+				CheckTableFormatting: false,
+				FragmentRange:        validators.FragmentRange{EditStart: 2, EditEnd: 2},
+			})
+			// The header spacing check fires at lineNum=2 with prevLine="## Heading"
+			// Both lineNum=2 and prevLineNum=1 need to be checked
+			// lineNum=2 is in edit range, so this is NOT suppressed - it's a boundary violation
+			Expect(result.Warnings).NotTo(BeEmpty())
+		})
+
+		It("suppresses code block spacing warnings on context-only lines", func() {
+			content := "Some text\n```bash\necho hello\n```"
+			result := validators.AnalyzeMarkdown(content, nil, validators.AnalysisOptions{
+				CheckTableFormatting: false,
+				FragmentRange:        validators.FragmentRange{EditStart: 3, EditEnd: 3},
+			})
+			// "Some text" followed by code block without blank line is context-only
+			Expect(result.Warnings).To(BeEmpty(),
+				"code block spacing on context line should be suppressed")
+		})
+	})
+
+	Context("when no FragmentRange is set (Write operation)", func() {
+		It("validates all lines normally", func() {
+			content := "**Bold label**:\n- Item 1\n- Item 2"
+			result := validators.AnalyzeMarkdown(content, nil, validators.AnalysisOptions{
+				CheckTableFormatting: false,
+			})
+			Expect(result.Warnings).NotTo(BeEmpty(),
+				"Write operations should catch all violations")
+		})
+	})
+})

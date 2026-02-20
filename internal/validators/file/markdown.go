@@ -223,22 +223,25 @@ func (v *MarkdownValidator) getContentWithState(
 		// Extract fragment with context lines around the edit
 		contextLines := v.getContextLines()
 
-		fragment := ExtractEditFragment(
+		result := ExtractEditFragmentWithRange(
 			string(originalContent),
 			oldStr,
 			newStr,
 			contextLines,
 			log,
 		)
-		if fragment == "" {
+		if result.Content == "" {
 			log.Debug("could not extract edit fragment, skipping validation")
 			return "", nil, errNoContent
 		}
+
+		fragment := result.Content
 
 		// Detect markdown state at fragment start
 		fragmentStartLine := getFragmentStartLine(string(originalContent), oldStr, contextLines)
 		state := validators.DetectMarkdownState(string(originalContent), fragmentStartLine)
 		state.StartLine = fragmentStartLine
+		state.EditRange = result.EditRange
 
 		// Determine if the NEW content (new_string) reaches end of file.
 		// We check if old_string is at or near EOF in the original content.

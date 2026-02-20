@@ -262,6 +262,7 @@ code
 				"<file>",
 				"",
 				false, // isFragment
+				validators.FragmentRange{},
 			)
 			Expect(lintResult.Success).To(BeTrue())
 			Expect(lintResult.RawOut).To(BeEmpty())
@@ -282,6 +283,7 @@ code
 				"<file>",
 				"",
 				false, // isFragment
+				validators.FragmentRange{},
 			)
 			Expect(lintResult.Success).To(BeFalse())
 			Expect(lintResult.RawOut).To(ContainSubstring("<file>:10"))
@@ -303,6 +305,7 @@ code
 				"README.md",
 				"",
 				false, // isFragment
+				validators.FragmentRange{},
 			)
 			Expect(lintResult.Success).To(BeFalse())
 			Expect(lintResult.RawOut).To(ContainSubstring("README.md:10"))
@@ -324,6 +327,7 @@ code
 				"<file>",
 				"",
 				false, // isFragment - testing preamble adjustment without fragment enhancement
+				validators.FragmentRange{},
 			)
 			Expect(lintResult.Success).To(BeFalse())
 			Expect(lintResult.RawOut).To(ContainSubstring("<file>:11"))
@@ -344,6 +348,7 @@ code
 				"<file>",
 				"",
 				false, // isFragment - testing line number adjustment only
+				validators.FragmentRange{},
 			)
 			Expect(lintResult.Success).To(BeFalse())
 			Expect(lintResult.RawOut).To(ContainSubstring("<file>:14"))
@@ -364,6 +369,7 @@ code
 				"<file>",
 				"",
 				false, // isFragment - testing preamble error filtering
+				validators.FragmentRange{},
 			)
 			Expect(lintResult.Success).To(BeFalse())
 			Expect(lintResult.RawOut).NotTo(ContainSubstring("<file>:3"))
@@ -385,6 +391,7 @@ code
 				"<file>",
 				"",
 				false, // isFragment
+				validators.FragmentRange{},
 			)
 			Expect(lintResult.Success).To(BeTrue())
 		})
@@ -404,6 +411,7 @@ code
 				"<file>",
 				"",
 				false, // isFragment
+				validators.FragmentRange{},
 			)
 			Expect(lintResult.Success).To(BeFalse())
 			Expect(lintResult.RawOut).To(ContainSubstring("MD022"))
@@ -429,6 +437,7 @@ Summary: 1 error(s)
 				"<file>",
 				"",
 				false, // isFragment
+				validators.FragmentRange{},
 			)
 			Expect(lintResult.Success).To(BeFalse())
 			Expect(lintResult.RawOut).To(ContainSubstring("<file>:10 MD022"))
@@ -453,6 +462,7 @@ Summary: 1 error(s)
 				"<file>",
 				"",
 				false, // isFragment
+				validators.FragmentRange{},
 			)
 			Expect(lintResult.Success).To(BeFalse())
 			Expect(lintResult.RawOut).To(ContainSubstring("Finding:"))
@@ -473,6 +483,7 @@ Summary: 1 error(s)
 				"README.md",
 				"",
 				false, // isFragment
+				validators.FragmentRange{},
 			)
 			Expect(lintResult.Success).To(BeFalse())
 			Expect(lintResult.RawOut).To(ContainSubstring("README.md:10"))
@@ -495,6 +506,7 @@ Summary: 1 error(s)
 				".claude/session.md",
 				"",
 				false, // isFragment
+				validators.FragmentRange{},
 			)
 			Expect(lintResult.Success).To(BeFalse())
 			Expect(lintResult.RawOut).To(ContainSubstring(".claude/session.md:5"))
@@ -524,6 +536,7 @@ Summary: 1 error(s)
 				"progress.md",
 				fragmentContent,
 				true, // isFragment - this is a fragment with content
+				validators.FragmentRange{},
 			)
 			Expect(lintResult.Success).To(BeFalse())
 			Expect(lintResult.RawOut).To(ContainSubstring("<fragment>"))
@@ -532,6 +545,57 @@ Summary: 1 error(s)
 			Expect(lintResult.RawOut).To(ContainSubstring("**Tasks**:"))
 			Expect(lintResult.RawOut).To(ContainSubstring("- [x] Add ruleAdapter"))
 			Expect(lintResult.RawOut).NotTo(ContainSubstring("progress.md:"))
+		})
+
+		It("should filter context-only errors when editRange is set", func() {
+			// 5-line fragment: 2 context before, 1 edit, 2 context after
+			fragmentContent := "context line 1\ncontext line 2\nedit line\ncontext line 4\ncontext line 5"
+
+			// Error at preamble-adjusted line 3 (= fragment line 1) is context
+			// Error at preamble-adjusted line 5 (= fragment line 3) is the edit line
+			result := &execpkg.CommandResult{
+				ExitCode: 1,
+				Stdout:   "<file>:3 MD032/context-error\n<file>:5 MD032/edit-error",
+				Stderr:   "",
+			}
+			lintResult := linters.ProcessMarkdownlintOutput(
+				result,
+				"/tmp/test.md",
+				2, // preamble lines
+				0,
+				false,
+				"test.md",
+				fragmentContent,
+				true, // isFragment
+				validators.FragmentRange{EditStart: 3, EditEnd: 3},
+			)
+			// Fragment line 1 is context (before edit start 3) - should be filtered
+			Expect(lintResult.RawOut).NotTo(ContainSubstring("context-error"))
+			// Fragment line 3 is edit - should be kept
+			Expect(lintResult.RawOut).To(ContainSubstring("edit-error"))
+		})
+
+		It("should keep all errors when editRange is zero-valued", func() {
+			fragmentContent := "line 1\nline 2\nline 3"
+
+			result := &execpkg.CommandResult{
+				ExitCode: 1,
+				Stdout:   "<file>:3 MD032/some-error\n<file>:5 MD032/other-error",
+				Stderr:   "",
+			}
+			lintResult := linters.ProcessMarkdownlintOutput(
+				result,
+				"/tmp/test.md",
+				2, // preamble lines
+				0,
+				false,
+				"test.md",
+				fragmentContent,
+				true,                       // isFragment
+				validators.FragmentRange{}, // zero value - no filtering
+			)
+			Expect(lintResult.RawOut).To(ContainSubstring("some-error"))
+			Expect(lintResult.RawOut).To(ContainSubstring("other-error"))
 		})
 	})
 

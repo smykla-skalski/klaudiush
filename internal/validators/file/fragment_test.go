@@ -1,6 +1,8 @@
 package file_test
 
 import (
+	"strings"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -491,6 +493,124 @@ VAR3="value3"
 VAR4="value4"`
 
 			Expect(result).To(Equal(expected))
+		})
+	})
+})
+
+var _ = Describe("ExtractEditFragmentWithRange", func() {
+	var log logger.Logger
+
+	BeforeEach(func() {
+		log = logger.NewNoOpLogger()
+	})
+
+	Context("edit range calculation", func() {
+		It("computes correct range for single-line edit with context", func() {
+			content := "line 1\nline 2\nline 3\nline 4 to change\nline 5\nline 6\nline 7"
+			result := file.ExtractEditFragmentWithRange(
+				content, "line 4 to change", "line 4 changed", 2, log,
+			)
+			// Fragment: line 2, line 3, line 4 changed, line 5, line 6
+			// Context before: 2 lines, edit: 1 line
+			Expect(result.EditRange.EditStart).To(Equal(3))
+			Expect(result.EditRange.EditEnd).To(Equal(3))
+			Expect(result.Content).To(ContainSubstring("line 4 changed"))
+		})
+
+		It("computes correct range for edit at file start", func() {
+			content := "line 1 to change\nline 2\nline 3\nline 4\nline 5"
+			result := file.ExtractEditFragmentWithRange(
+				content, "line 1 to change", "line 1 changed", 2, log,
+			)
+			// No context before, edit: 1 line
+			Expect(result.EditRange.EditStart).To(Equal(1))
+			Expect(result.EditRange.EditEnd).To(Equal(1))
+		})
+
+		It("computes correct range for multi-line replacement", func() {
+			content := "line 1\nline 2\nold A\nold B\nold C\nline 6\nline 7"
+			result := file.ExtractEditFragmentWithRange(
+				content, "old A\nold B\nold C", "new A\nnew B", 2, log,
+			)
+			// Context before: line 1, line 2 (2 lines)
+			// Edit: "new A\nnew B" = 2 lines
+			Expect(result.EditRange.EditStart).To(Equal(3))
+			Expect(result.EditRange.EditEnd).To(Equal(4))
+		})
+
+		It("handles line count expansion correctly", func() {
+			content := "line 1\nline 2\nold line\n4\nline"
+			result := file.ExtractEditFragmentWithRange(
+				content, "old line", "new A\nnew B\nnew C\nnew D\nnew E", 2, log,
+			)
+			// newStr has 5 lines
+			Expect(result.EditRange.EditStart).To(Equal(3))
+			Expect(result.EditRange.EditEnd).To(Equal(7))
+		})
+
+		It("handles empty newStr (deletion within line)", func() {
+			content := "line 1\nsome words to remove\nline 3"
+			result := file.ExtractEditFragmentWithRange(
+				content, "words to remove", "", 1, log,
+			)
+			// Empty string counts as 1 line (no newlines)
+			Expect(result.EditRange.EditStart).To(Equal(2))
+			Expect(result.EditRange.EditEnd).To(Equal(2))
+		})
+	})
+
+	Context("cmp.Or fix - contextLines=0 on first line", func() {
+		It("returns only the edit line with zero context", func() {
+			content := "line 1\nline 2\nline 3\nline 4\nline 5"
+			result := file.ExtractEditFragmentWithRange(
+				content, "line 1", "changed 1", 0, log,
+			)
+			Expect(result.Content).To(Equal("changed 1"))
+			Expect(result.EditRange.EditStart).To(Equal(1))
+			Expect(result.EditRange.EditEnd).To(Equal(1))
+		})
+
+		It("does not include entire file for line-0 edit with contextLines=0", func() {
+			// This was the cmp.Or bug: cmp.Or(min(0+0, 4), 4) = 4 (entire file)
+			lines := make([]string, 100)
+			for i := range lines {
+				lines[i] = "line"
+			}
+
+			lines[0] = "target"
+			content := strings.Join(lines, "\n")
+
+			result := file.ExtractEditFragmentWithRange(
+				content, "target", "changed", 0, log,
+			)
+			// Should be just 1 line, not 100
+			lineCount := strings.Count(result.Content, "\n") + 1
+			Expect(lineCount).To(Equal(1))
+		})
+	})
+
+	Context("offset-based replacement", func() {
+		It("replaces at exact position when oldStr appears in context", func() {
+			// "fix" appears in context line AND in edit line
+			content := "The word fix appears here.\n\nSome text with fix in it.\n\nMore content."
+			result := file.ExtractEditFragmentWithRange(
+				content, "fix in it", "repair in it", 2, log,
+			)
+			// Context should show "fix" unchanged, only "fix in it" replaced
+			Expect(result.Content).To(ContainSubstring("fix appears here"))
+			Expect(result.Content).To(ContainSubstring("repair in it"))
+			Expect(result.Content).NotTo(ContainSubstring("fix in it"))
+		})
+	})
+
+	Context("returns empty result when not found", func() {
+		It("returns zero FragmentResult", func() {
+			result := file.ExtractEditFragmentWithRange(
+				"content", "not found", "replacement", 2, log,
+			)
+			Expect(result.Content).To(BeEmpty())
+			Expect(result.EditRange.EditStart).To(Equal(0))
+			Expect(result.EditRange.EditEnd).To(Equal(0))
 		})
 	})
 })
