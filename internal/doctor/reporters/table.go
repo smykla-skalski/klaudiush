@@ -83,7 +83,7 @@ func RenderTable(results []doctor.CheckResult, verbose bool, theme color.Theme) 
 
 	var buf bytes.Buffer
 
-	t := tablewriter.NewTable(&buf,
+	opts := []tablewriter.Option{
 		tablewriter.WithRenderer(renderer.NewBlueprint(tw.Rendition{
 			Symbols: tw.NewSymbols(tw.StyleRounded),
 			Settings: tw.Settings{
@@ -98,7 +98,13 @@ func RenderTable(results []doctor.CheckResult, verbose bool, theme color.Theme) 
 			Row().Merging().WithMode(tw.MergeHorizontal).Build().
 			Formatting().WithAutoWrap(tw.WrapNormal).Build().
 			Build().Build()),
-	)
+	}
+
+	if colWidths != nil {
+		opts = append(opts, tablewriter.WithColumnWidths(toCellWidths(colWidths)))
+	}
+
+	t := tablewriter.NewTable(&buf, opts...)
 
 	t.Header(headers)
 
@@ -169,6 +175,20 @@ func buildResultRow(
 	}
 
 	return row
+}
+
+// toCellWidths converts content widths to cell widths (content + left/right
+// padding) for WithColumnWidths. Tablewriter subtracts padding from these
+// values to get the effective content wrapping width.
+func toCellWidths(contentWidths map[int]int) tw.Mapper[int, int] {
+	const padW = 2 // " " left + " " right
+
+	m := make(tw.Mapper[int, int], len(contentWidths))
+	for col, w := range contentWidths {
+		m[col] = w + padW
+	}
+
+	return m
 }
 
 // padToWidth right-pads s with spaces so its display width reaches w.
@@ -256,14 +276,17 @@ type categoryGroup struct {
 }
 
 // calcColumnWidths computes per-column content widths that fill the terminal.
-// Returns nil when not a terminal (let tablewriter auto-size).
+// Returns nil when not a terminal or terminal is too narrow for a table.
 // Widths are content-only (padding and borders accounted for separately).
 func calcColumnWidths(
 	results []doctor.CheckResult,
 	verbose bool,
 ) map[int]int {
 	w := termWidth()
-	if w <= 0 {
+
+	const minTableW = 40
+
+	if w < minTableW {
 		return nil
 	}
 
@@ -288,17 +311,28 @@ func calcColumnWidths(
 	const colOverhead = 3
 
 	overhead := numCols*colOverhead + 1
-	remaining := w - overhead - iconW - checkW
+	available := w - overhead - iconW
 
-	const minColW = 10
+	// Ensure the message column always gets at least minMsgW chars.
+	// Cap check name width if needed so it doesn't dominate narrow terminals.
+	const minMsgW = 20
 
-	if remaining < minColW {
+	const minCheckW = 5
+
+	if available < minMsgW+minCheckW {
 		return nil
 	}
+
+	if checkW > available-minMsgW {
+		checkW = available - minMsgW
+	}
+
+	remaining := available - checkW
 
 	widths := map[int]int{
 		0: iconW,
 		1: checkW,
+		2: remaining,
 	}
 
 	if verbose {
@@ -306,8 +340,6 @@ func calcColumnWidths(
 		msgW := remaining * 60 / 100 //nolint:mnd // layout ratio
 		widths[2] = msgW
 		widths[3] = remaining - msgW
-	} else {
-		widths[2] = remaining
 	}
 
 	return widths
