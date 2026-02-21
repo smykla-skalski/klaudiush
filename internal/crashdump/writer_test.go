@@ -389,6 +389,8 @@ func BenchmarkFilesystemWriter_Write(b *testing.B) {
 		},
 	}
 
+	b.ReportAllocs()
+
 	for b.Loop() {
 		info.ID = generateCrashID(time.Now(), info.PanicValue)
 

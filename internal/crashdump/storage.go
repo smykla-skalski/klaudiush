@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
+
+	"github.com/smykla-skalski/klaudiush/internal/xdg"
 )
 
 var (
@@ -54,7 +56,7 @@ func NewFilesystemStorage(dumpDir string) (*FilesystemStorage, error) {
 	}
 
 	// Expand home directory
-	expandedDir, err := expandHomeDir(dumpDir)
+	expandedDir, err := xdg.ExpandPath(dumpDir)
 	if err != nil {
 		return nil, err
 	}

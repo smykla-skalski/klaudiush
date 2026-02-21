@@ -244,7 +244,7 @@ Logs to `~/.claude/hooks/dispatcher.log`: `--debug` (default), `--trace` (verbos
 
 ## Testing
 
-Framework: Ginkgo/Gomega. 336 tests. Run: `mise exec -- go test -v ./pkg/parser -run TestBashParser`
+Framework: Ginkgo/Gomega. Run: `mise exec -- go test -v ./pkg/parser -run TestBashParser`
 
 **Mocks**: Generated via `mockgen` (uber-go/mock). Add `//go:generate mockgen -source=<file>.go -destination=<file>_mock.go -package=<pkg>` directive, then run `go generate ./...`. NEVER manually edit generated mock files.
 

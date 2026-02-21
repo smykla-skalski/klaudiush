@@ -267,3 +267,40 @@ tasks:
       - task: fmt
       - task: lint
       - task: test
+
+  bench:
+    desc: Run all benchmarks with memory reporting
+    cmds:
+      - mise exec -- go test -bench=. -benchmem -run='^$' -count=1 ./...
+
+  bench:short:
+    desc: Run benchmarks for hot paths only
+    cmds:
+      - mise exec -- go test -bench=. -benchmem -run='^$' -count=1 ./pkg/parser ./internal/parser ./internal/validator ./internal/dispatcher ./internal/validators/secrets
+
+  bench:save:
+    desc: Save benchmark results for comparison
+    vars:
+      BENCH_FILE: '{{.BENCH_FILE | default "bench-current.txt"}}'
+    cmds:
+      - mise exec -- go test -bench=. -benchmem -run='^$' -count=6 ./... | tee {{.BENCH_FILE}}
+
+  bench:compare:
+    desc: Compare saved benchmark results (requires benchstat)
+    vars:
+      OLD: '{{.OLD | default "bench-old.txt"}}'
+      NEW: '{{.NEW | default "bench-current.txt"}}'
+    cmds:
+      - mise exec -- benchstat {{.OLD}} {{.NEW}}
+
+  bench:report:
+    desc: Run all benchmarks and save report to /tmp
+    vars:
+      REPORT_DIR: /tmp/klaudiush-bench
+      TIMESTAMP:
+        sh: date +%Y%m%dT%H%M%S
+    cmds:
+      - mkdir -p {{.REPORT_DIR}}
+      - mise exec -- go test -bench=. -benchmem -run='^$' -count=6 -timeout=10m ./... 2>&1 | tee {{.REPORT_DIR}}/bench-{{.TIMESTAMP}}.txt
+      - echo ""
+      - echo "Report saved to {{.REPORT_DIR}}/bench-{{.TIMESTAMP}}.txt"

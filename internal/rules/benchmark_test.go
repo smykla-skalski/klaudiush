@@ -18,6 +18,7 @@ func BenchmarkPatternMatching(b *testing.B) {
 			b.Fatalf("failed to compile glob: %v", err)
 		}
 
+		b.ReportAllocs()
 		b.ResetTimer()
 
 		for range b.N {
@@ -31,6 +32,7 @@ func BenchmarkPatternMatching(b *testing.B) {
 			b.Fatalf("failed to compile glob: %v", err)
 		}
 
+		b.ReportAllocs()
 		b.ResetTimer()
 
 		for range b.N {
@@ -44,6 +46,7 @@ func BenchmarkPatternMatching(b *testing.B) {
 			b.Fatalf("failed to compile regex: %v", err)
 		}
 
+		b.ReportAllocs()
 		b.ResetTimer()
 
 		for range b.N {
@@ -57,6 +60,7 @@ func BenchmarkPatternMatching(b *testing.B) {
 			b.Fatalf("failed to compile regex: %v", err)
 		}
 
+		b.ReportAllocs()
 		b.ResetTimer()
 
 		for range b.N {
@@ -70,6 +74,7 @@ func BenchmarkPatternMatching(b *testing.B) {
 		// Warm up the cache.
 		_, _ = cache.Get("*/kong/*")
 
+		b.ReportAllocs()
 		b.ResetTimer()
 
 		for range b.N {
@@ -78,19 +83,29 @@ func BenchmarkPatternMatching(b *testing.B) {
 	})
 
 	b.Run("PatternCache/Miss", func(b *testing.B) {
+		cache := rules.NewPatternCache()
+
+		b.ReportAllocs()
+		b.ResetTimer()
+
 		for i := range b.N {
-			cache := rules.NewPatternCache()
 			_, _ = cache.Get(fmt.Sprintf("*/pattern%d/*", i))
 		}
 	})
 
 	b.Run("DetectPatternType/Glob", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+
 		for range b.N {
 			rules.DetectPatternType("*/kong/*")
 		}
 	})
 
 	b.Run("DetectPatternType/Regex", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+
 		for range b.N {
 			rules.DetectPatternType(`^.*/kong/.*$`)
 		}
@@ -118,6 +133,7 @@ func BenchmarkMatcherEvaluation(b *testing.B) {
 	b.Run("ValidatorTypeMatcher", func(b *testing.B) {
 		matcher := rules.NewValidatorTypeMatcher(rules.ValidatorGitPush)
 
+		b.ReportAllocs()
 		b.ResetTimer()
 
 		for range b.N {
@@ -128,6 +144,7 @@ func BenchmarkMatcherEvaluation(b *testing.B) {
 	b.Run("ValidatorTypeMatcher/Wildcard", func(b *testing.B) {
 		matcher := rules.NewValidatorTypeMatcher(rules.ValidatorGitAll)
 
+		b.ReportAllocs()
 		b.ResetTimer()
 
 		for range b.N {
@@ -138,6 +155,7 @@ func BenchmarkMatcherEvaluation(b *testing.B) {
 	b.Run("RemoteMatcher", func(b *testing.B) {
 		matcher := rules.NewRemoteMatcher("origin")
 
+		b.ReportAllocs()
 		b.ResetTimer()
 
 		for range b.N {
@@ -151,6 +169,7 @@ func BenchmarkMatcherEvaluation(b *testing.B) {
 			b.Fatalf("failed to create matcher: %v", err)
 		}
 
+		b.ReportAllocs()
 		b.ResetTimer()
 
 		for range b.N {
@@ -164,6 +183,7 @@ func BenchmarkMatcherEvaluation(b *testing.B) {
 			b.Fatalf("failed to create matcher: %v", err)
 		}
 
+		b.ReportAllocs()
 		b.ResetTimer()
 
 		for range b.N {
@@ -177,6 +197,7 @@ func BenchmarkMatcherEvaluation(b *testing.B) {
 			b.Fatalf("failed to create matcher: %v", err)
 		}
 
+		b.ReportAllocs()
 		b.ResetTimer()
 
 		for range b.N {
@@ -190,6 +211,7 @@ func BenchmarkMatcherEvaluation(b *testing.B) {
 			b.Fatalf("failed to create matcher: %v", err)
 		}
 
+		b.ReportAllocs()
 		b.ResetTimer()
 
 		for range b.N {
@@ -203,6 +225,7 @@ func BenchmarkMatcherEvaluation(b *testing.B) {
 			b.Fatalf("failed to create matcher: %v", err)
 		}
 
+		b.ReportAllocs()
 		b.ResetTimer()
 
 		for range b.N {
@@ -216,6 +239,7 @@ func BenchmarkMatcherEvaluation(b *testing.B) {
 			b.Fatalf("failed to create matcher: %v", err)
 		}
 
+		b.ReportAllocs()
 		b.ResetTimer()
 
 		for range b.N {
@@ -230,6 +254,7 @@ func BenchmarkMatcherEvaluation(b *testing.B) {
 
 		composite := rules.NewAndMatcher(m1, m2, m3)
 
+		b.ReportAllocs()
 		b.ResetTimer()
 
 		for range b.N {
@@ -244,6 +269,7 @@ func BenchmarkMatcherEvaluation(b *testing.B) {
 
 		composite := rules.NewOrMatcher(m1, m2, m3)
 
+		b.ReportAllocs()
 		b.ResetTimer()
 
 		for range b.N {
@@ -302,6 +328,7 @@ func BenchmarkRuleEvaluation(b *testing.B) {
 		engine, _ := rules.NewRuleEngine(createRules(1))
 		ctx := context.Background()
 
+		b.ReportAllocs()
 		b.ResetTimer()
 
 		for range b.N {
@@ -313,6 +340,7 @@ func BenchmarkRuleEvaluation(b *testing.B) {
 		engine, _ := rules.NewRuleEngine(createRules(10))
 		ctx := context.Background()
 
+		b.ReportAllocs()
 		b.ResetTimer()
 
 		for range b.N {
@@ -324,6 +352,7 @@ func BenchmarkRuleEvaluation(b *testing.B) {
 		engine, _ := rules.NewRuleEngine(createRules(50))
 		ctx := context.Background()
 
+		b.ReportAllocs()
 		b.ResetTimer()
 
 		for range b.N {
@@ -335,6 +364,7 @@ func BenchmarkRuleEvaluation(b *testing.B) {
 		engine, _ := rules.NewRuleEngine(createRules(100))
 		ctx := context.Background()
 
+		b.ReportAllocs()
 		b.ResetTimer()
 
 		for range b.N {
@@ -352,6 +382,7 @@ func BenchmarkRuleEvaluation(b *testing.B) {
 		engine, _ := rules.NewRuleEngine(testRules)
 		ctx := context.Background()
 
+		b.ReportAllocs()
 		b.ResetTimer()
 
 		for range b.N {
@@ -368,6 +399,7 @@ func BenchmarkRuleEvaluation(b *testing.B) {
 		engine, _ := rules.NewRuleEngine(testRules)
 		ctx := context.Background()
 
+		b.ReportAllocs()
 		b.ResetTimer()
 
 		for range b.N {
@@ -384,6 +416,7 @@ func BenchmarkRuleEvaluation(b *testing.B) {
 		engine, _ := rules.NewRuleEngine(testRules)
 		ctx := context.Background()
 
+		b.ReportAllocs()
 		b.ResetTimer()
 
 		for range b.N {
@@ -395,6 +428,7 @@ func BenchmarkRuleEvaluation(b *testing.B) {
 		engine, _ := rules.NewRuleEngine(createRules(50))
 		ctx := context.Background()
 
+		b.ReportAllocs()
 		b.ResetTimer()
 
 		for range b.N {
@@ -411,6 +445,7 @@ func BenchmarkBuildMatcher(b *testing.B) {
 			Remote:        "origin",
 		}
 
+		b.ReportAllocs()
 		b.ResetTimer()
 
 		for range b.N {
@@ -427,6 +462,7 @@ func BenchmarkBuildMatcher(b *testing.B) {
 			CommandPattern: "git push*",
 		}
 
+		b.ReportAllocs()
 		b.ResetTimer()
 
 		for range b.N {
@@ -449,6 +485,7 @@ func BenchmarkBuildMatcher(b *testing.B) {
 		// Warm up cache.
 		_, _ = rules.BuildMatcher(match)
 
+		b.ReportAllocs()
 		b.ResetTimer()
 
 		for range b.N {
@@ -475,6 +512,9 @@ func BenchmarkRegistry(b *testing.B) {
 	}
 
 	b.Run("Add", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+
 		for range b.N {
 			registry := rules.NewRegistry()
 			_ = registry.Add(createRule(0))
@@ -487,6 +527,7 @@ func BenchmarkRegistry(b *testing.B) {
 			testRules[i] = createRule(i)
 		}
 
+		b.ReportAllocs()
 		b.ResetTimer()
 
 		for range b.N {
@@ -501,6 +542,7 @@ func BenchmarkRegistry(b *testing.B) {
 			_ = registry.Add(createRule(i))
 		}
 
+		b.ReportAllocs()
 		b.ResetTimer()
 
 		for range b.N {
@@ -514,6 +556,7 @@ func BenchmarkRegistry(b *testing.B) {
 			_ = registry.Add(createRule(i))
 		}
 
+		b.ReportAllocs()
 		b.ResetTimer()
 
 		for range b.N {
