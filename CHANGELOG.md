@@ -5,6 +5,21 @@ All notable changes to klaudiush will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.23.0](https://github.com/smykla-skalski/klaudiush/compare/v1.22.1...v1.23.0) (2026-02-21)
+
+### Features
+
+* **cli:** add install subcommand ([f79890b](https://github.com/smykla-skalski/klaudiush/commit/f79890b04fdd6f7834816b4e421abea3679fb193))
+* **overrides:** add persistent overrides ([23ea06f](https://github.com/smykla-skalski/klaudiush/commit/23ea06f3b3f1347673f9799a3213bf21777107a1))
+* **schema:** add directive to generated configs ([65a5628](https://github.com/smykla-skalski/klaudiush/commit/65a562800d6c9e2d6dce5d77ce50c3b1c9cd3da2))
+* **schema:** version config schema ([78fdeab](https://github.com/smykla-skalski/klaudiush/commit/78fdeabae524971a2c397f7c1ebd4f1d47f430a5))
+* **update:** homebrew detection + --all flag ([40b183a](https://github.com/smykla-skalski/klaudiush/commit/40b183aca305c19a5d974a7262edfbbf130302be))
+
+### Code Refactoring
+
+* **cli:** simplify overrides CLI ([48f26ab](https://github.com/smykla-skalski/klaudiush/commit/48f26ab2918cc19a310f6be3f38ea03ba0504b77))
+* **init:** merge install into init command ([9502e6d](https://github.com/smykla-skalski/klaudiush/commit/9502e6d29e89405c88c2b19a4c0cc4d894ceee2e))
+
 ## [1.22.1](https://github.com/smykla-skalski/klaudiush/compare/v1.22.0...v1.22.1) (2026-02-21)
 
 ### Bug Fixes
