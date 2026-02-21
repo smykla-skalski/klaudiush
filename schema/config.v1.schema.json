@@ -1315,45 +1315,6 @@
       "additionalProperties": false,
       "type": "object"
     },
-    "SessionAuditConfig": {
-      "properties": {
-        "enabled": {
-          "type": "boolean"
-        },
-        "log_file": {
-          "type": "string"
-        },
-        "max_size_mb": {
-          "type": "integer"
-        },
-        "max_age_days": {
-          "type": "integer"
-        },
-        "max_backups": {
-          "type": "integer"
-        }
-      },
-      "additionalProperties": false,
-      "type": "object"
-    },
-    "SessionConfig": {
-      "properties": {
-        "enabled": {
-          "type": "boolean"
-        },
-        "state_file": {
-          "type": "string"
-        },
-        "max_session_age": {
-          "$ref": "#/$defs/Duration"
-        },
-        "audit": {
-          "$ref": "#/$defs/SessionAuditConfig"
-        }
-      },
-      "additionalProperties": false,
-      "type": "object"
-    },
     "Severity": {
       "type": "string",
       "enum": [
@@ -1540,9 +1501,6 @@
     },
     "backup": {
       "$ref": "#/$defs/BackupConfig"
-    },
-    "session": {
-      "$ref": "#/$defs/SessionConfig"
     },
     "crash_dump": {
       "$ref": "#/$defs/CrashDumpConfig"

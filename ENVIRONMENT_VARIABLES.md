@@ -476,38 +476,6 @@ export KLAUDIUSH_GLOBAL_MAX_IO_WORKERS=4
 export KLAUDIUSH_GLOBAL_MAX_GIT_WORKERS=2
 ```
 
-## Session Tracking
-
-```bash
-# Enable session tracking
-export KLAUDIUSH_SESSION_ENABLED=true
-
-# State file path
-export KLAUDIUSH_SESSION_STATE_FILE="~/.klaudiush/session_state.json"
-
-# Max session age (auto-expire)
-export KLAUDIUSH_SESSION_MAX_SESSION_AGE=24h
-```
-
-### Session Audit
-
-```bash
-# Enable session audit
-export KLAUDIUSH_SESSION_AUDIT_ENABLED=true
-
-# Audit log file
-export KLAUDIUSH_SESSION_AUDIT_LOG_FILE="~/.klaudiush/session_audit.jsonl"
-
-# Max log size in MB
-export KLAUDIUSH_SESSION_AUDIT_MAX_SIZE_MB=10
-
-# Max age in days
-export KLAUDIUSH_SESSION_AUDIT_MAX_AGE_DAYS=30
-
-# Max backup files
-export KLAUDIUSH_SESSION_AUDIT_MAX_BACKUPS=5
-```
-
 ## Crash Dump
 
 ```bash

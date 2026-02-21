@@ -36,7 +36,7 @@ var _ = Describe("Generate", func() {
 
 		for _, key := range []string{
 			"version", "validators", "global", "plugins", "rules",
-			"exceptions", "backup", "session", "crash_dump", "patterns",
+			"exceptions", "backup", "crash_dump", "patterns",
 		} {
 			Expect(props).To(HaveKey(key), "missing top-level property: %s", key)
 		}

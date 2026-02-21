@@ -305,19 +305,13 @@ max_backups = 20
 				"KLAUDIUSH_EXCEPTIONS_RATE_LIMIT_MAX_PER_HOUR",
 				"exceptions.rate_limit.max_per_hour"),
 
-			// Global and session
+			// Global
 			Entry("use_sdk_git",
 				"KLAUDIUSH_GLOBAL_USE_SDK_GIT",
 				"global.use_sdk_git"),
 			Entry("default_timeout",
 				"KLAUDIUSH_GLOBAL_DEFAULT_TIMEOUT",
 				"global.default_timeout"),
-			Entry("session state_file",
-				"KLAUDIUSH_SESSION_STATE_FILE",
-				"session.state_file"),
-			Entry("session max_session_age",
-				"KLAUDIUSH_SESSION_MAX_SESSION_AGE",
-				"session.max_session_age"),
 
 			// Secrets and shell validators
 			Entry("secrets use_gitleaks",

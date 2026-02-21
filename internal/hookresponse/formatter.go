@@ -85,18 +85,11 @@ func formatAdditionalContext(
 	var parts []string
 
 	if len(blocking) > 0 {
-		if isSessionPoisoned(blocking) {
-			parts = append(parts,
-				"Automated klaudiush session check. "+
-					"A previous command was blocked. "+
-					"Acknowledge the error codes to unpoison the session, then retry.")
-		} else {
-			parts = append(parts,
-				"Automated klaudiush validation check. "+
-					"Fix ALL reported errors at once and retry. "+
-					"Fixing one issue can introduce another "+
-					"(e.g., adding type(scope): prefix makes title exceed 50 chars).")
-		}
+		parts = append(parts,
+			"Automated klaudiush validation check. "+
+				"Fix ALL reported errors at once and retry. "+
+				"Fixing one issue can introduce another "+
+				"(e.g., adding type(scope): prefix makes title exceed 50 chars).")
 	}
 
 	for _, e := range bypassed {
@@ -242,17 +235,6 @@ func extractCode(ref validator.Reference) string {
 	}
 
 	return ref.Code()
-}
-
-// isSessionPoisoned checks if any blocking error is a SESS001 session poison error.
-func isSessionPoisoned(blocking []*dispatcher.ValidationError) bool {
-	for _, e := range blocking {
-		if e.Reference == validator.RefSessionPoisoned {
-			return true
-		}
-	}
-
-	return false
 }
 
 // summarizeMessage extracts a concise one-line summary from a rich multiline message.

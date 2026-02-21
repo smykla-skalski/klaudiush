@@ -27,9 +27,6 @@ type Config struct {
 	// Backup contains configuration for the backup system.
 	Backup *BackupConfig `json:"backup,omitempty" koanf:"backup" toml:"backup"`
 
-	// Session contains configuration for session tracking.
-	Session *SessionConfig `json:"session,omitempty" koanf:"session" toml:"session"`
-
 	// CrashDump contains configuration for the crash dump system.
 	CrashDump *CrashDumpConfig `json:"crash_dump,omitempty" koanf:"crash_dump" toml:"crash_dump"`
 
@@ -195,15 +192,6 @@ func (c *Config) GetBackup() *BackupConfig {
 	}
 
 	return c.Backup
-}
-
-// GetSession returns the session config, creating it if it doesn't exist.
-func (c *Config) GetSession() *SessionConfig {
-	if c.Session == nil {
-		c.Session = &SessionConfig{}
-	}
-
-	return c.Session
 }
 
 // GetCrashDump returns the crash dump config, creating it if it doesn't exist.

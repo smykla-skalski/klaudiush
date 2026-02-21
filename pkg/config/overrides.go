@@ -105,9 +105,6 @@ var CodeToValidator = map[string]string{
 	"PLUG003": "plugins",
 	"PLUG004": "plugins",
 	"PLUG005": "plugins",
-
-	// Session codes
-	"SESS001": "session",
 }
 
 // IsDisabled checks if a key (error code or validator name) is disabled and not expired.

@@ -387,7 +387,7 @@ var _ = Describe("Additional context formatting", func() {
 			ContainSubstring("properly formatted table"))
 	})
 
-	It("includes cascading failure warning in non-session-poisoned context", func() {
+	It("includes cascading failure warning in blocking context", func() {
 		errs := []*dispatcher.ValidationError{
 			{
 				Validator:   "git.commit",

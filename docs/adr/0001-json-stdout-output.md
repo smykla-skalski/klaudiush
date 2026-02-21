@@ -48,7 +48,6 @@ Chosen option: "Switch entirely to JSON stdout, always exit 0," because it clean
 | Scenario | `permissionDecision` | `permissionDecisionReason` | `additionalContext` |
 |:--|:--|:--|:--|
 | Blocking errors | `"deny"` | `[CODE] msg. Fix hint.` | `"Automated klaudiush validation check..."` |
-| Session poisoned | `"deny"` | `[SESS001] msg. Unpoison hint.` | `"Automated klaudiush session check..."` |
 | Warnings only | `"allow"` | — | `"klaudiush warning: ... Not blocking."` |
 | Bypassed exception | `"allow"` | — | `"klaudiush: Exception EXC:CODE accepted..."` |
 | Clean pass | No output | — | — |

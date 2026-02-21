@@ -63,8 +63,6 @@ var codeDescriptions = map[string]string{
 	"PLUG003": "invalid extension",
 	"PLUG004": "insecure remote",
 	"PLUG005": "dangerous chars",
-	// Session
-	"SESS001": "session poisoned",
 }
 
 // CodeDescriptions returns a copy of the code descriptions map.

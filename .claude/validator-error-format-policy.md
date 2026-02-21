@@ -111,10 +111,6 @@ RefShellcheck     Reference = "https://klaudiu.sh/e/FILE001"
 - PLUG004: Insecure gRPC plugin connection
 - PLUG005: Dangerous characters in plugin path
 
-**SESS001**: Session tracking
-
-- SESS001: Session poisoned by previous blocking error
-
 ## Suggestions Registry
 
 `internal/validator/suggestions.go` maps references to fix hints:
@@ -408,7 +404,6 @@ Exit code 2 is no longer used. All communication with Claude Code happens throug
 | `internal/validators/git/commit_message.go` | Multi-reference handling               |
 | `internal/validators/file/shellscript.go`   | File validator examples                |
 | `pkg/plugin/api.go`                         | Plugin API for custom validators       |
-| `.claude/session-error-reporting.md`        | Design decisions and history           |
 
 ## Summary
 

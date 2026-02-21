@@ -21,7 +21,6 @@ import (
 	"github.com/smykla-skalski/klaudiush/internal/hookresponse"
 	"github.com/smykla-skalski/klaudiush/internal/parser"
 	"github.com/smykla-skalski/klaudiush/internal/patterns"
-	"github.com/smykla-skalski/klaudiush/internal/session"
 	"github.com/smykla-skalski/klaudiush/pkg/config"
 	"github.com/smykla-skalski/klaudiush/pkg/hook"
 	"github.com/smykla-skalski/klaudiush/pkg/logger"
@@ -202,18 +201,14 @@ func run(_ *cobra.Command, _ []string) error {
 	registryBuilder := factory.NewRegistryBuilder(log)
 	registry := registryBuilder.Build(cfg)
 
-	// Create and initialize session tracker if enabled
-	sessionTracker := initSessionTracker(cfg, log)
-
 	// Create and initialize exception checker if enabled
 	exceptionHandler, exceptionChecker := initExceptionChecker(cfg, workDir, log)
 
-	// Create dispatcher with session tracker, exception checker, and overrides
+	// Create dispatcher with exception checker and overrides
 	disp := dispatcher.NewDispatcherWithOptions(
 		registry,
 		log,
 		dispatcher.NewSequentialExecutor(log),
-		dispatcher.WithSessionTracker(sessionTracker),
 		dispatcher.WithExceptionChecker(exceptionChecker),
 		dispatcher.WithOverrides(cfg.Overrides),
 	)
@@ -222,7 +217,7 @@ func run(_ *cobra.Command, _ []string) error {
 	errs := disp.Dispatch(context.Background(), ctx)
 
 	// Save persistent state after dispatch
-	savePersistentState(sessionTracker, exceptionHandler, log)
+	savePersistentState(exceptionHandler, log)
 
 	// Run failure pattern tracking
 	patternWarnings := runPatternTracking(cfg, ctx, errs, workDir, log)
@@ -231,18 +226,11 @@ func run(_ *cobra.Command, _ []string) error {
 	return writeResponse(hookType, errs, patternWarnings, log)
 }
 
-// savePersistentState saves session and exception state after dispatch.
+// savePersistentState saves exception state after dispatch.
 func savePersistentState(
-	sessionTracker *session.Tracker,
 	exceptionHandler *exceptions.Handler,
 	log logger.Logger,
 ) {
-	if sessionTracker != nil {
-		if err := sessionTracker.Save(); err != nil {
-			log.Info("failed to save session state", "error", err)
-		}
-	}
-
 	if exceptionHandler != nil {
 		if err := exceptionHandler.SaveState(); err != nil {
 			log.Info("failed to save exception state", "error", err)
@@ -376,31 +364,6 @@ func extractEffectiveWorkDir(ctx *hook.Context, log logger.Logger) string {
 	log.Debug("detected cd target for config resolution", "workDir", cdTarget)
 
 	return cdTarget
-}
-
-// initSessionTracker creates and initializes a session tracker if enabled in the config.
-func initSessionTracker(cfg *config.Config, log logger.Logger) *session.Tracker {
-	sessionCfg := cfg.GetSession()
-	if !sessionCfg.IsEnabled() {
-		return nil
-	}
-
-	tracker := session.NewTracker(
-		sessionCfg,
-		session.WithLogger(log),
-	)
-
-	// Load existing session state
-	if err := tracker.Load(); err != nil {
-		log.Info("failed to load session state, starting fresh", "error", err)
-	}
-
-	log.Debug("session tracker initialized",
-		"state_file", sessionCfg.GetStateFile(),
-		"max_session_age", sessionCfg.GetMaxSessionAge(),
-	)
-
-	return tracker
 }
 
 // initExceptionChecker creates and initializes an exception checker if enabled in the config.

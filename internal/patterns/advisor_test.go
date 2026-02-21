@@ -168,7 +168,6 @@ var _ = Describe("CodeDescriptions", func() {
 		Expect(prefixes).To(HaveKey("SEC"))
 		Expect(prefixes).To(HaveKey("SHELL"))
 		Expect(prefixes).To(HaveKey("PLUG"))
-		Expect(prefixes).To(HaveKey("SESS"))
 		Expect(prefixes).To(HaveKey("GH"))
 	})
 })

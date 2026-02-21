@@ -70,10 +70,6 @@ const (
 	defaultExceptionAuditMaxAgeDays = 30
 	defaultExceptionAuditMaxBackups = 3
 	defaultExceptionMinReasonLength = 10
-
-	// Session defaults.
-	defaultSessionStateFile = "~/.klaudiush/session_state.json"
-	defaultSessionMaxAgeStr = "24h"
 )
 
 // defaultValidTypes is the list of valid commit types.
@@ -357,7 +353,6 @@ var envHierarchy = map[string][]string{
 		"validators",
 		"rules",
 		"exceptions",
-		"session",
 		"backup",
 		"crash_dump",
 		"patterns",
@@ -393,7 +388,6 @@ var envHierarchy = map[string][]string{
 	"validators.secrets":      {"secrets"},
 	"validators.shell":        {"backtick"},
 	"exceptions":              {"rate_limit", "audit", "policies"},
-	"session":                 {"audit"},
 	"backup":                  {"delta"},
 }
 
@@ -609,6 +603,7 @@ func applyDisableFlags(cfg map[string]any, validatorNames []string) {
 		"linter_ignore": {"file", "linter_ignore"},
 		"secrets":       {"secrets", "secrets"},
 		"backtick":      {"shell", "backtick"},
+		"issue":         {"github", "issue"},
 		"bell":          {"notification", "bell"},
 	}
 
@@ -642,7 +637,6 @@ func defaultsToMap() map[string]any {
 		"validators": defaultValidatorsMap(),
 		"rules":      defaultRulesMap(),
 		"exceptions": defaultExceptionsMap(),
-		"session":    defaultSessionMap(),
 	}
 }
 
@@ -672,14 +666,6 @@ func defaultExceptionsMap() map[string]any {
 			"max_age_days": defaultExceptionAuditMaxAgeDays,
 			"max_backups":  defaultExceptionAuditMaxBackups,
 		},
-	}
-}
-
-func defaultSessionMap() map[string]any {
-	return map[string]any{
-		"enabled":         false,
-		"state_file":      defaultSessionStateFile,
-		"max_session_age": defaultSessionMaxAgeStr,
 	}
 }
 
