@@ -2,8 +2,10 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 
 	"github.com/cockroachdb/errors"
@@ -11,29 +13,33 @@ import (
 
 	"github.com/smykla-skalski/klaudiush/internal/backup"
 	"github.com/smykla-skalski/klaudiush/internal/config"
+	"github.com/smykla-skalski/klaudiush/internal/doctor/fixers"
+	"github.com/smykla-skalski/klaudiush/internal/doctor/settings"
 	"github.com/smykla-skalski/klaudiush/internal/git"
 	"github.com/smykla-skalski/klaudiush/internal/tui"
 	pkgConfig "github.com/smykla-skalski/klaudiush/pkg/config"
 )
 
+const defaultHookTimeout = 30
+
 var (
-	globalFlag bool
-	forceFlag  bool
-	noTUIFlag  bool
+	globalFlag       bool
+	forceFlag        bool
+	noTUIFlag        bool
+	installHooksFlag bool
 )
 
 var initCmd = &cobra.Command{
 	Use:   "init",
 	Short: "Initialize klaudiush configuration",
-	Long: `Initialize klaudiush configuration file.
+	Long: `Initialize klaudiush configuration file and register hooks.
 
-By default, creates a project-local configuration file (.klaudiush/config.toml).
+By default, creates a project-local configuration file (.klaudiush/config.toml)
+and registers klaudiush as a PreToolUse hook in Claude Code settings.
+
 Use --global or -g to create a global configuration file (~/.klaudiush/config.toml).
-
-The initialization process will prompt you to configure:
-- Git commit signoff (default: from git config user.name and user.email)
-- Whether to add the config file to .git/info/exclude (project-local only)
-
+Use --install-hooks to register hooks only (skip TUI).
+Use --install-hooks=false to skip hook registration.
 Use --force to overwrite an existing configuration file.
 Use --no-tui to use simple prompts instead of the interactive TUI.`,
 	RunE: runInit,
@@ -64,9 +70,21 @@ func init() {
 		false,
 		"Use simple prompts instead of interactive TUI",
 	)
+
+	initCmd.Flags().BoolVar(
+		&installHooksFlag,
+		"install-hooks",
+		true,
+		"Register klaudiush hooks in Claude Code settings",
+	)
 }
 
-func runInit(_ *cobra.Command, _ []string) error {
+func runInit(cmd *cobra.Command, _ []string) error {
+	// Explicit --install-hooks: skip TUI, just install hooks
+	if cmd.Flags().Changed("install-hooks") && installHooksFlag {
+		return runInstallHooks()
+	}
+
 	writer := config.NewWriter()
 
 	// Check if config already exists
@@ -121,6 +139,13 @@ func runInit(_ *cobra.Command, _ []string) error {
 			)
 		} else {
 			fmt.Println("✅ Added to .git/info/exclude")
+		}
+	}
+
+	// Install hooks if enabled (default true, non-fatal)
+	if installHooksFlag {
+		if err := tryInstallHooks(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: hook registration failed: %v\n", err)
 		}
 	}
 
@@ -273,4 +298,122 @@ func addConfigToExclude() error {
 	}
 
 	return nil
+}
+
+// runInstallHooks registers hooks without running the TUI.
+func runInstallHooks() error {
+	binaryPath, err := exec.LookPath("klaudiush")
+	if err != nil {
+		return errors.Wrap(err, "klaudiush not found in PATH")
+	}
+
+	return performInstall(resolveSettingsPath(), binaryPath)
+}
+
+// tryInstallHooks attempts hook registration, returning error on failure.
+func tryInstallHooks() error {
+	binaryPath, err := exec.LookPath("klaudiush")
+	if err != nil {
+		return errors.Wrap(err, "klaudiush not found in PATH")
+	}
+
+	return performInstall(resolveSettingsPath(), binaryPath)
+}
+
+// resolveSettingsPath returns the settings.json path based on --global flag.
+func resolveSettingsPath() string {
+	if globalFlag {
+		return settings.GetUserSettingsPath()
+	}
+
+	return settings.GetProjectSettingsPath()
+}
+
+// performInstall registers klaudiush in the given settings file.
+func performInstall(settingsPath, binaryPath string) error {
+	// Check if already registered
+	parser := settings.NewSettingsParser(settingsPath)
+
+	registered, err := parser.IsDispatcherRegistered(binaryPath)
+	if err != nil {
+		return errors.Wrap(err, "failed to check settings")
+	}
+
+	if registered {
+		fmt.Printf("klaudiush is already registered in %s\n", settingsPath)
+		return nil
+	}
+
+	// Load existing settings as raw map to preserve unknown fields
+	raw, err := loadRawSettings(settingsPath)
+	if err != nil {
+		return err
+	}
+
+	addHookToSettings(raw, binaryPath)
+
+	data, err := json.MarshalIndent(raw, "", "  ")
+	if err != nil {
+		return errors.Wrap(err, "failed to marshal settings")
+	}
+
+	data = append(data, '\n')
+
+	if err := fixers.AtomicWriteFile(settingsPath, data, true); err != nil {
+		return errors.Wrap(err, "failed to write settings")
+	}
+
+	fmt.Printf("klaudiush registered in %s\n", settingsPath)
+
+	return nil
+}
+
+// loadRawSettings reads and parses a JSON settings file.
+func loadRawSettings(path string) (map[string]any, error) {
+	data, err := os.ReadFile(path) //nolint:gosec // path is from CLI flags or settings helper
+	if err != nil {
+		if os.IsNotExist(err) {
+			return make(map[string]any), nil
+		}
+
+		return nil, errors.Wrap(err, "failed to read settings")
+	}
+
+	if len(data) == 0 {
+		return make(map[string]any), nil
+	}
+
+	var raw map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil, errors.Wrap(err, "failed to parse settings")
+	}
+
+	return raw, nil
+}
+
+// addHookToSettings adds a PreToolUse hook entry for klaudiush.
+func addHookToSettings(raw map[string]any, binaryPath string) {
+	hooks, ok := raw["hooks"].(map[string]any)
+	if !ok {
+		hooks = make(map[string]any)
+		raw["hooks"] = hooks
+	}
+
+	entry := map[string]any{
+		"matcher": "Bash|Write|Edit",
+		"hooks": []any{
+			map[string]any{
+				"type":    "command",
+				"command": binaryPath + " --hook-type PreToolUse",
+				"timeout": defaultHookTimeout,
+			},
+		},
+	}
+
+	existing, ok := hooks["PreToolUse"].([]any)
+	if !ok {
+		existing = nil
+	}
+
+	hooks["PreToolUse"] = append(existing, entry)
 }

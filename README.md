@@ -38,10 +38,7 @@ brew install smykla-skalski/tap/klaudiush
 **Post-install setup:**
 
 ```bash
-# Register in Claude Code settings
-klaudiush install --global
-
-# Run interactive setup wizard
+# Run interactive setup wizard and register hooks
 klaudiush init --global
 
 # Verify installation
@@ -103,10 +100,7 @@ environment.systemPackages = [ pkgs.klaudiush ];
 **Post-install setup:**
 
 ```bash
-# Register in Claude Code settings
-klaudiush install --global
-
-# Run interactive setup wizard
+# Run interactive setup wizard and register hooks
 klaudiush init --global
 
 # Verify installation
@@ -131,12 +125,11 @@ task install
 Register klaudiush as a PreToolUse hook in Claude Code settings:
 
 ```bash
-# Interactive prompt (global vs project)
-klaudiush install
+# Register hooks only (global)
+klaudiush init --install-hooks --global
 
-# Or specify directly
-klaudiush install --global   # ~/.claude/settings.json
-klaudiush install --project  # .claude/settings.json
+# Register hooks only (project)
+klaudiush init --install-hooks
 ```
 
 **Note**: After installation, the binary is available as `klaudiush` (installed to `~/.local/bin` or `~/bin`). Ensure the install directory is in your `$PATH`.

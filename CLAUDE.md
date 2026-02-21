@@ -15,15 +15,13 @@ klaudiush completion fish         # generate fish completion
 klaudiush completion zsh          # generate zsh completion
 klaudiush completion powershell   # generate powershell completion
 
-# Init (interactive setup wizard, creates config.toml)
-./bin/klaudiush init              # project config
-./bin/klaudiush init --global     # global config
-./bin/klaudiush init --force      # overwrite existing
-
-# Install (register in Claude Code settings)
-klaudiush install                 # interactive prompt (global vs project)
-klaudiush install --global        # install to ~/.claude/settings.json
-klaudiush install --project       # install to .claude/settings.json
+# Init (interactive setup wizard, creates config.toml + registers hooks)
+./bin/klaudiush init                           # project config + hooks
+./bin/klaudiush init --global                  # global config + hooks
+./bin/klaudiush init --force                   # overwrite existing
+./bin/klaudiush init --install-hooks           # register hooks only
+./bin/klaudiush init --install-hooks --global  # register hooks globally
+./bin/klaudiush init --install-hooks=false     # config only, no hooks
 
 # Doctor (diagnose setup and configuration)
 ./bin/klaudiush doctor            # run all checks
