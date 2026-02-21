@@ -19,9 +19,11 @@ import (
 	patternschecker "github.com/smykla-skalski/klaudiush/internal/doctor/checkers/patterns"
 	ruleschecker "github.com/smykla-skalski/klaudiush/internal/doctor/checkers/rules"
 	"github.com/smykla-skalski/klaudiush/internal/doctor/checkers/tools"
+	xdgchecker "github.com/smykla-skalski/klaudiush/internal/doctor/checkers/xdg"
 	"github.com/smykla-skalski/klaudiush/internal/doctor/fixers"
 	"github.com/smykla-skalski/klaudiush/internal/doctor/reporters"
 	"github.com/smykla-skalski/klaudiush/internal/prompt"
+	"github.com/smykla-skalski/klaudiush/pkg/logger"
 )
 
 var (
@@ -42,6 +44,7 @@ Checks:
 - Pattern learning system health
 - Backup system health
 - Overrides configuration health
+- XDG base directory compliance
 - Optional tool dependencies (shellcheck, terraform, etc.)
 
 Examples:
@@ -74,7 +77,7 @@ func init() {
 		&categoryFlag,
 		"category",
 		[]string{},
-		"Filter checks by category (binary, hook, config, tools, patterns, backup, overrides)",
+		"Filter checks by category (binary, hook, config, tools, patterns, backup, overrides, xdg)",
 	)
 }
 
@@ -94,7 +97,7 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 	prompter := prompt.NewStdPrompter()
 
 	// Register fixers
-	registerFixers(registry, prompter)
+	registerFixers(registry, prompter, log)
 
 	// Create reporter based on terminal capabilities
 	reporter := selectReporter()
@@ -177,11 +180,15 @@ func buildDoctorRegistry() *doctor.Registry {
 	registry.RegisterChecker(overrideschecker.NewUnknownTargetChecker())
 	registry.RegisterChecker(overrideschecker.NewRedundantChecker())
 
+	// Register XDG checkers
+	registry.RegisterChecker(xdgchecker.NewLegacyPathChecker())
+	registry.RegisterChecker(xdgchecker.NewDirChecker())
+
 	return registry
 }
 
 // registerFixers registers all available fixers.
-func registerFixers(registry *doctor.Registry, prompter prompt.Prompter) {
+func registerFixers(registry *doctor.Registry, prompter prompt.Prompter, log logger.Logger) {
 	registry.RegisterFixer(fixers.NewInstallHookFixer(prompter))
 	registry.RegisterFixer(fixers.NewPermissionsFixer(prompter))
 	registry.RegisterFixer(fixers.NewConfigFixer(prompter))
@@ -190,6 +197,7 @@ func registerFixers(registry *doctor.Registry, prompter prompt.Prompter) {
 	registry.RegisterFixer(fixers.NewPatternsFixer(prompter))
 	registry.RegisterFixer(fixers.NewBackupFixer(prompter))
 	registry.RegisterFixer(fixers.NewOverridesFixer(prompter))
+	registry.RegisterFixer(fixers.NewXDGFixer(prompter, log))
 }
 
 // parseCategories converts string category names to Category types.
@@ -206,6 +214,7 @@ func parseCategories(names []string) []doctor.Category {
 		"patterns":  doctor.CategoryPatterns,
 		"backup":    doctor.CategoryBackup,
 		"overrides": doctor.CategoryOverrides,
+		"xdg":       doctor.CategoryXDG,
 	}
 
 	var categories []doctor.Category
