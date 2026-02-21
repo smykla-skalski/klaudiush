@@ -1,7 +1,6 @@
 #:schema https://klaudiu.sh/schema/v1/config.json
-# JavaScript/TypeScript Validator Configuration Examples
-# This file demonstrates various configurations for the JavaScript validator
-# which uses oxlint for code quality checking.
+# JavaScript/TypeScript
+# oxlint integration for dev, production, and custom rule setups.
 
 # Minimal configuration - uses all defaults
 [validators.file.javascript]

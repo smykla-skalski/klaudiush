@@ -1,11 +1,6 @@
 #:schema https://klaudiu.sh/schema/v1/config.json
-# Example: Advanced Pattern Matching
-#
-# Demonstrates various pattern matching techniques including glob patterns,
-# regex patterns, and combining multiple conditions.
-#
-# Usage:
-#   Copy to ~/.klaudiush/config.toml (global) or .klaudiush/config.toml (project)
+# Advanced patterns
+# Glob, regex, content matching, negation, and priority-based exceptions.
 
 [rules]
 enabled = true

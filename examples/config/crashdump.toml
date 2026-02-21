@@ -1,6 +1,6 @@
 #:schema https://klaudiu.sh/schema/v1/config.json
-# Crash Dump Configuration Example
-# This shows all available crash dump configuration options
+# Crash dumps
+# Automatic crash diagnostics with retention and pruning settings.
 
 [crash_dump]
 # Enable automatic crash dump creation on panic

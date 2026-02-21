@@ -1,11 +1,6 @@
 #:schema https://klaudiu.sh/schema/v1/config.json
-# Example: Organization-Specific Rules
-#
-# Configure rules for organization-specific git workflows where
-# 'upstream' is the main repository and 'origin' is your fork.
-#
-# Usage:
-#   Copy to ~/.klaudiush/config.toml (global) or .klaudiush/config.toml (project)
+# Organization workflow
+# Fork-based git rules. Blocks origin push, warns on upstream, protects main.
 
 [rules]
 enabled = true

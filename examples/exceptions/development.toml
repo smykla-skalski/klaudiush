@@ -1,11 +1,6 @@
 #:schema https://klaudiu.sh/schema/v1/config.json
-# Example: Development Environment Configuration
-#
-# Relaxed exception configuration for development and testing.
-# Fewer restrictions, but still maintains audit trail.
-#
-# Usage:
-#   Copy to .klaudiush/config.toml in your development project
+# Development
+# Relaxed policies for development. No justification required.
 
 [exceptions]
 enabled = true

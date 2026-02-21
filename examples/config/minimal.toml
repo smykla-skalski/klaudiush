@@ -1,6 +1,6 @@
 #:schema https://klaudiu.sh/schema/v1/config.json
-# Minimal klaudiush configuration example
-# This shows the simplest possible configuration to get started
+# Minimal
+# Disable specific validators with the simplest possible config.
 
 # Disable specific validators
 [validators.git.commit]

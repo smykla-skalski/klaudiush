@@ -1,11 +1,6 @@
 #:schema https://klaudiu.sh/schema/v1/config.json
-# Example: Strict Security Configuration
-#
-# Secure exception configuration for production environments.
-# All exceptions require justification and are heavily rate-limited.
-#
-# Usage:
-#   Copy to ~/.klaudiush/config.toml (global) or .klaudiush/config.toml (project)
+# Strict security
+# Production-grade policies. Every exception needs a reason.
 
 [exceptions]
 enabled = true
