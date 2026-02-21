@@ -1487,6 +1487,9 @@
     }
   },
   "properties": {
+    "version": {
+      "type": "integer"
+    },
     "validators": {
       "$ref": "#/$defs/ValidatorsConfig"
     },
@@ -1517,5 +1520,5 @@
   },
   "additionalProperties": false,
   "type": "object",
-  "title": "klaudiush configuration"
+  "title": "klaudiush configuration v1"
 }

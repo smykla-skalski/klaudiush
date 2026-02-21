@@ -26,8 +26,8 @@ var _ = Describe("Generate", func() {
 		Expect(s["$schema"]).To(Equal("https://json-schema.org/draft/2020-12/schema"))
 	})
 
-	It("sets the title", func() {
-		Expect(s["title"]).To(Equal("klaudiush configuration"))
+	It("sets the title with version", func() {
+		Expect(s["title"]).To(Equal("klaudiush configuration v1"))
 	})
 
 	It("includes top-level properties", func() {
@@ -35,7 +35,7 @@ var _ = Describe("Generate", func() {
 		Expect(ok).To(BeTrue())
 
 		for _, key := range []string{
-			"validators", "global", "plugins", "rules",
+			"version", "validators", "global", "plugins", "rules",
 			"exceptions", "backup", "session", "crash_dump", "patterns",
 		} {
 			Expect(props).To(HaveKey(key), "missing top-level property: %s", key)
@@ -160,6 +160,12 @@ var _ = Describe("Generate", func() {
 			}
 
 			Expect(matchProp).To(HaveKey("enum"))
+		})
+	})
+
+	Describe("Filename", func() {
+		It("returns versioned filename", func() {
+			Expect(schema.Filename()).To(Equal("config.v1.schema.json"))
 		})
 	})
 

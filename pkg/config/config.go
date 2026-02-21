@@ -1,8 +1,14 @@
 // Package config provides configuration schema types for klaudiush validators.
 package config
 
+// CurrentConfigVersion is the latest config schema version.
+const CurrentConfigVersion = 1
+
 // Config represents the root configuration for klaudiush.
 type Config struct {
+	// Version is the config schema version. Defaults to 1 when omitted.
+	Version int `json:"version,omitempty" koanf:"version" toml:"version"`
+
 	// Validators groups all validator configurations.
 	Validators *ValidatorsConfig `json:"validators,omitempty" koanf:"validators" toml:"validators"`
 

@@ -3,6 +3,7 @@ package schema
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"github.com/cockroachdb/errors"
 	"github.com/invopop/jsonschema"
@@ -12,7 +13,7 @@ import (
 
 const (
 	schemaURI = "https://json-schema.org/draft/2020-12/schema"
-	title     = "klaudiush configuration"
+	titleFmt  = "klaudiush configuration v%d"
 )
 
 // Generate produces a JSON Schema from the config.Config struct.
@@ -23,9 +24,14 @@ func Generate() *jsonschema.Schema {
 
 	s := r.Reflect(&config.Config{})
 	s.Version = schemaURI
-	s.Title = title
+	s.Title = fmt.Sprintf(titleFmt, config.CurrentConfigVersion)
 
 	return s
+}
+
+// Filename returns the versioned schema filename, e.g. "config.v1.schema.json".
+func Filename() string {
+	return fmt.Sprintf("config.v%d.schema.json", config.CurrentConfigVersion)
 }
 
 // GenerateJSON produces a JSON Schema as bytes.

@@ -18,6 +18,7 @@ const (
 // DefaultConfig returns a Config with all default values populated.
 func DefaultConfig() *config.Config {
 	return &config.Config{
+		Version:    config.CurrentConfigVersion,
 		Global:     DefaultGlobalConfig(),
 		Validators: DefaultValidatorsConfig(),
 		Rules:      DefaultRulesConfig(),

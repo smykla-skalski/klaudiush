@@ -626,6 +626,7 @@ func applyDisableFlags(cfg map[string]any, validatorNames []string) {
 // defaultsToMap converts DefaultConfig to a map for koanf loading.
 func defaultsToMap() map[string]any {
 	return map[string]any{
+		"version":    config.CurrentConfigVersion,
 		"global":     defaultGlobalMap(),
 		"validators": defaultValidatorsMap(),
 		"rules":      defaultRulesMap(),
