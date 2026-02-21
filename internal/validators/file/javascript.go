@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/smykla-skalski/klaudiush/internal/linters"
-	"github.com/smykla-skalski/klaudiush/internal/rules"
 	"github.com/smykla-skalski/klaudiush/internal/validator"
 	"github.com/smykla-skalski/klaudiush/pkg/config"
 	"github.com/smykla-skalski/klaudiush/pkg/hook"
@@ -31,9 +30,8 @@ var jsFragmentExcludes = []string{"no-unused-vars", "no-undef", "import/no-unres
 // JavaScriptValidator validates JavaScript/TypeScript scripts using oxlint.
 type JavaScriptValidator struct {
 	validator.BaseValidator
-	checker     linters.OxlintChecker
-	config      *config.JavaScriptValidatorConfig
-	ruleAdapter *rules.RuleValidatorAdapter
+	checker linters.OxlintChecker
+	config  *config.JavaScriptValidatorConfig
 }
 
 // NewJavaScriptValidator creates a new JavaScriptValidator.
@@ -41,13 +39,12 @@ func NewJavaScriptValidator(
 	log logger.Logger,
 	checker linters.OxlintChecker,
 	cfg *config.JavaScriptValidatorConfig,
-	ruleAdapter *rules.RuleValidatorAdapter,
+	ruleAdapter validator.RuleChecker,
 ) *JavaScriptValidator {
 	return &JavaScriptValidator{
-		BaseValidator: *validator.NewBaseValidator("validate-javascript", log),
+		BaseValidator: *validator.NewBaseValidatorWithRules("validate-javascript", log, ruleAdapter),
 		checker:       checker,
 		config:        cfg,
-		ruleAdapter:   ruleAdapter,
 	}
 }
 
@@ -59,11 +56,9 @@ func (v *JavaScriptValidator) Validate(
 	log := v.Logger()
 	log.Debug("validating JavaScript/TypeScript script")
 
-	// Check rules first if rule adapter is configured
-	if v.ruleAdapter != nil {
-		if result := v.ruleAdapter.CheckRules(ctx, hookCtx); result != nil {
-			return result
-		}
+	// Check rules first
+	if result := v.CheckRules(ctx, hookCtx); result != nil {
+		return result
 	}
 
 	// Check if oxlint is enabled
@@ -113,6 +108,8 @@ func (v *JavaScriptValidator) extractContent(
 }
 
 // formatOxlintOutput formats oxlint findings into human-readable text.
+//
+//nolint:dupl // Same display logic as formatRuffOutput, not worth abstracting
 func (*JavaScriptValidator) formatOxlintOutput(result *linters.LintResult) string {
 	if len(result.Findings) == 0 {
 		// Fallback to raw output if no findings parsed

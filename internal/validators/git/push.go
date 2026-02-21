@@ -5,7 +5,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/smykla-skalski/klaudiush/internal/rules"
 	"github.com/smykla-skalski/klaudiush/internal/templates"
 	"github.com/smykla-skalski/klaudiush/internal/validator"
 	"github.com/smykla-skalski/klaudiush/pkg/config"
@@ -21,9 +20,8 @@ const (
 // PushValidator validates git push commands
 type PushValidator struct {
 	validator.BaseValidator
-	gitRunner   GitRunner
-	config      *config.PushValidatorConfig
-	ruleAdapter *rules.RuleValidatorAdapter
+	gitRunner GitRunner
+	config    *config.PushValidatorConfig
 }
 
 // NewPushValidator creates a new PushValidator instance
@@ -31,13 +29,14 @@ func NewPushValidator(
 	log logger.Logger,
 	gitRunner GitRunner,
 	cfg *config.PushValidatorConfig,
-	ruleAdapter *rules.RuleValidatorAdapter,
+	ruleAdapter validator.RuleChecker,
 ) *PushValidator {
 	return &PushValidator{
-		BaseValidator: *validator.NewBaseValidator("validate-git-push", log),
-		gitRunner:     defaultGitRunner(gitRunner),
-		config:        cfg,
-		ruleAdapter:   ruleAdapter,
+		BaseValidator: *validator.NewBaseValidatorWithRules(
+			"validate-git-push", log, ruleAdapter,
+		),
+		gitRunner: defaultGitRunner(gitRunner),
+		config:    cfg,
 	}
 }
 
@@ -47,11 +46,17 @@ func (*PushValidator) Name() string {
 }
 
 // Validate validates git push commands
-func (v *PushValidator) Validate(ctx context.Context, hookCtx *hook.Context) *validator.Result {
+func (v *PushValidator) Validate(
+	ctx context.Context,
+	hookCtx *hook.Context,
+) *validator.Result {
+	if result := v.CheckRules(ctx, hookCtx); result != nil {
+		return result
+	}
+
 	return ValidateGitSubcommand(
 		ctx,
 		hookCtx,
-		v.ruleAdapter,
 		v.Logger(),
 		"push",
 		v.validatePushCommand,

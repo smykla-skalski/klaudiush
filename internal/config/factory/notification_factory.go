@@ -42,9 +42,9 @@ func (f *NotificationValidatorFactory) CreateValidators(
 func (f *NotificationValidatorFactory) createBellValidator(
 	cfg *config.BellValidatorConfig,
 ) ValidatorWithPredicate {
-	var ruleAdapter *rules.RuleValidatorAdapter
+	var rc validator.RuleChecker
 	if f.ruleEngine != nil {
-		ruleAdapter = rules.NewRuleValidatorAdapter(
+		rc = rules.NewRuleValidatorAdapter(
 			f.ruleEngine,
 			rules.ValidatorNotification,
 			rules.WithAdapterLogger(f.log),
@@ -52,7 +52,7 @@ func (f *NotificationValidatorFactory) createBellValidator(
 	}
 
 	return ValidatorWithPredicate{
-		Validator: notificationvalidators.NewBellValidator(f.log, cfg, ruleAdapter),
+		Validator: notificationvalidators.NewBellValidator(f.log, cfg, rc),
 		Predicate: validator.EventTypeIs(hook.EventTypeNotification),
 	}
 }

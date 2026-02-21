@@ -7,7 +7,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/smykla-skalski/klaudiush/internal/rules"
 	"github.com/smykla-skalski/klaudiush/internal/templates"
 	"github.com/smykla-skalski/klaudiush/internal/validator"
 	"github.com/smykla-skalski/klaudiush/pkg/config"
@@ -19,20 +18,20 @@ import (
 // BranchValidator validates git branch names.
 type BranchValidator struct {
 	validator.BaseValidator
-	config      *config.BranchValidatorConfig
-	ruleAdapter *rules.RuleValidatorAdapter
+	config *config.BranchValidatorConfig
 }
 
 // NewBranchValidator creates a new BranchValidator.
 func NewBranchValidator(
 	cfg *config.BranchValidatorConfig,
 	log logger.Logger,
-	ruleAdapter *rules.RuleValidatorAdapter,
+	ruleAdapter validator.RuleChecker,
 ) *BranchValidator {
 	return &BranchValidator{
-		BaseValidator: *validator.NewBaseValidator("validate-branch-name", log),
-		config:        cfg,
-		ruleAdapter:   ruleAdapter,
+		BaseValidator: *validator.NewBaseValidatorWithRules(
+			"validate-branch-name", log, ruleAdapter,
+		),
+		config: cfg,
 	}
 }
 
@@ -129,11 +128,9 @@ func (v *BranchValidator) Validate(ctx context.Context, hookCtx *hook.Context) *
 	log := v.Logger()
 	log.Debug("validating git branch command")
 
-	// Check rules first if rule adapter is configured
-	if v.ruleAdapter != nil {
-		if result := v.ruleAdapter.CheckRules(ctx, hookCtx); result != nil {
-			return result
-		}
+	// Check rules first
+	if result := v.CheckRules(ctx, hookCtx); result != nil {
+		return result
 	}
 
 	bashParser := parser.NewBashParser()

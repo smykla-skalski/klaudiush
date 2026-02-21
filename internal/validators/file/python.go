@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/smykla-skalski/klaudiush/internal/linters"
-	"github.com/smykla-skalski/klaudiush/internal/rules"
 	"github.com/smykla-skalski/klaudiush/internal/validator"
 	"github.com/smykla-skalski/klaudiush/pkg/config"
 	"github.com/smykla-skalski/klaudiush/pkg/hook"
@@ -30,9 +29,8 @@ var pythonFragmentExcludes = []string{"F401", "F841"}
 // PythonValidator validates Python scripts using ruff.
 type PythonValidator struct {
 	validator.BaseValidator
-	checker     linters.RuffChecker
-	config      *config.PythonValidatorConfig
-	ruleAdapter *rules.RuleValidatorAdapter
+	checker linters.RuffChecker
+	config  *config.PythonValidatorConfig
 }
 
 // NewPythonValidator creates a new PythonValidator.
@@ -40,13 +38,12 @@ func NewPythonValidator(
 	log logger.Logger,
 	checker linters.RuffChecker,
 	cfg *config.PythonValidatorConfig,
-	ruleAdapter *rules.RuleValidatorAdapter,
+	ruleAdapter validator.RuleChecker,
 ) *PythonValidator {
 	return &PythonValidator{
-		BaseValidator: *validator.NewBaseValidator("validate-python", log),
+		BaseValidator: *validator.NewBaseValidatorWithRules("validate-python", log, ruleAdapter),
 		checker:       checker,
 		config:        cfg,
-		ruleAdapter:   ruleAdapter,
 	}
 }
 
@@ -58,11 +55,9 @@ func (v *PythonValidator) Validate(
 	log := v.Logger()
 	log.Debug("validating Python script")
 
-	// Check rules first if rule adapter is configured
-	if v.ruleAdapter != nil {
-		if result := v.ruleAdapter.CheckRules(ctx, hookCtx); result != nil {
-			return result
-		}
+	// Check rules first
+	if result := v.CheckRules(ctx, hookCtx); result != nil {
+		return result
 	}
 
 	// Check if ruff is enabled
@@ -112,6 +107,8 @@ func (v *PythonValidator) extractContent(
 }
 
 // formatRuffOutput formats ruff findings into human-readable text.
+//
+//nolint:dupl // Same display logic as formatOxlintOutput, not worth abstracting
 func (*PythonValidator) formatRuffOutput(result *linters.LintResult) string {
 	if len(result.Findings) == 0 {
 		// Fallback to raw output if no findings parsed

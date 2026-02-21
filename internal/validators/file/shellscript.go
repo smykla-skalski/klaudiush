@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/smykla-skalski/klaudiush/internal/linters"
-	"github.com/smykla-skalski/klaudiush/internal/rules"
 	"github.com/smykla-skalski/klaudiush/internal/validator"
 	"github.com/smykla-skalski/klaudiush/pkg/config"
 	"github.com/smykla-skalski/klaudiush/pkg/hook"
@@ -26,9 +25,8 @@ const (
 // ShellScriptValidator validates shell scripts using shellcheck.
 type ShellScriptValidator struct {
 	validator.BaseValidator
-	checker     linters.ShellChecker
-	config      *config.ShellScriptValidatorConfig
-	ruleAdapter *rules.RuleValidatorAdapter
+	checker linters.ShellChecker
+	config  *config.ShellScriptValidatorConfig
 }
 
 // NewShellScriptValidator creates a new ShellScriptValidator.
@@ -36,13 +34,12 @@ func NewShellScriptValidator(
 	log logger.Logger,
 	checker linters.ShellChecker,
 	cfg *config.ShellScriptValidatorConfig,
-	ruleAdapter *rules.RuleValidatorAdapter,
+	ruleAdapter validator.RuleChecker,
 ) *ShellScriptValidator {
 	return &ShellScriptValidator{
-		BaseValidator: *validator.NewBaseValidator("validate-shellscript", log),
+		BaseValidator: *validator.NewBaseValidatorWithRules("validate-shellscript", log, ruleAdapter),
 		checker:       checker,
 		config:        cfg,
-		ruleAdapter:   ruleAdapter,
 	}
 }
 
@@ -64,11 +61,9 @@ func (v *ShellScriptValidator) Validate(
 	log := v.Logger()
 	log.Debug("validating shell script")
 
-	// Check rules first if rule adapter is configured
-	if v.ruleAdapter != nil {
-		if result := v.ruleAdapter.CheckRules(ctx, hookCtx); result != nil {
-			return result
-		}
+	// Check rules first
+	if result := v.CheckRules(ctx, hookCtx); result != nil {
+		return result
 	}
 
 	// Get the file path
@@ -116,8 +111,8 @@ func (v *ShellScriptValidator) extractContent(
 	filePath string,
 ) (*ContentInfo, error) {
 	log := v.Logger()
-	ci, err := NewContentExtractor(log, v.getContextLines()).Extract(hookCtx, filePath)
 
+	ci, err := NewContentExtractor(log, v.getContextLines()).Extract(hookCtx, filePath)
 	if err != nil {
 		return nil, err
 	}

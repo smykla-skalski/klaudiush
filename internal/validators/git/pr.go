@@ -7,7 +7,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/smykla-skalski/klaudiush/internal/rules"
 	"github.com/smykla-skalski/klaudiush/internal/validator"
 	"github.com/smykla-skalski/klaudiush/internal/validators"
 	"github.com/smykla-skalski/klaudiush/pkg/config"
@@ -49,20 +48,20 @@ const (
 // PRValidator validates gh pr create commands
 type PRValidator struct {
 	validator.BaseValidator
-	config      *config.PRValidatorConfig
-	ruleAdapter *rules.RuleValidatorAdapter
+	config *config.PRValidatorConfig
 }
 
 // NewPRValidator creates a new PRValidator instance
 func NewPRValidator(
 	cfg *config.PRValidatorConfig,
 	log logger.Logger,
-	ruleAdapter *rules.RuleValidatorAdapter,
+	ruleAdapter validator.RuleChecker,
 ) *PRValidator {
 	return &PRValidator{
-		BaseValidator: *validator.NewBaseValidator("validate-pr", log),
-		config:        cfg,
-		ruleAdapter:   ruleAdapter,
+		BaseValidator: *validator.NewBaseValidatorWithRules(
+			"validate-pr", log, ruleAdapter,
+		),
+		config: cfg,
 	}
 }
 
@@ -223,11 +222,9 @@ func (v *PRValidator) Validate(ctx context.Context, hookCtx *hook.Context) *vali
 	log := v.Logger()
 	log.Debug("Running PR validation")
 
-	// Check rules first if rule adapter is configured
-	if v.ruleAdapter != nil {
-		if result := v.ruleAdapter.CheckRules(ctx, hookCtx); result != nil {
-			return result
-		}
+	// Check rules first
+	if result := v.CheckRules(ctx, hookCtx); result != nil {
+		return result
 	}
 
 	// Parse the command

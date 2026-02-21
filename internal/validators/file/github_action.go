@@ -15,7 +15,6 @@ import (
 
 	"github.com/smykla-skalski/klaudiush/internal/github"
 	"github.com/smykla-skalski/klaudiush/internal/linters"
-	"github.com/smykla-skalski/klaudiush/internal/rules"
 	"github.com/smykla-skalski/klaudiush/internal/validator"
 	"github.com/smykla-skalski/klaudiush/pkg/config"
 	"github.com/smykla-skalski/klaudiush/pkg/hook"
@@ -81,7 +80,6 @@ type WorkflowValidator struct {
 	linter       linters.ActionLinter
 	githubClient github.Client
 	config       *config.WorkflowValidatorConfig
-	ruleAdapter  *rules.RuleValidatorAdapter
 }
 
 // NewWorkflowValidator creates a new WorkflowValidator
@@ -90,14 +88,13 @@ func NewWorkflowValidator(
 	githubClient github.Client,
 	log logger.Logger,
 	cfg *config.WorkflowValidatorConfig,
-	ruleAdapter *rules.RuleValidatorAdapter,
+	ruleAdapter validator.RuleChecker,
 ) *WorkflowValidator {
 	return &WorkflowValidator{
-		BaseValidator: *validator.NewBaseValidator("validate-github-workflow", log),
+		BaseValidator: *validator.NewBaseValidatorWithRules("validate-github-workflow", log, ruleAdapter),
 		linter:        linter,
 		githubClient:  githubClient,
 		config:        cfg,
-		ruleAdapter:   ruleAdapter,
 	}
 }
 
@@ -105,11 +102,9 @@ func NewWorkflowValidator(
 func (v *WorkflowValidator) Validate(ctx context.Context, hookCtx *hook.Context) *validator.Result {
 	log := v.Logger()
 
-	// Check rules first if rule adapter is configured
-	if v.ruleAdapter != nil {
-		if result := v.ruleAdapter.CheckRules(ctx, hookCtx); result != nil {
-			return result
-		}
+	// Check rules first
+	if result := v.CheckRules(ctx, hookCtx); result != nil {
+		return result
 	}
 
 	// Check if this is a workflow or composable action file

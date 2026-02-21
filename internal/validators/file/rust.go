@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/smykla-skalski/klaudiush/internal/linters"
-	"github.com/smykla-skalski/klaudiush/internal/rules"
 	"github.com/smykla-skalski/klaudiush/internal/validator"
 	"github.com/smykla-skalski/klaudiush/pkg/config"
 	"github.com/smykla-skalski/klaudiush/pkg/hook"
@@ -31,9 +30,8 @@ var cargoTomlEditionPattern = regexp.MustCompile(`^\s*edition\s*=\s*"(\d{4})"`)
 // RustValidator validates Rust code formatting using rustfmt.
 type RustValidator struct {
 	validator.BaseValidator
-	checker     linters.RustfmtChecker
-	config      *config.RustValidatorConfig
-	ruleAdapter *rules.RuleValidatorAdapter
+	checker linters.RustfmtChecker
+	config  *config.RustValidatorConfig
 }
 
 // NewRustValidator creates a new RustValidator.
@@ -41,13 +39,12 @@ func NewRustValidator(
 	log logger.Logger,
 	checker linters.RustfmtChecker,
 	cfg *config.RustValidatorConfig,
-	ruleAdapter *rules.RuleValidatorAdapter,
+	ruleAdapter validator.RuleChecker,
 ) *RustValidator {
 	return &RustValidator{
-		BaseValidator: *validator.NewBaseValidator("validate-rust", log),
+		BaseValidator: *validator.NewBaseValidatorWithRules("validate-rust", log, ruleAdapter),
 		checker:       checker,
 		config:        cfg,
-		ruleAdapter:   ruleAdapter,
 	}
 }
 
@@ -59,11 +56,9 @@ func (v *RustValidator) Validate(
 	log := v.Logger()
 	log.Debug("validating Rust code formatting")
 
-	// Check rules first if rule adapter is configured
-	if v.ruleAdapter != nil {
-		if result := v.ruleAdapter.CheckRules(ctx, hookCtx); result != nil {
-			return result
-		}
+	// Check rules first
+	if result := v.CheckRules(ctx, hookCtx); result != nil {
+		return result
 	}
 
 	// Check if rustfmt is enabled

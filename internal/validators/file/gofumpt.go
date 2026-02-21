@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/smykla-skalski/klaudiush/internal/linters"
-	"github.com/smykla-skalski/klaudiush/internal/rules"
 	"github.com/smykla-skalski/klaudiush/internal/validator"
 	"github.com/smykla-skalski/klaudiush/pkg/config"
 	"github.com/smykla-skalski/klaudiush/pkg/hook"
@@ -28,9 +27,8 @@ var (
 // GofumptValidator validates Go code formatting using gofumpt
 type GofumptValidator struct {
 	validator.BaseValidator
-	checker     linters.GofumptChecker
-	config      *config.GofumptValidatorConfig
-	ruleAdapter *rules.RuleValidatorAdapter
+	checker linters.GofumptChecker
+	config  *config.GofumptValidatorConfig
 }
 
 // NewGofumptValidator creates a new GofumptValidator
@@ -38,13 +36,12 @@ func NewGofumptValidator(
 	log logger.Logger,
 	checker linters.GofumptChecker,
 	cfg *config.GofumptValidatorConfig,
-	ruleAdapter *rules.RuleValidatorAdapter,
+	ruleAdapter validator.RuleChecker,
 ) *GofumptValidator {
 	return &GofumptValidator{
-		BaseValidator: *validator.NewBaseValidator("validate-gofumpt", log),
+		BaseValidator: *validator.NewBaseValidatorWithRules("validate-gofumpt", log, ruleAdapter),
 		checker:       checker,
 		config:        cfg,
-		ruleAdapter:   ruleAdapter,
 	}
 }
 
@@ -56,11 +53,9 @@ func (v *GofumptValidator) Validate(
 	log := v.Logger()
 	log.Debug("validating Go code formatting")
 
-	// Check rules first if rule adapter is configured
-	if v.ruleAdapter != nil {
-		if result := v.ruleAdapter.CheckRules(ctx, hookCtx); result != nil {
-			return result
-		}
+	// Check rules first
+	if result := v.CheckRules(ctx, hookCtx); result != nil {
+		return result
 	}
 
 	// Get the file path

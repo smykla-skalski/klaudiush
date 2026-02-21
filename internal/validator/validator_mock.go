@@ -82,3 +82,41 @@ func (mr *MockValidatorMockRecorder) Validate(ctx, hookCtx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Validate", reflect.TypeOf((*MockValidator)(nil).Validate), ctx, hookCtx)
 }
+
+// MockRuleChecker is a mock of RuleChecker interface.
+type MockRuleChecker struct {
+	ctrl     *gomock.Controller
+	recorder *MockRuleCheckerMockRecorder
+	isgomock struct{}
+}
+
+// MockRuleCheckerMockRecorder is the mock recorder for MockRuleChecker.
+type MockRuleCheckerMockRecorder struct {
+	mock *MockRuleChecker
+}
+
+// NewMockRuleChecker creates a new mock instance.
+func NewMockRuleChecker(ctrl *gomock.Controller) *MockRuleChecker {
+	mock := &MockRuleChecker{ctrl: ctrl}
+	mock.recorder = &MockRuleCheckerMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockRuleChecker) EXPECT() *MockRuleCheckerMockRecorder {
+	return m.recorder
+}
+
+// CheckRules mocks base method.
+func (m *MockRuleChecker) CheckRules(ctx context.Context, hookCtx *hook.Context) *Result {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CheckRules", ctx, hookCtx)
+	ret0, _ := ret[0].(*Result)
+	return ret0
+}
+
+// CheckRules indicates an expected call of CheckRules.
+func (mr *MockRuleCheckerMockRecorder) CheckRules(ctx, hookCtx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckRules", reflect.TypeOf((*MockRuleChecker)(nil).CheckRules), ctx, hookCtx)
+}

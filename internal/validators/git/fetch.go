@@ -4,7 +4,6 @@ import (
 	"context"
 	"strings"
 
-	"github.com/smykla-skalski/klaudiush/internal/rules"
 	"github.com/smykla-skalski/klaudiush/internal/validator"
 	"github.com/smykla-skalski/klaudiush/pkg/config"
 	"github.com/smykla-skalski/klaudiush/pkg/hook"
@@ -17,7 +16,6 @@ type FetchValidator struct {
 	validator.BaseValidator
 	gitRunner    GitRunner
 	config       *config.FetchValidatorConfig
-	ruleAdapter  *rules.RuleValidatorAdapter
 	remoteHelper *RemoteHelper
 }
 
@@ -26,14 +24,15 @@ func NewFetchValidator(
 	log logger.Logger,
 	gitRunner GitRunner,
 	cfg *config.FetchValidatorConfig,
-	ruleAdapter *rules.RuleValidatorAdapter,
+	ruleAdapter validator.RuleChecker,
 ) *FetchValidator {
 	return &FetchValidator{
-		BaseValidator: *validator.NewBaseValidator("validate-git-fetch", log),
-		gitRunner:     defaultGitRunner(gitRunner),
-		config:        cfg,
-		ruleAdapter:   ruleAdapter,
-		remoteHelper:  NewRemoteHelper(),
+		BaseValidator: *validator.NewBaseValidatorWithRules(
+			"validate-git-fetch", log, ruleAdapter,
+		),
+		gitRunner:    defaultGitRunner(gitRunner),
+		config:       cfg,
+		remoteHelper: NewRemoteHelper(),
 	}
 }
 
@@ -43,11 +42,17 @@ func (*FetchValidator) Name() string {
 }
 
 // Validate validates git fetch commands.
-func (v *FetchValidator) Validate(ctx context.Context, hookCtx *hook.Context) *validator.Result {
+func (v *FetchValidator) Validate(
+	ctx context.Context,
+	hookCtx *hook.Context,
+) *validator.Result {
+	if result := v.CheckRules(ctx, hookCtx); result != nil {
+		return result
+	}
+
 	return ValidateGitSubcommand(
 		ctx,
 		hookCtx,
-		v.ruleAdapter,
 		v.Logger(),
 		"fetch",
 		v.validateFetchCommand,

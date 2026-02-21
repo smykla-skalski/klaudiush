@@ -10,7 +10,6 @@ import (
 	"github.com/cockroachdb/errors"
 
 	"github.com/smykla-skalski/klaudiush/internal/exec"
-	"github.com/smykla-skalski/klaudiush/internal/rules"
 	"github.com/smykla-skalski/klaudiush/internal/validator"
 	"github.com/smykla-skalski/klaudiush/pkg/config"
 	"github.com/smykla-skalski/klaudiush/pkg/hook"
@@ -51,10 +50,9 @@ type PRDetails struct {
 // MergeValidator validates gh pr merge commands and the resulting commit message.
 type MergeValidator struct {
 	validator.BaseValidator
-	config      *config.MergeValidatorConfig
-	gitRunner   GitRunner
-	cmdRunner   exec.CommandRunner
-	ruleAdapter *rules.RuleValidatorAdapter
+	config    *config.MergeValidatorConfig
+	gitRunner GitRunner
+	cmdRunner exec.CommandRunner
 }
 
 // NewMergeValidator creates a new MergeValidator instance.
@@ -62,14 +60,15 @@ func NewMergeValidator(
 	log logger.Logger,
 	gitRunner GitRunner,
 	cfg *config.MergeValidatorConfig,
-	ruleAdapter *rules.RuleValidatorAdapter,
+	ruleAdapter validator.RuleChecker,
 ) *MergeValidator {
 	return &MergeValidator{
-		BaseValidator: *validator.NewBaseValidator("validate-merge", log),
-		config:        cfg,
-		gitRunner:     defaultGitRunner(gitRunner),
-		cmdRunner:     exec.NewCommandRunner(ghAPITimeout),
-		ruleAdapter:   ruleAdapter,
+		BaseValidator: *validator.NewBaseValidatorWithRules(
+			"validate-merge", log, ruleAdapter,
+		),
+		config:    cfg,
+		gitRunner: defaultGitRunner(gitRunner),
+		cmdRunner: exec.NewCommandRunner(ghAPITimeout),
 	}
 }
 
@@ -78,11 +77,9 @@ func (v *MergeValidator) Validate(ctx context.Context, hookCtx *hook.Context) *v
 	log := v.Logger()
 	log.Debug("Running merge validation")
 
-	// Check rules first if rule adapter is configured
-	if v.ruleAdapter != nil {
-		if result := v.ruleAdapter.CheckRules(ctx, hookCtx); result != nil {
-			return result
-		}
+	// Check rules first
+	if result := v.CheckRules(ctx, hookCtx); result != nil {
+		return result
 	}
 
 	// Parse the command

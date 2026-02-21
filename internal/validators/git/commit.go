@@ -8,7 +8,6 @@ import (
 
 	"github.com/cockroachdb/errors"
 
-	"github.com/smykla-skalski/klaudiush/internal/rules"
 	"github.com/smykla-skalski/klaudiush/internal/templates"
 	"github.com/smykla-skalski/klaudiush/internal/validator"
 	"github.com/smykla-skalski/klaudiush/pkg/config"
@@ -34,9 +33,8 @@ var (
 // CommitValidator validates git commit commands and messages
 type CommitValidator struct {
 	validator.BaseValidator
-	gitRunner   GitRunner
-	config      *config.CommitValidatorConfig
-	ruleAdapter *rules.RuleValidatorAdapter
+	gitRunner GitRunner
+	config    *config.CommitValidatorConfig
 }
 
 // NewCommitValidator creates a new CommitValidator instance
@@ -44,13 +42,14 @@ func NewCommitValidator(
 	log logger.Logger,
 	gitRunner GitRunner,
 	cfg *config.CommitValidatorConfig,
-	ruleAdapter *rules.RuleValidatorAdapter,
+	ruleAdapter validator.RuleChecker,
 ) *CommitValidator {
 	return &CommitValidator{
-		BaseValidator: *validator.NewBaseValidator("validate-commit", log),
-		gitRunner:     defaultGitRunner(gitRunner),
-		config:        cfg,
-		ruleAdapter:   ruleAdapter,
+		BaseValidator: *validator.NewBaseValidatorWithRules(
+			"validate-commit", log, ruleAdapter,
+		),
+		gitRunner: defaultGitRunner(gitRunner),
+		config:    cfg,
 	}
 }
 
@@ -59,11 +58,9 @@ func (v *CommitValidator) Validate(ctx context.Context, hookCtx *hook.Context) *
 	log := v.Logger()
 	log.Debug("Running git commit validation")
 
-	// Check rules first if rule adapter is configured
-	if v.ruleAdapter != nil {
-		if result := v.ruleAdapter.CheckRules(ctx, hookCtx); result != nil {
-			return result
-		}
+	// Check rules first
+	if result := v.CheckRules(ctx, hookCtx); result != nil {
+		return result
 	}
 
 	// Parse the command
