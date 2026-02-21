@@ -1,9 +1,6 @@
 package xdg
 
-import (
-	"os"
-	"path/filepath"
-)
+import "path/filepath"
 
 // PathResolver resolves XDG-based paths for klaudiush.
 // The default implementation uses os.UserHomeDir() and XDG env vars.
@@ -34,10 +31,6 @@ type homeResolver struct {
 }
 
 func (r homeResolver) configHome() string {
-	if v := os.Getenv("XDG_CONFIG_HOME"); v != "" {
-		return v
-	}
-
 	return filepath.Join(r.homeDir, ".config")
 }
 
