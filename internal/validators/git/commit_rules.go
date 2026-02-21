@@ -10,8 +10,11 @@ import (
 
 // RuleResult contains the result of a rule validation including reference.
 type RuleResult struct {
-	// Errors contains the error messages from this rule.
-	Errors []string
+	// Message is the primary error (no emoji, no indentation).
+	Message string
+
+	// Context contains supplementary lines (no emoji, no indentation).
+	Context []string
 
 	// Reference is the URL that uniquely identifies this type of validation failure.
 	Reference validator.Reference
@@ -50,15 +53,15 @@ func (r *TitleLengthRule) Validate(commit *ParsedCommit, _ string) *RuleResult {
 
 	return &RuleResult{
 		Reference: validator.RefGitBadTitle,
-		Errors: []string{
-			fmt.Sprintf(
-				"❌ Title exceeds %d characters (%d chars): '%s'",
-				r.MaxLength,
-				titleLength,
-				commit.Title,
-			),
-			"   Common cause: type(scope): prefix is part of the 50-char limit.",
-			"   Note: Revert commits (Revert \"...\") are exempt from this limit",
+		Message: fmt.Sprintf(
+			"Title exceeds %d characters (%d chars): '%s'",
+			r.MaxLength,
+			titleLength,
+			commit.Title,
+		),
+		Context: []string{
+			"type(scope): prefix counts toward the limit",
+			"Revert commits are exempt",
 		},
 	}
 }
@@ -80,25 +83,23 @@ func (r *ConventionalFormatRule) Validate(commit *ParsedCommit, _ string) *RuleR
 	}
 
 	if !commit.Valid || commit.ParseError != "" {
-		errors := []string{
-			"❌ Title doesn't follow conventional commits format: type(scope): description",
-		}
+		ctx := []string{}
 
 		if r.RequireScope {
-			errors = append(errors, "   Scope is mandatory and must be in parentheses")
+			ctx = append(ctx, "Scope is mandatory")
 		}
 
-		errors = append(errors, "   Valid types: "+strings.Join(r.ValidTypes, ", "))
-		errors = append(errors, "   Alternative: Revert \"original commit title\"")
-		errors = append(errors, fmt.Sprintf("   Current title: '%s'", commit.Title))
-		errors = append(
-			errors,
-			"   Note: type(scope): prefix counts toward 50-char limit. Keep the description short.",
+		ctx = append(ctx,
+			"Valid types: "+strings.Join(r.ValidTypes, ", "),
+			"Alternative: Revert \"original commit title\"",
+			fmt.Sprintf("Current title: '%s'", commit.Title),
+			"type(scope): prefix counts toward 50-char limit",
 		)
 
 		return &RuleResult{
 			Reference: validator.RefGitConventionalCommit,
-			Errors:    errors,
+			Message:   "Title doesn't follow conventional commits format: type(scope): description",
+			Context:   ctx,
 		}
 	}
 
@@ -106,13 +107,13 @@ func (r *ConventionalFormatRule) Validate(commit *ParsedCommit, _ string) *RuleR
 	if r.RequireScope && commit.Scope == "" {
 		return &RuleResult{
 			Reference: validator.RefGitConventionalCommit,
-			Errors: []string{
-				"❌ Title doesn't follow conventional commits format: type(scope): description",
-				"   Scope is mandatory and must be in parentheses",
-				"   Valid types: " + strings.Join(r.ValidTypes, ", "),
-				"   Alternative: Revert \"original commit title\"",
-				fmt.Sprintf("   Current title: '%s'", commit.Title),
-				"   Note: type(scope): prefix counts toward 50-char limit. Keep the description short.",
+			Message:   "Title doesn't follow conventional commits format: type(scope): description",
+			Context: []string{
+				"Scope is mandatory",
+				"Valid types: " + strings.Join(r.ValidTypes, ", "),
+				"Alternative: Revert \"original commit title\"",
+				fmt.Sprintf("Current title: '%s'", commit.Title),
+				"type(scope): prefix counts toward 50-char limit",
 			},
 		}
 	}
@@ -144,12 +145,12 @@ func (*ScopeOnlyFormatRule) Validate(commit *ParsedCommit, _ string) *RuleResult
 
 	return &RuleResult{
 		Reference: validator.RefGitConventionalCommit,
-		Errors: []string{
-			"❌ Title doesn't follow scope-only format: scope: description",
-			"   Scope must start with a lowercase letter (a-z)",
-			"   Valid characters in scope: letters, digits, '.', '/', '_', '-'",
-			"   Examples: 'home-environment: use nix profile', 'modules/systemd: add unit'",
-			fmt.Sprintf("   Current title: '%s'", commit.Title),
+		Message:   "Title doesn't follow scope-only format: scope: description",
+		Context: []string{
+			"Scope must start with a lowercase letter (a-z)",
+			"Valid characters in scope: letters, digits, '.', '/', '_', '-'",
+			"Examples: 'home-environment: use nix profile', 'modules/systemd: add unit'",
+			fmt.Sprintf("Current title: '%s'", commit.Title),
 		},
 	}
 }
@@ -180,10 +181,10 @@ func (r *CustomPatternRule) Validate(commit *ParsedCommit, _ string) *RuleResult
 
 	return &RuleResult{
 		Reference: validator.RefGitConventionalCommit,
-		Errors: []string{
-			"❌ Title doesn't match the required pattern",
-			"   Pattern: " + r.Pattern.String(),
-			fmt.Sprintf("   Current title: '%s'", commit.Title),
+		Message:   "Title doesn't match the required pattern",
+		Context: []string{
+			"Pattern: " + r.Pattern.String(),
+			fmt.Sprintf("Current title: '%s'", commit.Title),
 		},
 	}
 }
@@ -221,14 +222,14 @@ func (r *InfraScopeMisuseRule) Validate(commit *ParsedCommit, _ string) *RuleRes
 
 	return &RuleResult{
 		Reference: validator.RefGitFeatCI,
-		Errors: []string{
-			fmt.Sprintf(
-				"❌ Use '%s(...)' not '%s(%s)' for infrastructure changes",
-				scopeMatch,
-				typeMatch,
-				scopeMatch,
-			),
-			"   feat/fix should only be used for user-facing changes",
+		Message: fmt.Sprintf(
+			"Use '%s(...)' not '%s(%s)' for infrastructure changes",
+			scopeMatch,
+			typeMatch,
+			scopeMatch,
+		),
+		Context: []string{
+			"feat/fix should only be used for user-facing changes",
 		},
 	}
 }
@@ -252,10 +253,13 @@ func (*BodyLineLengthRule) Name() string {
 	return "body-line-length"
 }
 
-func (r *BodyLineLengthRule) Validate(_ *ParsedCommit, message string) *RuleResult {
-	lines := strings.Split(message, "\n")
-	errors := make([]string, 0)
+func (r *BodyLineLengthRule) Validate(_ *ParsedCommit, commitMsg string) *RuleResult {
+	lines := strings.Split(commitMsg, "\n")
 	maxLenWithTolerance := r.MaxLength + r.Tolerance
+
+	var primary string
+
+	ctx := make([]string, 0)
 
 	for lineNum, line := range lines {
 		// Skip title (first line)
@@ -276,26 +280,32 @@ func (r *BodyLineLengthRule) Validate(_ *ParsedCommit, message string) *RuleResu
 		lineLen := len(line)
 		if lineLen > maxLenWithTolerance {
 			truncated := truncateLine(line)
-			errors = append(errors,
-				fmt.Sprintf(
-					"❌ Line %d exceeds %d characters (%d chars, >%d over limit)",
-					lineNum+1,
-					r.MaxLength,
-					lineLen,
-					r.Tolerance,
-				),
-				fmt.Sprintf("   Line: '%s'", truncated),
+			msg := fmt.Sprintf(
+				"Line %d exceeds %d characters (%d chars, >%d over limit)",
+				lineNum+1,
+				r.MaxLength,
+				lineLen,
+				r.Tolerance,
 			)
+
+			if primary == "" {
+				primary = msg
+
+				ctx = append(ctx, fmt.Sprintf("Line: '%s'", truncated))
+			} else {
+				ctx = append(ctx, msg, fmt.Sprintf("Line: '%s'", truncated))
+			}
 		}
 	}
 
-	if len(errors) == 0 {
+	if primary == "" {
 		return nil
 	}
 
 	return &RuleResult{
 		Reference: validator.RefGitBadBody,
-		Errors:    errors,
+		Message:   primary,
+		Context:   ctx,
 	}
 }
 
@@ -318,7 +328,6 @@ func (*ListFormattingRule) Name() string {
 
 func (r *ListFormattingRule) Validate(_ *ParsedCommit, message string) *RuleResult {
 	lines := strings.Split(message, "\n")
-	errors := make([]string, 0)
 	prevLineEmpty := false
 	foundFirstList := false
 
@@ -345,15 +354,18 @@ func (r *ListFormattingRule) Validate(_ *ParsedCommit, message string) *RuleResu
 			// Check if this is the first list item and there was no empty line before it
 			if !foundFirstList && !prevLineEmpty {
 				truncated := truncateLine(line)
-				errors = append(
-					errors,
-					fmt.Sprintf(
-						"❌ Missing empty line before first list item at line %d",
+
+				return &RuleResult{
+					Reference: validator.RefGitListFormat,
+					Message: fmt.Sprintf(
+						"Missing empty line before first list item at line %d",
 						lineNum+1,
 					),
-					"   List items must be preceded by an empty line",
-					fmt.Sprintf("   Line: '%s'", truncated),
-				)
+					Context: []string{
+						"List items must be preceded by an empty line",
+						fmt.Sprintf("Line: '%s'", truncated),
+					},
+				}
 			}
 
 			foundFirstList = true
@@ -362,14 +374,7 @@ func (r *ListFormattingRule) Validate(_ *ParsedCommit, message string) *RuleResu
 		prevLineEmpty = false
 	}
 
-	if len(errors) == 0 {
-		return nil
-	}
-
-	return &RuleResult{
-		Reference: validator.RefGitListFormat,
-		Errors:    errors,
-	}
+	return nil
 }
 
 // PRReferenceRule blocks PR references in commit messages.
@@ -400,12 +405,12 @@ func (r *PRReferenceRule) Validate(_ *ParsedCommit, message string) *RuleResult 
 		return nil
 	}
 
-	errors := []string{"❌ PR references found - remove '#' prefix or convert URLs to plain numbers"}
+	ctx := make([]string, 0)
 
 	// Show examples for hash references
 	if hashMatch := r.hashRefRegex.FindString(message); hashMatch != "" {
 		fix := strings.TrimPrefix(hashMatch, "#")
-		errors = append(errors, fmt.Sprintf("   Found: '%s' → Should be: '%s'", hashMatch, fix))
+		ctx = append(ctx, fmt.Sprintf("Found: '%s' -> Should be: '%s'", hashMatch, fix))
 	}
 
 	// Show examples for URL references
@@ -419,15 +424,16 @@ func (r *PRReferenceRule) Validate(_ *ParsedCommit, message string) *RuleResult 
 			cleanURL = urlMatch[idx:]
 		}
 
-		errors = append(
-			errors,
-			fmt.Sprintf("   Found: 'https://%s' → Should be: '%s'", cleanURL, prNum),
+		ctx = append(
+			ctx,
+			fmt.Sprintf("Found: 'https://%s' -> Should be: '%s'", cleanURL, prNum),
 		)
 	}
 
 	return &RuleResult{
 		Reference: validator.RefGitPRRef,
-		Errors:    errors,
+		Message:   "PR references found - remove '#' prefix or convert URLs to plain numbers",
+		Context:   ctx,
 	}
 }
 
@@ -449,9 +455,7 @@ func (*AIAttributionRule) Validate(_ *ParsedCommit, message string) *RuleResult 
 
 	return &RuleResult{
 		Reference: validator.RefGitClaudeAttr,
-		Errors: []string{
-			"❌ Commit message contains AI attribution - remove any AI generation attribution",
-		},
+		Message:   "Commit message contains AI attribution - remove any AI generation attribution",
 	}
 }
 
@@ -469,7 +473,9 @@ func (r *ForbiddenPatternRule) Validate(_ *ParsedCommit, message string) *RuleRe
 		return nil
 	}
 
-	errors := make([]string, 0)
+	var primary string
+
+	ctx := make([]string, 0)
 
 	for _, pattern := range r.Patterns {
 		re, err := regexp.Compile(pattern)
@@ -479,21 +485,26 @@ func (r *ForbiddenPatternRule) Validate(_ *ParsedCommit, message string) *RuleRe
 
 		if re.MatchString(message) {
 			match := re.FindString(message)
-			errors = append(errors,
-				fmt.Sprintf("❌ Forbidden pattern found: '%s'", match),
-				"   Pattern: "+pattern,
-				"   Remove this content from your commit message",
-			)
+			msg := fmt.Sprintf("Forbidden pattern found: '%s'", match)
+
+			if primary == "" {
+				primary = msg
+
+				ctx = append(ctx, "Pattern: "+pattern)
+			} else {
+				ctx = append(ctx, msg, "Pattern: "+pattern)
+			}
 		}
 	}
 
-	if len(errors) == 0 {
+	if primary == "" {
 		return nil
 	}
 
 	return &RuleResult{
 		Reference: validator.RefGitForbiddenPattern,
-		Errors:    errors,
+		Message:   primary,
+		Context:   ctx,
 	}
 }
 
@@ -530,10 +541,10 @@ func (r *SignoffRule) Validate(_ *ParsedCommit, message string) *RuleResult {
 	if signoffLine != expectedSignoffLine {
 		return &RuleResult{
 			Reference: validator.RefGitSignoffMismatch,
-			Errors: []string{
-				"❌ Wrong signoff identity",
-				"   Found: " + signoffLine,
-				"   Expected: " + expectedSignoffLine,
+			Message:   "Wrong signoff identity",
+			Context: []string{
+				"Found: " + signoffLine,
+				"Expected: " + expectedSignoffLine,
 			},
 		}
 	}

@@ -29,11 +29,10 @@ var _ = Describe("FormatSystemMessage", func() {
 		}
 
 		result := hookresponse.FormatSystemMessage(errs)
-		Expect(result).To(ContainSubstring("\u274c"))
-		Expect(result).To(ContainSubstring("Validation Failed:"))
-		Expect(result).To(ContainSubstring("Missing -s flag"))
-		Expect(result).To(ContainSubstring("Fix: Add -s flag"))
-		Expect(result).To(ContainSubstring("Reference: https://klaudiu.sh/e/GIT001"))
+		Expect(result).To(ContainSubstring("\u274c GIT001: Missing -s flag"))
+		Expect(result).To(ContainSubstring("  Fix: Add -s flag"))
+		Expect(result).To(ContainSubstring("  Ref: https://klaudiu.sh/e/GIT001"))
+		Expect(result).To(ContainSubstring("Wrong for your workflow? klaudiush disable GIT001"))
 	})
 
 	It("formats warnings with warning emoji header", func() {
@@ -46,9 +45,7 @@ var _ = Describe("FormatSystemMessage", func() {
 		}
 
 		result := hookresponse.FormatSystemMessage(errs)
-		Expect(result).To(ContainSubstring("\u26a0\ufe0f"))
-		Expect(result).To(ContainSubstring("Warnings:"))
-		Expect(result).To(ContainSubstring("line too long"))
+		Expect(result).To(ContainSubstring("\u26a0\ufe0f line too long"))
 	})
 
 	It("separates blocking errors and warnings", func() {
@@ -66,10 +63,8 @@ var _ = Describe("FormatSystemMessage", func() {
 		}
 
 		result := hookresponse.FormatSystemMessage(errs)
-		Expect(result).To(ContainSubstring("Validation Failed:"))
-		Expect(result).To(ContainSubstring("Blocking error"))
-		Expect(result).To(ContainSubstring("Warnings:"))
-		Expect(result).To(ContainSubstring("Warning message"))
+		Expect(result).To(ContainSubstring("\u274c Blocking error"))
+		Expect(result).To(ContainSubstring("\u26a0\ufe0f Warning message"))
 	})
 
 	It("includes error details", func() {
@@ -105,7 +100,7 @@ var _ = Describe("FormatSystemMessage", func() {
 		Expect(result).To(ContainSubstring("output\n\npermissionDecisionReason"))
 	})
 
-	It("strips validate- prefix from validator names", func() {
+	It("does not include validator name in output", func() {
 		errs := []*dispatcher.ValidationError{
 			{
 				Validator:   "validate-git-commit",
@@ -115,8 +110,9 @@ var _ = Describe("FormatSystemMessage", func() {
 		}
 
 		result := hookresponse.FormatSystemMessage(errs)
-		Expect(result).To(ContainSubstring("git-commit"))
+		Expect(result).To(ContainSubstring("\u274c error"))
 		Expect(result).NotTo(ContainSubstring("validate-git-commit"))
+		Expect(result).NotTo(ContainSubstring("git-commit"))
 	})
 })
 

@@ -76,7 +76,7 @@ func (v *CommitValidator) validateMessage(ctx context.Context, message string) *
 
 	for _, rule := range rules {
 		result := rule.Validate(parsed, message)
-		if result != nil && len(result.Errors) > 0 {
+		if result != nil && result.Message != "" {
 			ruleResults = append(ruleResults, result)
 		}
 	}
@@ -88,7 +88,8 @@ func (v *CommitValidator) validateMessage(ctx context.Context, message string) *
 			// Markdown errors are body-related warnings
 			ruleResults = append(ruleResults, &RuleResult{
 				Reference: validator.RefGitBadBody,
-				Errors:    markdownErrors,
+				Message:   markdownErrors[0],
+				Context:   markdownErrors[1:],
 			})
 		}
 	}
@@ -214,36 +215,49 @@ func (*CommitValidator) validateMarkdownInBody(lines []string) []string {
 // It selects the most appropriate reference based on what rules failed.
 // Results are sorted by fix priority so Claude sees the most actionable errors first.
 func (*CommitValidator) buildErrorResult(results []*RuleResult, message string) *validator.Result {
-	var details strings.Builder
-
 	// Sort results by fix priority
 	sortResultsByFixOrder(results)
 
 	// Collect all errors and determine the primary reference
 	ref := selectPrimaryReference(results)
 
-	fmt.Fprintf(&details, "Found %d issue(s). Fix ALL at once:\n\n", len(results))
+	primaryMsg := results[0].Message
 
-	for _, result := range results {
-		for _, err := range result.Errors {
-			details.WriteString(err)
+	var details strings.Builder
+
+	if len(results) > 1 {
+		// Multiple errors: list all with context
+		fmt.Fprintf(&details, "%d issues:\n\n", len(results))
+
+		for _, r := range results {
+			details.WriteString("- ")
+			details.WriteString(r.Message)
+			details.WriteString("\n")
+
+			for _, ctx := range r.Context {
+				details.WriteString("  ")
+				details.WriteString(ctx)
+				details.WriteString("\n")
+			}
+		}
+	} else {
+		// Single error: context only (message is already in Message field)
+		for _, ctx := range results[0].Context {
+			details.WriteString(ctx)
 			details.WriteString("\n")
 		}
 	}
 
-	details.WriteString("\n📝 Commit message:\n")
-	details.WriteString("---\n")
-	details.WriteString(message)
-	details.WriteString("\n---")
+	result := validator.FailWithRef(ref, primaryMsg)
 
-	// Use the first error from the highest-priority result as the message.
-	// summarizeMessage() in the formatter will strip emoji prefixes.
-	firstError := results[0].Errors[0]
+	if details.Len() > 0 {
+		result = result.AddDetail("errors", details.String())
+	}
 
-	return validator.FailWithRef(
-		ref,
-		firstError,
-	).AddDetail("errors", details.String())
+	// Commit preview in separate key - formatter skips by default
+	result = result.AddDetail("commit_preview", message)
+
+	return result
 }
 
 // referenceFixOrder defines the sort priority for error results.

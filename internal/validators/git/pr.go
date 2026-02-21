@@ -414,7 +414,8 @@ func (v *PRValidator) validatePRTitleData(
 	commit := v.parsedCommitForPRTitle(title)
 
 	if result := lengthRule.Validate(commit, title); result != nil {
-		*allErrors = append(*allErrors, result.Errors...)
+		*allErrors = append(*allErrors, result.Message)
+		*allErrors = append(*allErrors, result.Context...)
 
 		return
 	}
@@ -423,7 +424,8 @@ func (v *PRValidator) validatePRTitleData(
 	if !isRevertCommit(title) {
 		for _, rule := range v.buildPRTitleFormatRules(ctx) {
 			if result := rule.Validate(commit, title); result != nil {
-				*allErrors = append(*allErrors, result.Errors...)
+				*allErrors = append(*allErrors, result.Message)
+				*allErrors = append(*allErrors, result.Context...)
 
 				return
 			}
@@ -478,12 +480,16 @@ func validateBaseBranchLabels(data PRData, allErrors *[]string) {
 // buildResult builds the final validation result
 func (*PRValidator) buildResult(allErrors, allWarnings []string, title string) *validator.Result {
 	if len(allErrors) > 0 {
-		// Build details with all errors
+		primaryMsg := allErrors[0]
+
 		var details strings.Builder
 
-		for _, err := range allErrors {
-			details.WriteString(err)
-			details.WriteString("\n")
+		// Skip first error in details (already in Message field)
+		if len(allErrors) > 1 {
+			for _, err := range allErrors[1:] {
+				details.WriteString(err)
+				details.WriteString("\n")
+			}
 		}
 
 		if len(allWarnings) > 0 {
@@ -495,13 +501,18 @@ func (*PRValidator) buildResult(allErrors, allWarnings []string, title string) *
 			}
 		}
 
-		details.WriteString("\nPR title: ")
-		details.WriteString(title)
-
-		return validator.FailWithRef(
+		result := validator.FailWithRef(
 			validator.RefGitPRValidation,
-			allErrors[0],
-		).AddDetail("errors", details.String())
+			primaryMsg,
+		)
+
+		if details.Len() > 0 {
+			result = result.AddDetail("errors", details.String())
+		}
+
+		result = result.AddDetail("commit_preview", "PR title: "+title)
+
+		return result
 	}
 
 	if len(allWarnings) > 0 {
@@ -596,9 +607,8 @@ func (v *PRValidator) checkForbiddenPatterns(title, body string) []string {
 		if title != "" && re.MatchString(title) {
 			match := re.FindString(title)
 			errors = append(errors,
-				fmt.Sprintf("❌ Forbidden pattern found in PR title: '%s'", match),
-				"   Pattern: "+pattern,
-				"   Remove this content from your PR title",
+				fmt.Sprintf("Forbidden pattern found in PR title: '%s'", match),
+				"Pattern: "+pattern,
 			)
 		}
 
@@ -606,9 +616,8 @@ func (v *PRValidator) checkForbiddenPatterns(title, body string) []string {
 		if body != "" && re.MatchString(body) {
 			match := re.FindString(body)
 			errors = append(errors,
-				fmt.Sprintf("❌ Forbidden pattern found in PR body: '%s'", match),
-				"   Pattern: "+pattern,
-				"   Remove this content from your PR body",
+				fmt.Sprintf("Forbidden pattern found in PR body: '%s'", match),
+				"Pattern: "+pattern,
 			)
 		}
 	}

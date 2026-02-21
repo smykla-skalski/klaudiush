@@ -113,7 +113,7 @@ var _ = Describe("MergeValidator", func() {
 
 			It("should fail for empty title", func() {
 				errs := validator.ExportValidateTitle("")
-				Expect(errs).To(ContainElement("❌ PR title is empty"))
+				Expect(errs).To(ContainElement("PR title is empty"))
 			})
 
 			It("should fail for title exceeding 50 characters", func() {

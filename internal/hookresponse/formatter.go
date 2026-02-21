@@ -153,83 +153,86 @@ func FormatSystemMessage(errs []*dispatcher.ValidationError) string {
 		return ""
 	}
 
-	blockingErrs := make([]*dispatcher.ValidationError, 0)
-	warningErrs := make([]*dispatcher.ValidationError, 0)
+	var b strings.Builder
 
 	for _, e := range errs {
-		if e.ShouldBlock {
-			blockingErrs = append(blockingErrs, e)
-		} else {
-			warningErrs = append(warningErrs, e)
+		formatSingleError(&b, e)
+	}
+
+	// Append disable hint for blocking error codes
+	var codes []string
+
+	seen := make(map[string]bool)
+
+	for _, e := range errs {
+		if !e.ShouldBlock {
+			continue
+		}
+
+		code := extractCode(e.Reference)
+		if code != "" && !seen[code] {
+			seen[code] = true
+			codes = append(codes, code)
 		}
 	}
 
-	var b strings.Builder
-
-	if len(blockingErrs) > 0 {
-		formatErrorList(&b, "\u274c Validation Failed:", blockingErrs)
-	}
-
-	if len(warningErrs) > 0 {
-		formatErrorList(&b, "\u26a0\ufe0f  Warnings:", warningErrs)
-	}
+	b.WriteString(FormatDisableHint(codes))
 
 	return b.String()
 }
 
-// formatErrorList writes a categorized list of errors.
-func formatErrorList(b *strings.Builder, header string, errs []*dispatcher.ValidationError) {
-	if len(errs) == 0 {
-		return
-	}
-
-	b.WriteString("\n")
-	b.WriteString(header)
-
-	for _, e := range errs {
-		b.WriteString(" ")
-		b.WriteString(shortName(e.Validator))
-	}
-
-	b.WriteString("\n\n")
-
-	for _, e := range errs {
-		formatSingleError(b, e)
-	}
-}
-
-// formatSingleError writes one error entry.
+// formatSingleError writes one error entry with compact, non-duplicating format.
 func formatSingleError(b *strings.Builder, e *dispatcher.ValidationError) {
-	b.WriteString(e.Message)
+	code := extractCode(e.Reference)
+	emoji := "\u274c"
+
+	if !e.ShouldBlock {
+		emoji = "\u26a0\ufe0f"
+	}
+
+	// Header: emoji CODE: message
+	b.WriteString(emoji)
+	b.WriteString(" ")
+
+	if code != "" {
+		b.WriteString(code)
+		b.WriteString(": ")
+	}
+
+	b.WriteString(stripEmoji(e.Message))
 	b.WriteString("\n")
 
+	// Fix hint
 	if e.FixHint != "" {
-		b.WriteString("   Fix: ")
+		b.WriteString("  Fix: ")
 		b.WriteString(e.FixHint)
 		b.WriteString("\n")
 	}
 
+	// Reference
 	if e.Reference != "" {
-		b.WriteString("   Reference: ")
+		b.WriteString("  Ref: ")
 		b.WriteString(string(e.Reference))
 		b.WriteString("\n")
 	}
 
+	// Details (supplementary only - skip keys rendered elsewhere)
 	if len(e.Details) > 0 {
-		b.WriteString("\n")
+		for k, v := range e.Details {
+			if k == "suggested_table" || k == "commit_preview" {
+				continue
+			}
 
-		for _, v := range e.Details {
-			b.WriteString(strings.TrimSpace(v))
-			b.WriteString("\n")
+			trimmed := strings.TrimSpace(v)
+			if trimmed != "" {
+				b.WriteString("\n")
+				b.WriteString(trimmed)
+				b.WriteString("\n")
+			}
 		}
 	}
 
 	b.WriteString("\n")
-}
-
-// shortName strips the "validate-" prefix from a validator name.
-func shortName(name string) string {
-	return strings.TrimPrefix(name, "validate-")
 }
 
 // extractCode gets the error code from a Reference.

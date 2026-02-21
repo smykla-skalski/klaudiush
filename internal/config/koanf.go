@@ -590,17 +590,26 @@ func ensureMapKey(cfg map[string]any, key string) map[string]any {
 // applyDisableFlags applies --disable flags to the config map.
 func applyDisableFlags(cfg map[string]any, validatorNames []string) {
 	validatorPaths := map[string][]string{
-		"commit":      {"git", "commit"},
-		"push":        {"git", "push"},
-		"add":         {"git", "add"},
-		"pr":          {"git", "pr"},
-		"branch":      {"git", "branch"},
-		"no_verify":   {"git", "no_verify"},
-		"markdown":    {"file", "markdown"},
-		"shellscript": {"file", "shellscript"},
-		"terraform":   {"file", "terraform"},
-		"workflow":    {"file", "workflow"},
-		"bell":        {"notification", "bell"},
+		"commit":        {"git", "commit"},
+		"push":          {"git", "push"},
+		"add":           {"git", "add"},
+		"pr":            {"git", "pr"},
+		"branch":        {"git", "branch"},
+		"no_verify":     {"git", "no_verify"},
+		"merge":         {"git", "merge"},
+		"fetch":         {"git", "fetch"},
+		"markdown":      {"file", "markdown"},
+		"shellscript":   {"file", "shellscript"},
+		"terraform":     {"file", "terraform"},
+		"workflow":      {"file", "workflow"},
+		"gofumpt":       {"file", "gofumpt"},
+		"python":        {"file", "python"},
+		"javascript":    {"file", "javascript"},
+		"rust":          {"file", "rust"},
+		"linter_ignore": {"file", "linter_ignore"},
+		"secrets":       {"secrets", "secrets"},
+		"backtick":      {"shell", "backtick"},
+		"bell":          {"notification", "bell"},
 	}
 
 	for _, name := range validatorNames {

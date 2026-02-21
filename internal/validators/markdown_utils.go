@@ -636,8 +636,8 @@ func checkCodeBlock(line, prevLine string, lineNum int, inCodeBlock bool, warnin
 		// Opening code block
 		if !isEmptyLine(prevLine) && prevLine != "" {
 			*warnings = append(*warnings,
-				fmt.Sprintf("⚠️  Line %d: Code block should have empty line before it", lineNum),
-				fmt.Sprintf("   Previous line: '%s'", truncate(prevLine)),
+				fmt.Sprintf("Line %d: Code block should have empty line before it", lineNum),
+				fmt.Sprintf("Previous line: '%s'", truncate(prevLine)),
 			)
 		}
 
@@ -668,12 +668,12 @@ func checkCodeBlockIndentation(
 		*warnings = append(
 			*warnings,
 			fmt.Sprintf(
-				"⚠️  Line %d: Code block in list item should be indented by at least %d spaces",
+				"Line %d: Code block in list item should be indented by at least %d spaces",
 				lineNum,
 				lastList.indent,
 			),
 			fmt.Sprintf(
-				"   Found: %d spaces, expected: at least %d spaces",
+				"Found: %d spaces, expected: at least %d spaces",
 				indent,
 				lastList.indent,
 			),
@@ -693,10 +693,10 @@ func checkMultipleEmptyLinesBeforeCodeBlock(
 		*warnings = append(
 			*warnings,
 			fmt.Sprintf(
-				"⚠️  Line %d: Code block should have only one empty line before it, not multiple",
+				"Line %d: Code block should have only one empty line before it, not multiple",
 				lineNum,
 			),
-			"   Found multiple consecutive empty lines before code block",
+			"Found multiple consecutive empty lines before code block",
 		)
 	}
 }
@@ -709,8 +709,8 @@ func checkListItem(line, prevLine string, lineNum int, warnings *[]string) {
 
 	if shouldWarnAboutListSpacing(prevLine) {
 		*warnings = append(*warnings,
-			fmt.Sprintf("⚠️  Line %d: First list item should have empty line before it", lineNum),
-			fmt.Sprintf("   Previous line: '%s'", truncate(prevLine)),
+			fmt.Sprintf("Line %d: First list item should have empty line before it", lineNum),
+			fmt.Sprintf("Previous line: '%s'", truncate(prevLine)),
 		)
 	}
 }
@@ -732,9 +732,9 @@ func checkHeader(line, prevLine string, lineNum int, warnings *[]string) {
 	// Lists are allowed directly after headers
 	if shouldWarnAboutHeaderSpacing(line) {
 		*warnings = append(*warnings,
-			fmt.Sprintf("⚠️  Line %d: Header should have empty line after it", lineNum-1),
-			fmt.Sprintf("   Header: '%s'", truncate(prevLine)),
-			fmt.Sprintf("   Next line: '%s'", truncate(line)),
+			fmt.Sprintf("Line %d: Header should have empty line after it", lineNum-1),
+			fmt.Sprintf("Header: '%s'", truncate(prevLine)),
+			fmt.Sprintf("Next line: '%s'", truncate(line)),
 		)
 	}
 }

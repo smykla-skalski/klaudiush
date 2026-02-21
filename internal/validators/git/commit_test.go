@@ -204,7 +204,6 @@ var _ = Describe("CommitValidator", func() {
 				result := validator.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeFalse())
 				Expect(result.Message).To(ContainSubstring("Title exceeds 50 characters"))
-				Expect(result.Details["errors"]).To(ContainSubstring("Title exceeds 50 characters"))
 			})
 
 			It("should pass with Unicode ellipsis at exactly 50 characters", func() {
@@ -236,9 +235,7 @@ var _ = Describe("CommitValidator", func() {
 				result := validator.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeFalse())
 				Expect(result.Message).To(ContainSubstring("Title exceeds 50 characters"))
-				Expect(
-					result.Details["errors"],
-				).To(ContainSubstring("Title exceeds 50 characters (51 chars)"))
+				Expect(result.Message).To(ContainSubstring("51 chars"))
 			})
 
 			It("should fail with non-conventional format", func() {
@@ -253,7 +250,7 @@ var _ = Describe("CommitValidator", func() {
 				result := validator.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeFalse())
 				Expect(
-					result.Details["errors"],
+					result.Message,
 				).To(ContainSubstring("doesn't follow conventional commits format"))
 			})
 
@@ -269,7 +266,7 @@ var _ = Describe("CommitValidator", func() {
 				result := validator.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeFalse())
 				Expect(
-					result.Details["errors"],
+					result.Message,
 				).To(ContainSubstring("doesn't follow conventional commits format"))
 			})
 		})
@@ -287,7 +284,7 @@ var _ = Describe("CommitValidator", func() {
 				result := validator.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeFalse())
 				Expect(
-					result.Details["errors"],
+					result.Message,
 				).To(ContainSubstring("Use 'ci(...)' not 'feat(ci)'"))
 			})
 
@@ -303,7 +300,7 @@ var _ = Describe("CommitValidator", func() {
 				result := validator.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeFalse())
 				Expect(
-					result.Details["errors"],
+					result.Message,
 				).To(ContainSubstring("Use 'test(...)' not 'fix(test)'"))
 			})
 
@@ -319,7 +316,7 @@ var _ = Describe("CommitValidator", func() {
 				result := validator.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeFalse())
 				Expect(
-					result.Details["errors"],
+					result.Message,
 				).To(ContainSubstring("Use 'docs(...)' not 'feat(docs)'"))
 			})
 
@@ -335,7 +332,7 @@ var _ = Describe("CommitValidator", func() {
 				result := validator.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeFalse())
 				Expect(
-					result.Details["errors"],
+					result.Message,
 				).To(ContainSubstring("Use 'build(...)' not 'fix(build)'"))
 			})
 
@@ -429,7 +426,7 @@ var _ = Describe("CommitValidator", func() {
 					result := strictValidator.Validate(context.Background(), ctx)
 					Expect(result.Passed).To(BeFalse())
 					Expect(
-						result.Details["errors"],
+						result.Message,
 					).To(ContainSubstring("Title exceeds 50 characters"))
 				},
 			)
@@ -446,7 +443,7 @@ var _ = Describe("CommitValidator", func() {
 				result := validator.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeFalse())
 				Expect(
-					result.Details["errors"],
+					result.Message,
 				).To(ContainSubstring("doesn't follow conventional commits format"))
 			})
 		})
@@ -486,7 +483,7 @@ Reference: https://github.com/smykla-skalski/klaudiush/pull/123/files#diff-abc12
 				result := validator.Validate(context.Background(), ctx)
 				// Should fail for PR reference, but pass for URL length
 				Expect(result.Passed).To(BeFalse())
-				Expect(result.Details["errors"]).ToNot(ContainSubstring("exceeds 72 characters"))
+				Expect(result.Message).ToNot(ContainSubstring("exceeds 72 characters"))
 			})
 
 			It("should fail with lines over 77 characters", func() {
@@ -504,7 +501,7 @@ This is a line that definitely exceeds the seventy-two character limit and even 
 
 				result := validator.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeFalse())
-				Expect(result.Details["errors"]).To(ContainSubstring("exceeds 72 characters"))
+				Expect(result.Message).To(ContainSubstring("exceeds 72 characters"))
 			})
 		})
 
@@ -545,7 +542,7 @@ Changes:
 				result := validator.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeFalse())
 				Expect(
-					result.Details["errors"],
+					result.Message,
 				).To(ContainSubstring("Missing empty line before first list item"))
 			})
 
@@ -565,7 +562,7 @@ Changes:
 				result := validator.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeFalse())
 				Expect(
-					result.Details["errors"],
+					result.Message,
 				).To(ContainSubstring("Missing empty line before first list item"))
 			})
 
@@ -708,7 +705,7 @@ EOF
 
 				result := validator.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeFalse())
-				Expect(result.Details["errors"]).To(ContainSubstring("conventional commits format"))
+				Expect(result.Message).To(ContainSubstring("conventional commits format"))
 			})
 		})
 
@@ -724,7 +721,7 @@ EOF
 
 				result := validator.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeFalse())
-				Expect(result.Details["errors"]).To(ContainSubstring("PR references found"))
+				Expect(result.Message).To(ContainSubstring("PR references found"))
 				Expect(result.Details["errors"]).To(ContainSubstring("#123"))
 			})
 
@@ -743,7 +740,7 @@ See github.com/smykla-skalski/klaudiush/pull/123`
 
 				result := validator.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeFalse())
-				Expect(result.Details["errors"]).To(ContainSubstring("PR references found"))
+				Expect(result.Message).To(ContainSubstring("PR references found"))
 			})
 
 			It("should pass with plain number", func() {
@@ -772,7 +769,7 @@ See github.com/smykla-skalski/klaudiush/pull/123`
 
 				result := validator.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeFalse())
-				Expect(result.Details["errors"]).To(ContainSubstring("AI attribution"))
+				Expect(result.Message).To(ContainSubstring("AI attribution"))
 			})
 
 			It("should allow 'claude' in technical context", func() {
@@ -793,13 +790,13 @@ See github.com/smykla-skalski/klaudiush/pull/123`
 					EventType: hook.EventTypePreToolUse,
 					ToolName:  hook.ToolTypeBash,
 					ToolInput: hook.ToolInput{
-						Command: `git commit -sS -a -m "feat(api): add feature\\n\\nWith Claude AI assistance"`,
+						Command: `git commit -sS -a -m "feat(a): add\\n\\nWith Claude AI assistance"`,
 					},
 				}
 
 				result := validator.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeFalse())
-				Expect(result.Details["errors"]).To(ContainSubstring("AI attribution"))
+				Expect(result.Message).To(ContainSubstring("AI attribution"))
 			})
 
 			It("should pass with CLAUDE.md file reference", func() {
@@ -862,7 +859,7 @@ EOF
 
 				result := validator.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeFalse())
-				Expect(result.Details["errors"]).To(ContainSubstring("AI attribution"))
+				Expect(result.Message).To(ContainSubstring("AI attribution"))
 			})
 
 			It("should fail with Co-Authored-By: Claude", func() {
@@ -881,7 +878,7 @@ EOF
 
 				result := validator.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeFalse())
-				Expect(result.Details["errors"]).To(ContainSubstring("AI attribution"))
+				Expect(result.Message).To(ContainSubstring("AI attribution"))
 			})
 
 			It("should fail with 'generated with claude' pattern", func() {
@@ -889,13 +886,13 @@ EOF
 					EventType: hook.EventTypePreToolUse,
 					ToolName:  hook.ToolTypeBash,
 					ToolInput: hook.ToolInput{
-						Command: `git commit -sS -a -m "feat(api): add endpoint\\n\\nGenerated with Claude assistance"`,
+						Command: `git commit -sS -a -m "fix(a): x\\n\\nGenerated with Claude assistance"`,
 					},
 				}
 
 				result := validator.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeFalse())
-				Expect(result.Details["errors"]).To(ContainSubstring("AI attribution"))
+				Expect(result.Message).To(ContainSubstring("AI attribution"))
 			})
 
 			It("should fail with full Claude Code attribution footer", func() {
@@ -916,7 +913,7 @@ EOF
 
 				result := validator.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeFalse())
-				Expect(result.Details["errors"]).To(ContainSubstring("AI attribution"))
+				Expect(result.Message).To(ContainSubstring("AI attribution"))
 			})
 		})
 
@@ -932,7 +929,7 @@ EOF
 
 				result := validator.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeFalse())
-				Expect(result.Details["errors"]).To(ContainSubstring("Forbidden pattern found"))
+				Expect(result.Message).To(ContainSubstring("Forbidden pattern found"))
 				Expect(result.Details["errors"]).To(ContainSubstring("tmp/"))
 			})
 
@@ -947,7 +944,7 @@ EOF
 
 				result := validator.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeFalse())
-				Expect(result.Details["errors"]).To(ContainSubstring("Forbidden pattern found"))
+				Expect(result.Message).To(ContainSubstring("Forbidden pattern found"))
 				Expect(result.Details["errors"]).To(ContainSubstring("tmp"))
 			})
 
@@ -980,7 +977,7 @@ EOF
 
 				result := validator.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeFalse())
-				Expect(result.Details["errors"]).To(ContainSubstring("Forbidden pattern found"))
+				Expect(result.Message).To(ContainSubstring("Forbidden pattern found"))
 				Expect(result.Details["errors"]).To(ContainSubstring("tmp/"))
 			})
 		})
@@ -1082,7 +1079,7 @@ Signed-off-by: Test User <test@klaudiu.sh>`
 			result := validator.Validate(context.Background(), ctx)
 			Expect(result.Passed).To(BeFalse())
 			Expect(
-				result.Details["errors"],
+				result.Message,
 			).To(ContainSubstring("doesn't follow conventional commits format"))
 		})
 
@@ -1316,7 +1313,7 @@ Signed-off-by: Test User <test@klaudiu.sh>`
 			result := validator.Validate(context.Background(), ctx)
 			Expect(result.Passed).To(BeFalse())
 			Expect(
-				result.Details["errors"],
+				result.Message,
 			).To(ContainSubstring("doesn't follow conventional commits format"))
 		})
 
@@ -1331,7 +1328,7 @@ Signed-off-by: Test User <test@klaudiu.sh>`
 
 			result := validator.Validate(context.Background(), ctx)
 			Expect(result.Passed).To(BeFalse())
-			Expect(result.Details["errors"]).To(ContainSubstring("Title exceeds 50 characters"))
+			Expect(result.Message).To(ContainSubstring("Title exceeds 50 characters"))
 		})
 
 		It("should validate commit in chained command with -C option", func() {
@@ -1479,7 +1476,7 @@ Signed-off-by: Test User <test@klaudiu.sh>`
 					makeCtxWithMsg("feat(api): add endpoint"),
 				)
 				Expect(result.Passed).To(BeFalse())
-				Expect(result.Details["errors"]).To(ContainSubstring("scope-only format"))
+				Expect(result.Message).To(ContainSubstring("scope-only format"))
 			})
 
 			It("should reject a plain sentence without colon", func() {
@@ -1545,26 +1542,26 @@ Signed-off-by: Test User <test@klaudiu.sh>`
 				)
 				Expect(result.Passed).To(BeFalse())
 				Expect(
-					result.Details["errors"],
+					result.Message,
 				).To(ContainSubstring("doesn't match the required pattern"))
 			})
 		})
 	})
 
 	Describe("Error result formatting", func() {
-		It("prefixes details with issue count and fix-all instruction", func() {
+		It("prefixes details with issue count for multiple errors", func() {
+			// Title that is both non-conventional AND too long (triggers 2+ rules)
 			ctx := &hook.Context{
 				EventType: hook.EventTypePreToolUse,
 				ToolName:  hook.ToolTypeBash,
 				ToolInput: hook.ToolInput{
-					Command: `git commit -sS -a -m "Add new feature"`,
+					Command: `git commit -sS -a -m "Add new feature that has a really long title exceeding the limit"`,
 				},
 			}
 
 			result := validator.Validate(context.Background(), ctx)
 			Expect(result.Passed).To(BeFalse())
-			Expect(result.Details["errors"]).To(HavePrefix("Found"))
-			Expect(result.Details["errors"]).To(ContainSubstring("Fix ALL at once"))
+			Expect(result.Details["errors"]).To(MatchRegexp(`^\d+ issues:`))
 		})
 
 		It("orders format errors before length errors", func() {
