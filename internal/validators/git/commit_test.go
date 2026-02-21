@@ -566,6 +566,33 @@ Changes:
 				).To(ContainSubstring("Missing empty line before first list item"))
 			})
 
+			It("should use GIT016 not GIT005 for list formatting and not duplicate", func() {
+				message := `feat(api): add endpoint
+- first item
+- second item`
+
+				ctx := &hook.Context{
+					EventType: hook.EventTypePreToolUse,
+					ToolName:  hook.ToolTypeBash,
+					ToolInput: hook.ToolInput{
+						Command: `git commit -sS -a -m "` + message + `"`,
+					},
+				}
+
+				result := validator.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeFalse())
+
+				// Should be GIT016 (ListFormat), not GIT005 (BadBody)
+				Expect(result.Reference).To(ContainSubstring("GIT016"))
+
+				// Should be a single error, not "2 issues:" from duplicate detection
+				Expect(result.Message).To(ContainSubstring("Missing empty line"))
+
+				if errors, ok := result.Details["errors"]; ok {
+					Expect(errors).NotTo(ContainSubstring("2 issues"))
+				}
+			})
+
 			It("should not false-positive on prose with mid-line numbers", func() {
 				message := "feat(output): use JSON stdout\n\n" +
 					"Always exits 0. Only exit 3 remains non-zero.\n" +

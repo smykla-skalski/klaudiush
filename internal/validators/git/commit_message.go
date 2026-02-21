@@ -206,7 +206,12 @@ func (*CommitValidator) validateMarkdownInBody(lines []string) []string {
 	}
 
 	body := strings.Join(bodyLines, "\n")
-	markdownResult := validators.AnalyzeMarkdown(body, nil)
+	markdownResult := validators.AnalyzeMarkdown(body, nil, validators.AnalysisOptions{
+		CheckTableFormatting: true,
+		// Skip list checks here - ListFormattingRule handles list spacing
+		// with the correct reference (GIT016) and fix hint.
+		SkipListChecks: true,
+	})
 
 	return markdownResult.Warnings
 }

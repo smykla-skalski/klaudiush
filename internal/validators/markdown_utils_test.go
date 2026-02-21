@@ -1062,3 +1062,47 @@ var _ = Describe("AnalyzeMarkdown with FragmentRange", func() {
 		})
 	})
 })
+
+var _ = Describe("SkipListChecks option", func() {
+	It("suppresses list spacing warnings when enabled", func() {
+		content := "Some text\n- Item 1\n- Item 2"
+		result := validators.AnalyzeMarkdown(content, nil, validators.AnalysisOptions{
+			CheckTableFormatting: false,
+			SkipListChecks:       true,
+		})
+		// List spacing warning should be suppressed
+		for _, w := range result.Warnings {
+			Expect(w).NotTo(ContainSubstring("list item"))
+		}
+	})
+
+	It("still detects list spacing when disabled (default)", func() {
+		content := "Some text\n- Item 1\n- Item 2"
+		result := validators.AnalyzeMarkdown(content, nil, validators.AnalysisOptions{
+			CheckTableFormatting: false,
+			SkipListChecks:       false,
+		})
+		Expect(result.Warnings).NotTo(BeEmpty())
+		Expect(result.Warnings[0]).To(ContainSubstring("First list item"))
+	})
+
+	It("still detects header spacing when list checks are skipped", func() {
+		content := "## Heading\nDirect content without blank line"
+		result := validators.AnalyzeMarkdown(content, nil, validators.AnalysisOptions{
+			CheckTableFormatting: false,
+			SkipListChecks:       true,
+		})
+		Expect(result.Warnings).NotTo(BeEmpty())
+		Expect(result.Warnings[0]).To(ContainSubstring("Header should have empty line"))
+	})
+
+	It("still detects code block spacing when list checks are skipped", func() {
+		content := "Some text\n```bash\necho hello\n```"
+		result := validators.AnalyzeMarkdown(content, nil, validators.AnalysisOptions{
+			CheckTableFormatting: false,
+			SkipListChecks:       true,
+		})
+		Expect(result.Warnings).NotTo(BeEmpty())
+		Expect(result.Warnings[0]).To(ContainSubstring("Code block should have empty line"))
+	})
+})

@@ -115,6 +115,11 @@ type AnalysisOptions struct {
 	// FragmentRange tracks which lines are the edit vs context in the fragment.
 	// When set, warnings on context-only lines are suppressed.
 	FragmentRange FragmentRange
+
+	// SkipListChecks disables list spacing validation (checkListItem).
+	// Use when a dedicated list formatting rule already handles list checks
+	// with a more specific error reference, to avoid duplicate detection.
+	SkipListChecks bool
 }
 
 // DefaultAnalysisOptions returns the default analysis options.
@@ -573,7 +578,14 @@ func AnalyzeMarkdown(
 
 		// Validate header/list spacing for non-code-block content after first line
 		if !skipValidation && lineNum > 1 {
-			analyzeSpacing(line, prevLine, lineNum, &result.Warnings, options.FragmentRange)
+			analyzeSpacing(
+				line,
+				prevLine,
+				lineNum,
+				&result.Warnings,
+				options.FragmentRange,
+				options.SkipListChecks,
+			)
 		}
 
 		prevPrevLine = prevLine
@@ -610,15 +622,20 @@ func analyzeCodeBlocks(
 }
 
 // analyzeSpacing validates header and list spacing, suppressing warnings on context-only lines.
+// When skipListChecks is true, list item spacing validation is skipped (handled elsewhere).
 func analyzeSpacing(
 	line, prevLine string,
 	lineNum int,
 	warnings *[]string,
 	editRange FragmentRange,
+	skipListChecks bool,
 ) {
 	warningsBefore := len(*warnings)
 
-	checkListItem(line, prevLine, lineNum, warnings)
+	if !skipListChecks {
+		checkListItem(line, prevLine, lineNum, warnings)
+	}
+
 	checkHeader(line, prevLine, lineNum, warnings)
 
 	if editRange.IsContextLine(lineNum, lineNum-1) {
