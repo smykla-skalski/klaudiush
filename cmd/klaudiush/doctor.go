@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/cockroachdb/errors"
 	"github.com/spf13/cobra"
@@ -23,7 +22,6 @@ import (
 	"github.com/smykla-skalski/klaudiush/internal/doctor/fixers"
 	"github.com/smykla-skalski/klaudiush/internal/doctor/reporters"
 	"github.com/smykla-skalski/klaudiush/internal/prompt"
-	"github.com/smykla-skalski/klaudiush/pkg/logger"
 )
 
 var (
@@ -80,19 +78,8 @@ func init() {
 	)
 }
 
-func runDoctor(_ *cobra.Command, _ []string) error {
-	// Setup logger
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return errors.Wrap(err, "failed to get home directory")
-	}
-
-	logFile := filepath.Join(homeDir, ".claude", "hooks", "dispatcher.log")
-
-	log, err := logger.NewFileLogger(logFile, true, false)
-	if err != nil {
-		return errors.Wrap(err, "failed to create logger")
-	}
+func runDoctor(cmd *cobra.Command, _ []string) error {
+	log := loggerFromCmd(cmd)
 
 	log.Info("starting doctor command",
 		"verbose", verboseFlag,

@@ -83,8 +83,8 @@ func init() {
 	)
 }
 
-func runDebugCrashList(_ *cobra.Command, _ []string) error {
-	cfg, err := setupDebugContext("debug crash list", "", "")
+func runDebugCrashList(cmd *cobra.Command, _ []string) error {
+	cfg, err := setupDebugContext(loggerFromCmd(cmd), "debug crash list", "", "")
 	if err != nil {
 		return err
 	}
@@ -92,8 +92,8 @@ func runDebugCrashList(_ *cobra.Command, _ []string) error {
 	return displayCrashList(cfg)
 }
 
-func runDebugCrashView(_ *cobra.Command, args []string) error {
-	cfg, err := setupDebugContext("debug crash view", "id", args[0])
+func runDebugCrashView(cmd *cobra.Command, args []string) error {
+	cfg, err := setupDebugContext(loggerFromCmd(cmd), "debug crash view", "id", args[0])
 	if err != nil {
 		return err
 	}
@@ -101,13 +101,13 @@ func runDebugCrashView(_ *cobra.Command, args []string) error {
 	return displayCrashDump(cfg, args[0])
 }
 
-func runDebugCrashClean(_ *cobra.Command, _ []string) error {
+func runDebugCrashClean(cmd *cobra.Command, _ []string) error {
 	dryRunStr := "false"
 	if dryRun {
 		dryRunStr = "true"
 	}
 
-	cfg, err := setupDebugContext("debug crash clean", "dryRun", dryRunStr)
+	cfg, err := setupDebugContext(loggerFromCmd(cmd), "debug crash clean", "dryRun", dryRunStr)
 	if err != nil {
 		return err
 	}

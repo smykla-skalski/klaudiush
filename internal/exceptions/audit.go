@@ -14,6 +14,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 
+	"github.com/smykla-skalski/klaudiush/internal/xdg"
 	"github.com/smykla-skalski/klaudiush/pkg/config"
 	"github.com/smykla-skalski/klaudiush/pkg/logger"
 )
@@ -141,7 +142,7 @@ func (a *AuditLogger) Log(entry *AuditEntry) error {
 // writeEntryLocked writes the JSON data to the log file.
 // Must be called with mu held.
 func (a *AuditLogger) writeEntryLocked(data []byte) error {
-	path := a.resolveLogPath()
+	path := xdg.ExpandPathSilent(a.logFile)
 
 	// Ensure directory exists
 	dir := filepath.Dir(path)
@@ -193,7 +194,7 @@ func (a *AuditLogger) Read() ([]*AuditEntry, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	path := a.resolveLogPath()
+	path := xdg.ExpandPathSilent(a.logFile)
 
 	// Path comes from trusted configuration, not user input.
 	file, err := os.Open(path) //nolint:gosec // G304: path is from config
@@ -273,13 +274,13 @@ func (a *AuditLogger) Cleanup() error {
 
 // GetLogPath returns the resolved log file path.
 func (a *AuditLogger) GetLogPath() string {
-	return a.resolveLogPath()
+	return xdg.ExpandPathSilent(a.logFile)
 }
 
 // rotateIfNeededLocked checks if rotation is needed and performs it.
 // Must be called with mu held.
 func (a *AuditLogger) rotateIfNeededLocked() error {
-	path := a.resolveLogPath()
+	path := xdg.ExpandPathSilent(a.logFile)
 
 	info, err := os.Stat(path)
 	if err != nil {
@@ -306,7 +307,7 @@ func (a *AuditLogger) rotateIfNeededLocked() error {
 // rotateLocked rotates the audit log file.
 // Must be called with mu held.
 func (a *AuditLogger) rotateLocked() error {
-	path := a.resolveLogPath()
+	path := xdg.ExpandPathSilent(a.logFile)
 
 	// Check if file exists
 	if _, err := os.Stat(path); os.IsNotExist(err) {
@@ -336,7 +337,7 @@ func (a *AuditLogger) rotateLocked() error {
 // cleanupBackupsLocked removes excess backup files.
 // Must be called with mu held.
 func (a *AuditLogger) cleanupBackupsLocked() error {
-	path := a.resolveLogPath()
+	path := xdg.ExpandPathSilent(a.logFile)
 	dir := filepath.Dir(path)
 	ext := filepath.Ext(path)
 	base := filepath.Base(strings.TrimSuffix(path, ext))
@@ -411,7 +412,7 @@ func (a *AuditLogger) removeExcessBackups(backups []string) {
 // cleanupOldEntriesLocked removes entries older than max age.
 // Must be called with mu held.
 func (a *AuditLogger) cleanupOldEntriesLocked() error {
-	path := a.resolveLogPath()
+	path := xdg.ExpandPathSilent(a.logFile)
 
 	validEntries, originalCount, err := a.readAndFilterEntries(path)
 	if err != nil {
@@ -558,25 +559,12 @@ func (a *AuditLogger) getMaxBackups() int {
 	return a.config.GetMaxBackups()
 }
 
-// resolveLogPath expands ~ in the log file path.
-func (a *AuditLogger) resolveLogPath() string {
-	path := a.logFile
-	if len(path) > 1 && path[0] == '~' && path[1] == '/' {
-		home, err := os.UserHomeDir()
-		if err == nil {
-			path = filepath.Join(home, path[2:])
-		}
-	}
-
-	return path
-}
-
 // Stats returns statistics about the audit log.
 func (a *AuditLogger) Stats() (*AuditStats, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	path := a.resolveLogPath()
+	path := xdg.ExpandPathSilent(a.logFile)
 
 	stats := &AuditStats{
 		LogFile: path,

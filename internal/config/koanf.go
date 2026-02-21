@@ -14,6 +14,7 @@ import (
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
 
+	"github.com/smykla-skalski/klaudiush/internal/xdg"
 	"github.com/smykla-skalski/klaudiush/pkg/config"
 )
 
@@ -95,6 +96,7 @@ type KoanfLoader struct {
 	k        *koanf.Koanf
 	homeDir  string
 	workDir  string
+	paths    xdg.PathResolver
 	tomlOpts koanf.UnmarshalConf
 }
 
@@ -110,22 +112,27 @@ func NewKoanfLoader() (*KoanfLoader, error) {
 		return nil, errors.Wrap(err, "failed to get working directory")
 	}
 
-	return NewKoanfLoaderWithDirs(homeDir, workDir)
+	return makeKoanfLoader(homeDir, workDir, xdg.DefaultResolver()), nil
 }
 
 // NewKoanfLoaderWithDirs creates a new KoanfLoader with custom directories (for testing).
 func NewKoanfLoaderWithDirs(homeDir, workDir string) (*KoanfLoader, error) {
+	return makeKoanfLoader(homeDir, workDir, xdg.ResolverFor(homeDir)), nil
+}
+
+func makeKoanfLoader(homeDir, workDir string, paths xdg.PathResolver) *KoanfLoader {
 	k := koanf.New(".")
 
 	return &KoanfLoader{
 		k:       k,
 		homeDir: homeDir,
 		workDir: workDir,
+		paths:   paths,
 		tomlOpts: koanf.UnmarshalConf{
 			Tag:       "koanf",
 			FlatPaths: false,
 		},
-	}, nil
+	}
 }
 
 // Load loads configuration from all sources with precedence.
@@ -468,8 +475,12 @@ func envMatchHierarchy(parts []string) string {
 }
 
 // GlobalConfigPath returns the path to the global configuration file.
+// Checks XDG location first, falls back to legacy ~/.klaudiush/config.toml.
 func (l *KoanfLoader) GlobalConfigPath() string {
-	return filepath.Join(l.homeDir, GlobalConfigDir, GlobalConfigFile)
+	xdgPath := l.paths.GlobalConfigFile()
+	legacyPath := filepath.Join(l.homeDir, GlobalConfigDir, GlobalConfigFile)
+
+	return xdg.ResolveFile(xdgPath, legacyPath)
 }
 
 // ProjectConfigPaths returns the paths to check for project configuration.
@@ -657,11 +668,11 @@ func defaultExceptionsMap() map[string]any {
 			"enabled":      true,
 			"max_per_hour": defaultExceptionRateLimitPerH,
 			"max_per_day":  defaultExceptionRateLimitPerD,
-			"state_file":   "~/.klaudiush/exceptions/state.json",
+			"state_file":   xdg.ExceptionStateFile(),
 		},
 		"audit": map[string]any{
 			"enabled":      true,
-			"log_file":     "~/.klaudiush/exception_audit.jsonl",
+			"log_file":     xdg.ExceptionAuditFile(),
 			"max_size_mb":  defaultExceptionAuditMaxSizeMB,
 			"max_age_days": defaultExceptionAuditMaxAgeDays,
 			"max_backups":  defaultExceptionAuditMaxBackups,
