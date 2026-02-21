@@ -100,6 +100,40 @@ var _ = Describe("FormatSystemMessage", func() {
 		Expect(result).To(ContainSubstring("output\n\npermissionDecisionReason"))
 	})
 
+	It("includes all_codes in disable hint for combined errors", func() {
+		errs := []*dispatcher.ValidationError{
+			{
+				Validator:   "git.commit",
+				Message:     "Commit message validation failed",
+				ShouldBlock: true,
+				Reference:   validator.RefGitConventionalCommit,
+				Details: map[string]string{
+					"all_codes": "GIT013,GIT004",
+				},
+			},
+		}
+
+		result := hookresponse.FormatSystemMessage(errs)
+		Expect(result).To(ContainSubstring("klaudiush disable GIT013 GIT004"))
+	})
+
+	It("does not render all_codes in error details", func() {
+		errs := []*dispatcher.ValidationError{
+			{
+				Validator:   "git.commit",
+				Message:     "Commit message validation failed",
+				ShouldBlock: true,
+				Reference:   validator.RefGitConventionalCommit,
+				Details: map[string]string{
+					"all_codes": "GIT013,GIT004",
+				},
+			},
+		}
+
+		result := hookresponse.FormatSystemMessage(errs)
+		Expect(result).NotTo(ContainSubstring("GIT013,GIT004"))
+	})
+
 	It("does not include validator name in output", func() {
 		errs := []*dispatcher.ValidationError{
 			{

@@ -167,6 +167,17 @@ func FormatSystemMessage(errs []*dispatcher.ValidationError) string {
 			seen[code] = true
 			codes = append(codes, code)
 		}
+
+		// Include additional codes from combined validator results
+		if additional, ok := e.Details["all_codes"]; ok {
+			for c := range strings.SplitSeq(additional, ",") {
+				c = strings.TrimSpace(c)
+				if c != "" && !seen[c] {
+					seen[c] = true
+					codes = append(codes, c)
+				}
+			}
+		}
 	}
 
 	b.WriteString(FormatDisableHint(codes))
@@ -212,7 +223,7 @@ func formatSingleError(b *strings.Builder, e *dispatcher.ValidationError) {
 	// Details (supplementary only - skip keys rendered elsewhere)
 	if len(e.Details) > 0 {
 		for k, v := range e.Details {
-			if k == "suggested_table" || k == "commit_preview" {
+			if k == "suggested_table" || k == "commit_preview" || k == "all_codes" {
 				continue
 			}
 

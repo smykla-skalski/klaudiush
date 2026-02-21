@@ -254,6 +254,23 @@ func (*CommitValidator) buildErrorResult(results []*RuleResult, message string) 
 		result = result.AddDetail("errors", details.String())
 	}
 
+	// Collect all unique codes for multi-code disable hint
+	var allCodes []string
+
+	seenCodes := make(map[string]bool)
+
+	for _, r := range results {
+		code := r.Reference.Code()
+		if code != "" && !seenCodes[code] {
+			seenCodes[code] = true
+			allCodes = append(allCodes, code)
+		}
+	}
+
+	if len(allCodes) > 1 {
+		result = result.AddDetail("all_codes", strings.Join(allCodes, ","))
+	}
+
 	// Commit preview in separate key - formatter skips by default
 	result = result.AddDetail("commit_preview", message)
 

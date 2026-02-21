@@ -1587,5 +1587,39 @@ Signed-off-by: Test User <test@klaudiu.sh>`
 			Expect(titleLenIdx).To(BeNumerically(">", -1))
 			Expect(conventionalIdx).To(BeNumerically("<", titleLenIdx))
 		})
+
+		It("includes all_codes for multi-error results", func() {
+			// Title that is both non-conventional AND too long (triggers GIT013 + GIT004)
+			longBadTitle := "this is a plain title without any conventional format and it is way too long for the limit"
+			ctx := &hook.Context{
+				EventType: hook.EventTypePreToolUse,
+				ToolName:  hook.ToolTypeBash,
+				ToolInput: hook.ToolInput{
+					Command: `git commit -sS -a -m "` + longBadTitle + `"`,
+				},
+			}
+
+			result := validator.Validate(context.Background(), ctx)
+			Expect(result.Passed).To(BeFalse())
+
+			allCodes := result.Details["all_codes"]
+			Expect(allCodes).To(ContainSubstring("GIT013"))
+			Expect(allCodes).To(ContainSubstring("GIT004"))
+		})
+
+		It("omits all_codes for single-error results", func() {
+			// Only triggers GIT013 (bad format, but short enough for title length)
+			ctx := &hook.Context{
+				EventType: hook.EventTypePreToolUse,
+				ToolName:  hook.ToolTypeBash,
+				ToolInput: hook.ToolInput{
+					Command: `git commit -sS -a -m "bad format no type"`,
+				},
+			}
+
+			result := validator.Validate(context.Background(), ctx)
+			Expect(result.Passed).To(BeFalse())
+			Expect(result.Details).NotTo(HaveKey("all_codes"))
+		})
 	})
 })
