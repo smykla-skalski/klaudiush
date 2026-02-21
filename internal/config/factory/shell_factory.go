@@ -37,7 +37,8 @@ func (f *ShellValidatorFactory) CreateValidators(cfg *config.Config) []Validator
 		return validators
 	}
 
-	if cfg.Validators.Shell.Backtick != nil && cfg.Validators.Shell.Backtick.IsEnabled() {
+	if cfg.Validators.Shell.Backtick != nil && cfg.Validators.Shell.Backtick.IsEnabled() &&
+		!isValidatorOverridden(cfg.Overrides, "shell.backtick") {
 		validators = append(validators, f.createBacktickValidator(cfg.Validators.Shell.Backtick))
 	}
 

@@ -35,6 +35,9 @@ type Config struct {
 
 	// Patterns contains configuration for failure pattern tracking.
 	Patterns *PatternsConfig `json:"patterns,omitempty" koanf:"patterns" toml:"patterns"`
+
+	// Overrides contains persistent disable/enable overrides for error codes and validators.
+	Overrides *OverridesConfig `json:"overrides,omitempty" koanf:"overrides" toml:"overrides"`
 }
 
 // ValidatorsConfig groups all validator configurations by category.
@@ -219,4 +222,13 @@ func (c *Config) GetPatterns() *PatternsConfig {
 	}
 
 	return c.Patterns
+}
+
+// GetOverrides returns the overrides config, creating it if it doesn't exist.
+func (c *Config) GetOverrides() *OverridesConfig {
+	if c.Overrides == nil {
+		c.Overrides = &OverridesConfig{}
+	}
+
+	return c.Overrides
 }

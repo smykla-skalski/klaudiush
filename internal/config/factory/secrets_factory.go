@@ -34,6 +34,11 @@ func (f *SecretsValidatorFactory) SetRuleEngine(engine *rules.RuleEngine) {
 func (f *SecretsValidatorFactory) CreateValidators(cfg *config.Config) []ValidatorWithPredicate {
 	validators := make([]ValidatorWithPredicate, 0, 1)
 
+	// Check override first
+	if isValidatorOverridden(cfg.Overrides, "secrets") {
+		return validators
+	}
+
 	// Get secrets config with nil safety
 	secretsCfg := f.getSecretsConfig(cfg)
 	if secretsCfg == nil || !secretsCfg.IsEnabled() {

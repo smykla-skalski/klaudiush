@@ -12,6 +12,7 @@ import (
 
 	"github.com/smykla-skalski/klaudiush/internal/session"
 	"github.com/smykla-skalski/klaudiush/internal/validator"
+	"github.com/smykla-skalski/klaudiush/pkg/config"
 	"github.com/smykla-skalski/klaudiush/pkg/hook"
 	"github.com/smykla-skalski/klaudiush/pkg/logger"
 	"github.com/smykla-skalski/klaudiush/pkg/parser"
@@ -103,6 +104,7 @@ type Dispatcher struct {
 	exceptionChecker   ExceptionChecker
 	sessionTracker     SessionTracker
 	sessionAuditLogger SessionAuditLogger
+	overrides          *config.OverridesConfig
 }
 
 // NewDispatcher creates a new Dispatcher with sequential execution.
@@ -154,6 +156,13 @@ func WithSessionAuditLogger(auditLogger SessionAuditLogger) DispatcherOption {
 		if auditLogger != nil {
 			d.sessionAuditLogger = auditLogger
 		}
+	}
+}
+
+// WithOverrides sets the overrides config for the dispatcher.
+func WithOverrides(overrides *config.OverridesConfig) DispatcherOption {
+	return func(d *Dispatcher) {
+		d.overrides = overrides
 	}
 }
 
@@ -263,6 +272,9 @@ func (d *Dispatcher) runValidators(ctx context.Context, hookCtx *hook.Context) [
 	// Use executor to run validators (sequential or parallel)
 	validationErrors := d.executor.Execute(ctx, hookCtx, validators)
 
+	// Apply overrides to suppress disabled error codes
+	validationErrors = d.applyOverrides(validationErrors)
+
 	// Apply exception checking to blocking errors
 	validationErrors = d.applyExceptionChecking(hookCtx, validationErrors)
 
@@ -284,6 +296,31 @@ func (d *Dispatcher) runValidators(ctx context.Context, hookCtx *hook.Context) [
 	}
 
 	return validationErrors
+}
+
+// applyOverrides filters out validation errors whose error codes are disabled via overrides.
+func (d *Dispatcher) applyOverrides(errors []*ValidationError) []*ValidationError {
+	if d.overrides == nil {
+		return errors
+	}
+
+	result := make([]*ValidationError, 0, len(errors))
+
+	for _, verr := range errors {
+		code := verr.Reference.Code()
+		if code != "" && d.overrides.IsCodeDisabled(code) {
+			d.logger.Info("validation error suppressed by override",
+				"code", code,
+				"validator", verr.Validator,
+			)
+
+			continue
+		}
+
+		result = append(result, verr)
+	}
+
+	return result
 }
 
 // applyExceptionChecking checks for exception tokens in blocking errors.

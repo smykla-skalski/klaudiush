@@ -362,7 +362,9 @@ var envHierarchy = map[string][]string{
 		"crash_dump",
 		"patterns",
 		"plugins",
+		"overrides",
 	},
+	"overrides":  {"entries"},
 	"validators": {"git", "file", "notification", "secrets", "shell"},
 	"validators.git": {
 		"commit",

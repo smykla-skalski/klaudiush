@@ -783,6 +783,39 @@
       "additionalProperties": false,
       "type": "object"
     },
+    "OverrideEntry": {
+      "properties": {
+        "disabled": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "disabled_at": {
+          "type": "string"
+        },
+        "expires_at": {
+          "type": "string"
+        },
+        "disabled_by": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "OverridesConfig": {
+      "properties": {
+        "entries": {
+          "additionalProperties": {
+            "$ref": "#/$defs/OverrideEntry"
+          },
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
     "PRValidatorConfig": {
       "properties": {
         "enabled": {
@@ -1516,6 +1549,9 @@
     },
     "patterns": {
       "$ref": "#/$defs/PatternsConfig"
+    },
+    "overrides": {
+      "$ref": "#/$defs/OverridesConfig"
     }
   },
   "additionalProperties": false,

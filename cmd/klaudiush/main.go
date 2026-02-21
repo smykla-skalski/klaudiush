@@ -208,13 +208,14 @@ func run(_ *cobra.Command, _ []string) error {
 	// Create and initialize exception checker if enabled
 	exceptionHandler, exceptionChecker := initExceptionChecker(cfg, workDir, log)
 
-	// Create dispatcher with session tracker and exception checker
+	// Create dispatcher with session tracker, exception checker, and overrides
 	disp := dispatcher.NewDispatcherWithOptions(
 		registry,
 		log,
 		dispatcher.NewSequentialExecutor(log),
 		dispatcher.WithSessionTracker(sessionTracker),
 		dispatcher.WithExceptionChecker(exceptionChecker),
+		dispatcher.WithOverrides(cfg.Overrides),
 	)
 
 	// Dispatch validation

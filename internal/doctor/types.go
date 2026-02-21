@@ -45,6 +45,8 @@ const (
 	CategoryBackup Category = "backup"
 	// CategoryPatterns checks for pattern learning system health
 	CategoryPatterns Category = "patterns"
+	// CategoryOverrides checks for overrides configuration health
+	CategoryOverrides Category = "overrides"
 )
 
 // CheckResult represents the result of a health check

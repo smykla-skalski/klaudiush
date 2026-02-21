@@ -47,6 +47,7 @@ Subcommands:
   config      Show loaded configuration
   rules       Show loaded validation rules
   exceptions  Show exception workflow configuration
+  overrides   Show override entries
   crash       Manage crash dumps
   patterns    Show pattern learning status`,
 }
@@ -94,6 +95,20 @@ Examples:
 	RunE: runDebugExceptions,
 }
 
+var debugOverridesCmd = &cobra.Command{
+	Use:   "overrides",
+	Short: "Show override entries",
+	Long: `Show all override entries from merged configuration.
+
+Displays active and expired overrides with their type (disable/enable),
+reason, timestamps, and source. Overrides are loaded from both global
+and project configuration files.
+
+Examples:
+  klaudiush debug overrides  # Show all overrides`,
+	RunE: runDebugOverrides,
+}
+
 var showState bool
 
 func init() {
@@ -102,6 +117,7 @@ func init() {
 	debugCmd.AddCommand(debugRulesCmd)
 	debugCmd.AddCommand(debugExceptionsCmd)
 	debugCmd.AddCommand(debugCrashCmd)
+	debugCmd.AddCommand(debugOverridesCmd)
 	debugCmd.AddCommand(debugPatternsCmd)
 
 	// Add crash subcommands
@@ -594,6 +610,139 @@ func displayExceptionsHelp() {
 	fmt.Println("  Project: .klaudiush/config.toml")
 	fmt.Println("")
 	fmt.Println("See docs/EXCEPTIONS_GUIDE.md for configuration examples.")
+}
+
+func runDebugOverrides(_ *cobra.Command, _ []string) error {
+	cfg, err := setupDebugContext("debug overrides", "", "")
+	if err != nil {
+		return err
+	}
+
+	displayDebugOverrides(cfg)
+
+	return nil
+}
+
+func displayDebugOverrides(cfg *config.Config) {
+	overrides := cfg.GetOverrides()
+
+	active := overrides.ActiveEntries()
+	expired := overrides.ExpiredEntries()
+
+	if len(active) == 0 && len(expired) == 0 {
+		displayDebugNoOverrides()
+
+		return
+	}
+
+	fmt.Println("Overrides Configuration")
+	fmt.Println("=======================")
+	fmt.Println("")
+
+	displayDebugActiveOverrides(active)
+	displayDebugExpiredOverrides(expired)
+	displayDebugOverridesConfigFiles()
+}
+
+func displayDebugNoOverrides() {
+	fmt.Println("No overrides configured.")
+	fmt.Println("")
+	fmt.Println("To add overrides, use:")
+	fmt.Println("  klaudiush overrides add disable GIT014 --reason \"reason\"")
+	fmt.Println("  klaudiush overrides add enable git.commit --reason \"reason\"")
+}
+
+func displayDebugActiveOverrides(active map[string]*config.OverrideEntry) {
+	fmt.Println("Active Overrides")
+	fmt.Println("----------------")
+
+	if len(active) == 0 {
+		fmt.Println("  (none)")
+		fmt.Println("")
+
+		return
+	}
+
+	keys := make([]string, 0, len(active))
+	for k := range active {
+		keys = append(keys, k)
+	}
+
+	slices.Sort(keys)
+
+	for _, key := range keys {
+		entry := active[key]
+		displayDebugOverrideEntry(key, entry, false)
+	}
+
+	fmt.Println("")
+}
+
+func displayDebugExpiredOverrides(expired map[string]*config.OverrideEntry) {
+	fmt.Println("Expired Overrides")
+	fmt.Println("-----------------")
+
+	if len(expired) == 0 {
+		fmt.Println("  (none)")
+		fmt.Println("")
+
+		return
+	}
+
+	keys := make([]string, 0, len(expired))
+	for k := range expired {
+		keys = append(keys, k)
+	}
+
+	slices.Sort(keys)
+
+	for _, key := range keys {
+		entry := expired[key]
+		displayDebugOverrideEntry(key, entry, true)
+	}
+
+	fmt.Println("")
+}
+
+func displayDebugOverrideEntry(key string, entry *config.OverrideEntry, isExpired bool) {
+	typeLabel := statusDisabled
+	if entry.Disabled != nil && !*entry.Disabled {
+		typeLabel = statusEnabled
+	}
+
+	if isExpired {
+		fmt.Printf("  %s [%s] (expired)\n", key, typeLabel)
+	} else {
+		fmt.Printf("  %s [%s]\n", key, typeLabel)
+	}
+
+	if entry.Reason != "" {
+		fmt.Printf("    Reason: %s\n", entry.Reason)
+	}
+
+	if entry.DisabledAt != "" {
+		fmt.Printf("    Since: %s\n", entry.DisabledAt)
+	}
+
+	switch {
+	case isExpired:
+		fmt.Printf("    Expired: %s\n", entry.ExpiresAt)
+	case entry.ExpiresAt != "":
+		fmt.Printf("    Expires: %s\n", entry.ExpiresAt)
+	default:
+		fmt.Printf("    Expires: never\n")
+	}
+
+	if entry.DisabledBy != "" {
+		fmt.Printf("    Source: %s\n", entry.DisabledBy)
+	}
+}
+
+func displayDebugOverridesConfigFiles() {
+	fmt.Println("Configuration Files")
+	fmt.Println("-------------------")
+	fmt.Println("  Global: ~/.klaudiush/config.toml")
+	fmt.Println("  Project: .klaudiush/config.toml")
 }
 
 func formatLimits(maxHour, maxDay int) string {

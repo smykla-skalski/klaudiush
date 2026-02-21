@@ -31,7 +31,8 @@ func (f *NotificationValidatorFactory) CreateValidators(
 ) []ValidatorWithPredicate {
 	var validators []ValidatorWithPredicate
 
-	if cfg.Validators.Notification.Bell != nil && cfg.Validators.Notification.Bell.IsEnabled() {
+	if cfg.Validators.Notification.Bell != nil && cfg.Validators.Notification.Bell.IsEnabled() &&
+		!isValidatorOverridden(cfg.Overrides, "notification.bell") {
 		validators = append(validators, f.createBellValidator(cfg.Validators.Notification.Bell))
 	}
 

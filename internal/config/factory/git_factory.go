@@ -46,35 +46,43 @@ func (f *GitValidatorFactory) CreateValidators(cfg *config.Config) []ValidatorWi
 
 	var validators []ValidatorWithPredicate
 
-	if cfg.Validators.Git.Add != nil && cfg.Validators.Git.Add.IsEnabled() {
+	if cfg.Validators.Git.Add != nil && cfg.Validators.Git.Add.IsEnabled() &&
+		!isValidatorOverridden(cfg.Overrides, "git.add") {
 		validators = append(validators, f.createAddValidator(cfg.Validators.Git.Add))
 	}
 
-	if cfg.Validators.Git.NoVerify != nil && cfg.Validators.Git.NoVerify.IsEnabled() {
+	if cfg.Validators.Git.NoVerify != nil && cfg.Validators.Git.NoVerify.IsEnabled() &&
+		!isValidatorOverridden(cfg.Overrides, "git.no_verify") {
 		validators = append(validators, f.createNoVerifyValidator(cfg.Validators.Git.NoVerify))
 	}
 
-	if cfg.Validators.Git.Commit != nil && cfg.Validators.Git.Commit.IsEnabled() {
+	if cfg.Validators.Git.Commit != nil && cfg.Validators.Git.Commit.IsEnabled() &&
+		!isValidatorOverridden(cfg.Overrides, "git.commit") {
 		validators = append(validators, f.createCommitValidator(cfg.Validators.Git.Commit))
 	}
 
-	if cfg.Validators.Git.Push != nil && cfg.Validators.Git.Push.IsEnabled() {
+	if cfg.Validators.Git.Push != nil && cfg.Validators.Git.Push.IsEnabled() &&
+		!isValidatorOverridden(cfg.Overrides, "git.push") {
 		validators = append(validators, f.createPushValidator(cfg.Validators.Git.Push))
 	}
 
-	if cfg.Validators.Git.Fetch != nil && cfg.Validators.Git.Fetch.IsEnabled() {
+	if cfg.Validators.Git.Fetch != nil && cfg.Validators.Git.Fetch.IsEnabled() &&
+		!isValidatorOverridden(cfg.Overrides, "git.fetch") {
 		validators = append(validators, f.createFetchValidator(cfg.Validators.Git.Fetch))
 	}
 
-	if cfg.Validators.Git.PR != nil && cfg.Validators.Git.PR.IsEnabled() {
+	if cfg.Validators.Git.PR != nil && cfg.Validators.Git.PR.IsEnabled() &&
+		!isValidatorOverridden(cfg.Overrides, "git.pr") {
 		validators = append(validators, f.createPRValidator(cfg.Validators.Git.PR))
 	}
 
-	if cfg.Validators.Git.Branch != nil && cfg.Validators.Git.Branch.IsEnabled() {
+	if cfg.Validators.Git.Branch != nil && cfg.Validators.Git.Branch.IsEnabled() &&
+		!isValidatorOverridden(cfg.Overrides, "git.branch") {
 		validators = append(validators, f.createBranchValidator(cfg.Validators.Git.Branch))
 	}
 
-	if cfg.Validators.Git.Merge != nil && cfg.Validators.Git.Merge.IsEnabled() {
+	if cfg.Validators.Git.Merge != nil && cfg.Validators.Git.Merge.IsEnabled() &&
+		!isValidatorOverridden(cfg.Overrides, "git.merge") {
 		validators = append(validators, f.createMergeValidator(cfg.Validators.Git.Merge))
 	}
 

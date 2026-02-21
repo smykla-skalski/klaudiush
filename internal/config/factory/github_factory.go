@@ -46,7 +46,8 @@ func (f *GitHubValidatorFactory) CreateValidators(cfg *config.Config) []Validato
 	ghCfg := cfg.Validators.GitHub
 
 	// Issue validator - create only if explicitly configured and enabled.
-	if ghCfg.Issue != nil && ghCfg.Issue.IsEnabled() {
+	if ghCfg.Issue != nil && ghCfg.Issue.IsEnabled() &&
+		!isValidatorOverridden(cfg.Overrides, "github.issue") {
 		validators = append(validators, f.createIssueValidator(ghCfg.Issue))
 	}
 
