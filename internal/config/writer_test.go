@@ -3,12 +3,14 @@ package config_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	"github.com/smykla-skalski/klaudiush/internal/backup"
 	"github.com/smykla-skalski/klaudiush/internal/config"
+	"github.com/smykla-skalski/klaudiush/internal/schema"
 	pkgConfig "github.com/smykla-skalski/klaudiush/pkg/config"
 )
 
@@ -74,6 +76,21 @@ var _ = Describe("Writer with Backup Integration", func() {
 				snapshots, err := backupMgr.List()
 				Expect(err).ToNot(HaveOccurred())
 				Expect(snapshots).To(BeEmpty())
+			})
+
+			It("should prepend schema directive as first line", func() {
+				cfg := &pkgConfig.Config{
+					Backup: &pkgConfig.BackupConfig{},
+				}
+
+				err := writer.WriteFile(configPath, cfg)
+				Expect(err).ToNot(HaveOccurred())
+
+				data, err := os.ReadFile(configPath)
+				Expect(err).ToNot(HaveOccurred())
+
+				lines := strings.SplitN(string(data), "\n", 2)
+				Expect(lines[0]).To(Equal(schema.SchemaDirective()))
 			})
 		})
 

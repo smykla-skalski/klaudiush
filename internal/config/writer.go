@@ -10,6 +10,7 @@ import (
 	"github.com/pelletier/go-toml/v2"
 
 	"github.com/smykla-skalski/klaudiush/internal/backup"
+	"github.com/smykla-skalski/klaudiush/internal/schema"
 	"github.com/smykla-skalski/klaudiush/pkg/config"
 )
 
@@ -101,6 +102,10 @@ func (w *Writer) WriteFile(path string, cfg *config.Config) error {
 
 	// Marshal to TOML with indentation
 	var buf bytes.Buffer
+
+	// Prepend Taplo schema directive
+	buf.WriteString(schema.SchemaDirective())
+	buf.WriteByte('\n')
 
 	encoder := toml.NewEncoder(&buf)
 	encoder.SetIndentTables(true)

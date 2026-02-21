@@ -169,6 +169,20 @@ var _ = Describe("Generate", func() {
 		})
 	})
 
+	Describe("SchemaURL", func() {
+		It("returns versioned URL", func() {
+			Expect(schema.SchemaURL()).To(Equal("https://klaudiu.sh/schema/v1/config.json"))
+		})
+	})
+
+	Describe("SchemaDirective", func() {
+		It("returns Taplo directive", func() {
+			Expect(schema.SchemaDirective()).To(
+				Equal("#:schema https://klaudiu.sh/schema/v1/config.json"),
+			)
+		})
+	})
+
 	Describe("GenerateJSON", func() {
 		It("produces compact JSON when indent is false", func() {
 			data, err := schema.GenerateJSON(false)

@@ -12,8 +12,9 @@ import (
 )
 
 const (
-	schemaURI = "https://json-schema.org/draft/2020-12/schema"
-	titleFmt  = "klaudiush configuration v%d"
+	schemaURI    = "https://json-schema.org/draft/2020-12/schema"
+	titleFmt     = "klaudiush configuration v%d"
+	schemaURLFmt = "https://klaudiu.sh/schema/v%d/config.json"
 )
 
 // Generate produces a JSON Schema from the config.Config struct.
@@ -32,6 +33,16 @@ func Generate() *jsonschema.Schema {
 // Filename returns the versioned schema filename, e.g. "config.v1.schema.json".
 func Filename() string {
 	return fmt.Sprintf("config.v%d.schema.json", config.CurrentConfigVersion)
+}
+
+// SchemaURL returns the public URL for the current schema version.
+func SchemaURL() string {
+	return fmt.Sprintf(schemaURLFmt, config.CurrentConfigVersion)
+}
+
+// SchemaDirective returns the Taplo schema directive line for TOML files.
+func SchemaDirective() string {
+	return "#:schema " + SchemaURL()
 }
 
 // GenerateJSON produces a JSON Schema as bytes.
