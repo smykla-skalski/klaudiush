@@ -5,6 +5,12 @@ All notable changes to klaudiush will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.23.1](https://github.com/smykla-skalski/klaudiush/compare/v1.23.0...v1.23.1) (2026-02-21)
+
+### Code Refactoring
+
+* **output:** deduplicate error display format ([9ebcf0f](https://github.com/smykla-skalski/klaudiush/commit/9ebcf0fc09ea6cfbfbecde43c4695e7da2d92024))
+
 ## [1.23.0](https://github.com/smykla-skalski/klaudiush/compare/v1.22.1...v1.23.0) (2026-02-21)
 
 ### Features
