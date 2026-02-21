@@ -5,6 +5,16 @@ All notable changes to klaudiush will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.25.0](https://github.com/smykla-skalski/klaudiush/compare/v1.24.0...v1.25.0) (2026-02-21)
+
+### Features
+
+* **nix:** use XDG paths in home-manager module ([87df093](https://github.com/smykla-skalski/klaudiush/commit/87df0937fbcf7bc6b1469c5b04b5f4e2cc2faca0))
+
+### Bug Fixes
+
+* **xdg:** address QA findings in migration ([0174226](https://github.com/smykla-skalski/klaudiush/commit/0174226793ee6fe195183b16e72fc0930a748322))
+
 ## [1.24.0](https://github.com/smykla-skalski/klaudiush/compare/v1.23.2...v1.24.0) (2026-02-21)
 
 ### Features
