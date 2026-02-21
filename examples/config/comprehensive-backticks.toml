@@ -3,7 +3,7 @@
 #
 # This configuration enables comprehensive backtick validation for all Bash commands.
 # By default, klaudiush only checks backticks in git commit, gh pr create, and gh issue create.
-# Comprehensive mode extends this to ALL Bash commands and provides enhanced analysis.
+# Comprehensive mode extends this to ALL Bash commands and provides more thorough analysis.
 #
 # Use this configuration when you want strict shell safety across your entire workflow.
 

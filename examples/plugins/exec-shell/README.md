@@ -1,4 +1,4 @@
-# Exec Plugin Example: File Validator (Shell)
+# Exec plugin example: file validator (shell)
 
 This example demonstrates how to create a klaudiush exec plugin using a shell script.
 
@@ -19,13 +19,13 @@ The plugin validates file operations (`Write` and `Edit` tools) and:
 
 ## Installation
 
-### Make Executable
+### Make executable
 
 ```bash
 chmod +x file_validator.sh
 ```
 
-### Install to Plugin Directory
+### Install to plugin directory
 
 ```bash
 mkdir -p ~/.klaudiush/plugins
@@ -56,7 +56,7 @@ max_file_size = "1048576"   # 1MB max file size
 
 ## Testing
 
-### Test Info
+### Test info
 
 ```bash
 ./file_validator.sh --info
@@ -73,7 +73,7 @@ Expected output:
 }
 ```
 
-### Test Binary File (Should Block)
+### Test binary file (should block)
 
 ```bash
 echo '{
@@ -95,7 +95,7 @@ Expected output:
 }
 ```
 
-### Test Executable Script (Should Warn)
+### Test executable script (should warn)
 
 ```bash
 echo '{
@@ -117,7 +117,7 @@ Expected output:
 }
 ```
 
-### Test Normal File (Should Pass)
+### Test normal file (should pass)
 
 ```bash
 echo '{
@@ -138,21 +138,21 @@ Expected output:
 
 ## Customization
 
-### Disable Binary Blocking
+### Disable binary blocking
 
 ```toml
 [plugins.plugins.config]
 block_on_bin = "false"
 ```
 
-### Increase File Size Limit
+### Increase file size limit
 
 ```toml
 [plugins.plugins.config]
 max_file_size = "10485760"  # 10MB
 ```
 
-### Add Custom File Extensions
+### Add custom file extensions
 
 Edit the script to add more patterns:
 
@@ -166,13 +166,13 @@ esac
 
 ## Protocol
 
-### Info Request
+### Info request
 
 ```bash
 ./file_validator.sh --info
 ```
 
-### Validate Request (stdin)
+### Validate request (stdin)
 
 ```json
 {
@@ -188,7 +188,7 @@ esac
 }
 ```
 
-### Validate Response (stdout)
+### Validate response (stdout)
 
 Pass response:
 
@@ -233,7 +233,7 @@ apt-get install jq
 yum install jq
 ```
 
-## Next Steps
+## Next steps
 
 - See [Python Exec Plugin Example](../exec-python/) for another language example
 - See [Go Plugin Example](../go-plugin/) for maximum performance

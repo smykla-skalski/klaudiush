@@ -1,4 +1,4 @@
-# Configuration Examples
+# Configuration examples
 
 This directory contains example configurations for klaudiush.
 
@@ -6,73 +6,53 @@ This directory contains example configurations for klaudiush.
 
 ### minimal.toml
 
-The simplest possible configuration showing how to disable specific validators.
+The simplest possible configuration showing how to disable specific validators. Good for quick setup when you want to turn off validators you don't need.
 
-**Use case**: Quick setup to disable validators you don't need.
-
-**Location**: `~/.klaudiush/config.toml` (global) or `.klaudiush/config.toml` (project)
+Place in `~/.klaudiush/config.toml` (global) or `.klaudiush/config.toml` (project).
 
 ### full.toml
 
-Complete configuration showing all available options with their default values.
+Complete configuration showing all available options with their default values. Use as a reference or starting point for customization.
 
-**Use case**: Reference for all configuration options, starting point for customization.
-
-**Location**: `~/.klaudiush/config.toml` (global)
+Place in `~/.klaudiush/config.toml` (global).
 
 ### project-override.toml
 
-Example showing how project-specific configuration overrides global settings.
+Example showing how project-specific configuration overrides global settings. Use to customize validation rules for a specific project while keeping global defaults.
 
-**Use case**: Customize validation rules for a specific project while keeping global defaults.
-
-**Location**: `.klaudiush/config.toml` or `klaudiush.toml` (project root)
+Place in `.klaudiush/config.toml` or `klaudiush.toml` (project root).
 
 ### comprehensive-backticks.toml
 
-Comprehensive backtick validation configuration for all Bash commands.
+Comprehensive backtick validation configuration for all Bash commands. Catches command substitution issues in all Bash commands, not just git/gh. Detects unquoted backticks, backticks in double quotes, and suggests single quotes when no variables are present.
 
-**Use case**: Strict shell safety across your entire workflow, catching command substitution issues in all Bash commands (not just git/gh).
-
-**Location**: `~/.klaudiush/config.toml` (global) or `.klaudiush/config.toml` (project)
-
-**Features**:
-
-- Validates ALL Bash commands (not just git commit, gh pr/issue create)
-- Detects unquoted backticks (e.g., `echo \`date\``)
-- Detects backticks in double quotes
-- Suggests single quotes when no variables are present
-- Provides context-specific fix suggestions
+Place in `~/.klaudiush/config.toml` (global) or `.klaudiush/config.toml` (project).
 
 ### javascript.toml
 
 JavaScript/TypeScript project configuration with oxlint validation.
 
-**Use case**: JavaScript and TypeScript projects.
-
-**Location**: `.klaudiush/config.toml` (project)
+Place in `.klaudiush/config.toml` (project).
 
 ### rust.toml
 
 Rust project configuration with rustfmt validation.
 
-**Use case**: Rust projects.
+Place in `.klaudiush/config.toml` (project).
 
-**Location**: `.klaudiush/config.toml` (project)
-
-## Configuration Hierarchy
+## Configuration hierarchy
 
 Configuration is loaded from multiple sources with the following precedence (highest to lowest):
 
-1. **CLI Flags** (e.g., `--disable=commit,markdown`)
-2. **Environment Variables** (e.g., `KLAUDIUSH_VALIDATORS_GIT_COMMIT_ENABLED=false`)
-3. **Project Config** (`.klaudiush/config.toml` > `klaudiush.toml`)
-4. **Global Config** (`~/.klaudiush/config.toml`)
-5. **Defaults** (built-in defaults)
+1. CLI flags (e.g., `--disable=commit,markdown`)
+2. Environment variables (e.g., `KLAUDIUSH_VALIDATORS_GIT_COMMIT_ENABLED=false`)
+3. Project config (`.klaudiush/config.toml` > `klaudiush.toml`)
+4. Global config (`~/.klaudiush/config.toml`)
+5. Defaults (built-in defaults)
 
 ## Usage
 
-### Global Configuration
+### Global configuration
 
 Copy a configuration file to `~/.klaudiush/config.toml`:
 
@@ -83,7 +63,7 @@ cp examples/config/full.toml ~/.klaudiush/config.toml
 
 Edit the file to customize your global settings.
 
-### Project Configuration
+### Project configuration
 
 Copy a configuration file to your project root:
 
@@ -98,7 +78,7 @@ Or use the root-level filename:
 cp examples/config/project-override.toml klaudiush.toml
 ```
 
-### CLI Flags
+### CLI flags
 
 Override configuration at runtime:
 
@@ -113,7 +93,7 @@ klaudiush --disable=commit,markdown
 klaudiush --global-config=~/.config/klaudiush.toml
 ```
 
-### Environment Variables
+### Environment variables
 
 Set environment variables to override configuration:
 
@@ -128,11 +108,11 @@ export KLAUDIUSH_VALIDATORS_GIT_COMMIT_MESSAGE_TITLE_MAX_LENGTH=72
 export KLAUDIUSH_VALIDATORS_FILE_MARKDOWN_ENABLED=false
 ```
 
-## Deep Merge Example
+## Deep merge example
 
 Given:
 
-**Global config** (`~/.klaudiush/config.toml`):
+Global config (`~/.klaudiush/config.toml`):
 
 ```toml
 [validators.git.commit.message]
@@ -140,14 +120,14 @@ title_max_length = 50
 check_conventional_commits = true
 ```
 
-**Project config** (`.klaudiush/config.toml`):
+Project config (`.klaudiush/config.toml`):
 
 ```toml
 [validators.git.commit.message]
 title_max_length = 72
 ```
 
-**Result** (merged):
+Result (merged):
 
 ```toml
 [validators.git.commit.message]
@@ -157,11 +137,11 @@ check_conventional_commits = true  # From global config
 
 ## Tips
 
-1. **Start with minimal**: Begin with `minimal.toml` and add options as needed
-2. **Use global for defaults**: Set your preferred defaults in `~/.klaudiush/config.toml`
-3. **Override per project**: Use project config to customize for specific repositories
-4. **Environment for CI**: Use environment variables in CI/CD pipelines
-5. **CLI for quick tests**: Use CLI flags for one-off changes during testing
+1. Start with `minimal.toml` and add options as needed
+2. Set your preferred defaults in `~/.klaudiush/config.toml`
+3. Use project config to customize for specific repositories
+4. Use environment variables in CI/CD pipelines
+5. Use CLI flags for one-off changes during testing
 
 ## Validation
 
@@ -173,7 +153,7 @@ Error: failed to load configuration: invalid configuration:
   validators.git.commit.message.title_max_length: must be positive
 ```
 
-## No Configuration
+## No configuration
 
 klaudiush works without any configuration files. All validators are enabled with sensible defaults.
 
@@ -188,12 +168,12 @@ Configuration loading is optimized for fast startup:
 | Single config file | ~25µs | Global or project only                 |
 | All sources        | ~45µs | Global + project + env + flags         |
 
-Key findings:
+Findings:
 
-- **Cache provides ~200x speedup** - config is cached after first load
-- **File I/O dominates** - each config file adds ~17-21µs
-- **Env vars are fast** - parsing adds only ~1-2µs
-- **CLI flags are fastest** - ~100-300ns overhead
+- Cache provides ~200x speedup - config is cached after first load
+- File I/O dominates - each config file adds ~17-21µs
+- Env vars are fast - parsing adds only ~1-2µs
+- CLI flags are fastest - ~100-300ns overhead
 
 Run benchmarks yourself:
 

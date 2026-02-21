@@ -1,8 +1,8 @@
-# Backup Configuration Examples
+# Backup configuration examples
 
 Example backup configurations for different use cases.
 
-## Available Examples
+## Available examples
 
 ### basic.toml
 
@@ -13,11 +13,7 @@ Standard configuration suitable for most users.
 - 50MB storage limit
 - Async backups
 
-**Use When:**
-
-- General purpose usage
-- Balanced storage and history needs
-- Default recommendation
+Use when you need general purpose backup with balanced storage and history.
 
 ### minimal.toml
 
@@ -28,11 +24,7 @@ Conservative configuration for limited storage.
 - 10MB storage limit
 - Async backups
 
-**Use When:**
-
-- Limited disk space
-- Short-term version history sufficient
-- Quick cleanup needed
+Use when disk space is limited or short-term version history is sufficient.
 
 ### production.toml
 
@@ -43,12 +35,7 @@ Production-focused with extended retention.
 - 100MB storage limit
 - Sync backups (guaranteed completion)
 
-**Use When:**
-
-- Production environments
-- Extended version history required
-- Backup integrity critical
-- Storage not a concern
+Use in production environments where backup integrity and extended version history matter.
 
 ### development.toml
 
@@ -59,12 +46,7 @@ Development-optimized for frequent changes.
 - 50MB storage limit
 - Async backups
 
-**Use When:**
-
-- Active development
-- Frequent config changes
-- Two-week sprint cycles
-- Fast backup operations needed
+Use during active development with frequent config changes and two-week sprint cycles.
 
 ## Usage
 
@@ -85,11 +67,11 @@ Or merge with existing config:
 cat examples/backup/basic.toml >> ~/.klaudiush/config.toml
 ```
 
-## Configuration Reference
+## Configuration reference
 
 See `docs/BACKUP_GUIDE.md` for complete documentation.
 
-### Key Settings
+### Settings
 
 | Setting      | Description                     | Values                 |
 |:-------------|:--------------------------------|:-----------------------|
@@ -100,15 +82,15 @@ See `docs/BACKUP_GUIDE.md` for complete documentation.
 | max_size     | Maximum total storage           | Bytes                  |
 | async_backup | Non-blocking backups            | true, false            |
 
-### Retention Policies
+### Retention policies
 
 All retention policies work together (AND logic):
 
-- **Count**: Keeps N most recent snapshots
-- **Age**: Deletes snapshots older than duration
-- **Size**: Deletes oldest when total size exceeds limit
+- Count: keeps N most recent snapshots
+- Age: deletes snapshots older than duration
+- Size: deletes oldest when total size exceeds limit
 
-### Duration Format
+### Duration format
 
 | Duration | Format  | Example |
 |:---------|:--------|:--------|
@@ -118,7 +100,7 @@ All retention policies work together (AND logic):
 | 30 days  | "720h"  | "720h"  |
 | 90 days  | "2160h" | "2160h" |
 
-## Testing Configuration
+## Testing configuration
 
 Test your backup configuration:
 
@@ -143,27 +125,27 @@ klaudiush doctor --category backup
 
 Adjust settings based on your needs:
 
-**More History:**
+More history:
 
 ```toml
 max_backups = 30
 max_age = "4320h"  # 180 days
 ```
 
-**Less Storage:**
+Less storage:
 
 ```toml
 max_backups = 3
 max_size = 5242880  # 5MB
 ```
 
-**Guaranteed Backups:**
+Guaranteed backups:
 
 ```toml
 async_backup = false
 ```
 
-## See Also
+## See also
 
 - `docs/BACKUP_GUIDE.md` - Complete backup system guide
 - `examples/config/` - Full configuration examples
