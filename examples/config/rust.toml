@@ -1,3 +1,4 @@
+#:schema https://klaudiu.sh/schema/v1/config.json
 # Rust Validator Configuration Example
 #
 # This configuration demonstrates how to configure the Rust file validator

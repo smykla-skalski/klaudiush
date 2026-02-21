@@ -1,3 +1,4 @@
+#:schema https://klaudiu.sh/schema/v1/config.json
 # Development Backup Configuration
 #
 # Development-focused configuration with extended retention but smaller max backups.

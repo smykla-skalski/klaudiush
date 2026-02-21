@@ -1,3 +1,4 @@
+#:schema https://klaudiu.sh/schema/v1/config.json
 # Project-specific configuration example
 # This shows how to override global settings for a specific project
 

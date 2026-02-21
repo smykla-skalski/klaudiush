@@ -1,3 +1,4 @@
+#:schema https://klaudiu.sh/schema/v1/config.json
 # Comprehensive Backtick Validation Configuration
 #
 # This configuration enables comprehensive backtick validation for all Bash commands.
