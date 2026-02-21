@@ -5,6 +5,16 @@ All notable changes to klaudiush will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.25.1](https://github.com/smykla-skalski/klaudiush/compare/v1.25.0...v1.25.1) (2026-02-21)
+
+### Code Refactoring
+
+* **cleanup:** drop pkg/stringutil ([6b952ff](https://github.com/smykla-skalski/klaudiush/commit/6b952ff2e3107aa9ffbf3f9a94dddbc6a4aeb72d))
+* **cleanup:** remove dead code ([0c58e95](https://github.com/smykla-skalski/klaudiush/commit/0c58e95408273b7c838f227c800da94ae72439f7))
+* **file:** extract ContentExtractor ([b8acb2b](https://github.com/smykla-skalski/klaudiush/commit/b8acb2b41a2ed1374e64ebd587dddee411ef7616))
+* **git:** add defaultGitRunner helper ([d0abceb](https://github.com/smykla-skalski/klaudiush/commit/d0abcebb056cafd8c8f69f4667075e84f8bacbf0))
+* **validator:** move ruleAdapter to base ([46cde6a](https://github.com/smykla-skalski/klaudiush/commit/46cde6a4571a45f99299437af5a754ed0217c4ed))
+
 ## [1.25.0](https://github.com/smykla-skalski/klaudiush/compare/v1.24.0...v1.25.0) (2026-02-21)
 
 ### Features
