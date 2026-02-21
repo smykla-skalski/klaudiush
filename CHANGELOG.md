@@ -5,6 +5,12 @@ All notable changes to klaudiush will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.25.2](https://github.com/smykla-skalski/klaudiush/compare/v1.25.1...v1.25.2) (2026-02-21)
+
+### Code Refactoring
+
+* **build:** replace Taskfile with mise ([60ad5c0](https://github.com/smykla-skalski/klaudiush/commit/60ad5c04dbe7761cb03bada9ae29c0e5594ee800))
+
 ## [1.25.1](https://github.com/smykla-skalski/klaudiush/compare/v1.25.0...v1.25.1) (2026-02-21)
 
 ### Code Refactoring
