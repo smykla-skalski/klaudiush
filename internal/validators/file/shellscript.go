@@ -79,14 +79,14 @@ func (v *ShellScriptValidator) Validate(
 	}
 
 	// Get content based on operation type
-	sc, err := v.getContent(hookCtx, filePath)
+	ci, err := v.extractContent(hookCtx, filePath)
 	if err != nil {
 		log.Debug("failed to get content", "error", err)
 		return validator.Pass()
 	}
 
 	// Skip Fish scripts
-	if v.isFishScript(filePath, sc.content) {
+	if v.isFishScript(filePath, ci.Content) {
 		log.Debug("skipping Fish script", "file", filePath)
 		return validator.Pass()
 	}
@@ -96,8 +96,8 @@ func (v *ShellScriptValidator) Validate(
 	defer cancel()
 
 	// Build exclude codes from config and fragment-specific excludes
-	opts := v.buildShellCheckOptions(sc.isFragment)
-	result := v.checker.CheckWithOptions(lintCtx, sc.content, opts)
+	opts := v.buildShellCheckOptions(ci.IsFragment)
+	result := v.checker.CheckWithOptions(lintCtx, ci.Content, opts)
 
 	if result.Success {
 		log.Debug("shellcheck passed")
@@ -109,107 +109,36 @@ func (v *ShellScriptValidator) Validate(
 	return validator.FailWithRef(validator.RefShellcheck, v.formatShellCheckOutput(result.RawOut))
 }
 
-// shellContent holds shell script content and metadata for validation
-type shellContent struct {
-	content    string
-	isFragment bool
-}
-
-// getContent extracts shell script content from context
-//
-//nolint:dupl // Similar pattern to PythonValidator.getContent, acceptable duplication
-func (v *ShellScriptValidator) getContent(
-	ctx *hook.Context,
+// extractContent extracts shell script content from the hook context, with
+// shell-specific post-processing for edit fragments (prepending shell directive).
+func (v *ShellScriptValidator) extractContent(
+	hookCtx *hook.Context,
 	filePath string,
-) (*shellContent, error) {
+) (*ContentInfo, error) {
 	log := v.Logger()
+	ci, err := NewContentExtractor(log, v.getContextLines()).Extract(hookCtx, filePath)
 
-	// For Edit operations, validate only the changed fragment with context
-	if ctx.EventType == hook.EventTypePreToolUse && ctx.ToolName == hook.ToolTypeEdit {
-		content, err := v.getEditContent(ctx, filePath)
-		if err != nil {
-			return nil, err
+	if err != nil {
+		return nil, err
+	}
+
+	// Shell-specific: for edit fragments, prepend a shellcheck directive if the
+	// fragment doesn't start at line 0 (to avoid SC2148 unknown shell errors).
+	if ci.IsFragment && hookCtx.ToolName == hook.ToolTypeEdit {
+		//nolint:gosec // filePath is from Claude Code tool context, not user input
+		original, readErr := os.ReadFile(filePath)
+		if readErr == nil {
+			originalStr := string(original)
+			oldStr := hookCtx.ToolInput.OldString
+			startLine := getFragmentStartLine(originalStr, oldStr, v.getContextLines())
+
+			if startLine > 0 {
+				ci.Content = v.prependShellDirective(originalStr, ci.Content, log)
+			}
 		}
-
-		return &shellContent{content: content, isFragment: true}, nil
 	}
 
-	// Get content from context or read from file (Write operation)
-	content := ctx.ToolInput.Content
-	if content != "" {
-		return &shellContent{content: content, isFragment: false}, nil
-	}
-
-	// Check if file exists
-	if _, err := os.Stat(filePath); err != nil {
-		log.Debug("file does not exist, skipping", "file", filePath)
-		return nil, err
-	}
-
-	// Read file content
-	data, err := os.ReadFile(filePath) //nolint:gosec // filePath is from Claude Code context
-	if err != nil {
-		log.Debug("failed to read file", "file", filePath, "error", err)
-		return nil, err
-	}
-
-	return &shellContent{content: string(data), isFragment: false}, nil
-}
-
-// getEditContent extracts content for Edit operations with context
-func (v *ShellScriptValidator) getEditContent(
-	ctx *hook.Context,
-	filePath string,
-) (string, error) {
-	log := v.Logger()
-
-	oldStr := ctx.ToolInput.OldString
-	newStr := ctx.ToolInput.NewString
-
-	if oldStr == "" || newStr == "" {
-		log.Debug("missing old_string or new_string in edit operation")
-		return "", os.ErrNotExist
-	}
-
-	// Read original file to extract context around the edit
-	//nolint:gosec // filePath is from Claude Code tool context, not user input
-	originalContent, err := os.ReadFile(filePath)
-	if err != nil {
-		log.Debug("failed to read file for edit validation", "file", filePath, "error", err)
-		return "", err
-	}
-
-	originalStr := string(originalContent)
-
-	// Extract fragment with context lines around the edit
-	fragment := ExtractEditFragment(
-		originalStr,
-		oldStr,
-		newStr,
-		v.getContextLines(),
-		log,
-	)
-	if fragment == "" {
-		log.Debug("could not extract edit fragment, skipping validation")
-		return "", os.ErrNotExist
-	}
-
-	// Calculate fragment start line to determine if shebang needs to be prepended
-	fragmentStartLine := getFragmentStartLine(originalStr, oldStr, v.getContextLines())
-
-	// If fragment doesn't start at line 0, prepend shebang or shell directive
-	// to avoid SC2148 (unknown shell) errors
-	if fragmentStartLine > 0 {
-		fragment = v.prependShellDirective(originalStr, fragment, log)
-	}
-
-	fragmentLineCount := len(strings.Split(fragment, "\n"))
-	log.Debug("validating edit fragment with context",
-		"fragment_lines", fragmentLineCount,
-		"fragment_start_line", fragmentStartLine,
-	)
-
-	return fragment, nil
+	return ci, nil
 }
 
 // prependShellDirective prepends a shellcheck shell directive to the fragment

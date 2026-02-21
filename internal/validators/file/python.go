@@ -3,7 +3,6 @@ package file
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -80,7 +79,7 @@ func (v *PythonValidator) Validate(
 	}
 
 	// Get content based on operation type
-	pc, err := v.getContent(hookCtx, filePath)
+	ci, err := v.extractContent(hookCtx, filePath)
 	if err != nil {
 		log.Debug("failed to get content", "error", err)
 		return validator.Pass()
@@ -91,8 +90,8 @@ func (v *PythonValidator) Validate(
 	defer cancel()
 
 	// Build exclude codes from config and fragment-specific excludes
-	opts := v.buildRuffOptions(pc.isFragment)
-	result := v.checker.CheckWithOptions(lintCtx, pc.content, opts)
+	opts := v.buildRuffOptions(ci.IsFragment)
+	result := v.checker.CheckWithOptions(lintCtx, ci.Content, opts)
 
 	if result.Success {
 		log.Debug("ruff passed")
@@ -104,97 +103,12 @@ func (v *PythonValidator) Validate(
 	return validator.FailWithRef(validator.RefRuffCheck, v.formatRuffOutput(result))
 }
 
-// pythonContent holds Python script content and metadata for validation
-type pythonContent struct {
-	content    string
-	isFragment bool
-}
-
-// getContent extracts Python script content from context
-//
-//nolint:dupl // Similar pattern to ShellScriptValidator.getContent, acceptable duplication
-func (v *PythonValidator) getContent(
+// extractContent creates a ContentExtractor and extracts content from the hook context.
+func (v *PythonValidator) extractContent(
 	ctx *hook.Context,
 	filePath string,
-) (*pythonContent, error) {
-	log := v.Logger()
-
-	// For Edit operations, validate only the changed fragment with context
-	if ctx.EventType == hook.EventTypePreToolUse && ctx.ToolName == hook.ToolTypeEdit {
-		content, err := v.getEditContent(ctx, filePath)
-		if err != nil {
-			return nil, err
-		}
-
-		return &pythonContent{content: content, isFragment: true}, nil
-	}
-
-	// Get content from context or read from file (Write operation)
-	content := ctx.ToolInput.Content
-	if content != "" {
-		return &pythonContent{content: content, isFragment: false}, nil
-	}
-
-	// Check if file exists
-	if _, err := os.Stat(filePath); err != nil {
-		log.Debug("file does not exist, skipping", "file", filePath)
-		return nil, err
-	}
-
-	// Read file content
-	data, err := os.ReadFile(filePath) //nolint:gosec // filePath is from Claude Code context
-	if err != nil {
-		log.Debug("failed to read file", "file", filePath, "error", err)
-		return nil, err
-	}
-
-	return &pythonContent{content: string(data), isFragment: false}, nil
-}
-
-// getEditContent extracts content for Edit operations with context
-func (v *PythonValidator) getEditContent(
-	ctx *hook.Context,
-	filePath string,
-) (string, error) {
-	log := v.Logger()
-
-	oldStr := ctx.ToolInput.OldString
-	newStr := ctx.ToolInput.NewString
-
-	if oldStr == "" || newStr == "" {
-		log.Debug("missing old_string or new_string in edit operation")
-		return "", os.ErrNotExist
-	}
-
-	// Read original file to extract context around the edit
-	//nolint:gosec // filePath is from Claude Code tool context, not user input
-	originalContent, err := os.ReadFile(filePath)
-	if err != nil {
-		log.Debug("failed to read file for edit validation", "file", filePath, "error", err)
-		return "", err
-	}
-
-	originalStr := string(originalContent)
-
-	// Extract fragment with context lines around the edit
-	fragment := ExtractEditFragment(
-		originalStr,
-		oldStr,
-		newStr,
-		v.getContextLines(),
-		log,
-	)
-	if fragment == "" {
-		log.Debug("could not extract edit fragment, skipping validation")
-		return "", os.ErrNotExist
-	}
-
-	fragmentLineCount := len(strings.Split(fragment, "\n"))
-	log.Debug("validating edit fragment with context",
-		"fragment_lines", fragmentLineCount,
-	)
-
-	return fragment, nil
+) (*ContentInfo, error) {
+	return NewContentExtractor(v.Logger(), v.getContextLines()).Extract(ctx, filePath)
 }
 
 // formatRuffOutput formats ruff findings into human-readable text.
