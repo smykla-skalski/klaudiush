@@ -545,11 +545,46 @@ See the [Rules Guide](docs/RULES_GUIDE.md) for full documentation.
 
 ## Performance
 
-- Cold start: <100ms target
-- Parser: <100µs for typical commands
-- Validators: <50ms each (I/O dependent)
-- Total: <500ms for full validation chain
-- Rule evaluation: <1ms per rule (155ns-10.7µs achieved)
+Measured on Apple M3 Max using `task bench:e2e` (Go exec.Command, 3 iterations)
+and `task bench:hyperfine` (hyperfine, 30 runs). CLI git backend (`KLAUDIUSH_USE_SDK_GIT=false`).
+
+End-to-end binary execution (wall clock, hyperfine mean +/- sigma):
+
+| Payload | Time |
+|---------|------|
+| Empty stdin (baseline) | 59ms +/- 7ms |
+| Non-git bash (`ls -la`) | 68ms +/- 6ms |
+| Write tool (Go file) | 69ms +/- 3ms |
+| Git commit (pass, full chain) | 112ms +/- 6ms |
+| Git commit (fail, deny response) | 66ms +/- 4ms |
+| Git push | 87ms +/- 4ms |
+
+Internal phase breakdown (`KLAUDIUSH_BENCH_TIMING=1`, git commit pass):
+
+| Phase | Elapsed | Delta |
+|-------|---------|-------|
+| Parse | 158us | 158us |
+| Config load | 807us | 649us |
+| Registry build | 45ms | 44ms |
+| Dispatch (validation) | 93ms | 48ms |
+| Response write | 93ms | <1ms |
+
+In-process microbenchmarks (Go `testing.B`):
+
+- Rule evaluation: 155ns-10.7us per rule
+- Dispatcher overhead: 1.2-1.8us per dispatch (no I/O)
+- JSON parse: 0.5-3.6us per payload
+- Bash AST parse: 1.4-23us depending on complexity
+- Git command parse: 0.3-2.1us per command
+
+Run benchmarks locally:
+
+```bash
+task bench:e2e        # exec.Command benchmarks (requires build tag bench_e2e)
+task bench:timing     # internal phase timing
+task bench:hyperfine  # hyperfine comparison (requires hyperfine)
+task bench            # in-process microbenchmarks
+```
 
 ## Contributing
 
