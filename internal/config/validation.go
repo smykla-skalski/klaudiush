@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"regexp"
 	"slices"
+	"strings"
 
 	"github.com/cockroachdb/errors"
 
 	"github.com/smykla-skalski/klaudiush/pkg/config"
-	"github.com/smykla-skalski/klaudiush/pkg/stringutil"
 )
 
 var (
@@ -612,7 +612,9 @@ func (*Validator) validateRuleMatchFields(match *config.RuleMatchConfig, ruleID 
 
 	// Validate event_type if specified
 	if match.EventType != "" {
-		if !stringutil.ContainsCaseInsensitive(config.ValidEventTypes, match.EventType) {
+		if !slices.ContainsFunc(config.ValidEventTypes, func(s string) bool {
+			return strings.EqualFold(s, match.EventType)
+		}) {
 			validationErrors = append(
 				validationErrors,
 				errors.Wrapf(
@@ -628,7 +630,9 @@ func (*Validator) validateRuleMatchFields(match *config.RuleMatchConfig, ruleID 
 
 	// Validate tool_type if specified
 	if match.ToolType != "" {
-		if !stringutil.ContainsCaseInsensitive(config.ValidToolTypes, match.ToolType) {
+		if !slices.ContainsFunc(config.ValidToolTypes, func(s string) bool {
+			return strings.EqualFold(s, match.ToolType)
+		}) {
 			validationErrors = append(
 				validationErrors,
 				errors.Wrapf(
