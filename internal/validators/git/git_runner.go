@@ -202,6 +202,17 @@ func NewGitRunner() GitRunner {
 	return NewCLIGitRunner()
 }
 
+// defaultGitRunner returns the given runner if non-nil, otherwise creates
+// a new one via NewGitRunner. Used in validator constructors to provide
+// a default when the caller passes nil.
+func defaultGitRunner(runner GitRunner) GitRunner {
+	if runner == nil {
+		return NewGitRunner()
+	}
+
+	return runner
+}
+
 // NewGitRunnerForPath creates a GitRunner for a specific directory path.
 // Use this when operating on a repository in a specific directory,
 // e.g., when processing git commands with -C flag.

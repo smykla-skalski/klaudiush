@@ -28,13 +28,9 @@ func NewFetchValidator(
 	cfg *config.FetchValidatorConfig,
 	ruleAdapter *rules.RuleValidatorAdapter,
 ) *FetchValidator {
-	if gitRunner == nil {
-		gitRunner = NewGitRunner()
-	}
-
 	return &FetchValidator{
 		BaseValidator: *validator.NewBaseValidator("validate-git-fetch", log),
-		gitRunner:     gitRunner,
+		gitRunner:     defaultGitRunner(gitRunner),
 		config:        cfg,
 		ruleAdapter:   ruleAdapter,
 		remoteHelper:  NewRemoteHelper(),

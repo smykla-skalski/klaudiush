@@ -33,13 +33,9 @@ func NewPushValidator(
 	cfg *config.PushValidatorConfig,
 	ruleAdapter *rules.RuleValidatorAdapter,
 ) *PushValidator {
-	if gitRunner == nil {
-		gitRunner = NewGitRunner()
-	}
-
 	return &PushValidator{
 		BaseValidator: *validator.NewBaseValidator("validate-git-push", log),
-		gitRunner:     gitRunner,
+		gitRunner:     defaultGitRunner(gitRunner),
 		config:        cfg,
 		ruleAdapter:   ruleAdapter,
 	}

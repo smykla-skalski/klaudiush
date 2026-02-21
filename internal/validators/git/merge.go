@@ -64,14 +64,10 @@ func NewMergeValidator(
 	cfg *config.MergeValidatorConfig,
 	ruleAdapter *rules.RuleValidatorAdapter,
 ) *MergeValidator {
-	if gitRunner == nil {
-		gitRunner = NewGitRunner()
-	}
-
 	return &MergeValidator{
 		BaseValidator: *validator.NewBaseValidator("validate-merge", log),
 		config:        cfg,
-		gitRunner:     gitRunner,
+		gitRunner:     defaultGitRunner(gitRunner),
 		cmdRunner:     exec.NewCommandRunner(ghAPITimeout),
 		ruleAdapter:   ruleAdapter,
 	}

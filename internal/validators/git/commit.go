@@ -46,13 +46,9 @@ func NewCommitValidator(
 	cfg *config.CommitValidatorConfig,
 	ruleAdapter *rules.RuleValidatorAdapter,
 ) *CommitValidator {
-	if gitRunner == nil {
-		gitRunner = NewGitRunner()
-	}
-
 	return &CommitValidator{
 		BaseValidator: *validator.NewBaseValidator("validate-commit", log),
-		gitRunner:     gitRunner,
+		gitRunner:     defaultGitRunner(gitRunner),
 		config:        cfg,
 		ruleAdapter:   ruleAdapter,
 	}

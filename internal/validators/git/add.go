@@ -38,13 +38,9 @@ func NewAddValidator(
 	cfg *config.AddValidatorConfig,
 	ruleAdapter *rules.RuleValidatorAdapter,
 ) *AddValidator {
-	if gitRunner == nil {
-		gitRunner = NewGitRunner()
-	}
-
 	return &AddValidator{
 		BaseValidator: *validator.NewBaseValidator("validate-git-add", log),
-		gitRunner:     gitRunner,
+		gitRunner:     defaultGitRunner(gitRunner),
 		config:        cfg,
 		ruleAdapter:   ruleAdapter,
 	}
