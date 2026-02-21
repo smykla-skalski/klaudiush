@@ -13,7 +13,7 @@ type OverridesConfig struct {
 // OverrideEntry represents a single override for an error code or validator.
 type OverrideEntry struct {
 	// Disabled controls whether the target is disabled (true) or explicitly enabled (false).
-	// Default: true when created via "overrides add disable", false via "overrides add enable".
+	// Default: true when created via "klaudiush disable".
 	Disabled *bool `json:"disabled,omitempty" koanf:"disabled" toml:"disabled"`
 
 	// Reason explains why this override exists.

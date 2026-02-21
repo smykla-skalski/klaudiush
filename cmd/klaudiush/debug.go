@@ -648,8 +648,8 @@ func displayDebugNoOverrides() {
 	fmt.Println("No overrides configured.")
 	fmt.Println("")
 	fmt.Println("To add overrides, use:")
-	fmt.Println("  klaudiush overrides add disable GIT014 --reason \"reason\"")
-	fmt.Println("  klaudiush overrides add enable git.commit --reason \"reason\"")
+	fmt.Println("  klaudiush disable GIT014 --reason \"reason\"")
+	fmt.Println("  klaudiush enable GIT014")
 }
 
 func displayDebugActiveOverrides(active map[string]*config.OverrideEntry) {

@@ -32,29 +32,18 @@ var (
 
 var overridesCmd = &cobra.Command{
 	Use:   "overrides",
-	Short: "Manage validator overrides",
-	Long: `Manage validator overrides.
+	Short: "List configured overrides",
+	Long: `List configured overrides.
 
-Add, list, and remove overrides that disable or enable specific error codes
-or validators.
-
-Subcommands:
-  add      Add an override (disable or enable)
-  list     List current overrides
-  remove   Remove an override`,
+Examples:
+  klaudiush overrides                 # List project overrides
+  klaudiush overrides --global        # List global overrides
+  klaudiush overrides --all           # List both global and project
+  klaudiush overrides --expired       # Include expired entries`,
+	RunE: runOverridesList,
 }
 
-var overridesAddCmd = &cobra.Command{
-	Use:   "add",
-	Short: "Add an override",
-	Long: `Add an override to disable or enable an error code or validator.
-
-Subcommands:
-  disable  Disable an error code or validator
-  enable   Enable an error code or validator`,
-}
-
-var overridesAddDisableCmd = &cobra.Command{
+var disableCmd = &cobra.Command{
 	Use:   "disable TARGET...",
 	Short: "Disable an error code or validator",
 	Long: `Disable one or more error codes or validators.
@@ -62,84 +51,42 @@ var overridesAddDisableCmd = &cobra.Command{
 Targets can be error codes (GIT014, SEC001) or validator names (git.commit, file.markdown).
 
 Examples:
-  klaudiush overrides add disable GIT014 --reason "tmp paths OK"
-  klaudiush overrides add disable GIT014 SEC001 --reason "dev environment" --duration 30d
-  klaudiush overrides add disable git.commit --reason "skipping for now" --global`,
-	Args: cobra.MinimumNArgs(1),
-	RunE: runOverridesAddDisable,
-}
-
-var overridesAddEnableCmd = &cobra.Command{
-	Use:   "enable TARGET...",
-	Short: "Enable an error code or validator",
-	Long: `Explicitly enable one or more error codes or validators.
-
-Use this to override a parent-level disable for a specific code.
-
-Examples:
-  klaudiush overrides add enable GIT014 --reason "re-enabled for this project"
-  klaudiush overrides add enable git.commit --reason "ready to enforce" --global`,
-	Args: cobra.MinimumNArgs(1),
-	RunE: runOverridesAddEnable,
-}
-
-var overridesListCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List current overrides",
-	Long: `List configured overrides.
-
-Examples:
-  klaudiush overrides list                 # List project overrides
-  klaudiush overrides list --global        # List global overrides
-  klaudiush overrides list --all           # List both global and project
-  klaudiush overrides list --expired       # Include expired entries`,
-	RunE: runOverridesList,
-}
-
-var overridesRemoveCmd = &cobra.Command{
-	Use:   "remove TARGET...",
-	Short: "Remove an override",
-	Long: `Remove one or more overrides by target.
-
-Examples:
-  klaudiush overrides remove GIT014
-  klaudiush overrides remove GIT014 SEC001 --global`,
-	Args: cobra.MinimumNArgs(1),
-	RunE: runOverridesRemove,
-}
-
-// disableCmd is a top-level shortcut for "overrides add disable".
-var disableCmd = &cobra.Command{
-	Use:   "disable TARGET...",
-	Short: "Disable an error code or validator (shortcut for overrides add disable)",
-	Long: `Disable one or more error codes or validators.
-
-This is a shortcut for "klaudiush overrides add disable".
-
-Examples:
   klaudiush disable GIT014 --reason "tmp paths OK"
-  klaudiush disable GIT014 --reason "dev env" --duration 30d --global`,
+  klaudiush disable GIT014 SEC001 --reason "dev environment" --duration 30d
+  klaudiush disable git.commit --reason "using commitlint" --global`,
 	Args: cobra.MinimumNArgs(1),
-	RunE: runOverridesAddDisable,
+	RunE: runDisable,
+}
+
+var enableCmd = &cobra.Command{
+	Use:   "enable TARGET...",
+	Short: "Re-enable an error code or validator",
+	Long: `Re-enable one or more error codes or validators by removing their override entry.
+
+Examples:
+  klaudiush enable GIT014
+  klaudiush enable GIT014 SEC001 --global`,
+	Args: cobra.MinimumNArgs(1),
+	RunE: runEnable,
 }
 
 func init() {
 	rootCmd.AddCommand(overridesCmd)
 	rootCmd.AddCommand(disableCmd)
-	overridesCmd.AddCommand(overridesAddCmd)
-	overridesAddCmd.AddCommand(overridesAddDisableCmd)
-	overridesAddCmd.AddCommand(overridesAddEnableCmd)
-	overridesCmd.AddCommand(overridesListCmd)
-	overridesCmd.AddCommand(overridesRemoveCmd)
+	rootCmd.AddCommand(enableCmd)
 
-	setupOverridesAddFlags(overridesAddDisableCmd)
-	setupOverridesAddFlags(overridesAddEnableCmd)
-	setupOverridesAddFlags(disableCmd)
-	setupOverridesListFlags()
-	setupOverridesRemoveFlags()
+	setupDisableFlags(disableCmd)
+
+	enableCmd.Flags().
+		BoolVar(&overrideGlobal, "global", false, "Remove from global config instead of project")
+
+	overridesCmd.Flags().BoolVar(&overrideGlobal, "global", false, "Show only global overrides")
+	overridesCmd.Flags().
+		BoolVar(&overrideAll, "all", false, "Show both global and project overrides")
+	overridesCmd.Flags().BoolVar(&overrideExpired, "expired", false, "Include expired entries")
 }
 
-func setupOverridesAddFlags(cmd *cobra.Command) {
+func setupDisableFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVarP(
 		&overrideReason, "reason", "r", "", "Why this override exists (required)",
 	)
@@ -154,24 +101,8 @@ func setupOverridesAddFlags(cmd *cobra.Command) {
 	_ = cmd.MarkFlagRequired("reason")
 }
 
-func setupOverridesListFlags() {
-	overridesListCmd.Flags().BoolVar(&overrideGlobal, "global", false, "Show only global overrides")
-	overridesListCmd.Flags().
-		BoolVar(&overrideAll, "all", false, "Show both global and project overrides")
-	overridesListCmd.Flags().BoolVar(&overrideExpired, "expired", false, "Include expired entries")
-}
-
-func setupOverridesRemoveFlags() {
-	overridesRemoveCmd.Flags().
-		BoolVar(&overrideGlobal, "global", false, "Remove from global config instead of project")
-}
-
-func runOverridesAddDisable(_ *cobra.Command, args []string) error {
+func runDisable(_ *cobra.Command, args []string) error {
 	return runOverridesAdd(args, true)
-}
-
-func runOverridesAddEnable(_ *cobra.Command, args []string) error {
-	return runOverridesAdd(args, false)
 }
 
 func runOverridesAdd(targets []string, disabled bool) error {
@@ -290,7 +221,7 @@ func runOverridesList(_ *cobra.Command, _ []string) error {
 	return nil
 }
 
-func runOverridesRemove(_ *cobra.Command, args []string) error {
+func runEnable(_ *cobra.Command, args []string) error {
 	cfg, err := loadOverrideConfig(overrideGlobal)
 	if err != nil {
 		return err
