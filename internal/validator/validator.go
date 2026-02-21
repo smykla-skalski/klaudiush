@@ -103,16 +103,6 @@ func Fail(message string) *Result {
 	}
 }
 
-// FailWithDetails creates a failing validation result with details.
-func FailWithDetails(message string, details map[string]string) *Result {
-	return &Result{
-		Passed:      false,
-		Message:     message,
-		Details:     details,
-		ShouldBlock: true,
-	}
-}
-
 // Warn creates a failing validation result that only warns without blocking.
 func Warn(message string) *Result {
 	return &Result{

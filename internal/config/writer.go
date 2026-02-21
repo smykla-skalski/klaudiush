@@ -47,16 +47,6 @@ func NewWriter() *Writer {
 	}
 }
 
-// NewWriterWithBackup creates a new Writer with default directories and a backup manager.
-func NewWriterWithBackup(backupMgr *backup.Manager) *Writer {
-	return &Writer{
-		homeDir:       mustUserHome(),
-		workDir:       mustGetwd(),
-		paths:         xdg.DefaultResolver(),
-		backupManager: backupMgr,
-	}
-}
-
 // NewWriterWithDirs creates a new Writer with custom directories (for testing).
 func NewWriterWithDirs(homeDir, workDir string) *Writer {
 	return &Writer{
@@ -214,16 +204,6 @@ func (w *Writer) IsProjectConfigExists() bool {
 	_, err := os.Stat(path)
 
 	return err == nil
-}
-
-// GlobalConfigDirPath returns the global config directory path.
-func (w *Writer) GlobalConfigDirPath() string {
-	return w.paths.ConfigDir()
-}
-
-// ProjectConfigDir returns the project config directory path.
-func (w *Writer) ProjectConfigDir() string {
-	return filepath.Join(w.workDir, ProjectConfigDir)
 }
 
 func mustUserHome() string {
