@@ -304,3 +304,29 @@ tasks:
       - mise exec -- go test -bench=. -benchmem -run='^$' -count=6 -timeout=10m ./... 2>&1 | tee {{.REPORT_DIR}}/bench-{{.TIMESTAMP}}.txt
       - echo ""
       - echo "Report saved to {{.REPORT_DIR}}/bench-{{.TIMESTAMP}}.txt"
+
+  bench:e2e:
+    desc: Run end-to-end binary benchmarks
+    deps:
+      - build
+    cmds:
+      - mise exec -- go test -bench=BenchmarkBinaryE2E -benchmem -run='^$' -count=3 -timeout=10m ./cmd/klaudiush
+
+  bench:timing:
+    desc: Run binary with internal timing instrumentation
+    deps:
+      - build
+    vars:
+      PAYLOAD: '{{.PAYLOAD | default "cmd/klaudiush/testdata/bench-payloads/git-commit-pass.json"}}'
+    cmds:
+      - cmd: echo '{}' | KLAUDIUSH_BENCH_TIMING=1 ./bin/klaudiush --hook-type PreToolUse 2>&1 >/dev/null || true
+        silent: true
+      - cmd: cat {{.PAYLOAD}} | KLAUDIUSH_BENCH_TIMING=1 ./bin/klaudiush --hook-type PreToolUse 2>&1 >/dev/null || true
+        silent: true
+
+  bench:hyperfine:
+    desc: Run end-to-end benchmarks with hyperfine
+    deps:
+      - build
+    cmds:
+      - bash scripts/bench-e2e.sh ./bin/klaudiush

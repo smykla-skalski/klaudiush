@@ -160,6 +160,7 @@ func init() {
 }
 
 func run(cmd *cobra.Command, _ []string) error {
+	bt := newBenchTiming()
 	log := loggerFromCmd(cmd)
 
 	// Perform first-run migration if needed
@@ -194,6 +195,8 @@ func run(cmd *cobra.Command, _ []string) error {
 		return errors.Wrap(err, "failed to parse input")
 	}
 
+	bt.mark("parse")
+
 	log.Info("context parsed",
 		"tool", ctx.ToolName,
 		"command", ctx.GetCommand(),
@@ -212,6 +215,8 @@ func run(cmd *cobra.Command, _ []string) error {
 		return errors.Wrap(err, "failed to load configuration")
 	}
 
+	bt.mark("config")
+
 	// Store context and config for crash recovery
 	crashContext = ctx
 	crashConfig = cfg
@@ -219,6 +224,8 @@ func run(cmd *cobra.Command, _ []string) error {
 	// Build validator registry from configuration
 	registryBuilder := factory.NewRegistryBuilder(log)
 	registry := registryBuilder.Build(cfg)
+
+	bt.mark("registry")
 
 	// Create and initialize exception checker if enabled
 	exceptionHandler, exceptionChecker := initExceptionChecker(cfg, workDir, log)
@@ -235,6 +242,8 @@ func run(cmd *cobra.Command, _ []string) error {
 	// Dispatch validation
 	errs := disp.Dispatch(context.Background(), ctx)
 
+	bt.mark("dispatch")
+
 	// Save persistent state after dispatch
 	savePersistentState(exceptionHandler, log)
 
@@ -242,7 +251,11 @@ func run(cmd *cobra.Command, _ []string) error {
 	patternWarnings := runPatternTracking(cfg, ctx, errs, workDir, log)
 
 	// Build and write response
-	return writeResponse(hookType, errs, patternWarnings, log)
+	writeErr := writeResponse(hookType, errs, patternWarnings, log)
+
+	bt.mark("response")
+
+	return writeErr
 }
 
 // savePersistentState saves exception state after dispatch.

@@ -1,0 +1,7 @@
+{
+  "tool_name": "Write",
+  "tool_input": {
+    "file_path": "/tmp/example.go",
+    "content": "package main\n\nfunc main() {\n\tprintln(\"hello\")\n}\n"
+  }
+}
