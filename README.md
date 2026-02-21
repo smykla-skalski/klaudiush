@@ -111,13 +111,13 @@ klaudiush doctor
 
 ```bash
 # Build the binary (development build)
-task build
+mise run build
 
 # Build production binary
-task build:prod
+mise run build:prod
 
 # Install to ~/.local/bin or ~/bin
-task install
+mise run install
 ```
 
 ### Configure Claude Code
@@ -141,35 +141,33 @@ klaudiush init --install-hooks
 ### Build
 
 ```bash
-task build       # Development build
-task build:prod  # Production build with signoff validation
-task install     # Install to ~/.claude/hooks/
+mise run build       # Development build
+mise run build:prod  # Production build with signoff validation
+mise run install     # Install to ~/.claude/hooks/
 ```
 
 ### Testing
 
 ```bash
-task test              # Run all tests (439 specs)
-task test:unit         # Unit tests only
-task test:integration  # Integration tests only
-task test:staged       # Test packages with staged files
+mise run test              # Run all tests (439 specs)
+mise run test:unit         # Unit tests only
+mise run test:integration  # Integration tests only
 ```
 
 ### Code quality
 
 ```bash
-task check        # Lint and auto-fix
-task lint         # Lint only (67 linters enabled)
-task lint:fix     # Lint with auto-fix
-task lint:staged  # Lint only modified and staged files
-task fmt          # Format code
-task verify       # Run fmt + lint + test
+mise run check        # Lint and auto-fix
+mise run lint         # Lint only (67 linters enabled)
+mise run lint:fix     # Lint with auto-fix
+mise run fmt          # Format code
+mise run verify       # Run fmt + lint + test
 ```
 
 ### Git hooks
 
 ```bash
-task install:hooks  # Install pre-commit and pre-push hooks
+mise run install:hooks  # Install pre-commit and pre-push hooks
 ```
 
 The project uses [Lefthook](https://github.com/evilmartians/lefthook) for git hook management.
@@ -187,14 +185,14 @@ Pre-push hook runs before each push (parallel):
 Install hooks:
 
 ```bash
-task install:hooks
+mise run install:hooks
 ```
 
 ### Other
 
 ```bash
-task deps   # Download dependencies
-task clean  # Remove build artifacts
+mise run deps   # Download dependencies
+mise run clean  # Remove build artifacts
 ```
 
 ## Architecture
@@ -287,7 +285,7 @@ Uses `mvdan.cc/sh` to parse command chains, pipes, subshells, redirections, and 
 
 Add validators by creating them in `internal/validators/{category}/`, implementing the `Validate()` method, writing tests, and registering in `cmd/klaudiush/main.go` with predicates.
 
-Run `task test` for all tests, or `go test -v ./pkg/parser` for specific suites. Logs go to `~/.claude/hooks/dispatcher.log`. Use `tail -f` on that file for real-time debugging.
+Run `mise run test` for all tests, or `go test -v ./pkg/parser` for specific suites. Logs go to `~/.claude/hooks/dispatcher.log`. Use `tail -f` on that file for real-time debugging.
 
 ## Hook output
 
@@ -545,8 +543,8 @@ See the [Rules Guide](docs/RULES_GUIDE.md) for full documentation.
 
 ## Performance
 
-Measured on Apple M3 Max using `task bench:e2e` (Go exec.Command, 3 iterations)
-and `task bench:hyperfine` (hyperfine, 30 runs). CLI git backend (`KLAUDIUSH_USE_SDK_GIT=false`).
+Measured on Apple M3 Max using `mise run bench:e2e` (Go exec.Command, 3 iterations)
+and `mise run bench:hyperfine` (hyperfine, 30 runs). CLI git backend (`KLAUDIUSH_USE_SDK_GIT=false`).
 
 End-to-end binary execution (wall clock, hyperfine mean +/- sigma):
 
@@ -580,18 +578,18 @@ In-process microbenchmarks (Go `testing.B`):
 Run benchmarks locally:
 
 ```bash
-task bench:e2e        # exec.Command benchmarks (requires build tag bench_e2e)
-task bench:timing     # internal phase timing
-task bench:hyperfine  # hyperfine comparison (requires hyperfine)
-task bench            # in-process microbenchmarks
+mise run bench:e2e        # exec.Command benchmarks (requires build tag bench_e2e)
+mise run bench:timing     # internal phase timing
+mise run bench:hyperfine  # hyperfine comparison (requires hyperfine)
+mise run bench            # in-process microbenchmarks
 ```
 
 ## Contributing
 
 1. Create feature branch: `git checkout -b feat/my-feature`
-2. Write tests first: `task test`
+2. Write tests first: `mise run test`
 3. Implement changes
-4. Ensure quality: `task verify`
+4. Ensure quality: `mise run verify`
 5. Create PR with semantic title
 
 ## Support

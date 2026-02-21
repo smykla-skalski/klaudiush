@@ -12,58 +12,58 @@ This file provides guidance to GitHub Copilot when working with code in this rep
 
 ```bash
 # Development build (no signoff validation)
-task build
+mise run build
 
 # Production build (validates signoff matches git config)
-task build:prod
+mise run build:prod
 
 # Install to ~/.claude/hooks/dispatcher
-task install
+mise run install
 ```
 
 ### Testing
 
 ```bash
 # Run all tests
-task test
+mise run test
 
 # Unit tests only
-task test:unit
+mise run test:unit
 
 # Integration tests only
-task test:integration
+mise run test:integration
 ```
 
 ### Linting
 
 ```bash
 # Lint and auto-fix
-task check
-task lint:fix
+mise run check
+mise run lint:fix
 
 # Lint only
-task lint
+mise run lint
 ```
 
 ### Development
 
 ```bash
 # Format code
-task fmt
+mise run fmt
 
 # Clean build artifacts
-task clean
+mise run clean
 
 # Update dependencies
-task deps
+mise run deps
 
 # Run all verification (fmt + lint + test)
-task verify
+mise run verify
 ```
 
 **Before Committing Code:**
 
-Always run `task lint test` to ensure code quality and test coverage.
+Always run `mise run lint` and `mise run test` to ensure code quality and test coverage.
 
 ## Architecture
 

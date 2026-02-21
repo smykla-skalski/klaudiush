@@ -16,8 +16,8 @@ var (
 	// ErrBinaryInstallNotSupported is returned when binary installation is not supported.
 	ErrBinaryInstallNotSupported = errors.New("automatic binary installation not supported")
 
-	// ErrTaskNotFound is returned when the task command is not available.
-	ErrTaskNotFound = errors.New("task command not found")
+	// ErrMiseNotFound is returned when the mise command is not available.
+	ErrMiseNotFound = errors.New("mise command not found")
 )
 
 // InstallBinaryFixer attempts to install the klaudiush binary.
@@ -53,12 +53,12 @@ func (f *InstallBinaryFixer) Fix(ctx context.Context, interactive bool) error {
 	if !f.isInKlaudiushRepo() {
 		return errors.WithMessage(
 			ErrBinaryInstallNotSupported,
-			"not in klaudiush repository. Please install manually with: task install",
+			"not in klaudiush repository. Please install manually with: mise run install",
 		)
 	}
 
 	if interactive {
-		msg := "Install klaudiush binary using 'task install'?"
+		msg := "Install klaudiush binary using 'mise run install'?"
 
 		confirmed, err := f.prompter.Confirm(msg, true)
 		if err != nil {
@@ -70,26 +70,26 @@ func (f *InstallBinaryFixer) Fix(ctx context.Context, interactive bool) error {
 		}
 	}
 
-	// Check if task is available
-	if _, err := exec.LookPath("task"); err != nil {
-		return errors.Wrapf(ErrTaskNotFound, "install task from https://taskfile.dev")
+	// Check if mise is available
+	if _, err := exec.LookPath("mise"); err != nil {
+		return errors.Wrapf(ErrMiseNotFound, "install mise from https://mise.jdx.dev")
 	}
 
-	// Run task install
-	cmd := exec.CommandContext(ctx, "task", "install")
+	// Run mise run install
+	cmd := exec.CommandContext(ctx, "mise", "run", "install")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
 	if err := cmd.Run(); err != nil {
-		return errors.Wrap(err, "failed to run 'task install'")
+		return errors.Wrap(err, "failed to run 'mise run install'")
 	}
 
 	return nil
 }
 
 func (*InstallBinaryFixer) isInKlaudiushRepo() bool {
-	// Check if we have a Taskfile.yml in current directory
-	if _, err := os.Stat("Taskfile.yml"); err == nil {
+	// Check if we have a .mise.toml in current directory
+	if _, err := os.Stat(".mise.toml"); err == nil {
 		// Check if it's the klaudiush repo by looking for specific files
 		checkFiles := []string{
 			"cmd/klaudiush/main.go",

@@ -11,14 +11,14 @@ import (
 )
 
 // benchBinaryPath returns the absolute path to the pre-built klaudiush binary.
-// Skips the benchmark if the binary doesn't exist (run "task build" first).
+// Skips the benchmark if the binary doesn't exist (run "mise run build" first).
 func benchBinaryPath(b *testing.B) string {
 	b.Helper()
 
 	path := filepath.Join("..", "..", "bin", "klaudiush")
 
 	if _, err := os.Stat(path); err != nil {
-		b.Skip("binary not found at bin/klaudiush - run 'task build' first")
+		b.Skip("binary not found at bin/klaudiush - run 'mise run build' first")
 	}
 
 	absPath, err := filepath.Abs(path)

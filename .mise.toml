@@ -9,10 +9,6 @@ go = "1.26.0"
 # https://golangci-lint.run/
 golangci-lint = "2.10.1"
 
-# Task runner
-# https://taskfile.dev/
-task = "3.45.5"
-
 # Markdown linter
 # https://github.com/DavidAnson/markdownlint-cli2
 markdownlint-cli2 = "0.21.0"
@@ -44,3 +40,334 @@ _.path = ["{{ env.HOME }}/.local/share/mise/installs/go/*/bin"]
 # (/var/folders/.../T/) because it scans new executables from temp dirs.
 # Redirect Go's temp build dir to avoid this.
 GOTMPDIR = "{{ env.HOME }}/.cache/go-tmp"
+
+# ---------------------------------------------------------------------------
+# Tasks
+# ---------------------------------------------------------------------------
+
+[tasks.generate]
+description = "Run all code generation (enums and mocks)"
+run = "go generate ./..."
+sources = [
+  "pkg/hook/context.go",
+  "pkg/config/types.go",
+  "pkg/logger/level.go",
+  "pkg/logger/logger.go",
+  "internal/git/runner.go",
+  "internal/exec/command.go",
+  "internal/exec/tool.go",
+  "internal/exec/tempfile.go",
+  "internal/linters/shellcheck.go",
+  "internal/linters/terraform.go",
+  "internal/linters/tflint.go",
+  "internal/linters/actionlint.go",
+  "internal/linters/markdownlint.go",
+  "internal/prompt/prompt.go",
+  "internal/validator/validator.go",
+  "internal/doctor/types.go",
+  "internal/doctor/checkers/config/config_check.go",
+]
+outputs = [
+  "pkg/hook/eventtype_enumer.go",
+  "pkg/hook/tooltype_enumer.go",
+  "pkg/config/severity_enumer.go",
+  "pkg/logger/level_enumer.go",
+  "pkg/logger/logger_mock.go",
+  "internal/git/runner_mock.go",
+  "internal/exec/command_mock.go",
+  "internal/exec/tool_mock.go",
+  "internal/exec/tempfile_mock.go",
+  "internal/linters/shellcheck_mock.go",
+  "internal/linters/terraform_mock.go",
+  "internal/linters/tflint_mock.go",
+  "internal/linters/actionlint_mock.go",
+  "internal/linters/markdownlint_mock.go",
+  "internal/prompt/prompt_mock.go",
+  "internal/validator/validator_mock.go",
+  "internal/doctor/types_mock.go",
+  "internal/doctor/checkers/config/config_loader_mock.go",
+]
+
+[tasks.build]
+description = "Build the binary (without signoff validation)"
+depends = ["generate"]
+run = "go build -o bin/klaudiush ./cmd/klaudiush"
+sources = ["**/*.go"]
+outputs = ["bin/klaudiush"]
+
+[tasks."build:prod"]
+description = "Build production binary (same as build, signoff now configured via config file)"
+depends = ["build"]
+
+[tasks.test]
+description = "Run all tests with concise output (one line per package)"
+depends = ["build"]
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+# Testscript tests (cmd/klaudiush) compile the binary inline.
+# CrowdStrike Falcon kills new executables under parallel load,
+# so these run separately with -p 1 (sequential).
+go test -race -cover $(go list ./... | grep -v /cmd/klaudiush)
+go test -race -cover -p 1 ./cmd/klaudiush
+"""
+
+[tasks."test:verbose"]
+description = "Run all tests with verbose output (shows each test)"
+depends = ["build"]
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+go test -v -race -cover $(go list ./... | grep -v /cmd/klaudiush)
+go test -v -race -cover -p 1 ./cmd/klaudiush
+"""
+
+[tasks."test:ginkgo"]
+description = "Run ginkgo tests with ginkgo CLI (slower but prettier output)"
+depends = ["build"]
+run = "ginkgo -r -p --succinct --no-color --race --cover ./..."
+
+[tasks."test:unit"]
+description = "Run unit tests only (short mode)"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+go test -race -cover -short $(go list ./... | grep -v /cmd/klaudiush)
+go test -race -cover -short -p 1 ./cmd/klaudiush
+"""
+
+[tasks."test:integration"]
+description = "Run integration tests only"
+run = "go test -race -cover -run Integration ./..."
+
+[tasks."test:testscript"]
+description = "Run testscript integration tests (verbose)"
+depends = ["build"]
+run = "go test -v ./cmd/klaudiush -run 'TestScript.*'"
+
+[tasks."test:fuzz"]
+description = "Run all fuzz tests (short duration for CI)"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+FUZZ_TIME="${FUZZ_TIME:-10s}"
+go test -fuzz=FuzzParseGitCommand -fuzztime="$FUZZ_TIME" ./pkg/parser
+go test -fuzz=FuzzBashParse -fuzztime="$FUZZ_TIME" ./pkg/parser
+go test -fuzz=FuzzMdtableParse -fuzztime="$FUZZ_TIME" ./pkg/mdtable
+go test -fuzz=FuzzJSONParse -fuzztime="$FUZZ_TIME" ./internal/parser
+go test -fuzz=FuzzSecretsDetect -fuzztime="$FUZZ_TIME" ./internal/validators/secrets
+"""
+
+[tasks."test:fuzz:git"]
+description = "Run git parser fuzz test"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+FUZZ_TIME="${FUZZ_TIME:-60s}"
+go test -fuzz=FuzzParseGitCommand -fuzztime="$FUZZ_TIME" ./pkg/parser
+"""
+
+[tasks."test:fuzz:bash"]
+description = "Run bash parser fuzz test"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+FUZZ_TIME="${FUZZ_TIME:-60s}"
+go test -fuzz=FuzzBashParse -fuzztime="$FUZZ_TIME" ./pkg/parser
+"""
+
+[tasks."test:fuzz:mdtable"]
+description = "Run markdown table parser fuzz test"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+FUZZ_TIME="${FUZZ_TIME:-60s}"
+go test -fuzz=FuzzMdtableParse -fuzztime="$FUZZ_TIME" ./pkg/mdtable
+"""
+
+[tasks."test:fuzz:json"]
+description = "Run JSON parser fuzz test"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+FUZZ_TIME="${FUZZ_TIME:-60s}"
+go test -fuzz=FuzzJSONParse -fuzztime="$FUZZ_TIME" ./internal/parser
+"""
+
+[tasks."test:fuzz:secrets"]
+description = "Run secrets detector fuzz test"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+FUZZ_TIME="${FUZZ_TIME:-60s}"
+go test -fuzz=FuzzSecretsDetect -fuzztime="$FUZZ_TIME" ./internal/validators/secrets
+"""
+
+[tasks.lint]
+description = "Run linters on all files"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+golangci-lint cache clean
+golangci-lint run
+"""
+
+[tasks."lint:fix"]
+description = "Run linters with auto-fix on all files"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+golangci-lint cache clean
+golangci-lint run --fix
+"""
+
+[tasks.check]
+description = "Lint and verify generated artifacts"
+depends = ["lint:fix", "schema:verify"]
+
+[tasks.fmt]
+description = "Format code"
+run = "golangci-lint run --fix"
+
+[tasks.install]
+description = "Install klaudiush binary to user PATH (~/.local/bin or ~/bin)"
+depends = ["build"]
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+if [ -d "$HOME/.local/bin" ]; then
+  INSTALL_DIR="$HOME/.local/bin"
+elif [ -d "$HOME/bin" ]; then
+  INSTALL_DIR="$HOME/bin"
+elif [ -d "$HOME/.bin" ]; then
+  INSTALL_DIR="$HOME/.bin"
+else
+  INSTALL_DIR="$HOME/.local/bin"
+fi
+INSTALL_PATH="$INSTALL_DIR/klaudiush"
+mkdir -p "$INSTALL_DIR"
+cp bin/klaudiush "$INSTALL_PATH"
+chmod +x "$INSTALL_PATH"
+echo "Installed klaudiush to $INSTALL_PATH"
+if ! echo "$PATH" | grep -q "$INSTALL_DIR"; then
+  echo ""
+  echo "Warning: $INSTALL_DIR is not in your PATH"
+  echo "Add this to your shell profile (~/.bashrc, ~/.zshrc, etc.):"
+  echo "  export PATH=\"$INSTALL_DIR:\$PATH\""
+fi
+'''
+
+[tasks."install:hooks"]
+description = "Install git hooks using lefthook"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+if [ ! -d ".git" ]; then
+  echo "Error: Not a git repository"
+  exit 1
+fi
+lefthook install
+echo "Git hooks installed via lefthook"
+"""
+
+[tasks."uninstall:hooks"]
+description = "Uninstall git hooks"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+lefthook uninstall
+echo "Git hooks uninstalled"
+"""
+
+[tasks.clean]
+description = "Remove build artifacts"
+run = "rm -rf bin/ dist/ build/"
+
+[tasks.deps]
+description = "Download dependencies"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+go mod download
+go mod tidy
+"""
+
+[tasks."schema:generate"]
+description = "Generate versioned JSON Schema for config"
+run = "go run ./cmd/schema-gen"
+
+[tasks."schema:verify"]
+description = "Verify committed schema is up to date"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+mkdir -p /tmp/klaudiush-schema-check
+go run ./cmd/schema-gen /tmp/klaudiush-schema-check
+diff -u schema/ /tmp/klaudiush-schema-check/
+rm -rf /tmp/klaudiush-schema-check
+"""
+
+[tasks.verify]
+description = "Run all verification tasks"
+depends = ["fmt", "lint", "test"]
+
+[tasks.bench]
+description = "Run all benchmarks with memory reporting"
+run = "go test -bench=. -benchmem -run='^$' -count=1 ./..."
+
+[tasks."bench:short"]
+description = "Run benchmarks for hot paths only"
+run = "go test -bench=. -benchmem -run='^$' -count=1 ./pkg/parser ./internal/parser ./internal/validator ./internal/dispatcher ./internal/validators/secrets"
+
+[tasks."bench:save"]
+description = "Save benchmark results for comparison"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+BENCH_FILE="${BENCH_FILE:-bench-current.txt}"
+go test -bench=. -benchmem -run='^$' -count=6 ./... | tee "$BENCH_FILE"
+"""
+
+[tasks."bench:compare"]
+description = "Compare saved benchmark results (requires benchstat)"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+OLD="${OLD:-bench-old.txt}"
+NEW="${NEW:-bench-current.txt}"
+benchstat "$OLD" "$NEW"
+"""
+
+[tasks."bench:report"]
+description = "Run all benchmarks and save report to /tmp"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+REPORT_DIR="/tmp/klaudiush-bench"
+TIMESTAMP=$(date +%Y%m%dT%H%M%S)
+mkdir -p "$REPORT_DIR"
+go test -bench=. -benchmem -run='^$' -count=6 -timeout=10m ./... 2>&1 | tee "$REPORT_DIR/bench-$TIMESTAMP.txt"
+echo ""
+echo "Report saved to $REPORT_DIR/bench-$TIMESTAMP.txt"
+"""
+
+[tasks."bench:e2e"]
+description = "Run end-to-end binary benchmarks (manual only, not run in CI)"
+depends = ["build"]
+run = "go test -tags=bench_e2e -bench=BenchmarkBinaryE2E -benchmem -run='^$' -count=3 -timeout=10m ./cmd/klaudiush"
+
+[tasks."bench:timing"]
+description = "Run binary with internal timing instrumentation"
+depends = ["build"]
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+PAYLOAD="${PAYLOAD:-cmd/klaudiush/testdata/bench-payloads/git-commit-pass.json}"
+echo '{}' | KLAUDIUSH_BENCH_TIMING=1 ./bin/klaudiush --hook-type PreToolUse 2>&1 >/dev/null || true
+cat "$PAYLOAD" | KLAUDIUSH_BENCH_TIMING=1 ./bin/klaudiush --hook-type PreToolUse 2>&1 >/dev/null || true
+"""
+
+[tasks."bench:hyperfine"]
+description = "Run end-to-end benchmarks with hyperfine"
+depends = ["build"]
+run = "bash scripts/bench-e2e.sh ./bin/klaudiush"

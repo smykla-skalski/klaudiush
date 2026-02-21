@@ -49,25 +49,25 @@ klaudiush debug crash clean --dry-run             # show what would be removed
 ./bin/klaudiush audit cleanup                     # remove old entries
 
 # Build & Install
-task build                        # dev build
-task build:prod                   # prod build (validates signoff)
-task install                      # install to ~/.claude/hooks/dispatcher
+mise run build                        # dev build
+mise run build:prod                   # prod build (validates signoff)
+mise run install                      # install to ~/.claude/hooks/dispatcher
 
 # Testing
-task test                         # all tests
-task test:unit                    # unit tests only
-task test:integration             # integration tests only
-task test:fuzz                    # fuzz tests (10s each)
-task test:fuzz:git                # git parser fuzz (60s)
-FUZZ_TIME=5m task test:fuzz:git   # custom duration
+mise run test                         # all tests
+mise run test:unit                    # unit tests only
+mise run test:integration             # integration tests only
+mise run test:fuzz                    # fuzz tests (10s each)
+mise run test:fuzz:git                # git parser fuzz (60s)
+FUZZ_TIME=5m mise run test:fuzz:git   # custom duration
 
 # Linting & Development
-task check                        # lint + auto-fix
-task lint                         # lint only
-task fmt                          # format code
-task deps                         # update dependencies
-task verify                       # fmt + lint + test
-task clean                        # clean artifacts
+mise run check                        # lint + auto-fix
+mise run lint                         # lint only
+mise run fmt                          # format code
+mise run deps                         # update dependencies
+mise run verify                       # fmt + lint + test
+mise run clean                        # clean artifacts
 ```
 
 **Init Extensibility**: Add new options via `ConfigOption` interface in `internal/initcmd/options.go`.
@@ -260,7 +260,7 @@ Framework: Ginkgo/Gomega. Run: `mise exec -- go test -v ./pkg/parser -run TestBa
 
 ## Development
 
-**Tools** (mise): Go 1.25.4, golangci-lint 2.6.2, task 3.45.5, markdownlint-cli 0.46.0. Run `mise install`. See `SETUP.md`.
+**Tools** (mise): Go 1.26.0, golangci-lint 2.10.1, markdownlint-cli2 0.21.0. Run `mise install`. See `SETUP.md`.
 
 **Linters** (`.golangci.yml`): Nil safety (nilnesserr, govet), completeness (exhaustive, gochecksumtype), quality (gocognit, goconst, cyclop, dupl)
 

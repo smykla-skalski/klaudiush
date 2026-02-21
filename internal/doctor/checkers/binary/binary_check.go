@@ -42,7 +42,7 @@ func (*ExistsChecker) Check(_ context.Context) doctor.CheckResult {
 		return doctor.FailError("Binary available and executable", "klaudiush binary not found in PATH").
 			WithDetails(
 				"The klaudiush binary must be installed and available in your PATH",
-				"Install with: task install",
+				"Install with: mise run install",
 			).
 			WithFixID("install_binary")
 	}
