@@ -28,6 +28,8 @@ func mainFunc() {
 	globalFlag = false
 	forceFlag = false
 	noTUIFlag = false
+	installGlobal = false
+	installProject = false
 	verboseFlag = false
 	fixFlag = false
 	categoryFlag = []string{}

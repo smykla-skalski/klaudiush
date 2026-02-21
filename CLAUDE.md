@@ -20,6 +20,11 @@ klaudiush completion powershell   # generate powershell completion
 ./bin/klaudiush init --global     # global config
 ./bin/klaudiush init --force      # overwrite existing
 
+# Install (register in Claude Code settings)
+klaudiush install                 # interactive prompt (global vs project)
+klaudiush install --global        # install to ~/.claude/settings.json
+klaudiush install --project       # install to .claude/settings.json
+
 # Doctor (diagnose setup and configuration)
 ./bin/klaudiush doctor            # run all checks
 ./bin/klaudiush doctor --verbose  # detailed output
