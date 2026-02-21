@@ -115,6 +115,11 @@ type AnalysisOptions struct {
 	// FragmentRange tracks which lines are the edit vs context in the fragment.
 	// When set, warnings on context-only lines are suppressed.
 	FragmentRange FragmentRange
+
+	// SkipListChecks disables list spacing validation (checkListItem).
+	// Use when a dedicated list formatting rule already handles list checks
+	// with a more specific error reference, to avoid duplicate detection.
+	SkipListChecks bool
 }
 
 // DefaultAnalysisOptions returns the default analysis options.
@@ -573,7 +578,14 @@ func AnalyzeMarkdown(
 
 		// Validate header/list spacing for non-code-block content after first line
 		if !skipValidation && lineNum > 1 {
-			analyzeSpacing(line, prevLine, lineNum, &result.Warnings, options.FragmentRange)
+			analyzeSpacing(
+				line,
+				prevLine,
+				lineNum,
+				&result.Warnings,
+				options.FragmentRange,
+				options.SkipListChecks,
+			)
 		}
 
 		prevPrevLine = prevLine
@@ -610,15 +622,20 @@ func analyzeCodeBlocks(
 }
 
 // analyzeSpacing validates header and list spacing, suppressing warnings on context-only lines.
+// When skipListChecks is true, list item spacing validation is skipped (handled elsewhere).
 func analyzeSpacing(
 	line, prevLine string,
 	lineNum int,
 	warnings *[]string,
 	editRange FragmentRange,
+	skipListChecks bool,
 ) {
 	warningsBefore := len(*warnings)
 
-	checkListItem(line, prevLine, lineNum, warnings)
+	if !skipListChecks {
+		checkListItem(line, prevLine, lineNum, warnings)
+	}
+
 	checkHeader(line, prevLine, lineNum, warnings)
 
 	if editRange.IsContextLine(lineNum, lineNum-1) {
@@ -636,8 +653,8 @@ func checkCodeBlock(line, prevLine string, lineNum int, inCodeBlock bool, warnin
 		// Opening code block
 		if !isEmptyLine(prevLine) && prevLine != "" {
 			*warnings = append(*warnings,
-				fmt.Sprintf("⚠️  Line %d: Code block should have empty line before it", lineNum),
-				fmt.Sprintf("   Previous line: '%s'", truncate(prevLine)),
+				fmt.Sprintf("Line %d: Code block should have empty line before it", lineNum),
+				fmt.Sprintf("Previous line: '%s'", truncate(prevLine)),
 			)
 		}
 
@@ -668,12 +685,12 @@ func checkCodeBlockIndentation(
 		*warnings = append(
 			*warnings,
 			fmt.Sprintf(
-				"⚠️  Line %d: Code block in list item should be indented by at least %d spaces",
+				"Line %d: Code block in list item should be indented by at least %d spaces",
 				lineNum,
 				lastList.indent,
 			),
 			fmt.Sprintf(
-				"   Found: %d spaces, expected: at least %d spaces",
+				"Found: %d spaces, expected: at least %d spaces",
 				indent,
 				lastList.indent,
 			),
@@ -693,10 +710,10 @@ func checkMultipleEmptyLinesBeforeCodeBlock(
 		*warnings = append(
 			*warnings,
 			fmt.Sprintf(
-				"⚠️  Line %d: Code block should have only one empty line before it, not multiple",
+				"Line %d: Code block should have only one empty line before it, not multiple",
 				lineNum,
 			),
-			"   Found multiple consecutive empty lines before code block",
+			"Found multiple consecutive empty lines before code block",
 		)
 	}
 }
@@ -709,8 +726,8 @@ func checkListItem(line, prevLine string, lineNum int, warnings *[]string) {
 
 	if shouldWarnAboutListSpacing(prevLine) {
 		*warnings = append(*warnings,
-			fmt.Sprintf("⚠️  Line %d: First list item should have empty line before it", lineNum),
-			fmt.Sprintf("   Previous line: '%s'", truncate(prevLine)),
+			fmt.Sprintf("Line %d: First list item should have empty line before it", lineNum),
+			fmt.Sprintf("Previous line: '%s'", truncate(prevLine)),
 		)
 	}
 }
@@ -732,9 +749,9 @@ func checkHeader(line, prevLine string, lineNum int, warnings *[]string) {
 	// Lists are allowed directly after headers
 	if shouldWarnAboutHeaderSpacing(line) {
 		*warnings = append(*warnings,
-			fmt.Sprintf("⚠️  Line %d: Header should have empty line after it", lineNum-1),
-			fmt.Sprintf("   Header: '%s'", truncate(prevLine)),
-			fmt.Sprintf("   Next line: '%s'", truncate(line)),
+			fmt.Sprintf("Line %d: Header should have empty line after it", lineNum-1),
+			fmt.Sprintf("Header: '%s'", truncate(prevLine)),
+			fmt.Sprintf("Next line: '%s'", truncate(line)),
 		)
 	}
 }

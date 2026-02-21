@@ -10,6 +10,7 @@ import (
 
 	"github.com/smykla-skalski/klaudiush/internal/backup"
 	internalconfig "github.com/smykla-skalski/klaudiush/internal/config"
+	"github.com/smykla-skalski/klaudiush/internal/xdg"
 	"github.com/smykla-skalski/klaudiush/pkg/logger"
 )
 
@@ -20,8 +21,9 @@ func TestMigration(t *testing.T) {
 
 var _ = Describe("Migration", func() {
 	var (
-		tempDir string
-		log     logger.Logger
+		tempDir     string
+		log         logger.Logger
+		originalEnv map[string]string
 	)
 
 	BeforeEach(func() {
@@ -31,9 +33,45 @@ var _ = Describe("Migration", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		log = logger.NewNoOpLogger()
+
+		// Save and override env so os.UserHomeDir() and xdg paths
+		// resolve inside tempDir.
+		envKeys := []string{
+			"HOME",
+			"XDG_CONFIG_HOME",
+			"XDG_DATA_HOME",
+			"XDG_STATE_HOME",
+			"XDG_CACHE_HOME",
+		}
+
+		originalEnv = make(map[string]string, len(envKeys))
+		for _, k := range envKeys {
+			originalEnv[k] = os.Getenv(k)
+		}
+
+		os.Setenv("HOME", tempDir)
+		os.Setenv("XDG_CONFIG_HOME", filepath.Join(tempDir, ".config"))
+		os.Setenv("XDG_DATA_HOME", filepath.Join(tempDir, ".local", "share"))
+		os.Setenv("XDG_STATE_HOME", filepath.Join(tempDir, ".local", "state"))
+		os.Setenv("XDG_CACHE_HOME", filepath.Join(tempDir, ".cache"))
+
+		// Pre-create XDG v2 migration marker so the XDG migration
+		// doesn't run and move files around during v1 migration tests.
+		v2Marker := xdg.MigrationMarker()
+		Expect(os.MkdirAll(filepath.Dir(v2Marker), 0o700)).To(Succeed())
+		Expect(os.WriteFile(v2Marker, []byte("v2"), 0o600)).To(Succeed())
 	})
 
 	AfterEach(func() {
+		// Restore original env
+		for k, v := range originalEnv {
+			if v == "" {
+				os.Unsetenv(k)
+			} else {
+				os.Setenv(k, v)
+			}
+		}
+
 		if tempDir != "" {
 			os.RemoveAll(tempDir)
 		}
@@ -42,7 +80,7 @@ var _ = Describe("Migration", func() {
 	Describe("performFirstRunMigration", func() {
 		Context("when migration marker does not exist", func() {
 			It("should create migration marker", func() {
-				err := performFirstRunMigration(tempDir, log)
+				err := performFirstRunMigration(log)
 				Expect(err).NotTo(HaveOccurred())
 
 				markerPath := filepath.Join(
@@ -71,7 +109,7 @@ var _ = Describe("Migration", func() {
 				)
 				Expect(err).NotTo(HaveOccurred())
 
-				err = performFirstRunMigration(tempDir, log)
+				err = performFirstRunMigration(log)
 				Expect(err).NotTo(HaveOccurred())
 
 				// Verify backup was created
@@ -122,7 +160,7 @@ var _ = Describe("Migration", func() {
 				err = os.MkdirAll(globalConfigDir, 0o700)
 				Expect(err).NotTo(HaveOccurred())
 
-				err = performFirstRunMigration(tempDir, log)
+				err = performFirstRunMigration(log)
 				Expect(err).NotTo(HaveOccurred())
 
 				// Verify project backup was created using the actual resolved working directory
@@ -143,7 +181,7 @@ var _ = Describe("Migration", func() {
 			})
 
 			It("should not fail if no configs exist", func() {
-				err := performFirstRunMigration(tempDir, log)
+				err := performFirstRunMigration(log)
 				Expect(err).NotTo(HaveOccurred())
 
 				markerPath := filepath.Join(
@@ -175,7 +213,7 @@ var _ = Describe("Migration", func() {
 				)
 				Expect(err).NotTo(HaveOccurred())
 
-				err = performFirstRunMigration(tempDir, log)
+				err = performFirstRunMigration(log)
 				Expect(err).NotTo(HaveOccurred())
 
 				// Verify no backup was created

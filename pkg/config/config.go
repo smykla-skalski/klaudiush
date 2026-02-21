@@ -1,8 +1,14 @@
 // Package config provides configuration schema types for klaudiush validators.
 package config
 
+// CurrentConfigVersion is the latest config schema version.
+const CurrentConfigVersion = 1
+
 // Config represents the root configuration for klaudiush.
 type Config struct {
+	// Version is the config schema version. Defaults to 1 when omitted.
+	Version int `json:"version,omitempty" koanf:"version" toml:"version"`
+
 	// Validators groups all validator configurations.
 	Validators *ValidatorsConfig `json:"validators,omitempty" koanf:"validators" toml:"validators"`
 
@@ -21,14 +27,14 @@ type Config struct {
 	// Backup contains configuration for the backup system.
 	Backup *BackupConfig `json:"backup,omitempty" koanf:"backup" toml:"backup"`
 
-	// Session contains configuration for session tracking.
-	Session *SessionConfig `json:"session,omitempty" koanf:"session" toml:"session"`
-
 	// CrashDump contains configuration for the crash dump system.
 	CrashDump *CrashDumpConfig `json:"crash_dump,omitempty" koanf:"crash_dump" toml:"crash_dump"`
 
 	// Patterns contains configuration for failure pattern tracking.
 	Patterns *PatternsConfig `json:"patterns,omitempty" koanf:"patterns" toml:"patterns"`
+
+	// Overrides contains persistent disable/enable overrides for error codes and validators.
+	Overrides *OverridesConfig `json:"overrides,omitempty" koanf:"overrides" toml:"overrides"`
 }
 
 // ValidatorsConfig groups all validator configurations by category.
@@ -188,15 +194,6 @@ func (c *Config) GetBackup() *BackupConfig {
 	return c.Backup
 }
 
-// GetSession returns the session config, creating it if it doesn't exist.
-func (c *Config) GetSession() *SessionConfig {
-	if c.Session == nil {
-		c.Session = &SessionConfig{}
-	}
-
-	return c.Session
-}
-
 // GetCrashDump returns the crash dump config, creating it if it doesn't exist.
 func (c *Config) GetCrashDump() *CrashDumpConfig {
 	if c.CrashDump == nil {
@@ -213,4 +210,13 @@ func (c *Config) GetPatterns() *PatternsConfig {
 	}
 
 	return c.Patterns
+}
+
+// GetOverrides returns the overrides config, creating it if it doesn't exist.
+func (c *Config) GetOverrides() *OverridesConfig {
+	if c.Overrides == nil {
+		c.Overrides = &OverridesConfig{}
+	}
+
+	return c.Overrides
 }

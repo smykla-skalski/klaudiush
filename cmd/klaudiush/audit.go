@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -122,8 +121,10 @@ func init() {
 	)
 }
 
-func runAuditList(_ *cobra.Command, _ []string) error {
-	log, auditLogger, err := setupAuditLogger()
+func runAuditList(cmd *cobra.Command, _ []string) error {
+	log := loggerFromCmd(cmd)
+
+	auditLogger, err := setupAuditLogger(log)
 	if err != nil {
 		return err
 	}
@@ -171,8 +172,10 @@ func runAuditList(_ *cobra.Command, _ []string) error {
 	return nil
 }
 
-func runAuditStats(_ *cobra.Command, _ []string) error {
-	log, auditLogger, err := setupAuditLogger()
+func runAuditStats(cmd *cobra.Command, _ []string) error {
+	log := loggerFromCmd(cmd)
+
+	auditLogger, err := setupAuditLogger(log)
 	if err != nil {
 		return err
 	}
@@ -195,8 +198,10 @@ func runAuditStats(_ *cobra.Command, _ []string) error {
 	return nil
 }
 
-func runAuditCleanup(_ *cobra.Command, _ []string) error {
-	log, auditLogger, err := setupAuditLogger()
+func runAuditCleanup(cmd *cobra.Command, _ []string) error {
+	log := loggerFromCmd(cmd)
+
+	auditLogger, err := setupAuditLogger(log)
 	if err != nil {
 		return err
 	}
@@ -234,22 +239,10 @@ func runAuditCleanup(_ *cobra.Command, _ []string) error {
 	return nil
 }
 
-func setupAuditLogger() (logger.Logger, *exceptions.AuditLogger, error) {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return nil, nil, errors.Wrap(err, "failed to get home directory")
-	}
-
-	logFile := filepath.Join(homeDir, ".claude", "hooks", "dispatcher.log")
-
-	log, err := logger.NewFileLogger(logFile, false, false)
-	if err != nil {
-		return nil, nil, errors.Wrap(err, "failed to create logger")
-	}
-
+func setupAuditLogger(log logger.Logger) (*exceptions.AuditLogger, error) {
 	cfg, err := loadAuditConfig(log)
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "failed to load configuration")
+		return nil, errors.Wrap(err, "failed to load configuration")
 	}
 
 	var auditCfg *config.ExceptionAuditConfig
@@ -259,7 +252,7 @@ func setupAuditLogger() (logger.Logger, *exceptions.AuditLogger, error) {
 
 	auditLogger := exceptions.NewAuditLogger(auditCfg, exceptions.WithAuditLoggerLogger(log))
 
-	return log, auditLogger, nil
+	return auditLogger, nil
 }
 
 func loadAuditConfig(log logger.Logger) (*config.Config, error) {

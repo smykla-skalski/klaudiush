@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/cockroachdb/errors"
 	"github.com/spf13/cobra"
@@ -16,9 +15,11 @@ import (
 	"github.com/smykla-skalski/klaudiush/internal/doctor/checkers/binary"
 	configchecker "github.com/smykla-skalski/klaudiush/internal/doctor/checkers/config"
 	"github.com/smykla-skalski/klaudiush/internal/doctor/checkers/hook"
+	overrideschecker "github.com/smykla-skalski/klaudiush/internal/doctor/checkers/overrides"
 	patternschecker "github.com/smykla-skalski/klaudiush/internal/doctor/checkers/patterns"
 	ruleschecker "github.com/smykla-skalski/klaudiush/internal/doctor/checkers/rules"
 	"github.com/smykla-skalski/klaudiush/internal/doctor/checkers/tools"
+	xdgchecker "github.com/smykla-skalski/klaudiush/internal/doctor/checkers/xdg"
 	"github.com/smykla-skalski/klaudiush/internal/doctor/fixers"
 	"github.com/smykla-skalski/klaudiush/internal/doctor/reporters"
 	"github.com/smykla-skalski/klaudiush/internal/prompt"
@@ -42,6 +43,8 @@ Checks:
 - Configuration file validity
 - Pattern learning system health
 - Backup system health
+- Overrides configuration health
+- XDG base directory compliance
 - Optional tool dependencies (shellcheck, terraform, etc.)
 
 Examples:
@@ -74,23 +77,12 @@ func init() {
 		&categoryFlag,
 		"category",
 		[]string{},
-		"Filter checks by category (binary, hook, config, tools, patterns, backup)",
+		"Filter checks by category (binary, hook, config, tools, patterns, backup, overrides, xdg)",
 	)
 }
 
-func runDoctor(_ *cobra.Command, _ []string) error {
-	// Setup logger
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return errors.Wrap(err, "failed to get home directory")
-	}
-
-	logFile := filepath.Join(homeDir, ".claude", "hooks", "dispatcher.log")
-
-	log, err := logger.NewFileLogger(logFile, true, false)
-	if err != nil {
-		return errors.Wrap(err, "failed to create logger")
-	}
+func runDoctor(cmd *cobra.Command, _ []string) error {
+	log := loggerFromCmd(cmd)
 
 	log.Info("starting doctor command",
 		"verbose", verboseFlag,
@@ -105,7 +97,7 @@ func runDoctor(_ *cobra.Command, _ []string) error {
 	prompter := prompt.NewStdPrompter()
 
 	// Register fixers
-	registerFixers(registry, prompter)
+	registerFixers(registry, prompter, log)
 
 	// Create reporter based on terminal capabilities
 	reporter := selectReporter()
@@ -183,11 +175,20 @@ func buildDoctorRegistry() *doctor.Registry {
 	registry.RegisterChecker(backupchecker.NewMetadataChecker())
 	registry.RegisterChecker(backupchecker.NewIntegrityChecker())
 
+	// Register overrides checkers
+	registry.RegisterChecker(overrideschecker.NewExpiredChecker())
+	registry.RegisterChecker(overrideschecker.NewUnknownTargetChecker())
+	registry.RegisterChecker(overrideschecker.NewRedundantChecker())
+
+	// Register XDG checkers
+	registry.RegisterChecker(xdgchecker.NewLegacyPathChecker())
+	registry.RegisterChecker(xdgchecker.NewDirChecker())
+
 	return registry
 }
 
 // registerFixers registers all available fixers.
-func registerFixers(registry *doctor.Registry, prompter prompt.Prompter) {
+func registerFixers(registry *doctor.Registry, prompter prompt.Prompter, log logger.Logger) {
 	registry.RegisterFixer(fixers.NewInstallHookFixer(prompter))
 	registry.RegisterFixer(fixers.NewPermissionsFixer(prompter))
 	registry.RegisterFixer(fixers.NewConfigFixer(prompter))
@@ -195,6 +196,8 @@ func registerFixers(registry *doctor.Registry, prompter prompt.Prompter) {
 	registry.RegisterFixer(fixers.NewRulesFixer(prompter))
 	registry.RegisterFixer(fixers.NewPatternsFixer(prompter))
 	registry.RegisterFixer(fixers.NewBackupFixer(prompter))
+	registry.RegisterFixer(fixers.NewOverridesFixer(prompter))
+	registry.RegisterFixer(fixers.NewXDGFixer(prompter, log))
 }
 
 // parseCategories converts string category names to Category types.
@@ -204,12 +207,14 @@ func parseCategories(names []string) []doctor.Category {
 	}
 
 	categoryMap := map[string]doctor.Category{
-		"binary":   doctor.CategoryBinary,
-		"hook":     doctor.CategoryHook,
-		"config":   doctor.CategoryConfig,
-		"tools":    doctor.CategoryTools,
-		"patterns": doctor.CategoryPatterns,
-		"backup":   doctor.CategoryBackup,
+		"binary":    doctor.CategoryBinary,
+		"hook":      doctor.CategoryHook,
+		"config":    doctor.CategoryConfig,
+		"tools":     doctor.CategoryTools,
+		"patterns":  doctor.CategoryPatterns,
+		"backup":    doctor.CategoryBackup,
+		"overrides": doctor.CategoryOverrides,
+		"xdg":       doctor.CategoryXDG,
 	}
 
 	var categories []doctor.Category

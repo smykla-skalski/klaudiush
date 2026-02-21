@@ -1,7 +1,6 @@
-# Basic Backup Configuration
-#
-# This is a standard backup configuration suitable for most use cases.
-# Provides balanced settings between storage efficiency and version history.
+#:schema https://klaudiu.sh/schema/v1/config.json
+# Basic
+# 10 snapshots, 30-day retention, 50MB limit. Good default for most setups.
 
 [backup]
 # Enable the backup system

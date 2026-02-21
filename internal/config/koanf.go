@@ -14,6 +14,7 @@ import (
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
 
+	"github.com/smykla-skalski/klaudiush/internal/xdg"
 	"github.com/smykla-skalski/klaudiush/pkg/config"
 )
 
@@ -70,10 +71,6 @@ const (
 	defaultExceptionAuditMaxAgeDays = 30
 	defaultExceptionAuditMaxBackups = 3
 	defaultExceptionMinReasonLength = 10
-
-	// Session defaults.
-	defaultSessionStateFile = "~/.klaudiush/session_state.json"
-	defaultSessionMaxAgeStr = "24h"
 )
 
 // defaultValidTypes is the list of valid commit types.
@@ -99,6 +96,7 @@ type KoanfLoader struct {
 	k        *koanf.Koanf
 	homeDir  string
 	workDir  string
+	paths    xdg.PathResolver
 	tomlOpts koanf.UnmarshalConf
 }
 
@@ -114,22 +112,27 @@ func NewKoanfLoader() (*KoanfLoader, error) {
 		return nil, errors.Wrap(err, "failed to get working directory")
 	}
 
-	return NewKoanfLoaderWithDirs(homeDir, workDir)
+	return makeKoanfLoader(homeDir, workDir, xdg.DefaultResolver()), nil
 }
 
 // NewKoanfLoaderWithDirs creates a new KoanfLoader with custom directories (for testing).
 func NewKoanfLoaderWithDirs(homeDir, workDir string) (*KoanfLoader, error) {
+	return makeKoanfLoader(homeDir, workDir, xdg.ResolverFor(homeDir)), nil
+}
+
+func makeKoanfLoader(homeDir, workDir string, paths xdg.PathResolver) *KoanfLoader {
 	k := koanf.New(".")
 
 	return &KoanfLoader{
 		k:       k,
 		homeDir: homeDir,
 		workDir: workDir,
+		paths:   paths,
 		tomlOpts: koanf.UnmarshalConf{
 			Tag:       "koanf",
 			FlatPaths: false,
 		},
-	}, nil
+	}
 }
 
 // Load loads configuration from all sources with precedence.
@@ -357,12 +360,13 @@ var envHierarchy = map[string][]string{
 		"validators",
 		"rules",
 		"exceptions",
-		"session",
 		"backup",
 		"crash_dump",
 		"patterns",
 		"plugins",
+		"overrides",
 	},
+	"overrides":  {"entries"},
 	"validators": {"git", "file", "notification", "secrets", "shell"},
 	"validators.git": {
 		"commit",
@@ -391,7 +395,6 @@ var envHierarchy = map[string][]string{
 	"validators.secrets":      {"secrets"},
 	"validators.shell":        {"backtick"},
 	"exceptions":              {"rate_limit", "audit", "policies"},
-	"session":                 {"audit"},
 	"backup":                  {"delta"},
 }
 
@@ -472,8 +475,12 @@ func envMatchHierarchy(parts []string) string {
 }
 
 // GlobalConfigPath returns the path to the global configuration file.
+// Checks XDG location first, falls back to legacy ~/.klaudiush/config.toml.
 func (l *KoanfLoader) GlobalConfigPath() string {
-	return filepath.Join(l.homeDir, GlobalConfigDir, GlobalConfigFile)
+	xdgPath := l.paths.GlobalConfigFile()
+	legacyPath := filepath.Join(l.homeDir, GlobalConfigDir, GlobalConfigFile)
+
+	return xdg.ResolveFile(xdgPath, legacyPath)
 }
 
 // ProjectConfigPaths returns the paths to check for project configuration.
@@ -588,17 +595,27 @@ func ensureMapKey(cfg map[string]any, key string) map[string]any {
 // applyDisableFlags applies --disable flags to the config map.
 func applyDisableFlags(cfg map[string]any, validatorNames []string) {
 	validatorPaths := map[string][]string{
-		"commit":      {"git", "commit"},
-		"push":        {"git", "push"},
-		"add":         {"git", "add"},
-		"pr":          {"git", "pr"},
-		"branch":      {"git", "branch"},
-		"no_verify":   {"git", "no_verify"},
-		"markdown":    {"file", "markdown"},
-		"shellscript": {"file", "shellscript"},
-		"terraform":   {"file", "terraform"},
-		"workflow":    {"file", "workflow"},
-		"bell":        {"notification", "bell"},
+		"commit":        {"git", "commit"},
+		"push":          {"git", "push"},
+		"add":           {"git", "add"},
+		"pr":            {"git", "pr"},
+		"branch":        {"git", "branch"},
+		"no_verify":     {"git", "no_verify"},
+		"merge":         {"git", "merge"},
+		"fetch":         {"git", "fetch"},
+		"markdown":      {"file", "markdown"},
+		"shellscript":   {"file", "shellscript"},
+		"terraform":     {"file", "terraform"},
+		"workflow":      {"file", "workflow"},
+		"gofumpt":       {"file", "gofumpt"},
+		"python":        {"file", "python"},
+		"javascript":    {"file", "javascript"},
+		"rust":          {"file", "rust"},
+		"linter_ignore": {"file", "linter_ignore"},
+		"secrets":       {"secrets", "secrets"},
+		"backtick":      {"shell", "backtick"},
+		"issue":         {"github", "issue"},
+		"bell":          {"notification", "bell"},
 	}
 
 	for _, name := range validatorNames {
@@ -626,11 +643,11 @@ func applyDisableFlags(cfg map[string]any, validatorNames []string) {
 // defaultsToMap converts DefaultConfig to a map for koanf loading.
 func defaultsToMap() map[string]any {
 	return map[string]any{
+		"version":    config.CurrentConfigVersion,
 		"global":     defaultGlobalMap(),
 		"validators": defaultValidatorsMap(),
 		"rules":      defaultRulesMap(),
 		"exceptions": defaultExceptionsMap(),
-		"session":    defaultSessionMap(),
 	}
 }
 
@@ -651,23 +668,15 @@ func defaultExceptionsMap() map[string]any {
 			"enabled":      true,
 			"max_per_hour": defaultExceptionRateLimitPerH,
 			"max_per_day":  defaultExceptionRateLimitPerD,
-			"state_file":   "~/.klaudiush/exceptions/state.json",
+			"state_file":   xdg.ExceptionStateFile(),
 		},
 		"audit": map[string]any{
 			"enabled":      true,
-			"log_file":     "~/.klaudiush/exception_audit.jsonl",
+			"log_file":     xdg.ExceptionAuditFile(),
 			"max_size_mb":  defaultExceptionAuditMaxSizeMB,
 			"max_age_days": defaultExceptionAuditMaxAgeDays,
 			"max_backups":  defaultExceptionAuditMaxBackups,
 		},
-	}
-}
-
-func defaultSessionMap() map[string]any {
-	return map[string]any{
-		"enabled":         false,
-		"state_file":      defaultSessionStateFile,
-		"max_session_age": defaultSessionMaxAgeStr,
 	}
 }
 

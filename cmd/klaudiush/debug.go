@@ -4,7 +4,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -15,6 +14,7 @@ import (
 
 	internalconfig "github.com/smykla-skalski/klaudiush/internal/config"
 	"github.com/smykla-skalski/klaudiush/internal/exceptions"
+	"github.com/smykla-skalski/klaudiush/internal/xdg"
 	"github.com/smykla-skalski/klaudiush/pkg/config"
 	"github.com/smykla-skalski/klaudiush/pkg/logger"
 )
@@ -47,9 +47,9 @@ Subcommands:
   config      Show loaded configuration
   rules       Show loaded validation rules
   exceptions  Show exception workflow configuration
+  overrides   Show override entries
   crash       Manage crash dumps
-  patterns    Show pattern learning status
-  schema      Generate JSON Schema for configuration`,
+  patterns    Show pattern learning status`,
 }
 
 var debugRulesCmd = &cobra.Command{
@@ -95,6 +95,20 @@ Examples:
 	RunE: runDebugExceptions,
 }
 
+var debugOverridesCmd = &cobra.Command{
+	Use:   "overrides",
+	Short: "Show override entries",
+	Long: `Show all override entries from merged configuration.
+
+Displays active and expired overrides with their type (disable/enable),
+reason, timestamps, and source. Overrides are loaded from both global
+and project configuration files.
+
+Examples:
+  klaudiush debug overrides  # Show all overrides`,
+	RunE: runDebugOverrides,
+}
+
 var showState bool
 
 func init() {
@@ -103,8 +117,8 @@ func init() {
 	debugCmd.AddCommand(debugRulesCmd)
 	debugCmd.AddCommand(debugExceptionsCmd)
 	debugCmd.AddCommand(debugCrashCmd)
+	debugCmd.AddCommand(debugOverridesCmd)
 	debugCmd.AddCommand(debugPatternsCmd)
-	debugCmd.AddCommand(debugSchemaCmd)
 
 	// Add crash subcommands
 	debugCrashCmd.AddCommand(debugCrashListCmd)
@@ -133,8 +147,13 @@ func init() {
 	)
 }
 
-func runDebugRules(_ *cobra.Command, _ []string) error {
-	cfg, err := setupDebugContext("debug rules", "validatorFilter", validatorFilter)
+func runDebugRules(cmd *cobra.Command, _ []string) error {
+	cfg, err := setupDebugContext(
+		loggerFromCmd(cmd),
+		"debug rules",
+		"validatorFilter",
+		validatorFilter,
+	)
 	if err != nil {
 		return err
 	}
@@ -144,20 +163,11 @@ func runDebugRules(_ *cobra.Command, _ []string) error {
 	return nil
 }
 
-// setupDebugContext initializes logging and loads configuration for debug commands.
-func setupDebugContext(cmdName, extraKey, extraVal string) (*config.Config, error) {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to get home directory")
-	}
-
-	logFile := filepath.Join(homeDir, ".claude", "hooks", "dispatcher.log")
-
-	log, err := logger.NewFileLogger(logFile, false, false)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to create logger")
-	}
-
+// setupDebugContext loads configuration for debug commands.
+func setupDebugContext(
+	log logger.Logger,
+	cmdName, extraKey, extraVal string,
+) (*config.Config, error) {
 	log.Info(cmdName+" command invoked", extraKey, extraVal)
 
 	cfg, err := loadConfigForDebug(log)
@@ -192,7 +202,7 @@ func displayRulesConfig(cfg *config.Config, filter string) {
 		fmt.Println("No rules configured.")
 		fmt.Println("")
 		fmt.Println("To configure rules, add them to:")
-		fmt.Println("  - Global: ~/.klaudiush/config.toml")
+		fmt.Printf("  - Global: %s\n", xdg.GlobalConfigFile())
 		fmt.Println("  - Project: .klaudiush/config.toml")
 		fmt.Println("")
 		fmt.Println("See docs/RULES_GUIDE.md for configuration examples.")
@@ -350,10 +360,10 @@ func displayMatchCondition(indent string, match *config.RuleMatchConfig) {
 	}
 }
 
-func runDebugExceptions(_ *cobra.Command, _ []string) error {
+func runDebugExceptions(cmd *cobra.Command, _ []string) error {
 	showStateStr := strconv.FormatBool(showState)
 
-	cfg, err := setupDebugContext("debug exceptions", "showState", showStateStr)
+	cfg, err := setupDebugContext(loggerFromCmd(cmd), "debug exceptions", "showState", showStateStr)
 	if err != nil {
 		return err
 	}
@@ -592,10 +602,143 @@ func displayRateLimitState(exc *config.ExceptionsConfig) {
 func displayExceptionsHelp() {
 	fmt.Println("Configuration Files")
 	fmt.Println("-------------------")
-	fmt.Println("  Global: ~/.klaudiush/config.toml")
+	fmt.Printf("  Global: %s\n", xdg.GlobalConfigFile())
 	fmt.Println("  Project: .klaudiush/config.toml")
 	fmt.Println("")
 	fmt.Println("See docs/EXCEPTIONS_GUIDE.md for configuration examples.")
+}
+
+func runDebugOverrides(cmd *cobra.Command, _ []string) error {
+	cfg, err := setupDebugContext(loggerFromCmd(cmd), "debug overrides", "", "")
+	if err != nil {
+		return err
+	}
+
+	displayDebugOverrides(cfg)
+
+	return nil
+}
+
+func displayDebugOverrides(cfg *config.Config) {
+	overrides := cfg.GetOverrides()
+
+	active := overrides.ActiveEntries()
+	expired := overrides.ExpiredEntries()
+
+	if len(active) == 0 && len(expired) == 0 {
+		displayDebugNoOverrides()
+
+		return
+	}
+
+	fmt.Println("Overrides Configuration")
+	fmt.Println("=======================")
+	fmt.Println("")
+
+	displayDebugActiveOverrides(active)
+	displayDebugExpiredOverrides(expired)
+	displayDebugOverridesConfigFiles()
+}
+
+func displayDebugNoOverrides() {
+	fmt.Println("No overrides configured.")
+	fmt.Println("")
+	fmt.Println("To add overrides, use:")
+	fmt.Println("  klaudiush disable GIT014 --reason \"reason\"")
+	fmt.Println("  klaudiush enable GIT014")
+}
+
+func displayDebugActiveOverrides(active map[string]*config.OverrideEntry) {
+	fmt.Println("Active Overrides")
+	fmt.Println("----------------")
+
+	if len(active) == 0 {
+		fmt.Println("  (none)")
+		fmt.Println("")
+
+		return
+	}
+
+	keys := make([]string, 0, len(active))
+	for k := range active {
+		keys = append(keys, k)
+	}
+
+	slices.Sort(keys)
+
+	for _, key := range keys {
+		entry := active[key]
+		displayDebugOverrideEntry(key, entry, false)
+	}
+
+	fmt.Println("")
+}
+
+func displayDebugExpiredOverrides(expired map[string]*config.OverrideEntry) {
+	fmt.Println("Expired Overrides")
+	fmt.Println("-----------------")
+
+	if len(expired) == 0 {
+		fmt.Println("  (none)")
+		fmt.Println("")
+
+		return
+	}
+
+	keys := make([]string, 0, len(expired))
+	for k := range expired {
+		keys = append(keys, k)
+	}
+
+	slices.Sort(keys)
+
+	for _, key := range keys {
+		entry := expired[key]
+		displayDebugOverrideEntry(key, entry, true)
+	}
+
+	fmt.Println("")
+}
+
+func displayDebugOverrideEntry(key string, entry *config.OverrideEntry, isExpired bool) {
+	typeLabel := statusDisabled
+	if entry.Disabled != nil && !*entry.Disabled {
+		typeLabel = statusEnabled
+	}
+
+	if isExpired {
+		fmt.Printf("  %s [%s] (expired)\n", key, typeLabel)
+	} else {
+		fmt.Printf("  %s [%s]\n", key, typeLabel)
+	}
+
+	if entry.Reason != "" {
+		fmt.Printf("    Reason: %s\n", entry.Reason)
+	}
+
+	if entry.DisabledAt != "" {
+		fmt.Printf("    Since: %s\n", entry.DisabledAt)
+	}
+
+	switch {
+	case isExpired:
+		fmt.Printf("    Expired: %s\n", entry.ExpiresAt)
+	case entry.ExpiresAt != "":
+		fmt.Printf("    Expires: %s\n", entry.ExpiresAt)
+	default:
+		fmt.Printf("    Expires: never\n")
+	}
+
+	if entry.DisabledBy != "" {
+		fmt.Printf("    Source: %s\n", entry.DisabledBy)
+	}
+}
+
+func displayDebugOverridesConfigFiles() {
+	fmt.Println("Configuration Files")
+	fmt.Println("-------------------")
+	fmt.Printf("  Global: %s\n", xdg.GlobalConfigFile())
+	fmt.Println("  Project: .klaudiush/config.toml")
 }
 
 func formatLimits(maxHour, maxDay int) string {
@@ -612,8 +755,13 @@ func formatLimits(maxHour, maxDay int) string {
 	return hourStr + "/hour, " + dayStr + "/day"
 }
 
-func runDebugConfig(_ *cobra.Command, _ []string) error {
-	cfg, err := setupDebugContext("debug config", "validatorFilter", validatorFilter)
+func runDebugConfig(cmd *cobra.Command, _ []string) error {
+	cfg, err := setupDebugContext(
+		loggerFromCmd(cmd),
+		"debug config",
+		"validatorFilter",
+		validatorFilter,
+	)
 	if err != nil {
 		return err
 	}

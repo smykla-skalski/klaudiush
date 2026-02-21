@@ -13,6 +13,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 
+	"github.com/smykla-skalski/klaudiush/internal/xdg"
 	"github.com/smykla-skalski/klaudiush/pkg/config"
 	"github.com/smykla-skalski/klaudiush/pkg/logger"
 )
@@ -483,13 +484,7 @@ func truncateToLocalDay(t time.Time) time.Time {
 // When projectDir is set, it incorporates a hash of the project directory
 // into the filename for per-project state isolation.
 func (r *RateLimiter) resolveStatePath() string {
-	path := r.stateFile
-	if len(path) > 1 && path[0] == '~' && path[1] == '/' {
-		home, err := os.UserHomeDir()
-		if err == nil {
-			path = filepath.Join(home, path[2:])
-		}
-	}
+	path := xdg.ExpandPathSilent(r.stateFile)
 
 	// Incorporate project hash into filename for per-project scoping
 	if r.projectDir != "" {

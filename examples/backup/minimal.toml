@@ -1,7 +1,6 @@
-# Minimal Backup Configuration
-#
-# Minimal configuration with conservative storage limits.
-# Suitable for systems with limited disk space or short-term version history needs.
+#:schema https://klaudiu.sh/schema/v1/config.json
+# Minimal
+# 5 snapshots, 7-day retention, 10MB limit. For tight disk budgets.
 
 [backup]
 enabled = true

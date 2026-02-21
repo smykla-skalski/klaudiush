@@ -243,6 +243,8 @@ func BenchmarkFormatPanicValue(b *testing.B) {
 		errors.Wrap(errors.New("wrapped"), "formatted error"),
 	}
 
+	b.ReportAllocs()
+
 	for i := 0; b.Loop(); i++ {
 		formatPanicValue(values[i%len(values)])
 	}

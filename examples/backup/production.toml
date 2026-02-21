@@ -1,7 +1,6 @@
-# Production Backup Configuration
-#
-# Production-focused configuration with extended retention and sync backups.
-# Ensures maximum reliability and longer version history at the cost of storage.
+#:schema https://klaudiu.sh/schema/v1/config.json
+# Production
+# 20 snapshots, 90-day retention, sync writes. No data loss.
 
 [backup]
 enabled = true

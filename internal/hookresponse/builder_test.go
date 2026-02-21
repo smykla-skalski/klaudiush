@@ -40,7 +40,17 @@ var _ = Describe("Build", func() {
 		Expect(
 			resp.HookSpecificOutput.AdditionalContext,
 		).To(ContainSubstring("Fix ALL reported errors at once"))
-		Expect(resp.SystemMessage).NotTo(BeEmpty())
+
+		// systemMessage uses self-contained format: emoji CODE: message
+		Expect(resp.SystemMessage).To(ContainSubstring("GIT001: Missing -s flag"))
+		Expect(resp.SystemMessage).NotTo(ContainSubstring("Validation Failed:"))
+		// Ref: instead of Reference:
+		Expect(resp.SystemMessage).To(ContainSubstring("Ref:"))
+		Expect(resp.SystemMessage).NotTo(ContainSubstring("Reference:"))
+		// Disable hint for blocking errors
+		Expect(
+			resp.SystemMessage,
+		).To(ContainSubstring("Wrong for your workflow? klaudiush disable GIT001"))
 	})
 
 	It("returns deny for multiple blocking errors", func() {
@@ -107,26 +117,6 @@ var _ = Describe("Build", func() {
 		Expect(resp.HookSpecificOutput.AdditionalContext).To(ContainSubstring("Emergency hotfix"))
 	})
 
-	It("returns deny for session poisoned (SESS001)", func() {
-		errs := []*dispatcher.ValidationError{
-			{
-				Validator:   "session-poisoned",
-				Message:     "Blocked: session poisoned by GIT001 at 2026-01-01 12:00:00",
-				ShouldBlock: true,
-				Reference:   validator.RefSessionPoisoned,
-				FixHint:     "Acknowledge violations to unpoison: KLACK=\"SESS:GIT001\" your_command",
-			},
-		}
-
-		resp := hookresponse.Build("PreToolUse", errs)
-		Expect(resp).NotTo(BeNil())
-		Expect(resp.HookSpecificOutput.PermissionDecision).To(Equal("deny"))
-		Expect(resp.HookSpecificOutput.AdditionalContext).To(ContainSubstring("session check"))
-		Expect(
-			resp.HookSpecificOutput.AdditionalContext,
-		).To(ContainSubstring("Acknowledge the error codes"))
-	})
-
 	It("handles mixed blocking and warnings", func() {
 		errs := []*dispatcher.ValidationError{
 			{
@@ -146,9 +136,15 @@ var _ = Describe("Build", func() {
 		resp := hookresponse.Build("PreToolUse", errs)
 		Expect(resp).NotTo(BeNil())
 		Expect(resp.HookSpecificOutput.PermissionDecision).To(Equal("deny"))
-		// System message should contain both
-		Expect(resp.SystemMessage).To(ContainSubstring("Missing -s flag"))
+		// Both messages present without category headers
+		Expect(resp.SystemMessage).To(ContainSubstring("GIT001: Missing -s flag"))
 		Expect(resp.SystemMessage).To(ContainSubstring("line too long"))
+		Expect(resp.SystemMessage).NotTo(ContainSubstring("Validation Failed:"))
+		Expect(resp.SystemMessage).NotTo(ContainSubstring("Warnings:"))
+		// Disable hint for the blocking code
+		Expect(
+			resp.SystemMessage,
+		).To(ContainSubstring("Wrong for your workflow? klaudiush disable GIT001"))
 	})
 
 	It("produces valid JSON", func() {

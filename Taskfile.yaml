@@ -190,9 +190,10 @@ tasks:
 
 
   check:
-    desc: Alias for lint:fix
+    desc: Lint and verify generated artifacts
     cmds:
       - task: lint:fix
+      - task: schema:verify
 
   fmt:
     desc: Format code
@@ -248,19 +249,17 @@ tasks:
       - mise exec -- go mod tidy
 
   schema:generate:
-    desc: Generate JSON Schema for config
-    deps:
-      - build
+    desc: Generate versioned JSON Schema for config
     cmds:
-      - ./bin/klaudiush debug schema --output schema/config.schema.json
+      - mise exec -- go run ./cmd/schema-gen
 
   schema:verify:
-    desc: Verify committed schema matches generated
-    deps:
-      - build
+    desc: Verify committed schema is up to date
     cmds:
-      - ./bin/klaudiush debug schema --output /tmp/klaudiush-schema-check.json
-      - diff schema/config.schema.json /tmp/klaudiush-schema-check.json
+      - mkdir -p /tmp/klaudiush-schema-check
+      - mise exec -- go run ./cmd/schema-gen /tmp/klaudiush-schema-check
+      - diff -u schema/ /tmp/klaudiush-schema-check/
+      - rm -rf /tmp/klaudiush-schema-check
 
   verify:
     desc: Run all verification tasks
@@ -268,3 +267,66 @@ tasks:
       - task: fmt
       - task: lint
       - task: test
+
+  bench:
+    desc: Run all benchmarks with memory reporting
+    cmds:
+      - mise exec -- go test -bench=. -benchmem -run='^$' -count=1 ./...
+
+  bench:short:
+    desc: Run benchmarks for hot paths only
+    cmds:
+      - mise exec -- go test -bench=. -benchmem -run='^$' -count=1 ./pkg/parser ./internal/parser ./internal/validator ./internal/dispatcher ./internal/validators/secrets
+
+  bench:save:
+    desc: Save benchmark results for comparison
+    vars:
+      BENCH_FILE: '{{.BENCH_FILE | default "bench-current.txt"}}'
+    cmds:
+      - mise exec -- go test -bench=. -benchmem -run='^$' -count=6 ./... | tee {{.BENCH_FILE}}
+
+  bench:compare:
+    desc: Compare saved benchmark results (requires benchstat)
+    vars:
+      OLD: '{{.OLD | default "bench-old.txt"}}'
+      NEW: '{{.NEW | default "bench-current.txt"}}'
+    cmds:
+      - mise exec -- benchstat {{.OLD}} {{.NEW}}
+
+  bench:report:
+    desc: Run all benchmarks and save report to /tmp
+    vars:
+      REPORT_DIR: /tmp/klaudiush-bench
+      TIMESTAMP:
+        sh: date +%Y%m%dT%H%M%S
+    cmds:
+      - mkdir -p {{.REPORT_DIR}}
+      - mise exec -- go test -bench=. -benchmem -run='^$' -count=6 -timeout=10m ./... 2>&1 | tee {{.REPORT_DIR}}/bench-{{.TIMESTAMP}}.txt
+      - echo ""
+      - echo "Report saved to {{.REPORT_DIR}}/bench-{{.TIMESTAMP}}.txt"
+
+  bench:e2e:
+    desc: Run end-to-end binary benchmarks
+    deps:
+      - build
+    cmds:
+      - mise exec -- go test -bench=BenchmarkBinaryE2E -benchmem -run='^$' -count=3 -timeout=10m ./cmd/klaudiush
+
+  bench:timing:
+    desc: Run binary with internal timing instrumentation
+    deps:
+      - build
+    vars:
+      PAYLOAD: '{{.PAYLOAD | default "cmd/klaudiush/testdata/bench-payloads/git-commit-pass.json"}}'
+    cmds:
+      - cmd: echo '{}' | KLAUDIUSH_BENCH_TIMING=1 ./bin/klaudiush --hook-type PreToolUse 2>&1 >/dev/null || true
+        silent: true
+      - cmd: cat {{.PAYLOAD}} | KLAUDIUSH_BENCH_TIMING=1 ./bin/klaudiush --hook-type PreToolUse 2>&1 >/dev/null || true
+        silent: true
+
+  bench:hyperfine:
+    desc: Run end-to-end benchmarks with hyperfine
+    deps:
+      - build
+    cmds:
+      - bash scripts/bench-e2e.sh ./bin/klaudiush

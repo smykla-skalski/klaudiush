@@ -4,14 +4,12 @@ package dispatcher
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
-	"time"
 
 	"github.com/cockroachdb/errors"
 
-	"github.com/smykla-skalski/klaudiush/internal/session"
 	"github.com/smykla-skalski/klaudiush/internal/validator"
+	"github.com/smykla-skalski/klaudiush/pkg/config"
 	"github.com/smykla-skalski/klaudiush/pkg/hook"
 	"github.com/smykla-skalski/klaudiush/pkg/logger"
 	"github.com/smykla-skalski/klaudiush/pkg/parser"
@@ -24,33 +22,6 @@ var (
 	// ErrNoValidators is returned when no validators match the context.
 	ErrNoValidators = errors.New("no validators found")
 )
-
-// SessionTracker manages session state for fast-fail behavior.
-type SessionTracker interface {
-	// IsPoisoned checks if a session is poisoned.
-	IsPoisoned(sessionID string) (bool, *session.SessionInfo)
-
-	// Poison marks a session as poisoned with the given error codes and message.
-	Poison(sessionID string, codes []string, message string)
-
-	// Unpoison clears the poisoned state of a session.
-	Unpoison(sessionID string)
-
-	// RecordCommand increments the command count for a session.
-	RecordCommand(sessionID string)
-
-	// IsEnabled returns true if session tracking is enabled.
-	IsEnabled() bool
-}
-
-// SessionAuditLogger logs session events (poison/unpoison) for audit purposes.
-type SessionAuditLogger interface {
-	// Log writes an audit entry to the log file.
-	Log(entry *session.AuditEntry) error
-
-	// IsEnabled returns true if audit logging is enabled.
-	IsEnabled() bool
-}
 
 // ValidationError represents a validation failure.
 type ValidationError struct {
@@ -97,12 +68,11 @@ func shortName(name string) string {
 
 // Dispatcher orchestrates validation of hook contexts.
 type Dispatcher struct {
-	registry           *validator.Registry
-	logger             logger.Logger
-	executor           Executor
-	exceptionChecker   ExceptionChecker
-	sessionTracker     SessionTracker
-	sessionAuditLogger SessionAuditLogger
+	registry         *validator.Registry
+	logger           logger.Logger
+	executor         Executor
+	exceptionChecker ExceptionChecker
+	overrides        *config.OverridesConfig
 }
 
 // NewDispatcher creates a new Dispatcher with sequential execution.
@@ -139,21 +109,10 @@ func WithExceptionChecker(checker ExceptionChecker) DispatcherOption {
 	}
 }
 
-// WithSessionTracker sets the session tracker for the dispatcher.
-func WithSessionTracker(tracker SessionTracker) DispatcherOption {
+// WithOverrides sets the overrides config for the dispatcher.
+func WithOverrides(overrides *config.OverridesConfig) DispatcherOption {
 	return func(d *Dispatcher) {
-		if tracker != nil {
-			d.sessionTracker = tracker
-		}
-	}
-}
-
-// WithSessionAuditLogger sets the session audit logger for the dispatcher.
-func WithSessionAuditLogger(auditLogger SessionAuditLogger) DispatcherOption {
-	return func(d *Dispatcher) {
-		if auditLogger != nil {
-			d.sessionAuditLogger = auditLogger
-		}
+		d.overrides = overrides
 	}
 }
 
@@ -185,25 +144,6 @@ func (d *Dispatcher) Dispatch(ctx context.Context, hookCtx *hook.Context) []*Val
 		"tool", hookCtx.ToolName,
 	)
 
-	// Check if session tracking is enabled and session is poisoned
-	if d.sessionTracker != nil && d.sessionTracker.IsEnabled() && hookCtx.HasSessionID() {
-		if poisoned, info := d.sessionTracker.IsPoisoned(hookCtx.SessionID); poisoned {
-			d.logger.Info("session is poisoned",
-				"session_id", hookCtx.SessionID,
-				"poison_codes", info.PoisonCodes,
-			)
-
-			// Check for unpoison acknowledgment token
-			if !d.checkUnpoisonAcknowledgment(hookCtx, info) {
-				return []*ValidationError{createPoisonedSessionError(info)}
-			}
-
-			d.logger.Info("session unpoisoned via acknowledgment",
-				"session_id", hookCtx.SessionID,
-			)
-		}
-	}
-
 	// Run validators on the main context
 	validationErrors := d.runValidators(ctx, hookCtx)
 
@@ -211,33 +151,6 @@ func (d *Dispatcher) Dispatch(ctx context.Context, hookCtx *hook.Context) []*Val
 	if hookCtx.EventType == hook.EventTypePreToolUse && hookCtx.ToolName == hook.ToolTypeBash {
 		syntheticErrors := d.validateBashFileWrites(ctx, hookCtx)
 		validationErrors = append(validationErrors, syntheticErrors...)
-	}
-
-	// Poison session if there are blocking errors, otherwise record command
-	if d.sessionTracker != nil && d.sessionTracker.IsEnabled() && hookCtx.HasSessionID() {
-		if ShouldBlock(validationErrors) {
-			codes := extractSessionPoisonCodes(validationErrors)
-			message := extractSessionPoisonMessage(validationErrors)
-
-			d.logger.Info("poisoning session due to blocking error",
-				"session_id", hookCtx.SessionID,
-				"error_codes", codes,
-			)
-
-			d.sessionTracker.Poison(hookCtx.SessionID, codes, message)
-
-			// Log audit entry for poison
-			d.logSessionAuditEntry(
-				hookCtx,
-				session.AuditActionPoison,
-				codes,
-				"", // no source for poison (it's from validation failure)
-				message,
-			)
-		} else {
-			// Record command when validation passes or only has warnings (no blocking errors)
-			d.sessionTracker.RecordCommand(hookCtx.SessionID)
-		}
 	}
 
 	return validationErrors
@@ -263,6 +176,9 @@ func (d *Dispatcher) runValidators(ctx context.Context, hookCtx *hook.Context) [
 	// Use executor to run validators (sequential or parallel)
 	validationErrors := d.executor.Execute(ctx, hookCtx, validators)
 
+	// Apply overrides to suppress disabled error codes
+	validationErrors = d.applyOverrides(validationErrors)
+
 	// Apply exception checking to blocking errors
 	validationErrors = d.applyExceptionChecking(hookCtx, validationErrors)
 
@@ -284,6 +200,31 @@ func (d *Dispatcher) runValidators(ctx context.Context, hookCtx *hook.Context) [
 	}
 
 	return validationErrors
+}
+
+// applyOverrides filters out validation errors whose error codes are disabled via overrides.
+func (d *Dispatcher) applyOverrides(errors []*ValidationError) []*ValidationError {
+	if d.overrides == nil {
+		return errors
+	}
+
+	result := make([]*ValidationError, 0, len(errors))
+
+	for _, verr := range errors {
+		code := verr.Reference.Code()
+		if code != "" && d.overrides.IsCodeDisabled(code) {
+			d.logger.Info("validation error suppressed by override",
+				"code", code,
+				"validator", verr.Validator,
+			)
+
+			continue
+		}
+
+		result = append(result, verr)
+	}
+
+	return result
 }
 
 // applyExceptionChecking checks for exception tokens in blocking errors.
@@ -367,134 +308,6 @@ func (d *Dispatcher) validateBashFileWrites(
 	}
 
 	return allErrors
-}
-
-// checkUnpoisonAcknowledgment checks if the current command contains an unpoison token
-// that acknowledges all poison codes. If all codes are acknowledged, it unpoisons
-// the session and returns true. Otherwise, returns false.
-//
-// IMPORTANT: To prevent deadlocks, this function is lenient when it detects an
-// unpoison attempt. If the command contains unpoison markers (KLACK= or # SESS:)
-// but parsing fails, the command is allowed through to prevent the session from
-// becoming permanently stuck.
-func (d *Dispatcher) checkUnpoisonAcknowledgment(
-	hookCtx *hook.Context,
-	info *session.SessionInfo,
-) bool {
-	// Get command from context (only Bash commands have commands to check)
-	command := hookCtx.GetCommand()
-	if command == "" {
-		return false
-	}
-
-	// Quick check: does this look like an unpoison attempt?
-	hasUnpoisonAttempt := session.ContainsUnpoisonAttempt(command)
-
-	// Check if the command contains an unpoison acknowledgment token
-	result, err := session.CheckUnpoisonAcknowledgmentFull(
-		command,
-		info.PoisonCodes,
-	)
-	if err != nil {
-		d.logger.Debug("failed to parse unpoison token",
-			"error", err,
-		)
-
-		// If it looks like an unpoison attempt but parsing failed,
-		// be lenient and allow the command through to prevent deadlocks.
-		// The command will still be validated by normal validators.
-		if hasUnpoisonAttempt {
-			d.logger.Info("allowing command with unpoison attempt despite parse error",
-				"session_id", hookCtx.SessionID,
-				"error", err,
-			)
-
-			// Unpoison since we're being lenient (user is clearly trying)
-			d.sessionTracker.Unpoison(hookCtx.SessionID)
-
-			// Log audit entry for lenient unpoison
-			d.logSessionAuditEntry(
-				hookCtx,
-				session.AuditActionUnpoison,
-				info.PoisonCodes,
-				"lenient_fallback",
-				"",
-			)
-
-			return true
-		}
-
-		return false
-	}
-
-	if !result.Acknowledged {
-		if len(result.UnacknowledgedCodes) > 0 &&
-			len(result.UnacknowledgedCodes) < len(info.PoisonCodes) {
-			// Partial acknowledgment - log which codes still need acknowledgment
-			d.logger.Info("partial unpoison acknowledgment",
-				"session_id", hookCtx.SessionID,
-				"unacknowledged_codes", result.UnacknowledgedCodes,
-			)
-		}
-
-		return false
-	}
-
-	// All codes acknowledged - unpoison the session
-	d.sessionTracker.Unpoison(hookCtx.SessionID)
-
-	// Log audit entry for unpoison
-	d.logSessionAuditEntry(
-		hookCtx,
-		session.AuditActionUnpoison,
-		info.PoisonCodes,
-		result.Source.String(),
-		"",
-	)
-
-	return true
-}
-
-// logSessionAuditEntry logs a session audit entry if audit logging is enabled.
-func (d *Dispatcher) logSessionAuditEntry(
-	hookCtx *hook.Context,
-	action session.AuditAction,
-	codes []string,
-	source string,
-	poisonMessage string,
-) {
-	if d.sessionAuditLogger == nil || !d.sessionAuditLogger.IsEnabled() {
-		return
-	}
-
-	// Truncate command to prevent sensitive data leakage
-	command := hookCtx.GetCommand()
-
-	const maxCommandLength = 500
-	if len(command) > maxCommandLength {
-		command = command[:maxCommandLength] + "..."
-	}
-
-	// Get working directory
-	workingDir, _ := os.Getwd()
-
-	entry := &session.AuditEntry{
-		Timestamp:     time.Now(),
-		Action:        action,
-		SessionID:     hookCtx.SessionID,
-		PoisonCodes:   codes,
-		Source:        source,
-		Command:       command,
-		PoisonMessage: poisonMessage,
-		WorkingDir:    workingDir,
-	}
-
-	if err := d.sessionAuditLogger.Log(entry); err != nil {
-		d.logger.Error("failed to log session audit entry",
-			"action", action.String(),
-			"error", err,
-		)
-	}
 }
 
 // ShouldBlock returns true if any validation error should block the operation.

@@ -1,4 +1,5 @@
 # Binaries
+/klaudiush
 bin/
 *.exe
 *.exe~

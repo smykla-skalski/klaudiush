@@ -182,7 +182,7 @@ func (v *TerraformValidator) getContent(ctx *hook.Context) (string, error) {
 // checkFormat runs terraform/tofu fmt -check using TerraformFormatter
 func (v *TerraformValidator) checkFormat(ctx context.Context, content, tool string) string {
 	if tool == "" {
-		return "⚠️  Neither 'tofu' nor 'terraform' found in PATH - skipping format check"
+		return "Neither 'tofu' nor 'terraform' found in PATH - skipping format check"
 	}
 
 	fmtCtx, cancel := context.WithTimeout(ctx, v.getTimeout())
@@ -198,7 +198,7 @@ func (v *TerraformValidator) checkFormat(ctx context.Context, content, tool stri
 	diff := strings.TrimSpace(result.RawOut)
 	if diff != "" && len(result.Findings) > 0 {
 		return fmt.Sprintf(
-			"⚠️  Terraform formatting issues detected:\n%s\n   Run '%s fmt' to fix",
+			"Terraform formatting issues detected:\n%s\nRun '%s fmt' to fix",
 			diff,
 			tool,
 		)
@@ -206,7 +206,7 @@ func (v *TerraformValidator) checkFormat(ctx context.Context, content, tool stri
 
 	if result.Err != nil {
 		v.Logger().Debug("fmt command failed", "error", result.Err)
-		return fmt.Sprintf("⚠️  Failed to run '%s fmt -check': %v", tool, result.Err)
+		return fmt.Sprintf("Failed to run '%s fmt -check': %v", tool, result.Err)
 	}
 
 	return ""
@@ -225,7 +225,7 @@ func (v *TerraformValidator) runTflint(ctx context.Context, filePath string) []s
 
 	output := strings.TrimSpace(result.RawOut)
 	if output != "" {
-		return []string{"⚠️  tflint findings:\n" + output}
+		return []string{"tflint findings:\n" + output}
 	}
 
 	if result.Err != nil {

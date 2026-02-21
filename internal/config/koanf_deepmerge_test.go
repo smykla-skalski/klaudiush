@@ -289,28 +289,6 @@ require_body = false
 			})
 		})
 
-		// --- Session ---
-		Context("session: only enabled=true", func() {
-			It("preserves session defaults (state_file, max_session_age)", func() {
-				loader, _, workDir := newSeparatedLoader()
-
-				DeferCleanup(func() { os.RemoveAll(filepath.Dir(workDir)); os.RemoveAll(workDir) })
-				writeProjectConfig(workDir, `[session]
-enabled = true
-`)
-
-				cfg, err := loader.Load(nil)
-				Expect(err).NotTo(HaveOccurred())
-
-				session := cfg.Session
-				Expect(session.IsEnabled()).To(BeTrue(), "enabled set")
-				Expect(
-					session.StateFile,
-				).To(Equal("~/.klaudiush/session_state.json"), "state_file preserved")
-				Expect(session.MaxSessionAge).NotTo(BeZero(), "max_session_age preserved")
-			})
-		})
-
 		// --- Exceptions rate_limit sub-map ---
 		Context("exceptions: only token_prefix changed", func() {
 			It("preserves rate_limit and audit sub-maps", func() {
@@ -719,7 +697,6 @@ protected_branches = ["main", "develop", "release"]
 				Expect(cfg.Validators.Git.Branch.IsEnabled()).To(BeTrue())
 				Expect(cfg.Validators.Git.PR.IsEnabled()).To(BeTrue())
 				Expect(cfg.Exceptions.IsEnabled()).To(BeTrue())
-				Expect(cfg.Session.IsEnabled()).To(BeFalse())
 			})
 		})
 
@@ -747,7 +724,6 @@ protected_branches = ["main", "develop", "release"]
 				Expect(cfg.Validators.Git.Push.IsEnabled()).To(BeTrue())
 				Expect(cfg.Validators.Git.Branch.IsEnabled()).To(BeTrue())
 				Expect(cfg.Validators.Git.PR.IsEnabled()).To(BeTrue())
-				Expect(cfg.Session.IsEnabled()).To(BeFalse())
 				Expect(cfg.Exceptions.IsEnabled()).To(BeTrue())
 			})
 		})

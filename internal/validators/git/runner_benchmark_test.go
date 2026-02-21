@@ -7,36 +7,45 @@ import (
 	gitvalidators "github.com/smykla-skalski/klaudiush/internal/validators/git"
 )
 
-// BenchmarkCLIRunner benchmarks the CLI-based GitRunner
+// BenchmarkCLIRunner benchmarks the CLI-based GitRunner.
 func BenchmarkCLIRunner(b *testing.B) {
 	runner := gitvalidators.NewCLIGitRunner()
 
 	b.Run("IsInRepo", func(b *testing.B) {
+		b.ReportAllocs()
+
 		for range b.N {
 			_ = runner.IsInRepo()
 		}
 	})
 
 	b.Run("GetRepoRoot", func(b *testing.B) {
+		b.ReportAllocs()
+
 		for range b.N {
 			_, _ = runner.GetRepoRoot()
 		}
 	})
 
 	b.Run("GetStagedFiles", func(b *testing.B) {
+		b.ReportAllocs()
+
 		for range b.N {
 			_, _ = runner.GetStagedFiles()
 		}
 	})
 
 	b.Run("GetCurrentBranch", func(b *testing.B) {
+		b.ReportAllocs()
+
 		for range b.N {
 			_, _ = runner.GetCurrentBranch()
 		}
 	})
 }
 
-// BenchmarkSDKRunner benchmarks the SDK-based GitRunner
+// BenchmarkSDKRunner benchmarks the SDK-based GitRunner.
+// Note: SDK runner uses sync.Once via CachedRunner, so these measure cached-hit performance.
 func BenchmarkSDKRunner(b *testing.B) {
 	runner, err := gitpkg.NewSDKRunner()
 	if err != nil {
@@ -44,24 +53,32 @@ func BenchmarkSDKRunner(b *testing.B) {
 	}
 
 	b.Run("IsInRepo", func(b *testing.B) {
+		b.ReportAllocs()
+
 		for range b.N {
 			_ = runner.IsInRepo()
 		}
 	})
 
 	b.Run("GetRepoRoot", func(b *testing.B) {
+		b.ReportAllocs()
+
 		for range b.N {
 			_, _ = runner.GetRepoRoot()
 		}
 	})
 
 	b.Run("GetStagedFiles", func(b *testing.B) {
+		b.ReportAllocs()
+
 		for range b.N {
 			_, _ = runner.GetStagedFiles()
 		}
 	})
 
 	b.Run("GetCurrentBranch", func(b *testing.B) {
+		b.ReportAllocs()
+
 		for range b.N {
 			_, _ = runner.GetCurrentBranch()
 		}

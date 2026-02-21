@@ -14,6 +14,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 
+	"github.com/smykla-skalski/klaudiush/internal/xdg"
 	"github.com/smykla-skalski/klaudiush/pkg/config"
 )
 
@@ -119,7 +120,7 @@ func NewFilePatternStore(cfg *config.PatternsConfig, projectDir string) *FilePat
 	projectFile := filepath.Join(projectDir, cfg.GetProjectDataFile())
 
 	// Global path uses a hash of the project directory for isolation
-	globalDir := resolvePath(cfg.GetGlobalDataDir())
+	globalDir := xdg.ExpandPathSilent(cfg.GetGlobalDataDir())
 	hash := hashProjectPath(projectDir)
 	globalFile := filepath.Join(globalDir, hash+".json")
 
@@ -400,17 +401,6 @@ func savePatternFile(path string, data *PatternData) error {
 	}
 
 	return nil
-}
-
-func resolvePath(path string) string {
-	if len(path) > 1 && path[0] == '~' && path[1] == '/' {
-		home, err := os.UserHomeDir()
-		if err == nil {
-			return filepath.Join(home, path[2:])
-		}
-	}
-
-	return path
 }
 
 func hashProjectPath(projectDir string) string {

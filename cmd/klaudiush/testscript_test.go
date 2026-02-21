@@ -28,6 +28,7 @@ func mainFunc() {
 	globalFlag = false
 	forceFlag = false
 	noTUIFlag = false
+	installHooksFlag = true
 	verboseFlag = false
 	fixFlag = false
 	categoryFlag = []string{}

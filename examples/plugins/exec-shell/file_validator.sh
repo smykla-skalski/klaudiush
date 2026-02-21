@@ -1,32 +1,7 @@
 #!/usr/bin/env bash
 
-# file_validator.sh - Sample klaudiush exec plugin that validates file operations
-#
-# This plugin demonstrates exec plugin capabilities:
-# - JSON parsing and generation
-# - Configuration handling
-# - File pattern matching
-# - Warning vs blocking modes
-#
-# Install:
-#   chmod +x file_validator.sh
-#   cp file_validator.sh ~/.klaudiush/plugins/
-#
-# Configure in ~/.klaudiush/config.toml:
-#   [[plugins.plugins]]
-#   name = "file-validator"
-#   type = "exec"
-#   path = "~/.klaudiush/plugins/file_validator.sh"
-#   timeout = "5s"
-#
-#   [plugins.plugins.predicate]
-#   event_types = ["PreToolUse"]
-#   tool_types = ["Write", "Edit"]
-#
-#   [plugins.plugins.config]
-#   warn_on_exe = "true"
-#   block_on_bin = "true"
-#   max_file_size = "1048576"  # 1MB
+# File validator
+# Blocks binary files, warns on executable scripts, enforces size limits.
 
 set -euo pipefail
 
@@ -79,7 +54,7 @@ if [[ "$block_on_bin" == "true" ]]; then
   "message": "Binary files are not allowed: $file_path",
   "error_code": "BIN_FILE",
   "fix_hint": "Use source code or text files instead",
-  "doc_link": "https://github.com/smykla-skalski/klaudiush/blob/main/docs/PLUGIN_GUIDE.md"
+  "doc_link": "https://klaudiu.sh/docs/plugins"
 }
 EOF
       exit 0

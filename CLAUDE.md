@@ -15,10 +15,13 @@ klaudiush completion fish         # generate fish completion
 klaudiush completion zsh          # generate zsh completion
 klaudiush completion powershell   # generate powershell completion
 
-# Init (interactive setup wizard, creates config.toml)
-./bin/klaudiush init              # project config
-./bin/klaudiush init --global     # global config
-./bin/klaudiush init --force      # overwrite existing
+# Init (interactive setup wizard, creates config.toml + registers hooks)
+./bin/klaudiush init                           # project config + hooks
+./bin/klaudiush init --global                  # global config + hooks
+./bin/klaudiush init --force                   # overwrite existing
+./bin/klaudiush init --install-hooks           # register hooks only
+./bin/klaudiush init --install-hooks --global  # register hooks globally
+./bin/klaudiush init --install-hooks=false     # config only, no hooks
 
 # Doctor (diagnose setup and configuration)
 ./bin/klaudiush doctor            # run all checks
@@ -95,7 +98,7 @@ Represents tool invocations: `EventType` (PreToolUse/PostToolUse/Notification), 
 
 **Creating**: 1) Embed `BaseValidator`, 2) Implement `Validate(ctx *hook.Context)`, 3) Register in `main.go:registerValidators()`
 
-**Error Format Policy**: Validators return errors with structured format including error codes (GIT001-GIT024, FILE001-FILE009, SEC001-SEC005, SHELL001-SHELL005, SESS001), automatic fix hints from suggestions registry, and documentation URLs (`https://klaudiu.sh/{CODE}`). Use `FailWithRef(ref, msg)` to auto-populate fix hints - NEVER set `FixHint` manually. Error priority determines which reference is shown when multiple rules fail. See `.claude/validator-error-format-policy.md` for comprehensive guide.
+**Error Format Policy**: Validators return errors with structured format including error codes (GIT001-GIT024, FILE001-FILE009, SEC001-SEC005, SHELL001-SHELL005), automatic fix hints from suggestions registry, and documentation URLs (`https://klaudiu.sh/{CODE}`). Use `FailWithRef(ref, msg)` to auto-populate fix hints - NEVER set `FixHint` manually. Error priority determines which reference is shown when multiple rules fail. See `.claude/validator-error-format-policy.md` for comprehensive guide.
 
 ### Rule Engine (`internal/rules/`)
 
@@ -185,68 +188,6 @@ min_reason_length = 10
 
 **Documentation**: See `docs/EXCEPTIONS_GUIDE.md` for complete guide. Example configs in `examples/exceptions/`.
 
-### Session Tracking (`internal/session/`)
-
-Fast-fail mechanism preventing subsequent commands from executing after a blocking error occurs in the same Claude Code session.
-
-**Problem**: When klaudiush blocks a command (JSON deny), Claude Code continues executing queued commands independently, causing poor UX as each fails one-by-one.
-
-**Solution**: Track session state. When any command is blocked, "poison" the session. Subsequent commands immediately fail with reference to original error.
-
-**Core Components**:
-
-- **Tracker** (`tracker.go`): Main session tracking logic with thread-safe state management
-  - `IsPoisoned(sessionID)` - Check if session is poisoned
-  - `Poison(sessionID, codes []string, message)` - Mark session as poisoned with multiple codes
-  - `Unpoison(sessionID)` - Clear poisoned state, return to clean
-  - `RecordCommand(sessionID)` - Increment command count
-  - `CleanupExpired()` - Remove sessions older than max age
-
-- **State** (`state.go`): Session state types
-  - `SessionInfo` - Per-session metadata (status, poison info, command count, timestamps)
-  - `PoisonCodes []string` - All error codes that caused poisoning
-  - `Status` enum - Clean/Poisoned (enumer generated)
-  - `SessionState` - Global state container with sessions map
-
-- **Unpoison Parser** (`unpoison.go`): Parse unpoison tokens from commands
-  - Token format: `SESS:<CODE1>[,<CODE2>,...]`
-  - Sources: `KLACK` env var or shell comment
-  - `CheckUnpoisonAcknowledgment()` - Check if all poison codes are acknowledged
-
-- **Audit Logger** (`audit.go`): Audit trail for poison/unpoison events
-  - JSONL format with rotation and retention
-  - Records action type, session ID, codes, source, command
-  - Configurable via `[session.audit]` in config
-
-- **Persistence** (`persistence.go`): Atomic file I/O with proper permissions
-  - JSON serialization to `~/.klaudiush/session_state.json`
-  - Atomic writes (tmp + rename), file permissions 0600, dir permissions 0700
-  - Home directory expansion for `~` in paths
-
-**Integration**: Dispatcher checks session state before validation. If poisoned, checks for unpoison token; if all codes acknowledged, unpoisons and continues to validators. Otherwise returns `SESS001` error with unpoison instructions. On validation failure with `ShouldBlock=true` (mapped to `permissionDecision: "deny"` in JSON output), dispatcher poisons the session with all blocking error codes.
-
-**Configuration** (`pkg/config/session.go`):
-
-```toml
-[session]
-enabled = true  # Default: true
-state_file = "~/.klaudiush/session_state.json"
-max_session_age = "24h"  # Auto-expire old sessions
-
-[session.audit]
-enabled = true  # Default: true
-log_file = "~/.klaudiush/session_audit.jsonl"
-max_size_mb = 10
-max_age_days = 30
-max_backups = 5
-```
-
-**Error Code**: `SESS001` - Session poisoned by previous blocking error
-
-**Session Context**: Parser extracts `session_id`, `tool_use_id`, `transcript_path` from Claude Code hook JSON. Available in `pkg/hook/context.go` Context struct.
-
-**Documentation**: See `docs/SESSION_GUIDE.md` for user guide and troubleshooting.
-
 ### Linter Abstractions (`internal/linters/`)
 
 Type-safe interfaces for external tools: **ShellChecker** (shellcheck), **TerraformFormatter** (tofu/terraform fmt), **TfLinter** (tflint), **ActionLinter** (actionlint), **MarkdownLinter** (custom rules), **GofumptChecker** (gofumpt), **RuffChecker** (ruff), **OxlintChecker** (oxlint), **RustfmtChecker** (rustfmt), **GitleaksChecker** (gitleaks)
@@ -303,7 +244,7 @@ Logs to `~/.claude/hooks/dispatcher.log`: `--debug` (default), `--trace` (verbos
 
 ## Testing
 
-Framework: Ginkgo/Gomega. 336 tests. Run: `mise exec -- go test -v ./pkg/parser -run TestBashParser`
+Framework: Ginkgo/Gomega. Run: `mise exec -- go test -v ./pkg/parser -run TestBashParser`
 
 **Mocks**: Generated via `mockgen` (uber-go/mock). Add `//go:generate mockgen -source=<file>.go -destination=<file>_mock.go -package=<pkg>` directive, then run `go generate ./...`. NEVER manually edit generated mock files.
 
@@ -350,7 +291,6 @@ Additional implementation details and policies are in `.claude/` files:
 
 - `validator-error-format-policy.md` - Comprehensive guide for validator error formatting, reference system (GIT001-GIT024, FILE001-FILE009, SEC001-SEC005), suggestions registry, FailWithRef pattern, error display format, best practices
 - `session-parallel-execution.md` - Parallel validator execution, category-specific worker pools, race detection testing
-- `session-error-reporting.md` - Error codes, suggestions/doc links registries, FailWithCode pattern, cognitive complexity refactoring
 
 ## Plugin Documentation
 
@@ -379,15 +319,6 @@ Exception workflow guide available in `docs/EXCEPTIONS_GUIDE.md` with example co
 - **development.toml** - Relaxed limits for development environments
 
 Debug exceptions with: `klaudiush debug exceptions`
-
-## Session Documentation
-
-Session tracking guide available in `docs/SESSION_GUIDE.md`:
-
-- Feature overview and problem statement
-- Configuration options (enabled, state_file, max_session_age)
-- Troubleshooting session issues
-- SESS001 error code explanation
 
 ## Backup Documentation
 

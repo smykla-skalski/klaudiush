@@ -45,8 +45,13 @@ func init() {
 	)
 }
 
-func runDebugPatterns(_ *cobra.Command, _ []string) error {
-	cfg, err := setupDebugContext("debug patterns", "verbose", strconv.FormatBool(verbosePatterns))
+func runDebugPatterns(cmd *cobra.Command, _ []string) error {
+	cfg, err := setupDebugContext(
+		loggerFromCmd(cmd),
+		"debug patterns",
+		"verbose",
+		strconv.FormatBool(verbosePatterns),
+	)
 	if err != nil {
 		return err
 	}

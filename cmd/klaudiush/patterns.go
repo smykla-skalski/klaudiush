@@ -106,8 +106,8 @@ func init() {
 	)
 }
 
-func runPatternsList(_ *cobra.Command, _ []string) error {
-	store, _, err := setupPatternStore()
+func runPatternsList(cmd *cobra.Command, _ []string) error {
+	store, _, err := setupPatternStore(loggerFromCmd(cmd))
 	if err != nil {
 		return err
 	}
@@ -131,8 +131,8 @@ func runPatternsList(_ *cobra.Command, _ []string) error {
 	return nil
 }
 
-func runPatternsStats(_ *cobra.Command, _ []string) error {
-	store, cfg, err := setupPatternStore()
+func runPatternsStats(cmd *cobra.Command, _ []string) error {
+	store, cfg, err := setupPatternStore(loggerFromCmd(cmd))
 	if err != nil {
 		return err
 	}
@@ -189,8 +189,8 @@ func runPatternsStats(_ *cobra.Command, _ []string) error {
 	return nil
 }
 
-func runPatternsReset(_ *cobra.Command, _ []string) error {
-	store, cfg, err := setupPatternStore()
+func runPatternsReset(cmd *cobra.Command, _ []string) error {
+	store, cfg, err := setupPatternStore(loggerFromCmd(cmd))
 	if err != nil {
 		return err
 	}
@@ -223,8 +223,10 @@ func runPatternsReset(_ *cobra.Command, _ []string) error {
 	return nil
 }
 
-func setupPatternStore() (*patterns.FilePatternStore, *config.PatternsConfig, error) {
-	log, cfg, err := loadPatternsConfig()
+func setupPatternStore(
+	log logger.Logger,
+) (*patterns.FilePatternStore, *config.PatternsConfig, error) {
+	cfg, err := loadPatternsConfig(log)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -250,25 +252,13 @@ func setupPatternStore() (*patterns.FilePatternStore, *config.PatternsConfig, er
 	return store, patternsCfg, nil
 }
 
-func loadPatternsConfig() (logger.Logger, *config.Config, error) {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return nil, nil, errors.Wrap(err, "failed to get home directory")
-	}
-
-	logFile := homeDir + "/.claude/hooks/dispatcher.log"
-
-	log, err := logger.NewFileLogger(logFile, false, false)
-	if err != nil {
-		return nil, nil, errors.Wrap(err, "failed to create logger")
-	}
-
+func loadPatternsConfig(log logger.Logger) (*config.Config, error) {
 	cfg, err := loadAuditConfig(log)
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "failed to load configuration")
+		return nil, errors.Wrap(err, "failed to load configuration")
 	}
 
-	return log, cfg, nil
+	return cfg, nil
 }
 
 func filterPatterns(

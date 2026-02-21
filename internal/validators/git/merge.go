@@ -268,19 +268,30 @@ func (v *MergeValidator) validateMergeMessage(pr *PRDetails) *validator.Result {
 
 	// Build result
 	if len(allErrors) > 0 {
+		primaryMsg := allErrors[0]
+
 		var details strings.Builder
 
-		for _, e := range allErrors {
-			details.WriteString(e)
-			details.WriteString("\n")
+		// Skip first error in details (already in Message)
+		if len(allErrors) > 1 {
+			for _, e := range allErrors[1:] {
+				details.WriteString(e)
+				details.WriteString("\n")
+			}
 		}
 
-		fmt.Fprintf(&details, "\n📝 PR #%d: %s", pr.Number, pr.Title)
-
-		return validator.FailWithRef(
+		result := validator.FailWithRef(
 			validator.RefGitMergeMessage,
-			allErrors[0],
-		).AddDetail("errors", details.String())
+			primaryMsg,
+		)
+
+		if details.Len() > 0 {
+			result = result.AddDetail("errors", details.String())
+		}
+
+		result = result.AddDetail("commit_preview", fmt.Sprintf("PR #%d: %s", pr.Number, pr.Title))
+
+		return result
 	}
 
 	log.Debug("Merge message validation passed")
@@ -332,9 +343,8 @@ func (v *MergeValidator) validateMergeCommandSignoff(
 		validator.RefGitMergeSignoff,
 		"Merge command missing Signed-off-by in commit body",
 	).AddDetail("errors", fmt.Sprintf(
-		"❌ Merge commit body missing Signed-off-by trailer\n"+
-			"   Add --body flag with signoff:\n\n"+
-			"   gh pr merge --body \"$(cat <<'EOF'\n"+
+		"Add --body flag with signoff:\n\n"+
+			"gh pr merge --body \"$(cat <<'EOF'\n"+
 			"Your commit body here\n\n"+
 			"%s\n"+
 			"EOF\n"+
@@ -346,7 +356,7 @@ func (v *MergeValidator) validateMergeCommandSignoff(
 // validateTitle validates the PR title as a commit message title.
 func (v *MergeValidator) validateTitle(title string) []string {
 	if title == "" {
-		return []string{"❌ PR title is empty"}
+		return []string{"PR title is empty"}
 	}
 
 	var errs []string
@@ -376,12 +386,12 @@ func (v *MergeValidator) checkTitleLength(title string, errs []string) []string 
 	}
 
 	errs = append(errs,
-		fmt.Sprintf("❌ PR title exceeds %d characters (%d chars)", maxLength, len(title)),
-		fmt.Sprintf("   Title: '%s'", title),
+		fmt.Sprintf("PR title exceeds %d characters (%d chars)", maxLength, len(title)),
+		fmt.Sprintf("Title: '%s'", title),
 	)
 
 	if allowUnlimited {
-		errs = append(errs, "   Note: Revert titles (Revert \"...\") are exempt from this limit")
+		errs = append(errs, "Revert titles (Revert \"...\") are exempt from this limit")
 	}
 
 	return errs
@@ -406,9 +416,9 @@ func (v *MergeValidator) checkTitleConventionalFormat(title string, errs []strin
 	// Check format validity
 	if !parsed.Valid || parsed.ParseError != "" {
 		errs = append(errs,
-			"❌ PR title doesn't follow conventional commits format: type(scope): description",
-			"   Valid types: "+strings.Join(v.getValidTypes(), ", "),
-			fmt.Sprintf("   Current title: '%s'", title),
+			"PR title doesn't follow conventional commits format: type(scope): description",
+			"Valid types: "+strings.Join(v.getValidTypes(), ", "),
+			fmt.Sprintf("Current title: '%s'", title),
 		)
 
 		return errs
@@ -417,8 +427,8 @@ func (v *MergeValidator) checkTitleConventionalFormat(title string, errs []strin
 	// Check scope requirement
 	if v.shouldRequireScope() && parsed.Scope == "" {
 		errs = append(errs,
-			"❌ PR title requires a scope: type(scope): description",
-			fmt.Sprintf("   Current title: '%s'", title),
+			"PR title requires a scope: type(scope): description",
+			fmt.Sprintf("Current title: '%s'", title),
 		)
 	}
 
@@ -427,8 +437,9 @@ func (v *MergeValidator) checkTitleConventionalFormat(title string, errs []strin
 		rule := NewInfraScopeMisuseRule()
 		result := rule.Validate(parsed, title)
 
-		if result != nil && len(result.Errors) > 0 {
-			errs = append(errs, result.Errors...)
+		if result != nil && result.Message != "" {
+			errs = append(errs, result.Message)
+			errs = append(errs, result.Context...)
 		}
 	}
 
@@ -468,8 +479,9 @@ func (v *MergeValidator) checkBodyLineLength(body string, errs []string) []strin
 	rule := NewBodyLineLengthRule(maxLen, tolerance)
 	result := rule.Validate(nil, body)
 
-	if result != nil && len(result.Errors) > 0 {
-		errs = append(errs, result.Errors...)
+	if result != nil && result.Message != "" {
+		errs = append(errs, result.Message)
+		errs = append(errs, result.Context...)
 	}
 
 	return errs
@@ -484,8 +496,9 @@ func (v *MergeValidator) checkPRReferences(body string, errs []string) []string 
 	prRule := NewPRReferenceRule()
 	result := prRule.Validate(nil, body)
 
-	if result != nil && len(result.Errors) > 0 {
-		errs = append(errs, result.Errors...)
+	if result != nil && result.Message != "" {
+		errs = append(errs, result.Message)
+		errs = append(errs, result.Context...)
 	}
 
 	return errs
@@ -500,8 +513,9 @@ func (v *MergeValidator) checkAIAttribution(body string, errs []string) []string
 	aiRule := NewAIAttributionRule()
 	result := aiRule.Validate(nil, body)
 
-	if result != nil && len(result.Errors) > 0 {
-		errs = append(errs, result.Errors...)
+	if result != nil && result.Message != "" {
+		errs = append(errs, result.Message)
+		errs = append(errs, result.Context...)
 	}
 
 	return errs
@@ -514,8 +528,9 @@ func (v *MergeValidator) checkForbiddenPatterns(body string, errs []string) []st
 	}
 	result := forbiddenRule.Validate(nil, body)
 
-	if result != nil && len(result.Errors) > 0 {
-		errs = append(errs, result.Errors...)
+	if result != nil && result.Message != "" {
+		errs = append(errs, result.Message)
+		errs = append(errs, result.Context...)
 	}
 
 	return errs
@@ -531,8 +546,9 @@ func (*MergeValidator) checkListFormatting(body string, errs []string) []string 
 	listRule := NewListFormattingRule()
 	result := listRule.Validate(nil, body)
 
-	if result != nil && len(result.Errors) > 0 {
-		errs = append(errs, result.Errors...)
+	if result != nil && result.Message != "" {
+		errs = append(errs, result.Message)
+		errs = append(errs, result.Context...)
 	}
 
 	return errs

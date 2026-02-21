@@ -1,10 +1,6 @@
-# Example: Basic Exception Configuration
-#
-# Enable exception workflow with default settings.
-# This allows Claude to bypass validation blocks with explicit acknowledgment.
-#
-# Usage:
-#   Copy to ~/.klaudiush/config.toml (global) or .klaudiush/config.toml (project)
+#:schema https://klaudiu.sh/schema/v1/config.json
+# Basic
+# Standard exception workflow with rate limits and audit logging.
 
 [exceptions]
 enabled = true

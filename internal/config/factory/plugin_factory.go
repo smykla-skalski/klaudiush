@@ -31,6 +31,10 @@ func (f *PluginValidatorFactory) CreateValidators(cfg *config.Config) []Validato
 		return nil
 	}
 
+	if isValidatorOverridden(cfg.Overrides, "plugins") {
+		return nil
+	}
+
 	// Load all plugins
 	if err := f.registry.LoadPlugins(cfg.Plugins); err != nil {
 		f.logger.Error("failed to load plugins", "error", err)

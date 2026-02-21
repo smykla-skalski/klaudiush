@@ -4,7 +4,10 @@ package config
 import "time"
 
 const (
-	// DefaultCrashDumpDir is the default directory for crash dumps.
+	// DefaultCrashDumpDir is the legacy default directory for crash dumps.
+	// Kept for backward compatibility with existing user configs.
+	//
+	// Deprecated: Use xdg.CrashDumpDir() from internal/xdg for the XDG-compliant path.
 	DefaultCrashDumpDir = "~/.klaudiush/crash_dumps"
 
 	// DefaultMaxDumps is the default maximum number of crash dumps to keep.

@@ -1,7 +1,6 @@
-# Development Backup Configuration
-#
-# Development-focused configuration with extended retention but smaller max backups.
-# Optimized for frequent config changes during development with good version history.
+#:schema https://klaudiu.sh/schema/v1/config.json
+# Development
+# 15 snapshots, 14-day retention. Tuned for frequent config changes.
 
 [backup]
 enabled = true

@@ -223,8 +223,10 @@ func setupBackupAuditFlags() {
 	backupAuditCmd.Flags().BoolVar(&backupJSON, "json", false, "Output as JSON")
 }
 
-func runBackupList(_ *cobra.Command, _ []string) error {
-	log, managers, err := setupBackupManagers()
+func runBackupList(cmd *cobra.Command, _ []string) error {
+	log := loggerFromCmd(cmd)
+
+	managers, err := setupBackupManagers(log)
 	if err != nil {
 		return err
 	}
@@ -279,8 +281,10 @@ func runBackupList(_ *cobra.Command, _ []string) error {
 	return nil
 }
 
-func runBackupCreate(_ *cobra.Command, _ []string) error {
-	log, managers, err := setupBackupManagers()
+func runBackupCreate(cmd *cobra.Command, _ []string) error {
+	log := loggerFromCmd(cmd)
+
+	managers, err := setupBackupManagers(log)
 	if err != nil {
 		return err
 	}
@@ -373,10 +377,11 @@ func runBackupCreate(_ *cobra.Command, _ []string) error {
 	return nil
 }
 
-func runBackupRestore(_ *cobra.Command, args []string) error {
+func runBackupRestore(cmd *cobra.Command, args []string) error {
 	snapshotID := args[0]
+	log := loggerFromCmd(cmd)
 
-	log, managers, err := setupBackupManagers()
+	managers, err := setupBackupManagers(log)
 	if err != nil {
 		return err
 	}
@@ -450,10 +455,11 @@ func runBackupRestore(_ *cobra.Command, args []string) error {
 	return nil
 }
 
-func runBackupDelete(_ *cobra.Command, args []string) error {
+func runBackupDelete(cmd *cobra.Command, args []string) error {
 	snapshotID := args[0]
+	log := loggerFromCmd(cmd)
 
-	log, managers, err := setupBackupManagers()
+	managers, err := setupBackupManagers(log)
 	if err != nil {
 		return err
 	}
@@ -532,8 +538,10 @@ func runBackupDelete(_ *cobra.Command, args []string) error {
 	return nil
 }
 
-func runBackupPrune(_ *cobra.Command, _ []string) error {
-	log, managers, err := setupBackupManagers()
+func runBackupPrune(cmd *cobra.Command, _ []string) error {
+	log := loggerFromCmd(cmd)
+
+	managers, err := setupBackupManagers(log)
 	if err != nil {
 		return err
 	}
@@ -663,8 +671,10 @@ func runBackupPruneApply(
 	return nil
 }
 
-func runBackupStatus(_ *cobra.Command, _ []string) error {
-	log, managers, err := setupBackupManagers()
+func runBackupStatus(cmd *cobra.Command, _ []string) error {
+	log := loggerFromCmd(cmd)
+
+	managers, err := setupBackupManagers(log)
 	if err != nil {
 		return err
 	}
@@ -785,18 +795,8 @@ func displayRetentionPolicy(backupCfg *config.BackupConfig) {
 	fmt.Printf("Max size: %s total\n", formatBytes(backupCfg.GetMaxSize()))
 }
 
-func runBackupAudit(_ *cobra.Command, _ []string) error {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return errors.Wrap(err, "failed to get home directory")
-	}
-
-	logFile := filepath.Join(homeDir, ".claude", "hooks", "dispatcher.log")
-
-	log, err := logger.NewFileLogger(logFile, false, false)
-	if err != nil {
-		return errors.Wrap(err, "failed to create logger")
-	}
+func runBackupAudit(cmd *cobra.Command, _ []string) error {
+	log := loggerFromCmd(cmd)
 
 	log.Info("backup audit command invoked",
 		"operation", auditOperation,
@@ -809,6 +809,11 @@ func runBackupAudit(_ *cobra.Command, _ []string) error {
 	)
 
 	// Create audit logger
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return errors.Wrap(err, "failed to get home directory")
+	}
+
 	baseDir := filepath.Join(homeDir, internalconfig.GlobalConfigDir, ".backups")
 
 	auditLogger, err := backup.NewJSONLAuditLogger(baseDir)
@@ -919,23 +924,16 @@ func outputBackupAuditTable(entries []backup.AuditEntry) {
 	}
 }
 
-func setupBackupManagers() (logger.Logger, []*backup.Manager, error) {
+func setupBackupManagers(log logger.Logger) ([]*backup.Manager, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "failed to get home directory")
-	}
-
-	logFile := filepath.Join(homeDir, ".claude", "hooks", "dispatcher.log")
-
-	log, err := logger.NewFileLogger(logFile, false, false)
-	if err != nil {
-		return nil, nil, errors.Wrap(err, "failed to create logger")
+		return nil, errors.Wrap(err, "failed to get home directory")
 	}
 
 	// Load configuration
 	cfg, err := loadConfig(log, "")
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "failed to load configuration")
+		return nil, errors.Wrap(err, "failed to load configuration")
 	}
 
 	backupCfg := cfg.GetBackup()
@@ -954,12 +952,12 @@ func setupBackupManagers() (logger.Logger, []*backup.Manager, error) {
 			"",
 		)
 		if storageErr != nil {
-			return nil, nil, errors.Wrap(storageErr, "failed to create global storage")
+			return nil, errors.Wrap(storageErr, "failed to create global storage")
 		}
 
 		globalManager, mgrErr := backup.NewManager(globalStorage, backupCfg)
 		if mgrErr != nil {
-			return nil, nil, errors.Wrap(mgrErr, "failed to create global manager")
+			return nil, errors.Wrap(mgrErr, "failed to create global manager")
 		}
 
 		managers = append(managers, globalManager)
@@ -978,18 +976,18 @@ func setupBackupManagers() (logger.Logger, []*backup.Manager, error) {
 			projectPath,
 		)
 		if storageErr != nil {
-			return nil, nil, errors.Wrap(storageErr, "failed to create project storage")
+			return nil, errors.Wrap(storageErr, "failed to create project storage")
 		}
 
 		projectManager, mgrErr := backup.NewManager(projectStorage, backupCfg)
 		if mgrErr != nil {
-			return nil, nil, errors.Wrap(mgrErr, "failed to create project manager")
+			return nil, errors.Wrap(mgrErr, "failed to create project manager")
 		}
 
 		managers = append(managers, projectManager)
 	}
 
-	return log, managers, nil
+	return managers, nil
 }
 
 func outputBackupJSON(snapshots []backup.Snapshot) error {

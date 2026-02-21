@@ -57,7 +57,8 @@ func (f *FileValidatorFactory) CreateValidators(cfg *config.Config) []ValidatorW
 	rustfmtChecker := linters.NewRustfmtChecker(runner)
 	githubClient := githubpkg.NewClient()
 
-	if cfg.Validators.File.Markdown != nil && cfg.Validators.File.Markdown.IsEnabled() {
+	if cfg.Validators.File.Markdown != nil && cfg.Validators.File.Markdown.IsEnabled() &&
+		!isValidatorOverridden(cfg.Overrides, "file.markdown") {
 		// Create markdown linter with config for rule support
 		markdownLinter := linters.NewMarkdownLinterWithConfig(runner, cfg.Validators.File.Markdown)
 
@@ -67,52 +68,60 @@ func (f *FileValidatorFactory) CreateValidators(cfg *config.Config) []ValidatorW
 		)
 	}
 
-	if cfg.Validators.File.Terraform != nil && cfg.Validators.File.Terraform.IsEnabled() {
+	if cfg.Validators.File.Terraform != nil && cfg.Validators.File.Terraform.IsEnabled() &&
+		!isValidatorOverridden(cfg.Overrides, "file.terraform") {
 		validators = append(validators, f.createTerraformValidator(
 			cfg.Validators.File.Terraform, terraformFormatter, tfLinter))
 	}
 
-	if cfg.Validators.File.ShellScript != nil && cfg.Validators.File.ShellScript.IsEnabled() {
+	if cfg.Validators.File.ShellScript != nil && cfg.Validators.File.ShellScript.IsEnabled() &&
+		!isValidatorOverridden(cfg.Overrides, "file.shellscript") {
 		validators = append(
 			validators,
 			f.createShellScriptValidator(cfg.Validators.File.ShellScript, shellChecker),
 		)
 	}
 
-	if cfg.Validators.File.Workflow != nil && cfg.Validators.File.Workflow.IsEnabled() {
+	if cfg.Validators.File.Workflow != nil && cfg.Validators.File.Workflow.IsEnabled() &&
+		!isValidatorOverridden(cfg.Overrides, "file.workflow") {
 		validators = append(validators, f.createWorkflowValidator(
 			cfg.Validators.File.Workflow, actionLinter, githubClient))
 	}
 
-	if cfg.Validators.File.Gofumpt != nil && cfg.Validators.File.Gofumpt.IsEnabled() {
+	if cfg.Validators.File.Gofumpt != nil && cfg.Validators.File.Gofumpt.IsEnabled() &&
+		!isValidatorOverridden(cfg.Overrides, "file.gofumpt") {
 		validators = append(
 			validators,
 			f.createGofumptValidator(cfg.Validators.File.Gofumpt, gofumptChecker),
 		)
 	}
 
-	if cfg.Validators.File.Python != nil && cfg.Validators.File.Python.IsEnabled() {
+	if cfg.Validators.File.Python != nil && cfg.Validators.File.Python.IsEnabled() &&
+		!isValidatorOverridden(cfg.Overrides, "file.python") {
 		validators = append(
 			validators,
 			f.createPythonValidator(cfg.Validators.File.Python, ruffChecker),
 		)
 	}
 
-	if cfg.Validators.File.JavaScript != nil && cfg.Validators.File.JavaScript.IsEnabled() {
+	if cfg.Validators.File.JavaScript != nil && cfg.Validators.File.JavaScript.IsEnabled() &&
+		!isValidatorOverridden(cfg.Overrides, "file.javascript") {
 		validators = append(
 			validators,
 			f.createJavaScriptValidator(cfg.Validators.File.JavaScript, oxlintChecker),
 		)
 	}
 
-	if cfg.Validators.File.Rust != nil && cfg.Validators.File.Rust.IsEnabled() {
+	if cfg.Validators.File.Rust != nil && cfg.Validators.File.Rust.IsEnabled() &&
+		!isValidatorOverridden(cfg.Overrides, "file.rust") {
 		validators = append(
 			validators,
 			f.createRustValidator(cfg.Validators.File.Rust, rustfmtChecker),
 		)
 	}
 
-	if cfg.Validators.File.LinterIgnore != nil && cfg.Validators.File.LinterIgnore.IsEnabled() {
+	if cfg.Validators.File.LinterIgnore != nil && cfg.Validators.File.LinterIgnore.IsEnabled() &&
+		!isValidatorOverridden(cfg.Overrides, "file.linter_ignore") {
 		validators = append(
 			validators,
 			f.createLinterIgnoreValidator(cfg.Validators.File.LinterIgnore),

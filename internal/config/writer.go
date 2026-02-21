@@ -10,6 +10,8 @@ import (
 	"github.com/pelletier/go-toml/v2"
 
 	"github.com/smykla-skalski/klaudiush/internal/backup"
+	"github.com/smykla-skalski/klaudiush/internal/schema"
+	"github.com/smykla-skalski/klaudiush/internal/xdg"
 	"github.com/smykla-skalski/klaudiush/pkg/config"
 )
 
@@ -29,6 +31,9 @@ type Writer struct {
 	// workDir is the current working directory (for testing).
 	workDir string
 
+	// paths resolves XDG-based paths.
+	paths xdg.PathResolver
+
 	// backupManager handles automatic backups before config changes (optional).
 	backupManager *backup.Manager
 }
@@ -38,6 +43,7 @@ func NewWriter() *Writer {
 	return &Writer{
 		homeDir: os.Getenv("HOME"),
 		workDir: mustGetwd(),
+		paths:   xdg.DefaultResolver(),
 	}
 }
 
@@ -46,6 +52,7 @@ func NewWriterWithBackup(backupMgr *backup.Manager) *Writer {
 	return &Writer{
 		homeDir:       os.Getenv("HOME"),
 		workDir:       mustGetwd(),
+		paths:         xdg.DefaultResolver(),
 		backupManager: backupMgr,
 	}
 }
@@ -55,6 +62,7 @@ func NewWriterWithDirs(homeDir, workDir string) *Writer {
 	return &Writer{
 		homeDir: homeDir,
 		workDir: workDir,
+		paths:   xdg.ResolverFor(homeDir),
 	}
 }
 
@@ -63,6 +71,7 @@ func NewWriterWithDirsAndBackup(homeDir, workDir string, backupMgr *backup.Manag
 	return &Writer{
 		homeDir:       homeDir,
 		workDir:       workDir,
+		paths:         xdg.ResolverFor(homeDir),
 		backupManager: backupMgr,
 	}
 }
@@ -101,6 +110,10 @@ func (w *Writer) WriteFile(path string, cfg *config.Config) error {
 
 	// Marshal to TOML with indentation
 	var buf bytes.Buffer
+
+	// Prepend Taplo schema directive
+	buf.WriteString(schema.SchemaDirective())
+	buf.WriteByte('\n')
 
 	encoder := toml.NewEncoder(&buf)
 	encoder.SetIndentTables(true)
@@ -158,8 +171,12 @@ func (w *Writer) backupBeforeWrite(path string, cfg *config.Config) error {
 }
 
 // GlobalConfigPath returns the path to the global configuration file.
+// Uses XDG location with legacy fallback.
 func (w *Writer) GlobalConfigPath() string {
-	return filepath.Join(w.homeDir, GlobalConfigDir, GlobalConfigFile)
+	xdgPath := w.paths.GlobalConfigFile()
+	legacyPath := filepath.Join(w.homeDir, GlobalConfigDir, GlobalConfigFile)
+
+	return xdg.ResolveFile(xdgPath, legacyPath)
 }
 
 // ProjectConfigPath returns the path to the primary project configuration file.
@@ -169,13 +186,7 @@ func (w *Writer) ProjectConfigPath() string {
 
 // EnsureGlobalConfigDir ensures the global config directory exists.
 func (w *Writer) EnsureGlobalConfigDir() error {
-	dir := filepath.Join(w.homeDir, GlobalConfigDir)
-
-	if err := os.MkdirAll(dir, ConfigDirMode); err != nil {
-		return errors.Wrapf(err, "failed to create directory %s", dir)
-	}
-
-	return nil
+	return xdg.EnsureDir(w.paths.ConfigDir())
 }
 
 // EnsureProjectConfigDir ensures the project config directory exists.
@@ -205,9 +216,9 @@ func (w *Writer) IsProjectConfigExists() bool {
 	return err == nil
 }
 
-// GlobalConfigDir returns the global config directory path.
-func (w *Writer) GlobalConfigDir() string {
-	return filepath.Join(w.homeDir, GlobalConfigDir)
+// GlobalConfigDirPath returns the global config directory path.
+func (w *Writer) GlobalConfigDirPath() string {
+	return w.paths.ConfigDir()
 }
 
 // ProjectConfigDir returns the project config directory path.

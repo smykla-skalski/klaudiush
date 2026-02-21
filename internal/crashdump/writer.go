@@ -5,9 +5,10 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/cockroachdb/errors"
+
+	"github.com/smykla-skalski/klaudiush/internal/xdg"
 )
 
 const (
@@ -44,32 +45,6 @@ type FilesystemWriter struct {
 	dumpDir string
 }
 
-// expandHomeDir expands ~ in directory paths to the user's home directory.
-// Supports "~" (home directory) and "~/path" (subdirectory under home).
-// Returns error for invalid tilde usage like "~foo".
-func expandHomeDir(dir string) (string, error) {
-	if len(dir) == 0 || dir[0] != '~' {
-		return dir, nil
-	}
-
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", errors.Wrap(err, "failed to get home directory")
-	}
-
-	switch {
-	case dir == "~":
-		return home, nil
-	case strings.HasPrefix(dir, "~/"):
-		return filepath.Join(home, dir[2:]), nil
-	default:
-		return "", errors.Wrap(
-			ErrInvalidDumpDir,
-			"paths starting with ~ must be either ~ or ~/subdir",
-		)
-	}
-}
-
 // NewFilesystemWriter creates a new filesystem-based writer.
 func NewFilesystemWriter(dumpDir string) (*FilesystemWriter, error) {
 	if dumpDir == "" {
@@ -77,9 +52,9 @@ func NewFilesystemWriter(dumpDir string) (*FilesystemWriter, error) {
 	}
 
 	// Expand home directory
-	expandedDir, err := expandHomeDir(dumpDir)
+	expandedDir, err := xdg.ExpandPath(dumpDir)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(ErrInvalidDumpDir, err.Error())
 	}
 
 	return &FilesystemWriter{

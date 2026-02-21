@@ -1,7 +1,6 @@
-# Rust Validator Configuration Example
-#
-# This configuration demonstrates how to configure the Rust file validator
-# which uses rustfmt to check code formatting.
+#:schema https://klaudiu.sh/schema/v1/config.json
+# Rust
+# rustfmt integration with edition and path options.
 
 [validators.file.rust]
 enabled = true

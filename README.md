@@ -38,7 +38,7 @@ brew install smykla-skalski/tap/klaudiush
 **Post-install setup:**
 
 ```bash
-# Run interactive setup wizard
+# Run interactive setup wizard and register hooks
 klaudiush init --global
 
 # Verify installation
@@ -100,7 +100,7 @@ environment.systemPackages = [ pkgs.klaudiush ];
 **Post-install setup:**
 
 ```bash
-# Run interactive setup wizard
+# Run interactive setup wizard and register hooks
 klaudiush init --global
 
 # Verify installation
@@ -122,44 +122,14 @@ task install
 
 ### Configure Claude Code
 
-After installation, update `~/.claude/settings.json` to use the `klaudiush` command:
+Register klaudiush as a PreToolUse hook in Claude Code settings:
 
-```json
-{
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "klaudiush --hook-type PreToolUse"
-          }
-        ]
-      },
-      {
-        "matcher": "Write|Edit|MultiEdit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "klaudiush --hook-type PreToolUse",
-            "timeout": 30
-          }
-        ]
-      }
-    ],
-    "Notification": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "klaudiush --hook-type Notification"
-          }
-        ]
-      }
-    ]
-  }
-}
+```bash
+# Register hooks only (global)
+klaudiush init --install-hooks --global
+
+# Register hooks only (project)
+klaudiush init --install-hooks
 ```
 
 **Note**: After installation, the binary is available as `klaudiush` (installed to `~/.local/bin` or `~/bin`). Ensure the install directory is in your `$PATH`.

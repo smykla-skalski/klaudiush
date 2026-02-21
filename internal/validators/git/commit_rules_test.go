@@ -27,8 +27,8 @@ var _ = Describe("PRReferenceRule", func() {
 					Expect(
 						result,
 					).NotTo(BeNil(), "Expected PR reference to be detected in: %s", message)
-					Expect(result.Errors).NotTo(BeEmpty())
-					Expect(result.Errors[0]).To(ContainSubstring("PR references found"))
+					Expect(result.Message).NotTo(BeEmpty())
+					Expect(result.Message).To(ContainSubstring("PR references found"))
 				},
 				Entry("simple hash reference", "fixes #123"),
 				Entry("hash at start", "#123 is the issue"),
@@ -105,8 +105,8 @@ var _ = Describe("PRReferenceRule", func() {
 					Expect(
 						result,
 					).NotTo(BeNil(), "Expected PR URL to be detected in: %s", message)
-					Expect(result.Errors).NotTo(BeEmpty())
-					Expect(result.Errors[0]).To(ContainSubstring("PR references found"))
+					Expect(result.Message).NotTo(BeEmpty())
+					Expect(result.Message).To(ContainSubstring("PR references found"))
 				},
 				Entry("full URL", "see https://github.com/owner/repo/pull/123"),
 				Entry("URL without https", "see github.com/owner/repo/pull/456"),
@@ -156,37 +156,30 @@ var _ = Describe("PRReferenceRule", func() {
 				commit := &git.ParsedCommit{Title: "test", Valid: true}
 				result := rule.Validate(commit, "See https://github.com/owner/repo/pull/123")
 				Expect(result).NotTo(BeNil())
-				Expect(result.Errors).NotTo(BeEmpty())
+				Expect(result.Message).NotTo(BeEmpty())
 
-				// Check error messages don't contain malformed URLs
-				for _, err := range result.Errors {
-					Expect(err).NotTo(ContainSubstring("https://://"))
-					Expect(err).NotTo(ContainSubstring("https://https://"))
+				// Check Message and Context don't contain malformed URLs
+				allMessages := append([]string{result.Message}, result.Context...)
+				for _, msg := range allMessages {
+					Expect(msg).NotTo(ContainSubstring("https://://"))
+					Expect(msg).NotTo(ContainSubstring("https://https://"))
 				}
 
 				// Verify the correct URL format is shown
-				foundURLError := false
-
-				for _, err := range result.Errors {
-					match, _ := ContainSubstring("github.com/owner/repo/pull/123").Match(err)
-					if match {
-						foundURLError = true
-						break
-					}
-				}
-
-				Expect(foundURLError).To(BeTrue(), "Expected error to contain the GitHub URL")
+				allText := result.Message + "\n" + strings.Join(result.Context, "\n")
+				Expect(allText).To(ContainSubstring("github.com/owner/repo/pull/123"))
 			})
 
 			It("should format error correctly for URL at start of body", func() {
 				commit := &git.ParsedCommit{Title: "test", Valid: true}
 				result := rule.Validate(commit, "fix:\n\ngithub.com/owner/repo/pull/456")
 				Expect(result).NotTo(BeNil())
-				Expect(result.Errors).NotTo(BeEmpty())
+				Expect(result.Message).NotTo(BeEmpty())
 
-				for _, err := range result.Errors {
-					Expect(err).NotTo(ContainSubstring("https://://"))
-					Expect(err).NotTo(ContainSubstring("https:// "))
+				allMessages := append([]string{result.Message}, result.Context...)
+				for _, msg := range allMessages {
+					Expect(msg).NotTo(ContainSubstring("https://://"))
+					Expect(msg).NotTo(ContainSubstring("https:// "))
 				}
 			})
 		})
@@ -272,7 +265,7 @@ var _ = Describe("ScopeOnlyFormatRule", func() {
 			commit := &git.ParsedCommit{Title: title, Valid: false}
 			result := rule.Validate(commit, title)
 			Expect(result).NotTo(BeNil())
-			Expect(result.Errors).NotTo(BeEmpty())
+			Expect(result.Message).NotTo(BeEmpty())
 		},
 		Entry("no colon", "just a plain message"),
 		Entry("uppercase start", "Home-environment: something"),
@@ -299,7 +292,7 @@ var _ = Describe("CustomPatternRule", func() {
 		commit := &git.ParsedCommit{Title: "feat(api): add endpoint", Valid: true}
 		result := rule.Validate(commit, commit.Title)
 		Expect(result).NotTo(BeNil())
-		Expect(result.Errors[0]).To(ContainSubstring("doesn't match the required pattern"))
+		Expect(result.Message).To(ContainSubstring("doesn't match the required pattern"))
 	})
 
 	It("should exempt revert commits", func() {
@@ -322,7 +315,7 @@ var _ = Describe("ListFormattingRule", func() {
 			commit := &git.ParsedCommit{Title: "feat(api): add endpoint", Valid: true}
 			result := rule.Validate(commit, msg)
 			Expect(result).NotTo(BeNil())
-			Expect(result.Errors).NotTo(BeEmpty())
+			Expect(result.Message).NotTo(BeEmpty())
 		})
 
 		It("detects ordered list directly after title", func() {
@@ -330,7 +323,7 @@ var _ = Describe("ListFormattingRule", func() {
 			commit := &git.ParsedCommit{Title: "feat(api): add endpoint", Valid: true}
 			result := rule.Validate(commit, msg)
 			Expect(result).NotTo(BeNil())
-			Expect(result.Errors).NotTo(BeEmpty())
+			Expect(result.Message).NotTo(BeEmpty())
 		})
 
 		It("detects list after prose without blank line", func() {
@@ -444,10 +437,10 @@ var _ = Describe("TitleLengthRule cascading warning", func() {
 		Expect(result).NotTo(BeNil())
 		Expect(result.Reference).To(Equal(validator.RefGitBadTitle))
 
-		joined := strings.Join(result.Errors, "\n")
+		allText := result.Message + "\n" + strings.Join(result.Context, "\n")
 		Expect(
-			joined,
-		).To(ContainSubstring("Common cause: type(scope): prefix is part of the 50-char limit"))
+			allText,
+		).To(ContainSubstring("type(scope): prefix counts toward the limit"))
 	})
 })
 
@@ -472,8 +465,8 @@ var _ = Describe("ConventionalFormatRule cascading warning", func() {
 		Expect(result).NotTo(BeNil())
 		Expect(result.Reference).To(Equal(validator.RefGitConventionalCommit))
 
-		joined := strings.Join(result.Errors, "\n")
-		Expect(joined).To(ContainSubstring("type(scope): prefix counts toward 50-char limit"))
+		allText := result.Message + "\n" + strings.Join(result.Context, "\n")
+		Expect(allText).To(ContainSubstring("type(scope): prefix counts toward 50-char limit"))
 	})
 
 	It("includes 50-char limit warning for missing scope", func() {
@@ -487,7 +480,7 @@ var _ = Describe("ConventionalFormatRule cascading warning", func() {
 		result := rule.Validate(commit, commit.Title)
 		Expect(result).NotTo(BeNil())
 
-		joined := strings.Join(result.Errors, "\n")
-		Expect(joined).To(ContainSubstring("type(scope): prefix counts toward 50-char limit"))
+		allText := result.Message + "\n" + strings.Join(result.Context, "\n")
+		Expect(allText).To(ContainSubstring("type(scope): prefix counts toward 50-char limit"))
 	})
 })

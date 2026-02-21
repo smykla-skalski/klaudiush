@@ -3,6 +3,7 @@ package schema
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"github.com/cockroachdb/errors"
 	"github.com/invopop/jsonschema"
@@ -11,8 +12,9 @@ import (
 )
 
 const (
-	schemaURI = "https://json-schema.org/draft/2020-12/schema"
-	title     = "klaudiush configuration"
+	schemaURI    = "https://json-schema.org/draft/2020-12/schema"
+	titleFmt     = "klaudiush configuration v%d"
+	schemaURLFmt = "https://klaudiu.sh/schema/v%d/config.json"
 )
 
 // Generate produces a JSON Schema from the config.Config struct.
@@ -23,9 +25,24 @@ func Generate() *jsonschema.Schema {
 
 	s := r.Reflect(&config.Config{})
 	s.Version = schemaURI
-	s.Title = title
+	s.Title = fmt.Sprintf(titleFmt, config.CurrentConfigVersion)
 
 	return s
+}
+
+// Filename returns the versioned schema filename, e.g. "config.v1.schema.json".
+func Filename() string {
+	return fmt.Sprintf("config.v%d.schema.json", config.CurrentConfigVersion)
+}
+
+// SchemaURL returns the public URL for the current schema version.
+func SchemaURL() string {
+	return fmt.Sprintf(schemaURLFmt, config.CurrentConfigVersion)
+}
+
+// SchemaDirective returns the Taplo schema directive line for TOML files.
+func SchemaDirective() string {
+	return "#:schema " + SchemaURL()
 }
 
 // GenerateJSON produces a JSON Schema as bytes.
@@ -49,9 +66,5 @@ func GenerateJSON(indent bool) ([]byte, error) {
 	}
 
 	// Append trailing newline for file output.
-	result := make([]byte, 0, len(data)+1)
-	result = append(result, data...)
-	result = append(result, '\n')
-
-	return result, nil
+	return append(data, '\n'), nil
 }

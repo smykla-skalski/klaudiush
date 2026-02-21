@@ -5,6 +5,60 @@ All notable changes to klaudiush will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.24.0](https://github.com/smykla-skalski/klaudiush/compare/v1.23.2...v1.24.0) (2026-02-21)
+
+### Features
+
+* **doctor:** add XDG health checkers ([342ae01](https://github.com/smykla-skalski/klaudiush/commit/342ae01f01a2f8692f6ffdb6df7570c8a26d6071))
+* **xdg:** add XDG base directory support ([d9d9ee4](https://github.com/smykla-skalski/klaudiush/commit/d9d9ee498c99b1ed5d743e54d3e9b41e67c12cf1))
+
+### Bug Fixes
+
+* **commit:** deduplicate list spacing detection ([9f05bf5](https://github.com/smykla-skalski/klaudiush/commit/9f05bf5e782857c36713fd11e00b74e3977ef2c2))
+* **xdg:** isolate homeResolver from env vars ([49a69d0](https://github.com/smykla-skalski/klaudiush/commit/49a69d086c90488a970ed330a97a57417dab4862))
+
+### Performance Improvements
+
+* **bench:** add comprehensive benchmark suite ([e9ddc2e](https://github.com/smykla-skalski/klaudiush/commit/e9ddc2e29f55d39683fdd1a7557304c487d5de12))
+* **bench:** add end-to-end binary benchmarks ([67867f1](https://github.com/smykla-skalski/klaudiush/commit/67867f14796119e49fad0664a63158883966c890))
+
+## [1.23.2](https://github.com/smykla-skalski/klaudiush/compare/v1.23.1...v1.23.2) (2026-02-21)
+
+### Bug Fixes
+
+* **output:** show all codes in disable hint ([58a2075](https://github.com/smykla-skalski/klaudiush/commit/58a207535121a4391f6400f89e602578d193bd1f))
+
+### Code Refactoring
+
+* **session:** remove session poisoning ([cffdaf1](https://github.com/smykla-skalski/klaudiush/commit/cffdaf110afa974d1e82e55b5dd1a505291da0c7))
+
+## [1.23.1](https://github.com/smykla-skalski/klaudiush/compare/v1.23.0...v1.23.1) (2026-02-21)
+
+### Code Refactoring
+
+* **output:** deduplicate error display format ([9ebcf0f](https://github.com/smykla-skalski/klaudiush/commit/9ebcf0fc09ea6cfbfbecde43c4695e7da2d92024))
+
+## [1.23.0](https://github.com/smykla-skalski/klaudiush/compare/v1.22.1...v1.23.0) (2026-02-21)
+
+### Features
+
+* **cli:** add install subcommand ([f79890b](https://github.com/smykla-skalski/klaudiush/commit/f79890b04fdd6f7834816b4e421abea3679fb193))
+* **overrides:** add persistent overrides ([23ea06f](https://github.com/smykla-skalski/klaudiush/commit/23ea06f3b3f1347673f9799a3213bf21777107a1))
+* **schema:** add directive to generated configs ([65a5628](https://github.com/smykla-skalski/klaudiush/commit/65a562800d6c9e2d6dce5d77ce50c3b1c9cd3da2))
+* **schema:** version config schema ([78fdeab](https://github.com/smykla-skalski/klaudiush/commit/78fdeabae524971a2c397f7c1ebd4f1d47f430a5))
+* **update:** homebrew detection + --all flag ([40b183a](https://github.com/smykla-skalski/klaudiush/commit/40b183aca305c19a5d974a7262edfbbf130302be))
+
+### Code Refactoring
+
+* **cli:** simplify overrides CLI ([48f26ab](https://github.com/smykla-skalski/klaudiush/commit/48f26ab2918cc19a310f6be3f38ea03ba0504b77))
+* **init:** merge install into init command ([9502e6d](https://github.com/smykla-skalski/klaudiush/commit/9502e6d29e89405c88c2b19a4c0cc4d894ceee2e))
+
+## [1.22.1](https://github.com/smykla-skalski/klaudiush/compare/v1.22.0...v1.22.1) (2026-02-21)
+
+### Bug Fixes
+
+* **schema:** remove alloc size overflow risk ([e7beff0](https://github.com/smykla-skalski/klaudiush/commit/e7beff030e62de68a60a231cca90149cbc2c2ba8))
+
 ## [1.22.0](https://github.com/smykla-skalski/klaudiush/compare/v1.21.0...v1.22.0) (2026-02-20)
 
 ### Features

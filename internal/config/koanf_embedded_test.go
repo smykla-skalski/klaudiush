@@ -331,32 +331,4 @@ severity = "warning"
 			})
 		})
 	})
-
-	Describe("session config override", func() {
-		Context("when project config disables session tracking", func() {
-			BeforeEach(func() {
-				configDir := filepath.Join(tempDir, ProjectConfigDir)
-				err := os.MkdirAll(configDir, 0o755)
-				Expect(err).NotTo(HaveOccurred())
-
-				configContent := `[session]
-enabled = true
-`
-				err = os.WriteFile(
-					filepath.Join(configDir, ProjectConfigFile),
-					[]byte(configContent),
-					0o644,
-				)
-				Expect(err).NotTo(HaveOccurred())
-			})
-
-			It("should override the default enabled=false", func() {
-				cfg, err := loader.Load(nil)
-				Expect(err).NotTo(HaveOccurred())
-
-				// Default is enabled=false, project config sets enabled=true
-				Expect(cfg.Session.IsEnabled()).To(BeTrue())
-			})
-		})
-	})
 })

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/cockroachdb/errors"
 	"github.com/spf13/cobra"
@@ -21,7 +20,7 @@ import (
 	"github.com/smykla-skalski/klaudiush/internal/hookresponse"
 	"github.com/smykla-skalski/klaudiush/internal/parser"
 	"github.com/smykla-skalski/klaudiush/internal/patterns"
-	"github.com/smykla-skalski/klaudiush/internal/session"
+	"github.com/smykla-skalski/klaudiush/internal/xdg"
 	"github.com/smykla-skalski/klaudiush/pkg/config"
 	"github.com/smykla-skalski/klaudiush/pkg/hook"
 	"github.com/smykla-skalski/klaudiush/pkg/logger"
@@ -39,6 +38,20 @@ const (
 	// MigrationMarkerFile is used to track if first-run migration has completed.
 	MigrationMarkerFile = ".migration_v1"
 )
+
+// contextKey is an unexported type for context keys to prevent collisions.
+type contextKey int
+
+const loggerKey contextKey = iota
+
+// loggerFromCmd extracts the shared logger from the command's context.
+func loggerFromCmd(cmd *cobra.Command) logger.Logger {
+	if l, ok := cmd.Context().Value(loggerKey).(logger.Logger); ok {
+		return l
+	}
+
+	return logger.NewNoOpLogger()
+}
 
 var (
 	hookType     string
@@ -85,8 +98,24 @@ var rootCmd = &cobra.Command{
 	Short: "Claude Code hooks validator",
 	Long: `Claude Code hooks validator - validates tool invocations and file operations
 before they are executed by Claude Code.`,
-	PersistentPreRun: func(_ *cobra.Command, _ []string) {
+	PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 		checkVersionFlag()
+
+		logFile := xdg.LogFile()
+
+		if err := xdg.EnsureDir(filepath.Dir(logFile)); err != nil {
+			return errors.Wrap(err, "failed to create log directory")
+		}
+
+		log, err := logger.NewFileLogger(logFile, debugMode, traceMode)
+		if err != nil {
+			return errors.Wrap(err, "failed to create logger")
+		}
+
+		ctx := context.WithValue(cmd.Context(), loggerKey, logger.Logger(log))
+		cmd.SetContext(ctx)
+
+		return nil
 	},
 	RunE:              run,
 	CompletionOptions: cobra.CompletionOptions{DisableDefaultCmd: true},
@@ -130,22 +159,12 @@ func init() {
 	)
 }
 
-func run(_ *cobra.Command, _ []string) error {
-	// Setup logger
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return errors.Wrap(err, "failed to get home directory")
-	}
-
-	logFile := filepath.Join(homeDir, ".claude", "hooks", "dispatcher.log")
-
-	log, err := logger.NewFileLogger(logFile, debugMode, traceMode)
-	if err != nil {
-		return errors.Wrap(err, "failed to create logger")
-	}
+func run(cmd *cobra.Command, _ []string) error {
+	bt := newBenchTiming()
+	log := loggerFromCmd(cmd)
 
 	// Perform first-run migration if needed
-	if migErr := performFirstRunMigration(homeDir, log); migErr != nil {
+	if migErr := performFirstRunMigration(log); migErr != nil {
 		log.Error("first-run migration failed", "error", migErr)
 	}
 
@@ -176,6 +195,8 @@ func run(_ *cobra.Command, _ []string) error {
 		return errors.Wrap(err, "failed to parse input")
 	}
 
+	bt.mark("parse")
+
 	log.Info("context parsed",
 		"tool", ctx.ToolName,
 		"command", ctx.GetCommand(),
@@ -194,6 +215,8 @@ func run(_ *cobra.Command, _ []string) error {
 		return errors.Wrap(err, "failed to load configuration")
 	}
 
+	bt.mark("config")
+
 	// Store context and config for crash recovery
 	crashContext = ctx
 	crashConfig = cfg
@@ -202,46 +225,44 @@ func run(_ *cobra.Command, _ []string) error {
 	registryBuilder := factory.NewRegistryBuilder(log)
 	registry := registryBuilder.Build(cfg)
 
-	// Create and initialize session tracker if enabled
-	sessionTracker := initSessionTracker(cfg, log)
+	bt.mark("registry")
 
 	// Create and initialize exception checker if enabled
 	exceptionHandler, exceptionChecker := initExceptionChecker(cfg, workDir, log)
 
-	// Create dispatcher with session tracker and exception checker
+	// Create dispatcher with exception checker and overrides
 	disp := dispatcher.NewDispatcherWithOptions(
 		registry,
 		log,
 		dispatcher.NewSequentialExecutor(log),
-		dispatcher.WithSessionTracker(sessionTracker),
 		dispatcher.WithExceptionChecker(exceptionChecker),
+		dispatcher.WithOverrides(cfg.Overrides),
 	)
 
 	// Dispatch validation
 	errs := disp.Dispatch(context.Background(), ctx)
 
+	bt.mark("dispatch")
+
 	// Save persistent state after dispatch
-	savePersistentState(sessionTracker, exceptionHandler, log)
+	savePersistentState(exceptionHandler, log)
 
 	// Run failure pattern tracking
 	patternWarnings := runPatternTracking(cfg, ctx, errs, workDir, log)
 
 	// Build and write response
-	return writeResponse(hookType, errs, patternWarnings, log)
+	writeErr := writeResponse(hookType, errs, patternWarnings, log)
+
+	bt.mark("response")
+
+	return writeErr
 }
 
-// savePersistentState saves session and exception state after dispatch.
+// savePersistentState saves exception state after dispatch.
 func savePersistentState(
-	sessionTracker *session.Tracker,
 	exceptionHandler *exceptions.Handler,
 	log logger.Logger,
 ) {
-	if sessionTracker != nil {
-		if err := sessionTracker.Save(); err != nil {
-			log.Info("failed to save session state", "error", err)
-		}
-	}
-
 	if exceptionHandler != nil {
 		if err := exceptionHandler.SaveState(); err != nil {
 			log.Info("failed to save exception state", "error", err)
@@ -346,14 +367,12 @@ func extractEffectiveWorkDir(ctx *hook.Context, log logger.Logger) string {
 	}
 
 	// Expand tilde prefix
-	if strings.HasPrefix(cdTarget, "~/") {
-		homeDir, homeDirErr := os.UserHomeDir()
-		if homeDirErr != nil {
-			return ""
-		}
-
-		cdTarget = filepath.Join(homeDir, cdTarget[2:])
+	expanded, expandErr := xdg.ExpandPath(cdTarget)
+	if expandErr != nil {
+		return ""
 	}
+
+	cdTarget = expanded
 
 	// Resolve relative paths against the actual CWD
 	if !filepath.IsAbs(cdTarget) {
@@ -375,31 +394,6 @@ func extractEffectiveWorkDir(ctx *hook.Context, log logger.Logger) string {
 	log.Debug("detected cd target for config resolution", "workDir", cdTarget)
 
 	return cdTarget
-}
-
-// initSessionTracker creates and initializes a session tracker if enabled in the config.
-func initSessionTracker(cfg *config.Config, log logger.Logger) *session.Tracker {
-	sessionCfg := cfg.GetSession()
-	if !sessionCfg.IsEnabled() {
-		return nil
-	}
-
-	tracker := session.NewTracker(
-		sessionCfg,
-		session.WithLogger(log),
-	)
-
-	// Load existing session state
-	if err := tracker.Load(); err != nil {
-		log.Info("failed to load session state, starting fresh", "error", err)
-	}
-
-	log.Debug("session tracker initialized",
-		"state_file", sessionCfg.GetStateFile(),
-		"max_session_age", sessionCfg.GetMaxSessionAge(),
-	)
-
-	return tracker
 }
 
 // initExceptionChecker creates and initializes an exception checker if enabled in the config.
@@ -554,16 +548,48 @@ func buildFlagsMap() map[string]any {
 	return flags
 }
 
-// performFirstRunMigration creates initial backups for existing configs on first run.
-func performFirstRunMigration(homeDir string, log logger.Logger) error {
-	// Check if migration already completed
-	markerPath := filepath.Join(homeDir, internalconfig.GlobalConfigDir, MigrationMarkerFile)
-	if _, err := os.Stat(markerPath); err == nil {
-		// Migration already completed
-		return nil
+// performFirstRunMigration creates initial backups for existing configs on first run,
+// and runs XDG migration if needed.
+func performFirstRunMigration(log logger.Logger) error {
+	// Check v1 marker (legacy migration)
+	legacyMarker := filepath.Join(xdg.LegacyDir(), MigrationMarkerFile)
+	v1Done := false
+
+	if _, err := os.Stat(legacyMarker); err == nil {
+		v1Done = true
 	}
 
+	if !v1Done {
+		if err := performV1Migration(legacyMarker, log); err != nil {
+			return err
+		}
+	}
+
+	// Run XDG v2 migration
+	if xdg.NeedsMigration() {
+		result, err := xdg.Migrate(log)
+		if err != nil {
+			return errors.Wrap(err, "XDG migration failed")
+		}
+
+		log.Info("XDG migration completed",
+			"moved", result.Moved,
+			"symlinks", result.Symlinks,
+			"skipped", result.Skipped,
+		)
+	}
+
+	return nil
+}
+
+// performV1Migration backs up existing configs and writes the v1 marker.
+func performV1Migration(legacyMarker string, log logger.Logger) error {
 	log.Info("performing first-run migration")
+
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return errors.Wrap(err, "failed to get home directory")
+	}
 
 	// Backup global config if it exists
 	globalConfigPath := filepath.Join(
@@ -583,40 +609,51 @@ func performFirstRunMigration(homeDir string, log logger.Logger) error {
 	}
 
 	// Backup project config if it exists
-	workDir, err := os.Getwd()
-	if err != nil {
-		log.Error("failed to get working directory", "error", err)
-	} else {
-		projectConfigPath := filepath.Join(
-			workDir,
-			internalconfig.ProjectConfigDir,
-			internalconfig.ProjectConfigFile,
-		)
+	backupProjectConfig(homeDir, log)
 
-		if err := backupConfigIfExists(
-			projectConfigPath,
-			backup.ConfigTypeProject,
-			workDir,
-			homeDir,
-			log,
-		); err != nil {
-			log.Error("failed to backup project config", "error", err)
-		}
-	}
-
-	// Create migration marker file
+	// Create v1 migration marker
 	configDir := filepath.Join(homeDir, internalconfig.GlobalConfigDir)
 	if err := os.MkdirAll(configDir, internalconfig.ConfigDirMode); err != nil {
 		return errors.Wrap(err, "failed to create config directory")
 	}
 
-	if err := os.WriteFile(markerPath, []byte("v1"), internalconfig.ConfigFileMode); err != nil {
+	if err := os.WriteFile(
+		legacyMarker,
+		[]byte("v1"),
+		internalconfig.ConfigFileMode,
+	); err != nil {
 		return errors.Wrap(err, "failed to create migration marker")
 	}
 
 	log.Info("first-run migration completed")
 
 	return nil
+}
+
+// backupProjectConfig backs up the project config file if it exists.
+func backupProjectConfig(homeDir string, log logger.Logger) {
+	workDir, wdErr := os.Getwd()
+	if wdErr != nil {
+		log.Error("failed to get working directory", "error", wdErr)
+
+		return
+	}
+
+	projectConfigPath := filepath.Join(
+		workDir,
+		internalconfig.ProjectConfigDir,
+		internalconfig.ProjectConfigFile,
+	)
+
+	if err := backupConfigIfExists(
+		projectConfigPath,
+		backup.ConfigTypeProject,
+		workDir,
+		homeDir,
+		log,
+	); err != nil {
+		log.Error("failed to backup project config", "error", err)
+	}
 }
 
 // backupConfigIfExists creates a backup of a config file if it exists.
@@ -685,7 +722,7 @@ func handlePanic(recovered any) {
 
 		dumpDir = crashConfig.CrashDump.GetDumpDir()
 	} else {
-		dumpDir = config.DefaultCrashDumpDir
+		dumpDir = xdg.CrashDumpDir()
 	}
 
 	// Create crash dump

@@ -88,6 +88,7 @@ func buildInitForm(opts InitFormOptions, result *InitFormResult) *huh.Form {
 // buildConfigFromResult converts the form result to a config struct.
 func buildConfigFromResult(result *InitFormResult) *pkgConfig.Config {
 	cfg := &pkgConfig.Config{
+		Version:    pkgConfig.CurrentConfigVersion,
 		Validators: &pkgConfig.ValidatorsConfig{},
 	}
 

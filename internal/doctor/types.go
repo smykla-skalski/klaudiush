@@ -45,6 +45,10 @@ const (
 	CategoryBackup Category = "backup"
 	// CategoryPatterns checks for pattern learning system health
 	CategoryPatterns Category = "patterns"
+	// CategoryOverrides checks for overrides configuration health
+	CategoryOverrides Category = "overrides"
+	// CategoryXDG checks for XDG base directory compliance
+	CategoryXDG Category = "xdg"
 )
 
 // CheckResult represents the result of a health check
