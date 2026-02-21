@@ -21,22 +21,51 @@ type UpdateResult struct {
 	BinaryPath      string
 }
 
+// Option configures an Updater.
+type Option func(*Updater)
+
+// WithDetector sets the install method detector.
+func WithDetector(d *Detector) Option {
+	return func(u *Updater) {
+		u.detector = d
+	}
+}
+
+// WithBrewUpdater sets the homebrew updater.
+func WithBrewUpdater(b *BrewUpdater) Option {
+	return func(u *Updater) {
+		u.brew = b
+	}
+}
+
 // Updater orchestrates the self-update process.
 type Updater struct {
 	currentVersion string
 	ghClient       github.Client
 	downloader     *Downloader
 	platform       Platform
+	detector       *Detector
+	brew           *BrewUpdater
 }
 
 // NewUpdater creates a new Updater.
-func NewUpdater(currentVersion string, ghClient github.Client) *Updater {
-	return &Updater{
+func NewUpdater(
+	currentVersion string,
+	ghClient github.Client,
+	opts ...Option,
+) *Updater {
+	u := &Updater{
 		currentVersion: currentVersion,
 		ghClient:       ghClient,
 		downloader:     NewDownloader(nil),
 		platform:       DetectPlatform(),
 	}
+
+	for _, opt := range opts {
+		opt(u)
+	}
+
+	return u
 }
 
 // CheckLatest returns the latest release tag, or ErrAlreadyLatest if current >= latest.
@@ -99,18 +128,174 @@ func (u *Updater) ValidateTargetVersion(
 	return tag, nil
 }
 
+// GetInstallInfo returns install info for the current binary.
+// Returns nil if no detector is configured - callers should fall back to direct.
+func (u *Updater) GetInstallInfo() (*InstallInfo, error) {
+	if u.detector == nil {
+		return nil, nil //nolint:nilnil // nil means "no detection available"
+	}
+
+	return u.detector.DetectCurrent()
+}
+
 // Update performs the full update to the given tag.
-// Steps: download checksums -> download archive -> verify checksum -> extract -> replace binary.
+// When a detector is configured, dispatches to the correct update method.
+// Without a detector, uses direct update (backward compat).
 func (u *Updater) Update(
 	ctx context.Context,
 	tag string,
 	progress ProgressFunc,
 ) (*UpdateResult, error) {
-	// Strip "v" prefix for archive naming (goreleaser uses bare version)
+	info, err := u.GetInstallInfo()
+	if err != nil {
+		return nil, errors.Wrap(err, "detecting install method")
+	}
+
+	if info != nil && info.Method == InstallMethodHomebrew {
+		return u.updateViaBrew(ctx, tag)
+	}
+
+	return u.updateDirect(ctx, tag, "", progress)
+}
+
+// UpdateAt updates a specific binary path to the given tag.
+func (u *Updater) UpdateAt(
+	ctx context.Context,
+	tag string,
+	info InstallInfo,
+	progress ProgressFunc,
+) (*UpdateResult, error) {
+	if info.Method == InstallMethodHomebrew {
+		return u.updateViaBrew(ctx, tag)
+	}
+
+	return u.updateDirect(ctx, tag, info.Path, progress)
+}
+
+// UpdateAll discovers all klaudiush binaries and updates each using the correct method.
+// Continues on error and collects all results.
+func (u *Updater) UpdateAll(
+	ctx context.Context,
+	tag string,
+	progress func(index int, info InstallInfo, p ProgressFunc) ProgressFunc,
+) ([]UpdateAllResult, error) {
+	if u.detector == nil {
+		return nil, errors.New("detector required for UpdateAll")
+	}
+
+	infos, err := u.detector.FindAll(ctx)
+	if err != nil {
+		return nil, errors.Wrap(err, "finding binaries")
+	}
+
+	results := make([]UpdateAllResult, 0, len(infos))
+
+	for i, info := range infos {
+		r := UpdateAllResult{InstallInfo: info}
+
+		// For --to with homebrew, skip with a warning.
+		if tag != "" && info.Method == InstallMethodHomebrew {
+			if isSpecificVersion(tag) {
+				r.Skipped = true
+				r.Err = ErrBrewVersionPin
+				results = append(results, r)
+
+				continue
+			}
+		}
+
+		var pf ProgressFunc
+		if progress != nil {
+			pf = progress(i, info, nil)
+		}
+
+		result, updateErr := u.UpdateAt(ctx, tag, info, pf)
+		r.Result = result
+		r.Err = updateErr
+
+		results = append(results, r)
+	}
+
+	return results, nil
+}
+
+// CheckAll discovers all binaries and checks version status for each.
+func (u *Updater) CheckAll(ctx context.Context) ([]InstallStatus, error) {
+	if u.detector == nil {
+		return nil, errors.New("detector required for CheckAll")
+	}
+
+	infos, err := u.detector.FindAll(ctx)
+	if err != nil {
+		return nil, errors.Wrap(err, "finding binaries")
+	}
+
+	statuses := make([]InstallStatus, 0, len(infos))
+
+	for _, info := range infos {
+		status := u.checkInstallStatus(ctx, info)
+		statuses = append(statuses, status)
+	}
+
+	return statuses, nil
+}
+
+// checkInstallStatus checks version status for a single binary.
+func (u *Updater) checkInstallStatus(ctx context.Context, info InstallInfo) InstallStatus {
+	status := InstallStatus{InstallInfo: info}
+
+	if info.Method == InstallMethodHomebrew && u.brew != nil {
+		current, latest, outdated, err := u.brew.CheckOutdated(ctx)
+		if err == nil {
+			status.CurrentVersion = current
+			status.LatestVersion = latest
+			status.Outdated = outdated
+		}
+
+		return status
+	}
+
+	status.CurrentVersion = u.currentVersion
+
+	tag, err := u.CheckLatest(ctx)
+	if err != nil {
+		if errors.Is(err, ErrAlreadyLatest) {
+			status.LatestVersion = u.currentVersion
+		}
+
+		return status
+	}
+
+	status.LatestVersion = strings.TrimPrefix(tag, "v")
+	status.Outdated = true
+
+	return status
+}
+
+// updateViaBrew delegates the update to homebrew.
+func (u *Updater) updateViaBrew(ctx context.Context, tag string) (*UpdateResult, error) {
+	if u.brew == nil {
+		// Brew not available - fall back to direct.
+		return u.updateDirect(ctx, tag, "", nil)
+	}
+
+	if tag != "" && isSpecificVersion(tag) {
+		return nil, u.brew.UpgradeToVersion(ctx, tag)
+	}
+
+	return u.brew.Upgrade(ctx)
+}
+
+// updateDirect downloads from GitHub and replaces the binary.
+// If binaryPath is empty, uses CurrentBinaryPath().
+func (u *Updater) updateDirect(
+	ctx context.Context,
+	tag, binaryPath string,
+	progress ProgressFunc,
+) (*UpdateResult, error) {
 	ver := strings.TrimPrefix(tag, "v")
 	archiveName := u.platform.ArchiveName(ver)
 
-	// Download checksums + archive, verify, extract, replace
 	tmpPath, err := u.downloadAndVerify(ctx, tag, archiveName, ver, progress)
 	if err != nil {
 		return nil, err
@@ -118,7 +303,6 @@ func (u *Updater) Update(
 
 	defer removeTempFile(tmpPath)
 
-	// Extract binary
 	extractedPath, cleanup, extractErr := u.extractBinary(tmpPath)
 	if extractErr != nil {
 		return nil, extractErr
@@ -126,10 +310,11 @@ func (u *Updater) Update(
 
 	defer cleanup()
 
-	// Replace current binary
-	binaryPath, err := CurrentBinaryPath()
-	if err != nil {
-		return nil, err
+	if binaryPath == "" {
+		binaryPath, err = CurrentBinaryPath()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if replaceErr := ReplaceBinary(extractedPath, binaryPath); replaceErr != nil {
@@ -209,4 +394,10 @@ func (u *Updater) extractBinary(archivePath string) (string, func(), error) {
 //nolint:gosec // G703: path is from os.CreateTemp, not user-controlled
 func removeTempFile(path string) {
 	_ = os.Remove(path)
+}
+
+// isSpecificVersion returns true if the tag looks like a specific version (v1.X.Y)
+// rather than empty or "latest".
+func isSpecificVersion(tag string) bool {
+	return tag != "" && tag != "latest"
 }

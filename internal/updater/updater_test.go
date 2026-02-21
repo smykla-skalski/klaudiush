@@ -7,6 +7,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/smykla-skalski/klaudiush/internal/exec"
 	"github.com/smykla-skalski/klaudiush/internal/github"
 	"github.com/smykla-skalski/klaudiush/internal/updater"
 )
@@ -117,6 +118,97 @@ var _ = Describe("Updater", func() {
 			tag, err := up.CheckLatest(context.Background())
 			Expect(err).NotTo(HaveOccurred())
 			Expect(tag).To(Equal("v1.13.1"))
+		})
+	})
+
+	Describe("GetInstallInfo", func() {
+		It("returns nil when no detector configured", func() {
+			client := &mockClient{
+				latestRelease: &github.Release{TagName: "v1.0.0"},
+			}
+			up := updater.NewUpdater("1.0.0", client)
+
+			info, err := up.GetInstallInfo()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(info).To(BeNil())
+		})
+
+		It("returns install info when detector configured", func() {
+			client := &mockClient{
+				latestRelease: &github.Release{TagName: "v1.0.0"},
+			}
+			runner := &stubRunner{results: map[string]exec.CommandResult{}}
+			detector := updater.NewDetector(runner)
+
+			up := updater.NewUpdater("1.0.0", client,
+				updater.WithDetector(detector),
+			)
+
+			// DetectCurrent will resolve the actual running binary.
+			info, err := up.GetInstallInfo()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(info).NotTo(BeNil())
+			// The test binary is a direct install.
+			Expect(info.Method).To(Equal(updater.InstallMethodDirect))
+		})
+	})
+
+	Describe("UpdateAll", func() {
+		It("requires detector", func() {
+			client := &mockClient{
+				latestRelease: &github.Release{TagName: "v2.0.0"},
+			}
+			up := updater.NewUpdater("1.0.0", client)
+
+			_, err := up.UpdateAll(context.Background(), "v2.0.0", nil)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("detector required"))
+		})
+	})
+
+	Describe("CheckAll", func() {
+		It("requires detector", func() {
+			client := &mockClient{
+				latestRelease: &github.Release{TagName: "v2.0.0"},
+			}
+			up := updater.NewUpdater("1.0.0", client)
+
+			_, err := up.CheckAll(context.Background())
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("detector required"))
+		})
+	})
+
+	Describe("Option functions", func() {
+		It("accepts WithDetector", func() {
+			client := &mockClient{
+				latestRelease: &github.Release{TagName: "v1.0.0"},
+			}
+			runner := &stubRunner{results: map[string]exec.CommandResult{}}
+			detector := updater.NewDetector(runner)
+
+			up := updater.NewUpdater("1.0.0", client,
+				updater.WithDetector(detector),
+			)
+
+			// Should not panic.
+			info, err := up.GetInstallInfo()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(info).NotTo(BeNil())
+		})
+
+		It("accepts WithBrewUpdater", func() {
+			client := &mockClient{
+				latestRelease: &github.Release{TagName: "v1.0.0"},
+			}
+			runner := &stubRunner{results: map[string]exec.CommandResult{}}
+			brew := updater.NewBrewUpdater(runner)
+
+			// Should not panic.
+			up := updater.NewUpdater("1.0.0", client,
+				updater.WithBrewUpdater(brew),
+			)
+			Expect(up).NotTo(BeNil())
 		})
 	})
 

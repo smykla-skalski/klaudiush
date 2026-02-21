@@ -4,6 +4,8 @@ package updater
 import (
 	"fmt"
 	"runtime"
+
+	"github.com/cockroachdb/errors"
 )
 
 const (
@@ -54,6 +56,12 @@ func DownloadURL(tag, filename string) string {
 		GitHubOwner, GitHubRepo, tag, filename,
 	)
 }
+
+// ErrBrewVersionPin is returned when attempting to install a specific version via homebrew.
+// Brew taps don't support @version formulas without dedicated formula files.
+var ErrBrewVersionPin = errors.New(
+	"version pinning not supported via homebrew; use direct install instead",
+)
 
 // ReleaseURL returns the URL to the release page.
 func ReleaseURL(tag string) string {
