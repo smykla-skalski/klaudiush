@@ -306,11 +306,11 @@ tasks:
       - echo "Report saved to {{.REPORT_DIR}}/bench-{{.TIMESTAMP}}.txt"
 
   bench:e2e:
-    desc: Run end-to-end binary benchmarks
+    desc: Run end-to-end binary benchmarks (manual only, not run in CI)
     deps:
       - build
     cmds:
-      - mise exec -- go test -bench=BenchmarkBinaryE2E -benchmem -run='^$' -count=3 -timeout=10m ./cmd/klaudiush
+      - mise exec -- go test -tags=bench_e2e -bench=BenchmarkBinaryE2E -benchmem -run='^$' -count=3 -timeout=10m ./cmd/klaudiush
 
   bench:timing:
     desc: Run binary with internal timing instrumentation

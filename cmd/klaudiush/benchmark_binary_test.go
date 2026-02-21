@@ -1,3 +1,5 @@
+//go:build bench_e2e
+
 package main_test
 
 import (

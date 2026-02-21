@@ -1,0 +1,71 @@
+# Benchmark workflow for klaudiush
+# Manually triggered - compares current branch benchmarks against a base ref
+
+name: Benchmark
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_ref:
+        description: 'Base ref to compare against (branch, tag, or SHA)'
+        required: false
+        default: 'main'
+      count:
+        description: 'Number of benchmark iterations for benchstat'
+        required: false
+        default: '6'
+
+permissions:
+  contents: read
+
+jobs:
+  bench:
+    name: Benchmark
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Setup Go
+        uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install benchstat
+        run: go install golang.org/x/perf/cmd/benchstat@latest
+
+      - name: Run benchmarks (current)
+        env:
+          GOTMPDIR: /home/runner/work/_temp/go-tmp
+          BENCH_COUNT: ${{ inputs.count }}
+        run: |
+          mkdir -p "$GOTMPDIR"
+          go test -bench=. -benchmem -run='^$' -count="$BENCH_COUNT" -timeout=10m ./... > bench-current.txt 2>&1 || true
+
+      - name: Checkout base
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ inputs.base_ref }}
+          clean: false
+
+      - name: Run benchmarks (base)
+        env:
+          GOTMPDIR: /home/runner/work/_temp/go-tmp
+          BENCH_COUNT: ${{ inputs.count }}
+        run: |
+          mkdir -p "$GOTMPDIR"
+          go test -bench=. -benchmem -run='^$' -count="$BENCH_COUNT" -timeout=10m ./... > bench-base.txt 2>&1 || true
+
+      - name: Compare benchmarks
+        env:
+          BASE_REF: ${{ inputs.base_ref }}
+          CURRENT_SHA: ${{ github.sha }}
+        run: |
+          echo "## Benchmark comparison" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Base: \`$BASE_REF\` | Current: \`$CURRENT_SHA\`" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          benchstat bench-base.txt bench-current.txt >> "$GITHUB_STEP_SUMMARY" 2>&1 || echo "benchstat comparison failed" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
