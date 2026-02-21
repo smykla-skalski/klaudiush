@@ -41,7 +41,7 @@ type Writer struct {
 // NewWriter creates a new Writer with default directories.
 func NewWriter() *Writer {
 	return &Writer{
-		homeDir: os.Getenv("HOME"),
+		homeDir: mustUserHome(),
 		workDir: mustGetwd(),
 		paths:   xdg.DefaultResolver(),
 	}
@@ -50,7 +50,7 @@ func NewWriter() *Writer {
 // NewWriterWithBackup creates a new Writer with default directories and a backup manager.
 func NewWriterWithBackup(backupMgr *backup.Manager) *Writer {
 	return &Writer{
-		homeDir:       os.Getenv("HOME"),
+		homeDir:       mustUserHome(),
 		workDir:       mustGetwd(),
 		paths:         xdg.DefaultResolver(),
 		backupManager: backupMgr,
@@ -224,4 +224,13 @@ func (w *Writer) GlobalConfigDirPath() string {
 // ProjectConfigDir returns the project config directory path.
 func (w *Writer) ProjectConfigDir() string {
 	return filepath.Join(w.workDir, ProjectConfigDir)
+}
+
+func mustUserHome() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		panic("failed to get home directory: " + err.Error())
+	}
+
+	return home
 }
