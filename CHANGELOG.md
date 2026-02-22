@@ -5,6 +5,12 @@ All notable changes to klaudiush will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.25.3](https://github.com/smykla-skalski/klaudiush/compare/v1.25.2...v1.25.3) (2026-02-22)
+
+### Bug Fixes
+
+* **config:** prevent zero-value pollution ([0a65e15](https://github.com/smykla-skalski/klaudiush/commit/0a65e1545bc2f07010afe7a11359cc08daccd59e))
+
 ## [1.25.2](https://github.com/smykla-skalski/klaudiush/compare/v1.25.1...v1.25.2) (2026-02-21)
 
 ### Code Refactoring
