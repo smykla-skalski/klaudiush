@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -203,13 +204,20 @@ var _ = Describe("Dispatcher Exception Integration", func() {
 				},
 			}
 
-			_ = disp.Dispatch(context.Background(), hookCtx)
+			errors := disp.Dispatch(context.Background(), hookCtx)
+			Expect(errors).To(HaveLen(1))
+			Expect(errors[0].Bypassed).To(BeTrue(), "exception should have been bypassed")
 
-			// Verify audit file was created and has content
-			content, err := os.ReadFile(auditFile)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(string(content)).To(ContainSubstring("GIT022"))
-			Expect(string(content)).To(ContainSubstring("Emergency hotfix"))
+			// Audit write is synchronous but file I/O can be delayed under
+			// heavy parallel test execution. Poll briefly to avoid flakes.
+			Eventually(func() string {
+				content, _ := os.ReadFile(auditFile)
+				return string(content)
+			}).WithTimeout(2 * time.Second).WithPolling(50 * time.Millisecond).
+				Should(And(
+					ContainSubstring("GIT022"),
+					ContainSubstring("Emergency hotfix"),
+				))
 		})
 	})
 
