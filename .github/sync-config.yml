@@ -8,6 +8,42 @@ sync:
     allow_removal: true
   files:
     merge:
+      - path: CONTRIBUTING.md
+        strategy: markdown
+        sections:
+          - action: replace
+            heading: Making Changes
+            content: |
+              ### Making Changes
+
+              1. **Create a feature branch** from `main`:
+
+                 ```bash
+                 git fetch upstream
+                 git checkout -b feat/my-feature upstream/main
+                 ```
+
+              2. **Make your changes**:
+
+                 - Follow project-specific coding standards
+                 - Keep changes focused and minimal
+                 - Add comments where logic isn't self-evident
+                 - Update documentation if needed
+
+              3. **Run quality checks** (if applicable):
+
+                 ```bash
+                 mise run check
+                 ```
+
+              4. **Commit your changes** (see [Commit Guidelines](#commit-guidelines))
+
+              5. **Push to your fork**:
+
+                 ```bash
+                 git push origin feat/my-feature
+                 ```
+
       - path: renovate.json
         arrayStrategies:
           "$.extends": append
