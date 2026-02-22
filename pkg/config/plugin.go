@@ -18,49 +18,49 @@ const (
 type PluginConfig struct {
 	// Enabled controls whether plugin support is enabled.
 	// Default: false
-	Enabled *bool `json:"enabled,omitempty" koanf:"enabled" toml:"enabled"`
+	Enabled *bool `json:"enabled,omitempty" koanf:"enabled" toml:"enabled,omitempty"`
 
 	// Directory is the path where plugins are located.
 	// Default: "~/.klaudiush/plugins"
-	Directory string `json:"directory,omitempty" koanf:"directory" toml:"directory"`
+	Directory string `json:"directory,omitempty" koanf:"directory" toml:"directory,omitempty"`
 
 	// Plugins is the list of plugin configurations.
-	Plugins []*PluginInstanceConfig `json:"plugins,omitempty" koanf:"plugins" toml:"plugins"`
+	Plugins []*PluginInstanceConfig `json:"plugins,omitempty" koanf:"plugins" toml:"plugins,omitempty"`
 
 	// DefaultTimeout is the default timeout for plugin operations.
 	// Default: "5s"
-	DefaultTimeout Duration `json:"default_timeout,omitempty" koanf:"default_timeout" toml:"default_timeout"`
+	DefaultTimeout Duration `json:"default_timeout,omitempty" koanf:"default_timeout" toml:"default_timeout,omitempty"`
 }
 
 // PluginInstanceConfig configures a single plugin instance.
 type PluginInstanceConfig struct {
 	// Name is the unique identifier for this plugin instance.
-	Name string `json:"name" koanf:"name" toml:"name"`
+	Name string `json:"name" koanf:"name" toml:"name,omitempty"`
 
 	// Type specifies the plugin type ("exec").
-	Type PluginType `json:"type" koanf:"type" toml:"type"`
+	Type PluginType `json:"type" koanf:"type" toml:"type,omitempty"`
 
 	// Enabled controls whether this plugin is enabled.
 	// Default: true
-	Enabled *bool `json:"enabled,omitempty" koanf:"enabled" toml:"enabled"`
+	Enabled *bool `json:"enabled,omitempty" koanf:"enabled" toml:"enabled,omitempty"`
 
 	// Path is the file path for exec plugins.
 	// Example: "~/.klaudiush/plugins/my-plugin.sh"
-	Path string `json:"path,omitempty" koanf:"path" toml:"path"`
+	Path string `json:"path,omitempty" koanf:"path" toml:"path,omitempty"`
 
 	// Args are command-line arguments for exec plugins.
-	Args []string `json:"args,omitempty" koanf:"args" toml:"args"`
+	Args []string `json:"args,omitempty" koanf:"args" toml:"args,omitempty"`
 
 	// Timeout is the maximum time to wait for plugin operations.
 	// Default: inherited from PluginConfig.DefaultTimeout
-	Timeout Duration `json:"timeout,omitempty" koanf:"timeout" toml:"timeout"`
+	Timeout Duration `json:"timeout,omitempty" koanf:"timeout" toml:"timeout,omitempty"`
 
 	// Predicate configures when this plugin should be invoked.
-	Predicate *PluginPredicate `json:"predicate,omitempty" koanf:"predicate" toml:"predicate"`
+	Predicate *PluginPredicate `json:"predicate,omitempty" koanf:"predicate" toml:"predicate,omitempty"`
 
 	// Config contains plugin-specific configuration passed to the plugin.
 	// The structure is defined by the plugin author.
-	Config map[string]any `json:"config,omitempty" koanf:"config" toml:"config"`
+	Config map[string]any `json:"config,omitempty" koanf:"config" toml:"config,omitempty"`
 
 	// ProjectRoot is the project root directory, set by the loader for path validation.
 	// This field is not serialized and is populated at runtime.
@@ -87,21 +87,21 @@ func (PluginType) JSONSchema() *jsonschema.Schema {
 type PluginPredicate struct {
 	// EventTypes filters by event type.
 	// Example: ["PreToolUse", "PostToolUse"]
-	EventTypes []string `json:"event_types,omitempty" koanf:"event_types" toml:"event_types"`
+	EventTypes []string `json:"event_types,omitempty" koanf:"event_types" toml:"event_types,omitempty"`
 
 	// ToolTypes filters by tool type.
 	// Example: ["Bash", "Write", "Edit"]
-	ToolTypes []string `json:"tool_types,omitempty" koanf:"tool_types" toml:"tool_types"`
+	ToolTypes []string `json:"tool_types,omitempty" koanf:"tool_types" toml:"tool_types,omitempty"`
 
 	// FilePatterns filters by file path patterns (glob syntax).
 	// Only applies to file operation tools (Write, Edit, MultiEdit).
 	// Example: ["*.go", "**/*.tf"]
-	FilePatterns []string `json:"file_patterns,omitempty" koanf:"file_patterns" toml:"file_patterns"`
+	FilePatterns []string `json:"file_patterns,omitempty" koanf:"file_patterns" toml:"file_patterns,omitempty"`
 
 	// CommandPatterns filters by command patterns (regex).
 	// Only applies to Bash tool.
 	// Example: ["^git commit", "terraform apply"]
-	CommandPatterns []string `json:"command_patterns,omitempty" koanf:"command_patterns" toml:"command_patterns"`
+	CommandPatterns []string `json:"command_patterns,omitempty" koanf:"command_patterns" toml:"command_patterns,omitempty"`
 }
 
 // IsEnabled returns whether the plugin system is enabled.

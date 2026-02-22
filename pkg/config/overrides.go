@@ -7,26 +7,26 @@ import "time"
 type OverridesConfig struct {
 	// Entries maps error codes (e.g., "GIT014") or validator names (e.g., "git.commit")
 	// to their override settings.
-	Entries map[string]*OverrideEntry `json:"entries,omitempty" koanf:"entries" toml:"entries"`
+	Entries map[string]*OverrideEntry `json:"entries,omitempty" koanf:"entries" toml:"entries,omitempty"`
 }
 
 // OverrideEntry represents a single override for an error code or validator.
 type OverrideEntry struct {
 	// Disabled controls whether the target is disabled (true) or explicitly enabled (false).
 	// Default: true when created via "klaudiush disable".
-	Disabled *bool `json:"disabled,omitempty" koanf:"disabled" toml:"disabled"`
+	Disabled *bool `json:"disabled,omitempty" koanf:"disabled" toml:"disabled,omitempty"`
 
 	// Reason explains why this override exists.
-	Reason string `json:"reason,omitempty" koanf:"reason" toml:"reason"`
+	Reason string `json:"reason,omitempty" koanf:"reason" toml:"reason,omitempty"`
 
 	// DisabledAt is the RFC3339 timestamp when the override was created.
-	DisabledAt string `json:"disabled_at,omitempty" koanf:"disabled_at" toml:"disabled_at"`
+	DisabledAt string `json:"disabled_at,omitempty" koanf:"disabled_at" toml:"disabled_at,omitempty"`
 
 	// ExpiresAt is the RFC3339 timestamp when the override expires. Empty means permanent.
-	ExpiresAt string `json:"expires_at,omitempty" koanf:"expires_at" toml:"expires_at"`
+	ExpiresAt string `json:"expires_at,omitempty" koanf:"expires_at" toml:"expires_at,omitempty"`
 
 	// DisabledBy records who created this override (e.g., "cli").
-	DisabledBy string `json:"disabled_by,omitempty" koanf:"disabled_by" toml:"disabled_by"`
+	DisabledBy string `json:"disabled_by,omitempty" koanf:"disabled_by" toml:"disabled_by,omitempty"`
 }
 
 // CodeToValidator maps error codes to their parent validator names.

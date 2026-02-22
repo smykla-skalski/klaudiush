@@ -4,7 +4,7 @@ package config
 // NotificationConfig groups all notification-related validator configurations.
 type NotificationConfig struct {
 	// Bell validator configuration
-	Bell *BellValidatorConfig `json:"bell,omitempty" koanf:"bell" toml:"bell"`
+	Bell *BellValidatorConfig `json:"bell,omitempty" koanf:"bell" toml:"bell,omitempty"`
 }
 
 // BellValidatorConfig configures the notification bell validator.
@@ -17,5 +17,5 @@ type BellValidatorConfig struct {
 	// The command is executed via shell and can be any valid command string.
 	// Example: "osascript -e 'display notification \"Claude Code\" with title \"Notification\"'"
 	// Default: "" (use bell character)
-	CustomCommand string `json:"custom_command,omitempty" koanf:"custom_command" toml:"custom_command"`
+	CustomCommand string `json:"custom_command,omitempty" koanf:"custom_command" toml:"custom_command,omitempty"`
 }

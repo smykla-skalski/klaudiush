@@ -28,102 +28,102 @@ const (
 type ExceptionsConfig struct {
 	// Enabled controls whether the exception system is active.
 	// Default: true
-	Enabled *bool `json:"enabled,omitempty" koanf:"enabled" toml:"enabled"`
+	Enabled *bool `json:"enabled,omitempty" koanf:"enabled" toml:"enabled,omitempty"`
 
 	// Policies defines exception policies by error code.
 	// Key is the error code (e.g., "GIT022", "SEC001").
-	Policies map[string]*ExceptionPolicyConfig `json:"policies,omitempty" koanf:"policies" toml:"policies"`
+	Policies map[string]*ExceptionPolicyConfig `json:"policies,omitempty" koanf:"policies" toml:"policies,omitempty"`
 
 	// RateLimit configures global rate limiting for exceptions.
-	RateLimit *ExceptionRateLimitConfig `json:"rate_limit,omitempty" koanf:"rate_limit" toml:"rate_limit"`
+	RateLimit *ExceptionRateLimitConfig `json:"rate_limit,omitempty" koanf:"rate_limit" toml:"rate_limit,omitempty"`
 
 	// Audit configures exception audit logging.
-	Audit *ExceptionAuditConfig `json:"audit,omitempty" koanf:"audit" toml:"audit"`
+	Audit *ExceptionAuditConfig `json:"audit,omitempty" koanf:"audit" toml:"audit,omitempty"`
 
 	// RequireExplicitPolicy requires an explicit policy entry for each error code.
 	// When true, exception tokens for error codes without a policy entry are denied.
 	// Default: false
-	RequireExplicitPolicy *bool `json:"require_explicit_policy,omitempty" koanf:"require_explicit_policy" toml:"require_explicit_policy"`
+	RequireExplicitPolicy *bool `json:"require_explicit_policy,omitempty" koanf:"require_explicit_policy" toml:"require_explicit_policy,omitempty"`
 
 	// TokenPrefix is the prefix used for exception tokens.
 	// Default: "EXC"
-	TokenPrefix string `json:"token_prefix,omitempty" koanf:"token_prefix" toml:"token_prefix"`
+	TokenPrefix string `json:"token_prefix,omitempty" koanf:"token_prefix" toml:"token_prefix,omitempty"`
 }
 
 // ExceptionPolicyConfig defines policy for a specific error code.
 type ExceptionPolicyConfig struct {
 	// Enabled controls whether this exception policy is active.
 	// Default: true
-	Enabled *bool `json:"enabled,omitempty" koanf:"enabled" toml:"enabled"`
+	Enabled *bool `json:"enabled,omitempty" koanf:"enabled" toml:"enabled,omitempty"`
 
 	// AllowException controls whether exceptions are allowed for this error code.
 	// Default: true
-	AllowException *bool `json:"allow_exception,omitempty" koanf:"allow_exception" toml:"allow_exception"`
+	AllowException *bool `json:"allow_exception,omitempty" koanf:"allow_exception" toml:"allow_exception,omitempty"`
 
 	// RequireReason requires a justification reason in the exception token.
 	// Default: false
-	RequireReason *bool `json:"require_reason,omitempty" koanf:"require_reason" toml:"require_reason"`
+	RequireReason *bool `json:"require_reason,omitempty" koanf:"require_reason" toml:"require_reason,omitempty"`
 
 	// MinReasonLength is the minimum length for the reason when required.
 	// Default: 10
-	MinReasonLength *int `json:"min_reason_length,omitempty" koanf:"min_reason_length" toml:"min_reason_length"`
+	MinReasonLength *int `json:"min_reason_length,omitempty" koanf:"min_reason_length" toml:"min_reason_length,omitempty"`
 
 	// ValidReasons is a list of pre-approved reasons.
 	// If non-empty, only these reasons are accepted.
-	ValidReasons []string `json:"valid_reasons,omitempty" koanf:"valid_reasons" toml:"valid_reasons"`
+	ValidReasons []string `json:"valid_reasons,omitempty" koanf:"valid_reasons" toml:"valid_reasons,omitempty"`
 
 	// MaxPerHour limits how many times this exception can be used per hour.
 	// Default: 0 (unlimited)
-	MaxPerHour *int `json:"max_per_hour,omitempty" koanf:"max_per_hour" toml:"max_per_hour"`
+	MaxPerHour *int `json:"max_per_hour,omitempty" koanf:"max_per_hour" toml:"max_per_hour,omitempty"`
 
 	// MaxPerDay limits how many times this exception can be used per day.
 	// Default: 0 (unlimited)
-	MaxPerDay *int `json:"max_per_day,omitempty" koanf:"max_per_day" toml:"max_per_day"`
+	MaxPerDay *int `json:"max_per_day,omitempty" koanf:"max_per_day" toml:"max_per_day,omitempty"`
 
 	// Description is a human-readable description of the policy.
-	Description string `json:"description,omitempty" koanf:"description" toml:"description"`
+	Description string `json:"description,omitempty" koanf:"description" toml:"description,omitempty"`
 }
 
 // ExceptionRateLimitConfig configures global rate limiting for exceptions.
 type ExceptionRateLimitConfig struct {
 	// Enabled controls whether rate limiting is active.
 	// Default: true
-	Enabled *bool `json:"enabled,omitempty" koanf:"enabled" toml:"enabled"`
+	Enabled *bool `json:"enabled,omitempty" koanf:"enabled" toml:"enabled,omitempty"`
 
 	// MaxPerHour is the global limit for all exceptions per hour.
 	// Default: 10
-	MaxPerHour *int `json:"max_per_hour,omitempty" koanf:"max_per_hour" toml:"max_per_hour"`
+	MaxPerHour *int `json:"max_per_hour,omitempty" koanf:"max_per_hour" toml:"max_per_hour,omitempty"`
 
 	// MaxPerDay is the global limit for all exceptions per day.
 	// Default: 50
-	MaxPerDay *int `json:"max_per_day,omitempty" koanf:"max_per_day" toml:"max_per_day"`
+	MaxPerDay *int `json:"max_per_day,omitempty" koanf:"max_per_day" toml:"max_per_day,omitempty"`
 
 	// StateFile is the path to the rate limit state file.
 	// Default: "~/.klaudiush/exceptions/state.json"
-	StateFile string `json:"state_file,omitempty" koanf:"state_file" toml:"state_file"`
+	StateFile string `json:"state_file,omitempty" koanf:"state_file" toml:"state_file,omitempty"`
 }
 
 // ExceptionAuditConfig configures exception audit logging.
 type ExceptionAuditConfig struct {
 	// Enabled controls whether audit logging is active.
 	// Default: true
-	Enabled *bool `json:"enabled,omitempty" koanf:"enabled" toml:"enabled"`
+	Enabled *bool `json:"enabled,omitempty" koanf:"enabled" toml:"enabled,omitempty"`
 
 	// LogFile is the path to the audit log file.
 	// Default: "~/.klaudiush/exception_audit.jsonl"
-	LogFile string `json:"log_file,omitempty" koanf:"log_file" toml:"log_file"`
+	LogFile string `json:"log_file,omitempty" koanf:"log_file" toml:"log_file,omitempty"`
 
 	// MaxSizeMB is the maximum size of the audit log file before rotation.
 	// Default: 10
-	MaxSizeMB *int `json:"max_size_mb,omitempty" koanf:"max_size_mb" toml:"max_size_mb"`
+	MaxSizeMB *int `json:"max_size_mb,omitempty" koanf:"max_size_mb" toml:"max_size_mb,omitempty"`
 
 	// MaxAgeDays is the maximum age of audit entries before deletion.
 	// Default: 30
-	MaxAgeDays *int `json:"max_age_days,omitempty" koanf:"max_age_days" toml:"max_age_days"`
+	MaxAgeDays *int `json:"max_age_days,omitempty" koanf:"max_age_days" toml:"max_age_days,omitempty"`
 
 	// MaxBackups is the number of rotated log files to keep.
 	// Default: 3
-	MaxBackups *int `json:"max_backups,omitempty" koanf:"max_backups" toml:"max_backups"`
+	MaxBackups *int `json:"max_backups,omitempty" koanf:"max_backups" toml:"max_backups,omitempty"`
 }
 
 // IsEnabled returns true if the exceptions system is enabled.

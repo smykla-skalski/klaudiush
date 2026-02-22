@@ -549,6 +549,10 @@ func (l *KoanfLoader) LoadProjectConfigOnly() (*config.Config, string, error) {
 		return nil, projectPath, errors.Wrap(err, "failed to unmarshal project config")
 	}
 
+	if cfg.Version == 0 {
+		cfg.Version = config.CurrentConfigVersion
+	}
+
 	return &cfg, projectPath, nil
 }
 
