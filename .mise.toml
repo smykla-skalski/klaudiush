@@ -29,10 +29,6 @@ ginkgo = "2.28.1"
 # https://github.com/evilmartians/lefthook
 lefthook = "2.1.1"
 
-# Protocol buffer tooling
-# https://buf.build/
-buf = "1.65.0"
-
 [env]
 # Ensure Go binaries are in PATH
 _.path = ["{{ env.HOME }}/.local/share/mise/installs/go/*/bin"]
