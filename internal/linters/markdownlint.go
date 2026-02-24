@@ -466,6 +466,11 @@ const (
 // <file>:10:1 or <file>:10
 var lineNumberRegex = regexp.MustCompile(`<file>:(\d+)`)
 
+// fragmentLineNumberRegex matches markdownlint line numbers after replaceTempFilePath
+// has already substituted the temp file path with "<fragment>".
+// Must use <fragment>: not <file>: at this point in the pipeline.
+var fragmentLineNumberRegex = regexp.MustCompile(`<fragment>:(\d+)`)
+
 // replaceTempFilePath replaces temp file paths in output with the display path.
 // Handles both absolute paths and relative paths with ../ components.
 func replaceTempFilePath(output, tempFile, displayPath string) string {
@@ -526,8 +531,9 @@ func enhanceFragmentErrors(
 			continue
 		}
 
-		// Find line number in the output
-		matches := lineNumberRegex.FindStringSubmatch(line)
+		// replaceTempFilePath has already run, so the path in the output is
+		// "<fragment>:" not "<file>:". Use fragmentLineNumberRegex to parse it.
+		matches := fragmentLineNumberRegex.FindStringSubmatch(line)
 		if len(matches) < minLineNumberMatches {
 			// No line number found, keep the line as-is
 			result = append(result, line)
@@ -550,8 +556,8 @@ func enhanceFragmentErrors(
 			continue
 		}
 
-		// Remove line number from error message
-		errorMsg := lineNumberRegex.ReplaceAllString(line, "<fragment>")
+		// Remove line number from error message (keep only "<fragment>" prefix)
+		errorMsg := fragmentLineNumberRegex.ReplaceAllString(line, "<fragment>")
 		result = append(result, errorMsg)
 
 		// Add context showing the actual problematic lines
