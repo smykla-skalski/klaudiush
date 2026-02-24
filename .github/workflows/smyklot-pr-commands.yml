@@ -20,7 +20,7 @@ jobs:
   handle-command:
     name: Handle PR Command
     if: github.event.issue.pull_request && github.event.comment.user.type != 'Bot'
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.RUNNER_LABEL || '["ubuntu-24.04"]') }}
 
     steps:
       - name: Generate GitHub App token
