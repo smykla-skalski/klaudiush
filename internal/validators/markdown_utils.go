@@ -235,11 +235,20 @@ func generatePreambleWithContext(state *MarkdownState) (string, int) {
 		listLines := generateListPreamble(&builder, state)
 
 		lineCount += listLines
+
+		// Add a blank line after the list preamble so the preamble itself is
+		// well-formed markdown. Without this, markdownlint fires MD032 when
+		// the fragment starts with non-list content (e.g. a paragraph), because
+		// the preamble's "- Item" would immediately precede the paragraph with
+		// no separating blank line.
+		builder.WriteString("\n")
+
+		lineCount++
 	}
 
-	// Add a blank line before the fragment if needed for MD032 (blanks-around-lists)
-	// However, don't add if we already generated heading hierarchy (which ends with blank)
-	// or list context, as that would create consecutive blank lines (MD012)
+	// Add a blank line before the fragment if needed for MD032 (blanks-around-lists).
+	// Skip when heading hierarchy was generated (ends with blank already) or when
+	// list context was generated (we just added the blank above).
 	if state.HadBlankLineBeforeFragment && headingLines == 0 && !state.InList {
 		builder.WriteString("\n")
 
