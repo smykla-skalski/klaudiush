@@ -31,7 +31,7 @@ lefthook = "2.1.1"
 
 # Protocol buffer tooling
 # https://buf.build/
-buf = "1.65.0"
+buf = "1.66.0"
 
 [env]
 # Ensure Go binaries are in PATH
