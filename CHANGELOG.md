@@ -5,6 +5,12 @@ All notable changes to klaudiush will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.26.2](https://github.com/smykla-skalski/klaudiush/compare/v1.26.1...v1.26.2) (2026-02-24)
+
+### Bug Fixes
+
+* **markdown:** fix MD032 false positive ([#340](https://github.com/smykla-skalski/klaudiush/issues/340)) ([668f3a6](https://github.com/smykla-skalski/klaudiush/commit/668f3a6d5315550ef5599725a3644c3422156f20))
+
 ## [1.26.1](https://github.com/smykla-skalski/klaudiush/compare/v1.26.0...v1.26.1) (2026-02-24)
 
 ### Bug Fixes
