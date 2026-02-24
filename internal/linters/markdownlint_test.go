@@ -522,9 +522,11 @@ Summary: 1 error(s)
 - [x] Add ruleAdapter
 - [x] Update constructor`
 
+			// Simulate real markdownlint output: temp file path in the Stdout.
+			// replaceTempFilePath converts it to <fragment>:N, which fragmentLineNumberRegex parses.
 			result := &execpkg.CommandResult{
 				ExitCode: 1,
-				Stdout:   "<file>:5 MD032/blanks-around-lists Lists should be surrounded by blank lines [Context: \"- [x] Add\"]",
+				Stdout:   "/tmp/test.md:5 MD032/blanks-around-lists Lists should be surrounded by blank lines [Context: \"- [x] Add\"]",
 				Stderr:   "",
 			}
 			lintResult := linters.ProcessMarkdownlintOutput(
@@ -551,11 +553,12 @@ Summary: 1 error(s)
 			// 5-line fragment: 2 context before, 1 edit, 2 context after
 			fragmentContent := "context line 1\ncontext line 2\nedit line\ncontext line 4\ncontext line 5"
 
+			// Real markdownlint output: temp file path, converted to <fragment>:N by replaceTempFilePath.
 			// Error at preamble-adjusted line 3 (= fragment line 1) is context
 			// Error at preamble-adjusted line 5 (= fragment line 3) is the edit line
 			result := &execpkg.CommandResult{
 				ExitCode: 1,
-				Stdout:   "<file>:3 MD032/context-error\n<file>:5 MD032/edit-error",
+				Stdout:   "/tmp/test.md:3 MD032/context-error\n/tmp/test.md:5 MD032/edit-error",
 				Stderr:   "",
 			}
 			lintResult := linters.ProcessMarkdownlintOutput(
@@ -580,7 +583,7 @@ Summary: 1 error(s)
 
 			result := &execpkg.CommandResult{
 				ExitCode: 1,
-				Stdout:   "<file>:3 MD032/some-error\n<file>:5 MD032/other-error",
+				Stdout:   "/tmp/test.md:3 MD032/some-error\n/tmp/test.md:5 MD032/other-error",
 				Stderr:   "",
 			}
 			lintResult := linters.ProcessMarkdownlintOutput(
@@ -596,6 +599,73 @@ Summary: 1 error(s)
 			)
 			Expect(lintResult.RawOut).To(ContainSubstring("some-error"))
 			Expect(lintResult.RawOut).To(ContainSubstring("other-error"))
+		})
+
+		// Regression tests for MD032 false positive: preamble-generated list items
+		// must not leak through as fragment errors (GitHub issue: fragment with paragraph
+		// followed by blank then list was falsely rejected).
+		Context("MD032 false positive regression (preamble list item leak)", func() {
+			It(
+				"should filter preamble MD032 error when path is already <fragment>:N format",
+				func() {
+					// Reproduces the bug: replaceTempFilePath converts the temp path to <fragment>:N
+					// then enhanceFragmentErrors must use fragmentLineNumberRegex (<fragment>:) not
+					// lineNumberRegex (<file>:) to parse and filter the line number.
+					//
+					// The preamble (3 lines) generates "- Item" as the last line.
+					// markdownlint fires MD032 at the preamble's list item (line 3) because
+					// it is not followed by a blank before the fragment's paragraph.
+					fragmentContent := "klab Docker images live in `images/`.\n\n- Build: `make images`\n- Test: `make image/test`\n\n## Releases"
+					result := &execpkg.CommandResult{
+						ExitCode: 1,
+						// Simulate markdownlint output after replaceTempFilePath has run.
+						// Before replaceTempFilePath: /tmp/markdownlint-xyz.md:3 MD032/...
+						// After replaceTempFilePath:  <fragment>:3 MD032/...
+						// preambleLines=3, so line 3 is in the preamble and must be filtered.
+						Stdout: "/tmp/markdownlint-xyz.md:3 MD032/blanks-around-lists Lists should be surrounded by blank lines [Context: \"- Item\"]",
+						Stderr: "",
+					}
+					lintResult := linters.ProcessMarkdownlintOutput(
+						result,
+						"/tmp/markdownlint-xyz.md",
+						3, // preamble lines (# Preamble + blank + - Item)
+						5, // fragment start line
+						false,
+						"README.md",
+						fragmentContent,
+						true,
+						validators.FragmentRange{},
+					)
+					// Preamble error at line 3 (<= preambleLines=3) must be filtered → pass
+					Expect(lintResult.Success).To(BeTrue())
+					Expect(lintResult.RawOut).To(BeEmpty())
+				},
+			)
+
+			It("should keep real fragment MD032 errors after preamble filtering", func() {
+				// Fragment line 1 (= combined line preambleLines+1) has a real violation.
+				fragmentContent := "Some paragraph.\n- List without blank before\n- Another item"
+				result := &execpkg.CommandResult{
+					ExitCode: 1,
+					// Line 4 = preambleLines(3) + fragment line 1. Real violation in the fragment.
+					Stdout: "/tmp/markdownlint-xyz.md:4 MD032/blanks-around-lists Lists should be surrounded by blank lines [Context: \"- List without blank before\"]",
+					Stderr: "",
+				}
+				lintResult := linters.ProcessMarkdownlintOutput(
+					result,
+					"/tmp/markdownlint-xyz.md",
+					3, // preamble lines
+					5,
+					false,
+					"README.md",
+					fragmentContent,
+					true,
+					validators.FragmentRange{},
+				)
+				// Fragment error (line > preambleLines) must not be filtered → fail
+				Expect(lintResult.Success).To(BeFalse())
+				Expect(lintResult.RawOut).To(ContainSubstring("MD032/blanks-around-lists"))
+			})
 		})
 	})
 
