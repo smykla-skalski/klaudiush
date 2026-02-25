@@ -91,7 +91,7 @@ jobs:
           fetch-depth: 1
 
       - name: Run Claude Code Review
-        uses: anthropics/claude-code-action@fa3312a107acfa81df144e00a50bb0ef147f0eef # v1.0.56
+        uses: anthropics/claude-code-action@ade221fd1c400376a4799977d683a4eda09f9d7c # v1.0.60
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
