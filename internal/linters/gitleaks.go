@@ -18,8 +18,8 @@ type gitleaksFinding struct {
 	StartColumn int    `json:"StartColumn"`
 	EndColumn   int    `json:"EndColumn"`
 	Match       string `json:"Match"`
-	LeakValue string `json:"Secret"`
-	RuleID    string `json:"RuleID"`
+	LeakValue   string `json:"Secret"`
+	RuleID      string `json:"RuleID"`
 }
 
 // GitleaksChecker validates content for secrets using gitleaks.

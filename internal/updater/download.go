@@ -75,7 +75,6 @@ func (d *Downloader) DownloadToFile(
 }
 
 // DownloadToString downloads a URL and returns the body as a string.
-//
 func (d *Downloader) DownloadToString(ctx context.Context, url string) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
