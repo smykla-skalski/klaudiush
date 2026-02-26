@@ -43,6 +43,8 @@ stdenv.mkDerivation {
     install -Dm755 klaudiush $out/bin/klaudiush
 
     # Generate and install shell completions
+    # Prevent the binary from trying to create its log directory in the Nix sandbox
+    export KLAUDIUSH_LOG_FILE=/dev/null
     installShellCompletion --cmd klaudiush \
       --bash <($out/bin/klaudiush completion bash) \
       --fish <($out/bin/klaudiush completion fish) \
