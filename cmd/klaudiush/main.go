@@ -291,7 +291,7 @@ func writeResponse(
 		return errors.Wrap(jsonErr, "marshal hook response")
 	}
 
-	//nolint:errcheck,gosec // G705: data is internal JSON from json.Marshal, not user-controlled HTML
+	//nolint:errcheck // data is internal JSON from json.Marshal, not user-controlled HTML
 	fmt.Fprintf(os.Stdout, "%s\n", data)
 
 	if dispatcher.ShouldBlock(errs) {
@@ -386,7 +386,6 @@ func extractEffectiveWorkDir(ctx *hook.Context, log logger.Logger) string {
 
 	// Verify the target directory exists (filepath.Clean ensures no traversal)
 	cdTarget = filepath.Clean(cdTarget)
-	//nolint:gosec // G703: cdTarget is sanitized via filepath.Clean above; gosec cannot trace through variable assignment
 	if _, statErr := os.Stat(cdTarget); statErr != nil {
 		return ""
 	}

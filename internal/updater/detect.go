@@ -117,7 +117,6 @@ func (d *Detector) scanPATH() ([]InstallInfo, error) {
 	for _, dir := range filepath.SplitList(pathEnv) {
 		candidate := filepath.Join(dir, BinaryName)
 
-		//nolint:gosec // G703: candidate is from PATH + known binary name
 		fi, err := os.Stat(candidate)
 		if err != nil {
 			continue

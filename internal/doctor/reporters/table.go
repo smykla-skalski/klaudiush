@@ -356,13 +356,13 @@ func calcColumnWidthsFor(
 // termWidth returns the terminal width or 0 if not a terminal.
 func termWidth() int {
 	if w, _, err := term.GetSize(
-		int(os.Stdout.Fd()), //nolint:gosec // fd fits int
+		int(os.Stdout.Fd()),
 	); err == nil && w > 0 {
 		return w
 	}
 
 	if w, _, err := term.GetSize(
-		int(os.Stderr.Fd()), //nolint:gosec // fd fits int
+		int(os.Stderr.Fd()),
 	); err == nil && w > 0 {
 		return w
 	}
