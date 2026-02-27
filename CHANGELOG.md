@@ -5,6 +5,17 @@ All notable changes to klaudiush will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.26.4](https://github.com/smykla-skalski/klaudiush/compare/v1.26.3...v1.26.4) (2026-02-27)
+
+### Bug Fixes
+
+* **lint:** suppress gosec false positives ([620d36a](https://github.com/smykla-skalski/klaudiush/commit/620d36a76cccfb1c3fc59dec6142fd1b1fe0f85b))
+
+### Performance Improvements
+
+* **git:** cache git status, add timing logs ([47b72e2](https://github.com/smykla-skalski/klaudiush/commit/47b72e21aaa7003db06846c4844c1fae9e117bde))
+* **patterns:** cap patterns and sessions size ([c2ce7c7](https://github.com/smykla-skalski/klaudiush/commit/c2ce7c7efd0a2a8823e4c46681f09e52326a6558))
+
 ## [1.26.3](https://github.com/smykla-skalski/klaudiush/compare/v1.26.2...v1.26.3) (2026-02-27)
 
 ### Bug Fixes
