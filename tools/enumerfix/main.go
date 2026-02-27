@@ -34,14 +34,20 @@ func run(args []string) error {
 
 	filename := filepath.Clean(args[1])
 
-	content, err := os.ReadFile(filename)
+	content, err := os.ReadFile( //nolint:gosec // G703: filename is a CLI arg to a codegen tool, not user input
+		filename,
+	)
 	if err != nil {
 		return errors.Wrap(err, "reading file")
 	}
 
 	fixed := fixEnumerFile(content)
 
-	if err := os.WriteFile(filename, fixed, filePermissions); err != nil {
+	if err := os.WriteFile( //nolint:gosec // G703: filename is a CLI arg to a codegen tool, not user input
+		filename,
+		fixed,
+		filePermissions,
+	); err != nil {
 		return errors.Wrap(err, "writing file")
 	}
 

@@ -356,13 +356,13 @@ func calcColumnWidthsFor(
 // termWidth returns the terminal width or 0 if not a terminal.
 func termWidth() int {
 	if w, _, err := term.GetSize(
-		int(os.Stdout.Fd()),
+		int(os.Stdout.Fd()), //nolint:gosec // G115: file descriptor values cannot overflow int
 	); err == nil && w > 0 {
 		return w
 	}
 
 	if w, _, err := term.GetSize(
-		int(os.Stderr.Fd()),
+		int(os.Stderr.Fd()), //nolint:gosec // G115: file descriptor values cannot overflow int
 	); err == nil && w > 0 {
 		return w
 	}
