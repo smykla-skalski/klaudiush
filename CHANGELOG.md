@@ -5,6 +5,15 @@ All notable changes to klaudiush will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.26.3](https://github.com/smykla-skalski/klaudiush/compare/v1.26.2...v1.26.3) (2026-02-27)
+
+### Bug Fixes
+
+* **lint:** fix gci formatting after nolint removal ([5184154](https://github.com/smykla-skalski/klaudiush/commit/51841545de6fed89be8c65d791b8f3d258f77801))
+* **lint:** remove stale gosec nolint directives ([6fecdc9](https://github.com/smykla-skalski/klaudiush/commit/6fecdc9284a5f775064b6f9306e17e8d59e3969f))
+* **nix:** skip log dir creation in sandbox ([dc1ef5d](https://github.com/smykla-skalski/klaudiush/commit/dc1ef5d66b6a4d86ff508ffaccc2d77c982711ba))
+* **nix:** use TMPDIR for log file in sandbox ([1f3bd64](https://github.com/smykla-skalski/klaudiush/commit/1f3bd645eebce2e5aab8286985e50217f42c65f3))
+
 ## [1.26.2](https://github.com/smykla-skalski/klaudiush/compare/v1.26.1...v1.26.2) (2026-02-24)
 
 ### Bug Fixes
