@@ -471,6 +471,8 @@ func runPatternTracking(
 
 		store.Cleanup(patternsCfg.GetMaxAge())
 		store.CleanupSessions(patternsCfg.GetSessionMaxAge())
+		store.TrimPatterns(patternsCfg.GetMaxPatterns())
+		store.TrimSessions(patternsCfg.GetMaxSessions())
 
 		if saveErr := store.Save(); saveErr != nil {
 			log.Debug("failed to save pattern store", "error", saveErr)
