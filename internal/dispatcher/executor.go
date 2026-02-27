@@ -5,6 +5,7 @@ import (
 	"context"
 	"runtime"
 	"sync"
+	"time"
 
 	"golang.org/x/sync/semaphore"
 
@@ -39,7 +40,7 @@ func NewSequentialExecutor(log logger.Logger) *SequentialExecutor {
 }
 
 // Execute runs validators sequentially.
-func (*SequentialExecutor) Execute(
+func (se *SequentialExecutor) Execute(
 	ctx context.Context,
 	hookCtx *hook.Context,
 	validators []validator.Validator,
@@ -53,7 +54,16 @@ func (*SequentialExecutor) Execute(
 		default:
 		}
 
+		start := time.Now()
 		result := v.Validate(ctx, hookCtx)
+		elapsed := time.Since(start)
+
+		se.logger.Debug("validator completed",
+			"name", v.Name(),
+			"passed", result.Passed,
+			"elapsed_ms", elapsed.Milliseconds(),
+		)
+
 		if !result.Passed {
 			errors = append(errors, toValidationError(v, result))
 		}
@@ -122,9 +132,19 @@ func (e *ParallelExecutor) Execute(
 
 	// For a single validator, run directly without goroutine overhead
 	if len(validators) == 1 {
-		result := validators[0].Validate(ctx, hookCtx)
+		v := validators[0]
+		start := time.Now()
+		result := v.Validate(ctx, hookCtx)
+		elapsed := time.Since(start)
+
+		e.logger.Debug("validator completed",
+			"name", v.Name(),
+			"passed", result.Passed,
+			"elapsed_ms", elapsed.Milliseconds(),
+		)
+
 		if !result.Passed {
-			return []*ValidationError{toValidationError(validators[0], result)}
+			return []*ValidationError{toValidationError(v, result)}
 		}
 
 		return nil
@@ -162,7 +182,15 @@ func (e *ParallelExecutor) Execute(
 				"category", v.Category().String(),
 			)
 
+			start := time.Now()
 			result := v.Validate(ctx, hookCtx)
+			elapsed := time.Since(start)
+
+			e.logger.Debug("validator completed",
+				"name", v.Name(),
+				"passed", result.Passed,
+				"elapsed_ms", elapsed.Milliseconds(),
+			)
 
 			if !result.Passed {
 				mu.Lock()

@@ -11,13 +11,20 @@ import (
 type CachedRunner struct {
 	delegate Runner
 
-	// Status-derived caches (all populated from a single status call)
-	statusOnce   sync.Once
-	staged       []string
-	modified     []string
-	untracked    []string
-	statusErr    error
-	statusCached bool
+	// stagedOnce caches GetStagedFiles independently. This is the hot path —
+	// called on every commit validation — and must not trigger modified/untracked
+	// fetching unless those are actually needed.
+	stagedOnce sync.Once
+	staged     []string
+	stagedErr  error
+
+	// modifiedUntrackedOnce caches GetModifiedFiles + GetUntrackedFiles together.
+	// Only fetched when the caller explicitly needs them (e.g. the no-staged-files
+	// error path in the commit validator).
+	modifiedUntrackedOnce sync.Once
+	modified              []string
+	untracked             []string
+	modifiedUntrackedErr  error
 
 	// Branch cache
 	branchOnce sync.Once
@@ -77,55 +84,49 @@ func (c *CachedRunner) IsInRepo() bool {
 	return c.isInRepo
 }
 
-// ensureStatus populates all status-derived caches from a single delegate call.
-func (c *CachedRunner) ensureStatus() {
-	c.statusOnce.Do(func() {
-		c.staged, c.statusErr = c.delegate.GetStagedFiles()
-		if c.statusErr != nil {
+// ensureModifiedUntracked fetches modified and untracked files together.
+// Only called when the caller actually needs these (e.g. the no-staged-files
+// error path). Kept separate from staged so the happy path never pays for it.
+func (c *CachedRunner) ensureModifiedUntracked() {
+	c.modifiedUntrackedOnce.Do(func() {
+		c.modified, c.modifiedUntrackedErr = c.delegate.GetModifiedFiles()
+		if c.modifiedUntrackedErr != nil {
 			return
 		}
 
-		c.modified, c.statusErr = c.delegate.GetModifiedFiles()
-		if c.statusErr != nil {
-			return
-		}
-
-		c.untracked, c.statusErr = c.delegate.GetUntrackedFiles()
-		c.statusCached = c.statusErr == nil
+		c.untracked, c.modifiedUntrackedErr = c.delegate.GetUntrackedFiles()
 	})
 }
 
 // GetStagedFiles returns the list of staged files.
-// Result is cached along with modified and untracked files.
+// Result is cached independently of modified/untracked files.
 func (c *CachedRunner) GetStagedFiles() ([]string, error) {
-	c.ensureStatus()
+	c.stagedOnce.Do(func() {
+		c.staged, c.stagedErr = c.delegate.GetStagedFiles()
+	})
 
-	if c.statusErr != nil && c.staged == nil {
-		return nil, c.statusErr
-	}
-
-	return c.staged, nil
+	return c.staged, c.stagedErr
 }
 
 // GetModifiedFiles returns the list of modified but unstaged files.
-// Result is cached along with staged and untracked files.
+// Result is cached together with untracked files.
 func (c *CachedRunner) GetModifiedFiles() ([]string, error) {
-	c.ensureStatus()
+	c.ensureModifiedUntracked()
 
-	if c.statusErr != nil && c.modified == nil {
-		return nil, c.statusErr
+	if c.modifiedUntrackedErr != nil && c.modified == nil {
+		return nil, c.modifiedUntrackedErr
 	}
 
 	return c.modified, nil
 }
 
 // GetUntrackedFiles returns the list of untracked files.
-// Result is cached along with staged and modified files.
+// Result is cached together with modified files.
 func (c *CachedRunner) GetUntrackedFiles() ([]string, error) {
-	c.ensureStatus()
+	c.ensureModifiedUntracked()
 
-	if c.statusErr != nil && c.untracked == nil {
-		return nil, c.statusErr
+	if c.modifiedUntrackedErr != nil && c.untracked == nil {
+		return nil, c.modifiedUntrackedErr
 	}
 
 	return c.untracked, nil
