@@ -18,7 +18,7 @@ type gitleaksFinding struct {
 	StartColumn int    `json:"StartColumn"`
 	EndColumn   int    `json:"EndColumn"`
 	Match       string `json:"Match"`
-	LeakValue   string `json:"Secret"`
+	LeakValue   string `json:"Secret"` //nolint:gosec // G117: field name matches pattern but stores the detected leak value from gitleaks output
 	RuleID      string `json:"RuleID"`
 }
 

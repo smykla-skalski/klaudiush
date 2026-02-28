@@ -51,14 +51,16 @@ var _ = Describe("CachedRunner", func() {
 	})
 
 	Describe("Status-derived operations", func() {
+		// GetStagedFiles is cached independently from modified/untracked.
+		// Calling GetStagedFiles must NOT trigger fetching of modified or untracked files
+		// — those are only fetched when explicitly requested. This is the hot path.
 		Context("GetStagedFiles", func() {
-			It("caches the result after first call", func() {
+			It("caches the result after first call without fetching modified/untracked", func() {
 				mockRunner.EXPECT().
 					GetStagedFiles().
 					Return([]string{"file1.go", "file2.go"}, nil).
 					Times(1)
-				mockRunner.EXPECT().GetModifiedFiles().Return([]string{"file3.go"}, nil).Times(1)
-				mockRunner.EXPECT().GetUntrackedFiles().Return([]string{}, nil).Times(1)
+				// GetModifiedFiles and GetUntrackedFiles must NOT be called
 
 				// First call
 				files, err := cached.GetStagedFiles()
@@ -81,9 +83,11 @@ var _ = Describe("CachedRunner", func() {
 			})
 		})
 
+		// GetModifiedFiles and GetUntrackedFiles are fetched together but independently
+		// from GetStagedFiles. Calling either one does NOT trigger staged file fetching.
 		Context("GetModifiedFiles", func() {
-			It("caches the result after first call", func() {
-				mockRunner.EXPECT().GetStagedFiles().Return([]string{}, nil).Times(1)
+			It("caches the result after first call without fetching staged", func() {
+				// GetStagedFiles must NOT be called
 				mockRunner.EXPECT().GetModifiedFiles().Return([]string{"modified.go"}, nil).Times(1)
 				mockRunner.EXPECT().GetUntrackedFiles().Return([]string{}, nil).Times(1)
 
@@ -99,8 +103,8 @@ var _ = Describe("CachedRunner", func() {
 		})
 
 		Context("GetUntrackedFiles", func() {
-			It("caches the result after first call", func() {
-				mockRunner.EXPECT().GetStagedFiles().Return([]string{}, nil).Times(1)
+			It("caches the result after first call without fetching staged", func() {
+				// GetStagedFiles must NOT be called
 				mockRunner.EXPECT().GetModifiedFiles().Return([]string{}, nil).Times(1)
 				mockRunner.EXPECT().GetUntrackedFiles().Return([]string{"new.txt"}, nil).Times(1)
 
@@ -116,7 +120,7 @@ var _ = Describe("CachedRunner", func() {
 		})
 
 		Context("Multiple status operations", func() {
-			It("calls delegate once for all status-derived operations", func() {
+			It("calls each group once when all three are needed", func() {
 				mockRunner.EXPECT().GetStagedFiles().Return([]string{"staged.go"}, nil).Times(1)
 				mockRunner.EXPECT().GetModifiedFiles().Return([]string{"modified.go"}, nil).Times(1)
 				mockRunner.EXPECT().
@@ -147,29 +151,29 @@ var _ = Describe("CachedRunner", func() {
 				Expect(untracked).To(Equal([]string{"untracked.txt"}))
 			})
 
-			It("stops on first error and returns it", func() {
-				expectedErr := errors.New("staged files error")
-				mockRunner.EXPECT().GetStagedFiles().Return(nil, expectedErr).Times(1)
+			It("staged error is independent from modified/untracked", func() {
+				stagedErr := errors.New("staged files error")
+				mockRunner.EXPECT().GetStagedFiles().Return(nil, stagedErr).Times(1)
+				mockRunner.EXPECT().GetModifiedFiles().Return([]string{"modified.go"}, nil).Times(1)
+				mockRunner.EXPECT().GetUntrackedFiles().Return([]string{}, nil).Times(1)
 
-				// Any status-derived operation should fail
 				_, err := cached.GetStagedFiles()
-				Expect(err).To(Equal(expectedErr))
+				Expect(err).To(Equal(stagedErr))
 
-				_, err = cached.GetModifiedFiles()
-				Expect(err).To(Equal(expectedErr))
+				// Modified/untracked are independent and still succeed
+				modified, err := cached.GetModifiedFiles()
+				Expect(err).NotTo(HaveOccurred())
+				Expect(modified).To(Equal([]string{"modified.go"}))
 			})
 
 			It("propagates error from GetModifiedFiles", func() {
 				expectedErr := errors.New("modified files error")
-
-				mockRunner.EXPECT().GetStagedFiles().Return([]string{}, nil).Times(1)
 				mockRunner.EXPECT().GetModifiedFiles().Return(nil, expectedErr).Times(1)
 
-				// GetStagedFiles succeeds but GetModifiedFiles fails
-				staged, err := cached.GetStagedFiles()
-				Expect(err).NotTo(HaveOccurred())
-				Expect(staged).To(BeEmpty())
+				_, err := cached.GetModifiedFiles()
+				Expect(err).To(Equal(expectedErr))
 
+				// Second call still returns cached error
 				_, err = cached.GetModifiedFiles()
 				Expect(err).To(Equal(expectedErr))
 			})

@@ -24,6 +24,14 @@ const (
 
 	// DefaultPatternsSessionMaxAge is how long session codes are kept before cleanup.
 	DefaultPatternsSessionMaxAge = 24 * time.Hour
+
+	// DefaultPatternsMaxPatterns is the maximum number of learned patterns to retain.
+	// Oldest-seen patterns are evicted first when this limit is exceeded.
+	DefaultPatternsMaxPatterns = 500
+
+	// DefaultPatternsMaxSessions is the maximum number of session entries to retain.
+	// Oldest-seen sessions are evicted first when this limit is exceeded.
+	DefaultPatternsMaxSessions = 1000
 )
 
 // PatternsConfig contains configuration for failure pattern tracking.
@@ -63,6 +71,16 @@ type PatternsConfig struct {
 	// UseSeedData controls whether built-in seed patterns are loaded.
 	// Default: true
 	UseSeedData *bool `json:"use_seed_data,omitempty" koanf:"use_seed_data" toml:"use_seed_data,omitempty"`
+
+	// MaxPatterns caps the total number of learned patterns stored globally.
+	// When exceeded, the least recently seen patterns are evicted.
+	// Default: 500
+	MaxPatterns int `json:"max_patterns,omitempty" koanf:"max_patterns" toml:"max_patterns,omitempty"`
+
+	// MaxSessions caps the total number of session entries stored globally.
+	// When exceeded, the least recently seen sessions are evicted.
+	// Default: 1000
+	MaxSessions int `json:"max_sessions,omitempty" koanf:"max_sessions" toml:"max_sessions,omitempty"`
 }
 
 // IsEnabled returns true if pattern tracking is enabled.
@@ -153,4 +171,24 @@ func (p *PatternsConfig) IsUseSeedData() bool {
 	}
 
 	return *p.UseSeedData
+}
+
+// GetMaxPatterns returns the maximum number of learned patterns to retain.
+// Returns DefaultPatternsMaxPatterns if not set.
+func (p *PatternsConfig) GetMaxPatterns() int {
+	if p == nil || p.MaxPatterns == 0 {
+		return DefaultPatternsMaxPatterns
+	}
+
+	return p.MaxPatterns
+}
+
+// GetMaxSessions returns the maximum number of session entries to retain.
+// Returns DefaultPatternsMaxSessions if not set.
+func (p *PatternsConfig) GetMaxSessions() int {
+	if p == nil || p.MaxSessions == 0 {
+		return DefaultPatternsMaxSessions
+	}
+
+	return p.MaxSessions
 }

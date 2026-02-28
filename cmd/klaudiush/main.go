@@ -291,7 +291,7 @@ func writeResponse(
 		return errors.Wrap(jsonErr, "marshal hook response")
 	}
 
-	//nolint:errcheck // data is internal JSON from json.Marshal, not user-controlled HTML
+	//nolint:errcheck,gosec // G705: data is marshalled JSON written to stdout, not an HTTP response
 	fmt.Fprintf(os.Stdout, "%s\n", data)
 
 	if dispatcher.ShouldBlock(errs) {
@@ -386,7 +386,9 @@ func extractEffectiveWorkDir(ctx *hook.Context, log logger.Logger) string {
 
 	// Verify the target directory exists (filepath.Clean ensures no traversal)
 	cdTarget = filepath.Clean(cdTarget)
-	if _, statErr := os.Stat(cdTarget); statErr != nil {
+	if _, statErr := os.Stat( //nolint:gosec // G703: path is sanitized with filepath.Clean above
+		cdTarget,
+	); statErr != nil {
 		return ""
 	}
 
@@ -469,6 +471,8 @@ func runPatternTracking(
 
 		store.Cleanup(patternsCfg.GetMaxAge())
 		store.CleanupSessions(patternsCfg.GetSessionMaxAge())
+		store.TrimPatterns(patternsCfg.GetMaxPatterns())
+		store.TrimSessions(patternsCfg.GetMaxSessions())
 
 		if saveErr := store.Save(); saveErr != nil {
 			log.Debug("failed to save pattern store", "error", saveErr)

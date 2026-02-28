@@ -33,5 +33,6 @@ func NewWithFallback(noTUI bool) UI {
 
 // IsTerminal checks if stdin and stdout are connected to a terminal.
 func IsTerminal() bool {
+	//nolint:gosec // G115: file descriptor values cannot overflow int
 	return term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd()))
 }
