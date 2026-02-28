@@ -15,7 +15,7 @@ require (
 	github.com/dustin/go-humanize v1.0.1
 	github.com/go-git/go-git/v6 v6.0.0-20260222090600-424e9964d3a3
 	github.com/go-viper/mapstructure/v2 v2.5.0
-	github.com/google/go-github/v83 v83.0.0
+	github.com/google/go-github/v84 v84.0.0
 	github.com/hako/durafmt v0.0.0-20210608085754-5c1018a4e16b
 	github.com/invopop/jsonschema v0.13.0
 	github.com/knadh/koanf/maps v0.1.2
