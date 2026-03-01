@@ -42,15 +42,6 @@ const (
 )
 
 var (
-	// Default protected branches that should skip validation.
-	defaultProtectedBranches = []string{"main", "master"}
-
-	// Default valid branch types.
-	defaultValidBranchTypes = []string{
-		"feat", "fix", "docs", "style", "refactor",
-		"test", "chore", "ci", "build", "perf",
-	}
-
 	// Branch creation flags for git checkout.
 	checkoutCreateFlags = []string{"-b", "--branch"}
 
@@ -94,7 +85,7 @@ func (v *BranchValidator) getProtectedBranches() []string {
 		return v.config.ProtectedBranches
 	}
 
-	return defaultProtectedBranches
+	return config.DefaultProtectedBranches
 }
 
 // getValidTypes returns the list of valid branch types
@@ -103,7 +94,7 @@ func (v *BranchValidator) getValidTypes() []string {
 		return v.config.ValidTypes
 	}
 
-	return defaultValidBranchTypes
+	return config.DefaultValidBranchTypes
 }
 
 // isRequireType returns whether type/description format is required

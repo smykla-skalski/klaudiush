@@ -42,9 +42,6 @@ var (
 	}
 )
 
-const (
-	defaultPRTitleMaxLength = 50
-)
 
 // PRValidator validates gh pr create commands
 type PRValidator struct {
@@ -72,7 +69,7 @@ func (v *PRValidator) getTitleMaxLength() int {
 		return *v.config.TitleMaxLength
 	}
 
-	return defaultPRTitleMaxLength
+	return config.DefaultTitleMaxLength
 }
 
 // isTitleConventionalCommitsEnabled returns whether conventional commit format is required for titles
@@ -178,7 +175,7 @@ func (v *PRValidator) getValidTypes() []string {
 	}
 
 	// Default: same as commit message valid types
-	return defaultValidTypes
+	return config.DefaultValidTypes
 }
 
 // isRequireChangelog returns whether a changelog line is required in PR body

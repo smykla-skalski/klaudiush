@@ -57,8 +57,8 @@ func init() {
 	)
 }
 
-func runSuggest(_ *cobra.Command, _ []string) error {
-	cfg, err := setupDebugContext("suggest", "", "")
+func runSuggest(cmd *cobra.Command, _ []string) error {
+	cfg, err := setupDebugContext(loggerFromCmd(cmd), "suggest", "", "")
 	if err != nil {
 		return err
 	}

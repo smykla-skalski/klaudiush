@@ -3,6 +3,8 @@ package git
 import (
 	"regexp"
 	"strings"
+
+	"github.com/smykla-skalski/klaudiush/pkg/config"
 )
 
 // footerPattern matches git trailer format: "Token: value"
@@ -100,7 +102,7 @@ func NewCommitParser(opts ...CommitParserOption) *CommitParser {
 	}
 
 	// Set default valid types
-	for _, t := range defaultValidTypes {
+	for _, t := range config.DefaultValidTypes {
 		p.validTypes[t] = true
 	}
 

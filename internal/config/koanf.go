@@ -58,9 +58,6 @@ const (
 const (
 	defaultTimeoutStr        = "10s"
 	defaultGHAPITimeoutStr   = "5s"
-	defaultTitleMaxLength    = 50
-	defaultBodyMaxLineLength = 72
-	defaultBodyLineTolerance = 5
 	defaultContextLines      = 2
 
 	// Exception defaults.
@@ -715,9 +712,9 @@ func defaultCommitMap() map[string]any {
 		"check_staging_area": true,
 		"message": map[string]any{
 			"enabled":                  true,
-			"title_max_length":         defaultTitleMaxLength,
-			"body_max_line_length":     defaultBodyMaxLineLength,
-			"body_line_tolerance":      defaultBodyLineTolerance,
+			"title_max_length":         config.DefaultTitleMaxLength,
+			"body_max_line_length":     config.DefaultBodyMaxLineLength,
+			"body_line_tolerance":      config.DefaultBodyLineTolerance,
 			"conventional_commits":     true,
 			"require_scope":            true,
 			"block_infra_scope_misuse": true,
@@ -757,7 +754,7 @@ func defaultPRMap() map[string]any {
 	return map[string]any{
 		"enabled":                    true,
 		"severity":                   "error",
-		"title_max_length":           defaultTitleMaxLength,
+		"title_max_length":           config.DefaultTitleMaxLength,
 		"title_conventional_commits": true,
 		"require_changelog":          false,
 		"check_ci_labels":            true,

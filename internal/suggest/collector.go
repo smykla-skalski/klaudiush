@@ -10,28 +10,6 @@ import (
 	"github.com/smykla-skalski/klaudiush/pkg/config"
 )
 
-// Default values matching the validators.
-const (
-	defaultTitleMaxLength    = 50
-	defaultBodyMaxLineLength = 72
-	defaultBodyLineTolerance = 5
-	defaultCommitStyle       = "conventional"
-)
-
-// Default valid commit types from commitlint config-conventional.
-var defaultValidTypes = []string{
-	"build", "chore", "ci", "docs", "feat", "fix",
-	"perf", "refactor", "revert", "style", "test",
-}
-
-// Default branch types.
-var defaultValidBranchTypes = []string{
-	"feat", "fix", "docs", "style", "refactor",
-	"test", "chore", "ci", "build", "perf",
-}
-
-// Default protected branches.
-var defaultProtectedBranches = []string{"main", "master"}
 
 // SuggestData is the top-level data struct consumed by the template.
 type SuggestData struct {
@@ -150,13 +128,13 @@ func collectCommitRules(git *config.GitConfig) *CommitRulesData {
 	data := &CommitRulesData{
 		RequiredFlags:      []string{"-s", "-S"},
 		CheckStagingArea:   true,
-		TitleMaxLength:     defaultTitleMaxLength,
-		BodyMaxLineLength:  defaultBodyMaxLineLength,
-		BodyLineTolerance:  defaultBodyLineTolerance,
+		TitleMaxLength:     config.DefaultTitleMaxLength,
+		BodyMaxLineLength:  config.DefaultBodyMaxLineLength,
+		BodyLineTolerance:  config.DefaultBodyLineTolerance,
 		ConventionalCommit: true,
-		CommitStyle:        defaultCommitStyle,
+		CommitStyle:        config.DefaultCommitStyle,
 		RequireScope:       true,
-		ValidTypes:         defaultValidTypes,
+		ValidTypes:         config.DefaultValidTypes,
 		BlockInfraScope:    true,
 		BlockPRReferences:  true,
 		BlockAIAttribution: true,
@@ -255,8 +233,8 @@ func collectPushRules(git *config.GitConfig) *PushRulesData {
 func collectBranchRules(git *config.GitConfig) *BranchRulesData {
 	data := &BranchRulesData{
 		RequireType:       true,
-		ValidTypes:        defaultValidBranchTypes,
-		ProtectedBranches: defaultProtectedBranches,
+		ValidTypes:        config.DefaultValidBranchTypes,
+		ProtectedBranches: config.DefaultProtectedBranches,
 	}
 
 	branch := git.Branch
@@ -285,7 +263,7 @@ func collectBranchRules(git *config.GitConfig) *BranchRulesData {
 
 func collectPRRules(git *config.GitConfig) *PRRulesData {
 	data := &PRRulesData{
-		TitleMaxLength: defaultTitleMaxLength,
+		TitleMaxLength: config.DefaultTitleMaxLength,
 		RequireBody:    true,
 	}
 
