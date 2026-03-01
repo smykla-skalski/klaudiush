@@ -88,7 +88,7 @@ func init() {
 
 func setupDisableFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVarP(
-		&overrideReason, "reason", "r", "", "Why this override exists (required)",
+		&overrideReason, "reason", "r", "", "Why this override exists",
 	)
 	cmd.Flags().StringVarP(
 		&overrideDuration, "duration", "d", "", "Duration before expiry (e.g., 24h, 7d, 30d)",
@@ -97,8 +97,6 @@ func setupDisableFlags(cmd *cobra.Command) {
 		BoolVar(&overrideGlobal, "global", false, "Write to global config instead of project")
 	cmd.Flags().
 		BoolVar(&overrideForce, "force", false, "Overwrite existing override without prompting")
-
-	_ = cmd.MarkFlagRequired("reason")
 }
 
 func runDisable(_ *cobra.Command, args []string) error {
@@ -174,8 +172,13 @@ func runOverridesAdd(targets []string, disabled bool) error {
 		action = "ENABLED"
 	}
 
+	reasonSuffix := ""
+	if overrideReason != "" {
+		reasonSuffix = fmt.Sprintf(" [%s]", overrideReason)
+	}
+
 	for _, target := range targets {
-		fmt.Printf("%s %s [%s]\n", target, action, overrideReason)
+		fmt.Printf("%s %s%s\n", target, action, reasonSuffix)
 
 		if expiresAt != "" {
 			fmt.Printf("  Expires: %s\n", expiresAt)
@@ -288,7 +291,11 @@ func loadOverrideConfig(global bool) (*config.Config, error) {
 
 	if cfg == nil {
 		// No project config exists yet - return empty config
-		return &config.Config{}, nil
+		return &config.Config{Version: config.CurrentConfigVersion}, nil
+	}
+
+	if cfg.Version == 0 {
+		cfg.Version = config.CurrentConfigVersion
 	}
 
 	return cfg, nil
@@ -326,7 +333,11 @@ func loadGlobalConfigOnly(loader *internalconfig.KoanfLoader) (*config.Config, e
 	}
 
 	if cfg == nil {
-		return &config.Config{}, nil
+		return &config.Config{Version: config.CurrentConfigVersion}, nil
+	}
+
+	if cfg.Version == 0 {
+		cfg.Version = config.CurrentConfigVersion
 	}
 
 	return cfg, nil

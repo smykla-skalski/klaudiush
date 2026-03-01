@@ -9,7 +9,7 @@ import (
 // SecretsConfig groups all secrets-related validator configurations.
 type SecretsConfig struct {
 	// Secrets validator configuration
-	Secrets *SecretsValidatorConfig `json:"secrets,omitempty" koanf:"secrets" toml:"secrets"`
+	Secrets *SecretsValidatorConfig `json:"secrets,omitempty" koanf:"secrets" toml:"secrets,omitempty"`
 }
 
 // SecretsValidatorConfig configures the secrets detection validator.
@@ -20,47 +20,47 @@ type SecretsValidatorConfig struct {
 	// When enabled and gitleaks is installed, it runs as a second-tier check
 	// after the built-in pattern detection.
 	// Default: false
-	UseGitleaks *bool `json:"use_gitleaks,omitempty" koanf:"use_gitleaks" toml:"use_gitleaks"`
+	UseGitleaks *bool `json:"use_gitleaks,omitempty" koanf:"use_gitleaks" toml:"use_gitleaks,omitempty"`
 
 	// GitleaksPath is the path to the gitleaks binary.
 	// Default: "" (use PATH)
-	GitleaksPath string `json:"gitleaks_path,omitempty" koanf:"gitleaks_path" toml:"gitleaks_path"`
+	GitleaksPath string `json:"gitleaks_path,omitempty" koanf:"gitleaks_path" toml:"gitleaks_path,omitempty"`
 
 	// MaxFileSize is the maximum file size to scan in bytes.
 	// Files larger than this are skipped to avoid performance issues.
 	// Default: "1MB"
-	MaxFileSize ByteSize `json:"max_file_size,omitempty" koanf:"max_file_size" toml:"max_file_size"`
+	MaxFileSize ByteSize `json:"max_file_size,omitempty" koanf:"max_file_size" toml:"max_file_size,omitempty"`
 
 	// BlockOnDetection determines if secret detection should block the operation.
 	// When false, secrets are reported as warnings instead of failures.
 	// Default: true
-	BlockOnDetection *bool `json:"block_on_detection,omitempty" koanf:"block_on_detection" toml:"block_on_detection"`
+	BlockOnDetection *bool `json:"block_on_detection,omitempty" koanf:"block_on_detection" toml:"block_on_detection,omitempty"`
 
 	// AllowList is a list of patterns that should be ignored even if they match.
 	// Useful for test fixtures, documentation examples, or known false positives.
 	// Each entry is a regex pattern that, if it matches the detected secret,
 	// will cause the finding to be ignored.
-	AllowList []string `json:"allow_list,omitempty" koanf:"allow_list" toml:"allow_list"`
+	AllowList []string `json:"allow_list,omitempty" koanf:"allow_list" toml:"allow_list,omitempty"`
 
 	// CustomPatterns allows adding custom regex patterns for detection.
 	// These are in addition to the built-in patterns.
-	CustomPatterns []CustomPatternConfig `json:"custom_patterns,omitempty" koanf:"custom_patterns" toml:"custom_patterns"`
+	CustomPatterns []CustomPatternConfig `json:"custom_patterns,omitempty" koanf:"custom_patterns" toml:"custom_patterns,omitempty"`
 
 	// DisabledPatterns is a list of built-in pattern names to disable.
 	// Use this to reduce false positives from specific pattern types.
-	DisabledPatterns []string `json:"disabled_patterns,omitempty" koanf:"disabled_patterns" toml:"disabled_patterns"`
+	DisabledPatterns []string `json:"disabled_patterns,omitempty" koanf:"disabled_patterns" toml:"disabled_patterns,omitempty"`
 }
 
 // CustomPatternConfig defines a custom secret detection pattern.
 type CustomPatternConfig struct {
 	// Name is a unique identifier for this pattern.
-	Name string `json:"name" koanf:"name" toml:"name"`
+	Name string `json:"name" koanf:"name" toml:"name,omitempty"`
 
 	// Description explains what this pattern detects.
-	Description string `json:"description" koanf:"description" toml:"description"`
+	Description string `json:"description" koanf:"description" toml:"description,omitempty"`
 
 	// Regex is the regular expression pattern.
-	Regex string `json:"regex" koanf:"regex" toml:"regex"`
+	Regex string `json:"regex" koanf:"regex" toml:"regex,omitempty"`
 }
 
 // ByteSize represents a byte size value that can be parsed from strings like "1MB".

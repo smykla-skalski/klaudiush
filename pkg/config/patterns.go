@@ -24,45 +24,63 @@ const (
 
 	// DefaultPatternsSessionMaxAge is how long session codes are kept before cleanup.
 	DefaultPatternsSessionMaxAge = 24 * time.Hour
+
+	// DefaultPatternsMaxPatterns is the maximum number of learned patterns to retain.
+	// Oldest-seen patterns are evicted first when this limit is exceeded.
+	DefaultPatternsMaxPatterns = 500
+
+	// DefaultPatternsMaxSessions is the maximum number of session entries to retain.
+	// Oldest-seen sessions are evicted first when this limit is exceeded.
+	DefaultPatternsMaxSessions = 1000
 )
 
 // PatternsConfig contains configuration for failure pattern tracking.
 type PatternsConfig struct {
 	// Enabled controls whether pattern tracking is active.
 	// Default: true
-	Enabled *bool `json:"enabled,omitempty" koanf:"enabled" toml:"enabled"`
+	Enabled *bool `json:"enabled,omitempty" koanf:"enabled" toml:"enabled,omitempty"`
 
 	// MinCount is the minimum observation count before a pattern triggers a warning.
 	// Default: 3
-	MinCount int `json:"min_count,omitempty" koanf:"min_count" toml:"min_count"`
+	MinCount int `json:"min_count,omitempty" koanf:"min_count" toml:"min_count,omitempty"`
 
 	// MaxAge is the maximum age for patterns before cleanup.
 	// Default: "2160h" (90 days)
-	MaxAge Duration `json:"max_age,omitempty" koanf:"max_age" toml:"max_age"`
+	MaxAge Duration `json:"max_age,omitempty" koanf:"max_age" toml:"max_age,omitempty"`
 
 	// MaxWarningsPerError caps how many pattern warnings are shown per error.
 	// Default: 2
-	MaxWarningsPerError int `json:"max_warnings_per_error,omitempty" koanf:"max_warnings_per_error" toml:"max_warnings_per_error"`
+	MaxWarningsPerError int `json:"max_warnings_per_error,omitempty" koanf:"max_warnings_per_error" toml:"max_warnings_per_error,omitempty"`
 
 	// MaxWarningsTotal caps the total number of pattern warnings per response.
 	// Default: 3
-	MaxWarningsTotal int `json:"max_warnings_total,omitempty" koanf:"max_warnings_total" toml:"max_warnings_total"`
+	MaxWarningsTotal int `json:"max_warnings_total,omitempty" koanf:"max_warnings_total" toml:"max_warnings_total,omitempty"`
 
 	// ProjectDataFile is the path to the project-local patterns file.
 	// Default: ".klaudiush/patterns.json"
-	ProjectDataFile string `json:"project_data_file,omitempty" koanf:"project_data_file" toml:"project_data_file"`
+	ProjectDataFile string `json:"project_data_file,omitempty" koanf:"project_data_file" toml:"project_data_file,omitempty"`
 
 	// GlobalDataDir is the directory for global per-project pattern files.
 	// Default: "~/.klaudiush/patterns"
-	GlobalDataDir string `json:"global_data_dir,omitempty" koanf:"global_data_dir" toml:"global_data_dir"`
+	GlobalDataDir string `json:"global_data_dir,omitempty" koanf:"global_data_dir" toml:"global_data_dir,omitempty"`
 
 	// SessionMaxAge is how long session codes are kept before cleanup.
 	// Default: "24h"
-	SessionMaxAge Duration `json:"session_max_age,omitempty" koanf:"session_max_age" toml:"session_max_age"`
+	SessionMaxAge Duration `json:"session_max_age,omitempty" koanf:"session_max_age" toml:"session_max_age,omitempty"`
 
 	// UseSeedData controls whether built-in seed patterns are loaded.
 	// Default: true
-	UseSeedData *bool `json:"use_seed_data,omitempty" koanf:"use_seed_data" toml:"use_seed_data"`
+	UseSeedData *bool `json:"use_seed_data,omitempty" koanf:"use_seed_data" toml:"use_seed_data,omitempty"`
+
+	// MaxPatterns caps the total number of learned patterns stored globally.
+	// When exceeded, the least recently seen patterns are evicted.
+	// Default: 500
+	MaxPatterns int `json:"max_patterns,omitempty" koanf:"max_patterns" toml:"max_patterns,omitempty"`
+
+	// MaxSessions caps the total number of session entries stored globally.
+	// When exceeded, the least recently seen sessions are evicted.
+	// Default: 1000
+	MaxSessions int `json:"max_sessions,omitempty" koanf:"max_sessions" toml:"max_sessions,omitempty"`
 }
 
 // IsEnabled returns true if pattern tracking is enabled.
@@ -153,4 +171,24 @@ func (p *PatternsConfig) IsUseSeedData() bool {
 	}
 
 	return *p.UseSeedData
+}
+
+// GetMaxPatterns returns the maximum number of learned patterns to retain.
+// Returns DefaultPatternsMaxPatterns if not set.
+func (p *PatternsConfig) GetMaxPatterns() int {
+	if p == nil || p.MaxPatterns == 0 {
+		return DefaultPatternsMaxPatterns
+	}
+
+	return p.MaxPatterns
+}
+
+// GetMaxSessions returns the maximum number of session entries to retain.
+// Returns DefaultPatternsMaxSessions if not set.
+func (p *PatternsConfig) GetMaxSessions() int {
+	if p == nil || p.MaxSessions == 0 {
+		return DefaultPatternsMaxSessions
+	}
+
+	return p.MaxSessions
 }

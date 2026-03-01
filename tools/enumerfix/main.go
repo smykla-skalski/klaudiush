@@ -34,16 +34,20 @@ func run(args []string) error {
 
 	filename := filepath.Clean(args[1])
 
-	//nolint:gosec // G304: File path from CLI argument is expected
-	content, err := os.ReadFile(filename)
+	content, err := os.ReadFile( //nolint:gosec // G703: filename is a CLI arg to a codegen tool, not user input
+		filename,
+	)
 	if err != nil {
 		return errors.Wrap(err, "reading file")
 	}
 
 	fixed := fixEnumerFile(content)
 
-	//nolint:gosec // G703: filename is sanitized via filepath.Clean above; gosec cannot trace through variable assignment
-	if err := os.WriteFile(filename, fixed, filePermissions); err != nil {
+	if err := os.WriteFile( //nolint:gosec // G703: filename is a CLI arg to a codegen tool, not user input
+		filename,
+		fixed,
+		filePermissions,
+	); err != nil {
 		return errors.Wrap(err, "writing file")
 	}
 

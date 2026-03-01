@@ -7,7 +7,7 @@ REPORT_DIR="/tmp/klaudiush-bench"
 
 # Check prerequisites
 command -v hyperfine >/dev/null || { echo "install hyperfine: brew install hyperfine"; exit 1; }
-[[ -x "$BINARY" ]] || { echo "build first: task build"; exit 1; }
+[[ -x "$BINARY" ]] || { echo "build first: mise run build"; exit 1; }
 
 # Create temp git repo for git-related payloads
 TMPDIR=$(mktemp -d)

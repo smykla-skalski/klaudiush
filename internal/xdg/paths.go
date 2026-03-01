@@ -200,12 +200,25 @@ func ExpandPathSilent(path string) string {
 	return expanded
 }
 
-// EnsureDir creates a directory with 0700 permissions if it doesn't exist.
+// EnsureDir creates a directory with 0700 permissions if it doesn't exist,
+// and fixes permissions on existing directories if they're too open.
 func EnsureDir(path string) error {
 	const dirMode = 0o700
 
 	if err := os.MkdirAll(path, dirMode); err != nil {
 		return errors.Wrapf(err, "failed to create directory %s", path)
+	}
+
+	// MkdirAll only sets perms on new dirs. Fix existing ones if too open.
+	info, err := os.Stat(path)
+	if err != nil {
+		return errors.Wrapf(err, "failed to stat directory %s", path)
+	}
+
+	if info.Mode().Perm() != dirMode {
+		if err := os.Chmod(path, dirMode); err != nil {
+			return errors.Wrapf(err, "failed to set permissions on %s", path)
+		}
 	}
 
 	return nil

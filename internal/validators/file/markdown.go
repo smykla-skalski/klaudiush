@@ -12,7 +12,6 @@ import (
 	"github.com/cockroachdb/errors"
 
 	"github.com/smykla-skalski/klaudiush/internal/linters"
-	"github.com/smykla-skalski/klaudiush/internal/rules"
 	"github.com/smykla-skalski/klaudiush/internal/validator"
 	"github.com/smykla-skalski/klaudiush/internal/validators"
 	"github.com/smykla-skalski/klaudiush/pkg/config"
@@ -36,9 +35,8 @@ var (
 // MarkdownValidator validates Markdown formatting rules
 type MarkdownValidator struct {
 	validator.BaseValidator
-	config      *config.MarkdownValidatorConfig
-	linter      linters.MarkdownLinter
-	ruleAdapter *rules.RuleValidatorAdapter
+	config *config.MarkdownValidatorConfig
+	linter linters.MarkdownLinter
 }
 
 // NewMarkdownValidator creates a new MarkdownValidator
@@ -46,13 +44,12 @@ func NewMarkdownValidator(
 	cfg *config.MarkdownValidatorConfig,
 	linter linters.MarkdownLinter,
 	log logger.Logger,
-	ruleAdapter *rules.RuleValidatorAdapter,
+	ruleAdapter validator.RuleChecker,
 ) *MarkdownValidator {
 	return &MarkdownValidator{
-		BaseValidator: *validator.NewBaseValidator("validate-markdown", log),
+		BaseValidator: *validator.NewBaseValidatorWithRules("validate-markdown", log, ruleAdapter),
 		config:        cfg,
 		linter:        linter,
-		ruleAdapter:   ruleAdapter,
 	}
 }
 
@@ -125,11 +122,9 @@ func isClaudeCodeInternalFile(path string) bool {
 func (v *MarkdownValidator) Validate(ctx context.Context, hookCtx *hook.Context) *validator.Result {
 	log := v.Logger()
 
-	// Check rules first if rule adapter is configured
-	if v.ruleAdapter != nil {
-		if result := v.ruleAdapter.CheckRules(ctx, hookCtx); result != nil {
-			return result
-		}
+	// Check rules first
+	if result := v.CheckRules(ctx, hookCtx); result != nil {
+		return result
 	}
 
 	// Skip validation for Claude Code internal files (plans, memory, etc.)

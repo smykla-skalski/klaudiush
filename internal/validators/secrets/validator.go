@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/smykla-skalski/klaudiush/internal/linters"
-	"github.com/smykla-skalski/klaudiush/internal/rules"
 	"github.com/smykla-skalski/klaudiush/internal/validator"
 	"github.com/smykla-skalski/klaudiush/pkg/config"
 	"github.com/smykla-skalski/klaudiush/pkg/hook"
@@ -22,7 +21,6 @@ type SecretsValidator struct {
 	config          *config.SecretsValidatorConfig
 	allowListRegex  []*regexp.Regexp
 	disabledPatters map[string]bool
-	ruleAdapter     *rules.RuleValidatorAdapter
 }
 
 // NewSecretsValidator creates a new SecretsValidator.
@@ -31,15 +29,16 @@ func NewSecretsValidator(
 	detector Detector,
 	gitleaks linters.GitleaksChecker,
 	cfg *config.SecretsValidatorConfig,
-	ruleAdapter *rules.RuleValidatorAdapter,
+	ruleAdapter validator.RuleChecker,
 ) *SecretsValidator {
 	v := &SecretsValidator{
-		BaseValidator:   *validator.NewBaseValidator("validate-secrets", log),
+		BaseValidator: *validator.NewBaseValidatorWithRules(
+			"validate-secrets", log, ruleAdapter,
+		),
 		detector:        detector,
 		gitleaks:        gitleaks,
 		config:          cfg,
 		disabledPatters: make(map[string]bool),
-		ruleAdapter:     ruleAdapter,
 	}
 
 	// Compile allow list patterns
@@ -77,11 +76,8 @@ func (v *SecretsValidator) Validate(ctx context.Context, hookCtx *hook.Context) 
 	log := v.Logger()
 	log.Debug("validating content for secrets")
 
-	// Check rules first if rule adapter is configured
-	if v.ruleAdapter != nil {
-		if result := v.ruleAdapter.CheckRules(ctx, hookCtx); result != nil {
-			return result
-		}
+	if result := v.CheckRules(ctx, hookCtx); result != nil {
+		return result
 	}
 
 	// Get content to validate

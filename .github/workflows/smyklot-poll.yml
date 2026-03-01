@@ -21,7 +21,7 @@ permissions:
 jobs:
   poll-reactions:
     name: Poll PR Reactions
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.RUNNER_LABEL || '["ubuntu-24.04"]') }}
 
     steps:
       - name: Checkout repository

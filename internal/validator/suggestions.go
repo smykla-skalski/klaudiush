@@ -3,7 +3,7 @@ package validator
 // DefaultSuggestions maps references to fix suggestions.
 // These hints provide actionable guidance for resolving validation failures.
 //
-//nolint:gosec // G101: false positive; strings here are user-facing fix hints, not hardcoded credentials
+//nolint:gosec // G101: strings contain command examples with flag names, not hardcoded credentials
 var DefaultSuggestions = map[Reference]string{
 	// Git suggestions
 	RefGitNoSignoff:          "Add -s flag: git commit -sS -m \"message\"",

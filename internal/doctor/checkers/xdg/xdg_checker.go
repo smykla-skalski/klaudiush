@@ -102,19 +102,29 @@ func (*DirChecker) Check(_ context.Context) doctor.CheckResult {
 		}
 	}
 
-	if len(missing) > 0 {
-		details := append([]string{"Missing directories:"}, missing...)
+	if len(missing) > 0 || len(badPerms) > 0 {
+		var details []string
+
+		if len(missing) > 0 {
+			details = append(details, "Missing directories:")
+			details = append(details, missing...)
+		}
+
+		if len(badPerms) > 0 {
+			details = append(details, "Permission issues:")
+			details = append(details, badPerms...)
+		}
+
 		details = append(details, "Run: klaudiush doctor --fix --category xdg")
 
-		return doctor.FailWarning("XDG directories", "Some XDG directories missing").
-			WithDetails(details...).
-			WithFixID("create_xdg_dirs")
-	}
+		msg := "Some XDG directories missing"
+		if len(missing) == 0 {
+			msg = "Directory permissions not secure"
+		} else if len(badPerms) > 0 {
+			msg = "XDG directory issues found"
+		}
 
-	if len(badPerms) > 0 {
-		details := append([]string{"Permission issues:"}, badPerms...)
-
-		return doctor.FailWarning("XDG directories", "Directory permissions not secure").
+		return doctor.FailWarning("XDG directories", msg).
 			WithDetails(details...).
 			WithFixID("create_xdg_dirs")
 	}

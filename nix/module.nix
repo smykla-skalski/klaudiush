@@ -2,7 +2,10 @@
 
 let
   cfg = config.programs.klaudiush;
-  klaudiushDir = "${config.home.homeDirectory}/.klaudiush";
+  xdgConfigDir = "${config.xdg.configHome}/klaudiush";
+  xdgDataDir = "${config.xdg.dataHome}/klaudiush";
+  xdgStateDir = "${config.xdg.stateHome}/klaudiush";
+  legacyDir = "${config.home.homeDirectory}/.klaudiush";
 in
 {
   options.programs.klaudiush = {
@@ -20,7 +23,16 @@ in
       default = null;
       description = ''
         Path to the klaudiush configuration file.
-        If set, a symlink will be created at ~/.klaudiush/config.toml.
+        If set, a symlink will be created at the XDG config location.
+      '';
+    };
+
+    useLegacyPaths = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Use legacy ~/.klaudiush/ paths instead of XDG base directories.
+        Only enable this if you need backward compatibility with older setups.
       '';
     };
 
@@ -29,7 +41,7 @@ in
       default = true;
       description = ''
         Whether to create dynamic directories that persist across rebuilds.
-        These include logs, backup, and cache directories.
+        Uses XDG directories by default, or legacy paths if useLegacyPaths is set.
       '';
     };
 
@@ -37,7 +49,7 @@ in
       type = lib.types.listOf lib.types.str;
       default = [ ];
       description = ''
-        Additional directories to create under ~/.klaudiush/.
+        Additional directories to create under the data directory.
         These will persist across rebuilds.
       '';
     };
@@ -46,26 +58,46 @@ in
   config = lib.mkIf cfg.enable {
     home.packages = [ cfg.package ];
 
-    home.activation.klaudiushSetup = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-      # Create base klaudiush directory
-      run mkdir -p "${klaudiushDir}"
+    home.activation.klaudiushSetup = lib.hm.dag.entryAfter [ "writeBoundary" ] (
+      if cfg.useLegacyPaths then ''
+        # Legacy mode: use ~/.klaudiush/
+        run mkdir -p "${legacyDir}"
 
-      ${lib.optionalString cfg.createDynamicDirs ''
-        # Create standard dynamic directories
-        run mkdir -p "${klaudiushDir}/logs"
-        run mkdir -p "${klaudiushDir}/backup"
-        run mkdir -p "${klaudiushDir}/cache"
-      ''}
+        ${lib.optionalString cfg.createDynamicDirs ''
+          run mkdir -p "${legacyDir}/logs"
+          run mkdir -p "${legacyDir}/backup"
+          run mkdir -p "${legacyDir}/cache"
+        ''}
 
-      ${lib.optionalString (cfg.extraDynamicDirs != [ ]) ''
-        # Create extra dynamic directories
-        ${lib.concatMapStringsSep "\n" (dir: ''run mkdir -p "${klaudiushDir}/${dir}"'') cfg.extraDynamicDirs}
-      ''}
+        ${lib.optionalString (cfg.extraDynamicDirs != [ ]) ''
+          ${lib.concatMapStringsSep "\n" (dir: ''run mkdir -p "${legacyDir}/${dir}"'') cfg.extraDynamicDirs}
+        ''}
 
-      ${lib.optionalString (cfg.configFile != null) ''
-        # Symlink config file
-        run ln -sf "${cfg.configFile}" "${klaudiushDir}/config.toml"
-      ''}
-    '';
+        ${lib.optionalString (cfg.configFile != null) ''
+          run ln -sf "${cfg.configFile}" "${legacyDir}/config.toml"
+        ''}
+      '' else ''
+        # XDG mode: create config, data, and state directories
+        run mkdir -p -m 0700 "${xdgConfigDir}"
+        run mkdir -p -m 0700 "${xdgDataDir}"
+        run mkdir -p -m 0700 "${xdgStateDir}"
+
+        ${lib.optionalString cfg.createDynamicDirs ''
+          run mkdir -p -m 0700 "${xdgDataDir}/crash_dumps"
+          run mkdir -p -m 0700 "${xdgDataDir}/patterns"
+          run mkdir -p -m 0700 "${xdgDataDir}/backups"
+          run mkdir -p -m 0700 "${xdgDataDir}/plugins"
+          run mkdir -p -m 0700 "${xdgDataDir}/exceptions"
+        ''}
+
+        ${lib.optionalString (cfg.extraDynamicDirs != [ ]) ''
+          ${lib.concatMapStringsSep "\n" (dir: ''run mkdir -p -m 0700 "${xdgDataDir}/${dir}"'') cfg.extraDynamicDirs}
+        ''}
+
+        ${lib.optionalString (cfg.configFile != null) ''
+          run ln -sf "${cfg.configFile}" "${xdgConfigDir}/config.toml"
+        ''}
+      ''
+    );
   };
 }

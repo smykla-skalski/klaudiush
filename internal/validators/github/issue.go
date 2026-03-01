@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/smykla-skalski/klaudiush/internal/linters"
-	"github.com/smykla-skalski/klaudiush/internal/rules"
 	"github.com/smykla-skalski/klaudiush/internal/validator"
 	"github.com/smykla-skalski/klaudiush/internal/validators"
 	"github.com/smykla-skalski/klaudiush/pkg/config"
@@ -47,9 +46,8 @@ var (
 // IssueValidator validates gh issue create commands for markdown body formatting.
 type IssueValidator struct {
 	validator.BaseValidator
-	config      *config.IssueValidatorConfig
-	linter      linters.MarkdownLinter
-	ruleAdapter *rules.RuleValidatorAdapter
+	config *config.IssueValidatorConfig
+	linter linters.MarkdownLinter
 }
 
 // NewIssueValidator creates a new IssueValidator instance.
@@ -57,13 +55,14 @@ func NewIssueValidator(
 	cfg *config.IssueValidatorConfig,
 	linter linters.MarkdownLinter,
 	log logger.Logger,
-	ruleAdapter *rules.RuleValidatorAdapter,
+	ruleAdapter validator.RuleChecker,
 ) *IssueValidator {
 	return &IssueValidator{
-		BaseValidator: *validator.NewBaseValidator("validate-issue", log),
-		config:        cfg,
-		linter:        linter,
-		ruleAdapter:   ruleAdapter,
+		BaseValidator: *validator.NewBaseValidatorWithRules(
+			"validate-issue", log, ruleAdapter,
+		),
+		config: cfg,
+		linter: linter,
 	}
 }
 
@@ -101,11 +100,8 @@ func (v *IssueValidator) Validate(ctx context.Context, hookCtx *hook.Context) *v
 	log := v.Logger()
 	log.Debug("Running issue validation")
 
-	// Check rules first if rule adapter is configured.
-	if v.ruleAdapter != nil {
-		if result := v.ruleAdapter.CheckRules(ctx, hookCtx); result != nil {
-			return result
-		}
+	if result := v.CheckRules(ctx, hookCtx); result != nil {
+		return result
 	}
 
 	// Parse the command.

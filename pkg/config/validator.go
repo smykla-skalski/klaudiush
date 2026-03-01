@@ -6,18 +6,18 @@ type ValidatorConfig struct {
 	// Enabled controls whether the validator is active.
 	// When false, the validator is completely skipped.
 	// Default: true
-	Enabled *bool `json:"enabled,omitempty" koanf:"enabled" toml:"enabled"`
+	Enabled *bool `json:"enabled,omitempty" koanf:"enabled" toml:"enabled,omitempty"`
 
 	// Severity determines whether validation failures block the operation.
 	// "error" blocks the operation (default)
 	// "warning" only warns without blocking
-	Severity Severity `json:"severity,omitempty" koanf:"severity" toml:"severity"`
+	Severity Severity `json:"severity,omitempty" koanf:"severity" toml:"severity,omitempty"`
 
 	// RulesEnabled controls whether dynamic rules are checked for this validator.
 	// When true (default), rules from the rules engine are checked before built-in validation.
 	// When false, only built-in validation logic is used.
 	// Default: true
-	RulesEnabled *bool `json:"rules_enabled,omitempty" koanf:"rules_enabled" toml:"rules_enabled"`
+	RulesEnabled *bool `json:"rules_enabled,omitempty" koanf:"rules_enabled" toml:"rules_enabled,omitempty"`
 }
 
 // IsEnabled returns true if the validator is enabled.

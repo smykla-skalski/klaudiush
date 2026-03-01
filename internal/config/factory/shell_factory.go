@@ -48,9 +48,9 @@ func (f *ShellValidatorFactory) CreateValidators(cfg *config.Config) []Validator
 func (f *ShellValidatorFactory) createBacktickValidator(
 	cfg *config.BacktickValidatorConfig,
 ) ValidatorWithPredicate {
-	var ruleAdapter *rules.RuleValidatorAdapter
+	var rc validator.RuleChecker
 	if f.ruleEngine != nil {
-		ruleAdapter = rules.NewRuleValidatorAdapter(
+		rc = rules.NewRuleValidatorAdapter(
 			f.ruleEngine,
 			rules.ValidatorShellBacktick,
 			rules.WithAdapterLogger(f.log),
@@ -58,7 +58,7 @@ func (f *ShellValidatorFactory) createBacktickValidator(
 	}
 
 	return ValidatorWithPredicate{
-		Validator: shellvalidators.NewBacktickValidator(f.log, cfg, ruleAdapter),
+		Validator: shellvalidators.NewBacktickValidator(f.log, cfg, rc),
 		Predicate: validator.And(
 			validator.EventTypeIs(hook.EventTypePreToolUse),
 			validator.ToolTypeIs(hook.ToolTypeBash),

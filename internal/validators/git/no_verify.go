@@ -3,7 +3,6 @@ package git
 import (
 	"context"
 
-	"github.com/smykla-skalski/klaudiush/internal/rules"
 	"github.com/smykla-skalski/klaudiush/internal/templates"
 	"github.com/smykla-skalski/klaudiush/internal/validator"
 	"github.com/smykla-skalski/klaudiush/pkg/config"
@@ -15,20 +14,20 @@ import (
 // NoVerifyValidator validates that git commit commands don't use --no-verify flag
 type NoVerifyValidator struct {
 	validator.BaseValidator
-	config      *config.NoVerifyValidatorConfig
-	ruleAdapter *rules.RuleValidatorAdapter
+	config *config.NoVerifyValidatorConfig
 }
 
 // NewNoVerifyValidator creates a new NoVerifyValidator instance
 func NewNoVerifyValidator(
 	log logger.Logger,
 	cfg *config.NoVerifyValidatorConfig,
-	ruleAdapter *rules.RuleValidatorAdapter,
+	ruleAdapter validator.RuleChecker,
 ) *NoVerifyValidator {
 	return &NoVerifyValidator{
-		BaseValidator: *validator.NewBaseValidator("validate-no-verify", log),
-		config:        cfg,
-		ruleAdapter:   ruleAdapter,
+		BaseValidator: *validator.NewBaseValidatorWithRules(
+			"validate-no-verify", log, ruleAdapter,
+		),
+		config: cfg,
 	}
 }
 
@@ -37,11 +36,9 @@ func (v *NoVerifyValidator) Validate(ctx context.Context, hookCtx *hook.Context)
 	log := v.Logger()
 	log.Debug("Running no-verify validation")
 
-	// Check rules first if rule adapter is configured
-	if v.ruleAdapter != nil {
-		if result := v.ruleAdapter.CheckRules(ctx, hookCtx); result != nil {
-			return result
-		}
+	// Check rules first
+	if result := v.CheckRules(ctx, hookCtx); result != nil {
+		return result
 	}
 
 	bashParser := parser.NewBashParser()

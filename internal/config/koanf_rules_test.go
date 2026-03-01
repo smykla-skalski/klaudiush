@@ -16,6 +16,23 @@ func TestKoanfRules(t *testing.T) {
 	RunSpecs(t, "Koanf Rules Suite")
 }
 
+// Clear XDG env vars before every spec so that homeResolver uses the
+// test-provided homeDir instead of a real XDG_CONFIG_HOME from the shell.
+var _ = BeforeEach(func() {
+	for _, key := range []string{"XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME"} {
+		orig := os.Getenv(key)
+		os.Unsetenv(key)
+
+		DeferCleanup(func(k, v string) {
+			if v != "" {
+				os.Setenv(k, v)
+			} else {
+				os.Unsetenv(k)
+			}
+		}, key, orig)
+	}
+})
+
 var _ = Describe("mergeRules", func() {
 	Describe("basic merge behavior", func() {
 		It("should return project rules when global is empty", func() {

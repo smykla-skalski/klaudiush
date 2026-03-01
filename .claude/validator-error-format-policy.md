@@ -149,8 +149,6 @@ validator.Fail("Error message")
 // Warning (allows)
 validator.Warn("Warning message")
 
-// With details
-validator.FailWithDetails("message", map[string]string{"key": "value"})
 ```
 
 ### Reference-Based Patterns

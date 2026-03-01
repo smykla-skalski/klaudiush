@@ -8,6 +8,15 @@ sync:
     allow_removal: true
   files:
     merge:
+      - path: CONTRIBUTING.md
+        strategy: markdown
+        sections:
+          - action: patch
+            heading: Making Changes
+            patches:
+              - find: "make check  # or task check"
+                replace: "mise run check"
+
       - path: renovate.json
         arrayStrategies:
           "$.extends": append

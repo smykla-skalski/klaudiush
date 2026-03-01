@@ -1,6 +1,7 @@
 package rules_test
 
 import (
+	"os"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -13,6 +14,23 @@ func TestRules(t *testing.T) {
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "Rules Suite")
 }
+
+// Clear XDG env vars before every spec so that homeResolver uses the
+// test-provided homeDir instead of a real XDG_CONFIG_HOME from the shell.
+var _ = BeforeEach(func() {
+	for _, key := range []string{"XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME"} {
+		orig := os.Getenv(key)
+		os.Unsetenv(key)
+
+		DeferCleanup(func(k, v string) {
+			if v != "" {
+				os.Setenv(k, v)
+			} else {
+				os.Unsetenv(k)
+			}
+		}, key, orig)
+	}
+})
 
 var _ = Describe("Pattern", func() {
 	Describe("DetectPatternType", func() {

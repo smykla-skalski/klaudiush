@@ -70,7 +70,7 @@ Valid branch types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`,
 3. **Run quality checks** (if applicable):
 
    ```bash
-   make check  # or task check
+   mise run check
    ```
 
 4. **Commit your changes** (see [Commit Guidelines](#commit-guidelines))

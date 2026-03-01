@@ -84,8 +84,6 @@ plugins:
   # Note: nix/package.nix (version and hashes) is updated automatically by the
   # update-nix-hashes job in .github/workflows/release.yml after GoReleaser uploads artifacts
 
-  # Create git tag and GitHub release (GoReleaser handles the actual release)
-  - - '@semantic-release/git'
-    - assets:
-        - CHANGELOG.md
-      message: 'chore(release): ${nextRelease.version} [skip ci]'
+  # Commit changelog via GitHub API for verified signature (GoReleaser handles the actual release)
+  - - '@semantic-release/exec'
+    - prepareCmd: 'bash scripts/api-commit.sh "chore(release): ${nextRelease.version} [skip ci]"'

@@ -3,12 +3,10 @@ package file
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
 	"github.com/smykla-skalski/klaudiush/internal/linters"
-	"github.com/smykla-skalski/klaudiush/internal/rules"
 	"github.com/smykla-skalski/klaudiush/internal/validator"
 	"github.com/smykla-skalski/klaudiush/pkg/config"
 	"github.com/smykla-skalski/klaudiush/pkg/hook"
@@ -32,9 +30,8 @@ var jsFragmentExcludes = []string{"no-unused-vars", "no-undef", "import/no-unres
 // JavaScriptValidator validates JavaScript/TypeScript scripts using oxlint.
 type JavaScriptValidator struct {
 	validator.BaseValidator
-	checker     linters.OxlintChecker
-	config      *config.JavaScriptValidatorConfig
-	ruleAdapter *rules.RuleValidatorAdapter
+	checker linters.OxlintChecker
+	config  *config.JavaScriptValidatorConfig
 }
 
 // NewJavaScriptValidator creates a new JavaScriptValidator.
@@ -42,13 +39,12 @@ func NewJavaScriptValidator(
 	log logger.Logger,
 	checker linters.OxlintChecker,
 	cfg *config.JavaScriptValidatorConfig,
-	ruleAdapter *rules.RuleValidatorAdapter,
+	ruleAdapter validator.RuleChecker,
 ) *JavaScriptValidator {
 	return &JavaScriptValidator{
-		BaseValidator: *validator.NewBaseValidator("validate-javascript", log),
+		BaseValidator: *validator.NewBaseValidatorWithRules("validate-javascript", log, ruleAdapter),
 		checker:       checker,
 		config:        cfg,
-		ruleAdapter:   ruleAdapter,
 	}
 }
 
@@ -60,11 +56,9 @@ func (v *JavaScriptValidator) Validate(
 	log := v.Logger()
 	log.Debug("validating JavaScript/TypeScript script")
 
-	// Check rules first if rule adapter is configured
-	if v.ruleAdapter != nil {
-		if result := v.ruleAdapter.CheckRules(ctx, hookCtx); result != nil {
-			return result
-		}
+	// Check rules first
+	if result := v.CheckRules(ctx, hookCtx); result != nil {
+		return result
 	}
 
 	// Check if oxlint is enabled
@@ -81,7 +75,7 @@ func (v *JavaScriptValidator) Validate(
 	}
 
 	// Get content based on operation type
-	jsc, err := v.getContent(hookCtx, filePath)
+	ci, err := v.extractContent(hookCtx, filePath)
 	if err != nil {
 		log.Debug("failed to get content", "error", err)
 		return validator.Pass()
@@ -92,8 +86,8 @@ func (v *JavaScriptValidator) Validate(
 	defer cancel()
 
 	// Build exclude codes from config and fragment-specific excludes
-	opts := v.buildOxlintOptions(jsc.isFragment)
-	result := v.checker.CheckWithOptions(lintCtx, jsc.content, opts)
+	opts := v.buildOxlintOptions(ci.IsFragment)
+	result := v.checker.CheckWithOptions(lintCtx, ci.Content, opts)
 
 	if result.Success {
 		log.Debug("oxlint passed")
@@ -105,100 +99,17 @@ func (v *JavaScriptValidator) Validate(
 	return validator.FailWithRef(validator.RefOxlintCheck, v.formatOxlintOutput(result))
 }
 
-// javascriptContent holds JavaScript/TypeScript script content and metadata for validation
-type javascriptContent struct {
-	content    string
-	isFragment bool
-}
-
-// getContent extracts JavaScript/TypeScript script content from context
-//
-//nolint:dupl // Similar pattern to ShellScriptValidator.getContent, acceptable duplication
-func (v *JavaScriptValidator) getContent(
+// extractContent creates a ContentExtractor and extracts content from the hook context.
+func (v *JavaScriptValidator) extractContent(
 	ctx *hook.Context,
 	filePath string,
-) (*javascriptContent, error) {
-	log := v.Logger()
-
-	// For Edit operations, validate only the changed fragment with context
-	if ctx.EventType == hook.EventTypePreToolUse && ctx.ToolName == hook.ToolTypeEdit {
-		content, err := v.getEditContent(ctx, filePath)
-		if err != nil {
-			return nil, err
-		}
-
-		return &javascriptContent{content: content, isFragment: true}, nil
-	}
-
-	// Get content from context or read from file (Write operation)
-	content := ctx.ToolInput.Content
-	if content != "" {
-		return &javascriptContent{content: content, isFragment: false}, nil
-	}
-
-	// Check if file exists
-	if _, err := os.Stat(filePath); err != nil {
-		log.Debug("file does not exist, skipping", "file", filePath)
-		return nil, err
-	}
-
-	// Read file content
-	data, err := os.ReadFile(filePath) //nolint:gosec // filePath is from Claude Code context
-	if err != nil {
-		log.Debug("failed to read file", "file", filePath, "error", err)
-		return nil, err
-	}
-
-	return &javascriptContent{content: string(data), isFragment: false}, nil
-}
-
-// getEditContent extracts content for Edit operations with context
-func (v *JavaScriptValidator) getEditContent(
-	ctx *hook.Context,
-	filePath string,
-) (string, error) {
-	log := v.Logger()
-
-	oldStr := ctx.ToolInput.OldString
-	newStr := ctx.ToolInput.NewString
-
-	if oldStr == "" || newStr == "" {
-		log.Debug("missing old_string or new_string in edit operation")
-		return "", os.ErrNotExist
-	}
-
-	// Read original file to extract context around the edit
-	//nolint:gosec // filePath is from Claude Code tool context, not user input
-	originalContent, err := os.ReadFile(filePath)
-	if err != nil {
-		log.Debug("failed to read file for edit validation", "file", filePath, "error", err)
-		return "", err
-	}
-
-	originalStr := string(originalContent)
-
-	// Extract fragment with context lines around the edit
-	fragment := ExtractEditFragment(
-		originalStr,
-		oldStr,
-		newStr,
-		v.getContextLines(),
-		log,
-	)
-	if fragment == "" {
-		log.Debug("could not extract edit fragment, skipping validation")
-		return "", os.ErrNotExist
-	}
-
-	fragmentLineCount := len(strings.Split(fragment, "\n"))
-	log.Debug("validating edit fragment with context",
-		"fragment_lines", fragmentLineCount,
-	)
-
-	return fragment, nil
+) (*ContentInfo, error) {
+	return NewContentExtractor(v.Logger(), v.getContextLines()).Extract(ctx, filePath)
 }
 
 // formatOxlintOutput formats oxlint findings into human-readable text.
+//
+//nolint:dupl // Same display logic as formatRuffOutput, not worth abstracting
 func (*JavaScriptValidator) formatOxlintOutput(result *linters.LintResult) string {
 	if len(result.Findings) == 0 {
 		// Fallback to raw output if no findings parsed

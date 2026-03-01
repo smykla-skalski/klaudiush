@@ -10,7 +10,6 @@ import (
 	internalconfig "github.com/smykla-skalski/klaudiush/internal/config"
 	"github.com/smykla-skalski/klaudiush/internal/doctor"
 	"github.com/smykla-skalski/klaudiush/pkg/config"
-	"github.com/smykla-skalski/klaudiush/pkg/stringutil"
 )
 
 // RuleIssue represents an issue found in a rule configuration.
@@ -181,7 +180,9 @@ func (c *RulesChecker) validateRule(index int, rule *config.RuleConfig) {
 
 	// Check for invalid event_type
 	if rule.Match.EventType != "" {
-		if !stringutil.ContainsCaseInsensitive(config.ValidEventTypes, rule.Match.EventType) {
+		if !slices.ContainsFunc(config.ValidEventTypes, func(s string) bool {
+			return strings.EqualFold(s, rule.Match.EventType)
+		}) {
 			c.issues = append(c.issues, RuleIssue{
 				RuleIndex: index,
 				RuleName:  ruleName,
@@ -195,7 +196,9 @@ func (c *RulesChecker) validateRule(index int, rule *config.RuleConfig) {
 
 	// Check for invalid tool_type
 	if rule.Match.ToolType != "" {
-		if !stringutil.ContainsCaseInsensitive(config.ValidToolTypes, rule.Match.ToolType) {
+		if !slices.ContainsFunc(config.ValidToolTypes, func(s string) bool {
+			return strings.EqualFold(s, rule.Match.ToolType)
+		}) {
 			c.issues = append(c.issues, RuleIssue{
 				RuleIndex: index,
 				RuleName:  ruleName,

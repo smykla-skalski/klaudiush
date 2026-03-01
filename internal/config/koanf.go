@@ -489,11 +489,39 @@ func (l *KoanfLoader) ProjectConfigPaths() []string {
 }
 
 // findProjectConfig checks for project config files and returns the first found.
+// Falls back to walking up parent directories if nothing is found in the cwd.
 func (l *KoanfLoader) findProjectConfig() string {
 	for _, path := range l.ProjectConfigPaths() {
 		if fileExists(path) {
 			return path
 		}
+	}
+
+	return l.walkUpForConfig()
+}
+
+// walkUpForConfig walks parent directories looking for a project config file.
+// Skips any candidate that matches the global config path to avoid double-loading.
+func (l *KoanfLoader) walkUpForConfig() string {
+	globalPath := l.GlobalConfigPath()
+	dir := filepath.Dir(l.workDir)
+
+	for {
+		for _, candidate := range []string{
+			filepath.Join(dir, ProjectConfigDir, ProjectConfigFile),
+			filepath.Join(dir, ProjectConfigFileAlt),
+		} {
+			if candidate != globalPath && fileExists(candidate) {
+				return candidate
+			}
+		}
+
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+
+		dir = parent
 	}
 
 	return ""
@@ -544,6 +572,10 @@ func (l *KoanfLoader) LoadProjectConfigOnly() (*config.Config, string, error) {
 
 	if err := k.UnmarshalWithConf("", &cfg, tomlOpts); err != nil {
 		return nil, projectPath, errors.Wrap(err, "failed to unmarshal project config")
+	}
+
+	if cfg.Version == 0 {
+		cfg.Version = config.CurrentConfigVersion
 	}
 
 	return &cfg, projectPath, nil

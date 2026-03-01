@@ -904,11 +904,11 @@ Content here.
 					},
 				}
 				preamble, lines := validators.GeneratePreamble(state)
-				// Should have basic preamble + list item + code fence
+				// Should have basic preamble + list item + blank (after list) + code fence
 				Expect(preamble).To(ContainSubstring("# Preamble"))
 				Expect(preamble).To(ContainSubstring("- Item"))
 				Expect(preamble).To(HaveSuffix("```text\n"))
-				Expect(lines).To(Equal(4)) // header + blank + list item + code fence
+				Expect(lines).To(Equal(5)) // header + blank + list item + blank + code fence
 			})
 
 			It("does not add fence when InCodeBlock is false", func() {
@@ -1059,6 +1059,87 @@ var _ = Describe("AnalyzeMarkdown with FragmentRange", func() {
 			})
 			Expect(result.Warnings).NotTo(BeEmpty(),
 				"Write operations should catch all violations")
+		})
+	})
+})
+
+// Regression tests for MD032 false positive: a fragment whose new_string starts
+// with a paragraph, blank line, then a list was incorrectly rejected.
+// Root cause: enhanceFragmentErrors used <file>:(\d+) regex but replaceTempFilePath
+// had already changed the path to <fragment>:(\d+), so preamble error filtering
+// was bypassed entirely.
+var _ = Describe("MD032 false positive regression", func() {
+	opts := validators.AnalysisOptions{CheckTableFormatting: false}
+
+	// Fragment A: paragraph -> blank -> list. Must PASS.
+	// This is the failing case from the bug report.
+	It("Fragment A: paragraph + blank + list passes (built-in analyzer)", func() {
+		fragment := "klab Docker images live in `images/`.\n\n- Build: `make images`\n- Test: `make image/test`\n\n## Releases"
+		result := validators.AnalyzeMarkdown(fragment, nil, opts)
+		Expect(result.Warnings).To(BeEmpty(),
+			"paragraph -> blank -> list has correct spacing and must not produce MD032 warnings")
+	})
+
+	// Fragment B: heading -> paragraph -> blank -> list. Must PASS.
+	It("Fragment B: heading + paragraph + blank + list passes (built-in analyzer)", func() {
+		fragment := "## Docker images\n\nklab Docker images live in `images/`.\n\n- Build: `make images`\n- Test: `make image/test`\n\n## Releases"
+		result := validators.AnalyzeMarkdown(fragment, nil, opts)
+		Expect(result.Warnings).To(BeEmpty(),
+			"heading -> paragraph -> blank -> list has correct spacing and must not produce warnings")
+	})
+
+	// Fragment C: paragraph immediately followed by list (no blank). Must FAIL.
+	It("Fragment C: paragraph without blank before list still caught (built-in analyzer)", func() {
+		fragment := "Some paragraph text.\n- List without blank line before it\n- Another item\n\nMore text."
+		result := validators.AnalyzeMarkdown(fragment, nil, opts)
+		Expect(result.Warnings).NotTo(BeEmpty(),
+			"missing blank line before list must be caught")
+
+		hasListWarning := false
+
+		for _, w := range result.Warnings {
+			if strings.Contains(w, "list item") || strings.Contains(w, "empty line before") {
+				hasListWarning = true
+				break
+			}
+		}
+
+		Expect(hasListWarning).To(BeTrue(), "warning must mention list spacing")
+	})
+
+	Context("GeneratePreamble with InList=true adds blank after list item", func() {
+		It("preamble ends with blank line after the list item", func() {
+			state := &validators.MarkdownState{
+				StartLine:     5,
+				InList:        true,
+				ListItemDepth: 1,
+				ListStack: []validators.ListItemInfo{
+					{MarkerIndent: 0, ContentIndent: 2, IsOrdered: false, Marker: "-"},
+				},
+			}
+			preamble, lines := validators.GeneratePreamble(state)
+			// The preamble must end with \n\n so it won't fire MD032 when the
+			// fragment starts with a paragraph (no list item).
+			Expect(preamble).To(HaveSuffix("\n\n"),
+				"blank line after list item prevents false MD032 from markdownlint")
+			// header(1) + blank(1) + list item(1) + blank(1) = 4
+			Expect(lines).To(Equal(4))
+		})
+
+		It("preamble with heading + list ends with blank after list item", func() {
+			state := &validators.MarkdownState{
+				StartLine:        5,
+				LastHeadingLevel: 2,
+				InList:           true,
+				ListItemDepth:    1,
+				ListStack: []validators.ListItemInfo{
+					{MarkerIndent: 0, ContentIndent: 2, IsOrdered: false, Marker: "-"},
+				},
+			}
+			preamble, lines := validators.GeneratePreamble(state)
+			Expect(preamble).To(HaveSuffix("\n\n"))
+			// h1(1)+blank(1)+h2(1)+blank(1)+list(1)+blank(1) = 6
+			Expect(lines).To(Equal(6))
 		})
 	})
 })

@@ -6,7 +6,6 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/smykla-skalski/klaudiush/internal/rules"
 	"github.com/smykla-skalski/klaudiush/internal/validator"
 	"github.com/smykla-skalski/klaudiush/pkg/config"
 	"github.com/smykla-skalski/klaudiush/pkg/hook"
@@ -62,21 +61,19 @@ var defaultIgnorePatterns = []string{
 // LinterIgnoreValidator validates that code does not contain linter ignore directives.
 type LinterIgnoreValidator struct {
 	validator.BaseValidator
-	config      *config.LinterIgnoreValidatorConfig
-	patterns    []*regexp.Regexp
-	ruleAdapter *rules.RuleValidatorAdapter
+	config   *config.LinterIgnoreValidatorConfig
+	patterns []*regexp.Regexp
 }
 
 // NewLinterIgnoreValidator creates a new LinterIgnoreValidator.
 func NewLinterIgnoreValidator(
 	log logger.Logger,
 	cfg *config.LinterIgnoreValidatorConfig,
-	ruleAdapter *rules.RuleValidatorAdapter,
+	ruleAdapter validator.RuleChecker,
 ) *LinterIgnoreValidator {
 	v := &LinterIgnoreValidator{
-		BaseValidator: *validator.NewBaseValidator("validate-linter-ignore", log),
+		BaseValidator: *validator.NewBaseValidatorWithRules("validate-linter-ignore", log, ruleAdapter),
 		config:        cfg,
-		ruleAdapter:   ruleAdapter,
 	}
 
 	// Compile patterns
@@ -109,11 +106,9 @@ func (v *LinterIgnoreValidator) Validate(
 	log := v.Logger()
 	log.Debug("validating for linter ignore directives")
 
-	// Check rules first if rule adapter is configured
-	if v.ruleAdapter != nil {
-		if result := v.ruleAdapter.CheckRules(ctx, hookCtx); result != nil {
-			return result
-		}
+	// Check rules first
+	if result := v.CheckRules(ctx, hookCtx); result != nil {
+		return result
 	}
 
 	// Get content from context

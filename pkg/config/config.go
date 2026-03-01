@@ -7,83 +7,83 @@ const CurrentConfigVersion = 1
 // Config represents the root configuration for klaudiush.
 type Config struct {
 	// Version is the config schema version. Defaults to 1 when omitted.
-	Version int `json:"version,omitempty" koanf:"version" toml:"version"`
+	Version int `json:"version,omitempty" koanf:"version" toml:"version,omitempty"`
 
 	// Validators groups all validator configurations.
-	Validators *ValidatorsConfig `json:"validators,omitempty" koanf:"validators" toml:"validators"`
+	Validators *ValidatorsConfig `json:"validators,omitempty" koanf:"validators" toml:"validators,omitempty"`
 
 	// Global settings that apply across all validators.
-	Global *GlobalConfig `json:"global,omitempty" koanf:"global" toml:"global"`
+	Global *GlobalConfig `json:"global,omitempty" koanf:"global" toml:"global,omitempty"`
 
 	// Plugins contains configuration for external plugins.
-	Plugins *PluginConfig `json:"plugins,omitempty" koanf:"plugins" toml:"plugins"`
+	Plugins *PluginConfig `json:"plugins,omitempty" koanf:"plugins" toml:"plugins,omitempty"`
 
 	// Rules contains dynamic validation rule configuration.
-	Rules *RulesConfig `json:"rules,omitempty" koanf:"rules" toml:"rules"`
+	Rules *RulesConfig `json:"rules,omitempty" koanf:"rules" toml:"rules,omitempty"`
 
 	// Exceptions contains exception workflow configuration.
-	Exceptions *ExceptionsConfig `json:"exceptions,omitempty" koanf:"exceptions" toml:"exceptions"`
+	Exceptions *ExceptionsConfig `json:"exceptions,omitempty" koanf:"exceptions" toml:"exceptions,omitempty"`
 
 	// Backup contains configuration for the backup system.
-	Backup *BackupConfig `json:"backup,omitempty" koanf:"backup" toml:"backup"`
+	Backup *BackupConfig `json:"backup,omitempty" koanf:"backup" toml:"backup,omitempty"`
 
 	// CrashDump contains configuration for the crash dump system.
-	CrashDump *CrashDumpConfig `json:"crash_dump,omitempty" koanf:"crash_dump" toml:"crash_dump"`
+	CrashDump *CrashDumpConfig `json:"crash_dump,omitempty" koanf:"crash_dump" toml:"crash_dump,omitempty"`
 
 	// Patterns contains configuration for failure pattern tracking.
-	Patterns *PatternsConfig `json:"patterns,omitempty" koanf:"patterns" toml:"patterns"`
+	Patterns *PatternsConfig `json:"patterns,omitempty" koanf:"patterns" toml:"patterns,omitempty"`
 
 	// Overrides contains persistent disable/enable overrides for error codes and validators.
-	Overrides *OverridesConfig `json:"overrides,omitempty" koanf:"overrides" toml:"overrides"`
+	Overrides *OverridesConfig `json:"overrides,omitempty" koanf:"overrides" toml:"overrides,omitempty"`
 }
 
 // ValidatorsConfig groups all validator configurations by category.
 type ValidatorsConfig struct {
 	// Git validator configurations.
-	Git *GitConfig `json:"git,omitempty" koanf:"git" toml:"git"`
+	Git *GitConfig `json:"git,omitempty" koanf:"git" toml:"git,omitempty"`
 
 	// GitHub CLI validator configurations.
-	GitHub *GitHubConfig `json:"github,omitempty" koanf:"github" toml:"github"`
+	GitHub *GitHubConfig `json:"github,omitempty" koanf:"github" toml:"github,omitempty"`
 
 	// File validator configurations.
-	File *FileConfig `json:"file,omitempty" koanf:"file" toml:"file"`
+	File *FileConfig `json:"file,omitempty" koanf:"file" toml:"file,omitempty"`
 
 	// Notification validator configurations.
-	Notification *NotificationConfig `json:"notification,omitempty" koanf:"notification" toml:"notification"`
+	Notification *NotificationConfig `json:"notification,omitempty" koanf:"notification" toml:"notification,omitempty"`
 
 	// Secrets validator configurations.
-	Secrets *SecretsConfig `json:"secrets,omitempty" koanf:"secrets" toml:"secrets"`
+	Secrets *SecretsConfig `json:"secrets,omitempty" koanf:"secrets" toml:"secrets,omitempty"`
 
 	// Shell validator configurations.
-	Shell *ShellConfig `json:"shell,omitempty" koanf:"shell" toml:"shell"`
+	Shell *ShellConfig `json:"shell,omitempty" koanf:"shell" toml:"shell,omitempty"`
 }
 
 // GlobalConfig contains global settings that apply to all validators.
 type GlobalConfig struct {
 	// UseSDKGit controls whether to use the go-git SDK or CLI for git operations.
 	// Default: true (use SDK for better performance)
-	UseSDKGit *bool `json:"use_sdk_git,omitempty" koanf:"use_sdk_git" toml:"use_sdk_git"`
+	UseSDKGit *bool `json:"use_sdk_git,omitempty" koanf:"use_sdk_git" toml:"use_sdk_git,omitempty"`
 
 	// DefaultTimeout is the default timeout for all operations that support timeouts.
 	// Individual validator timeouts override this value.
 	// Default: "10s"
-	DefaultTimeout Duration `json:"default_timeout,omitempty" koanf:"default_timeout" toml:"default_timeout"`
+	DefaultTimeout Duration `json:"default_timeout,omitempty" koanf:"default_timeout" toml:"default_timeout,omitempty"`
 
 	// ParallelExecution enables parallel validator execution.
 	// Default: false (sequential execution)
-	ParallelExecution *bool `json:"parallel_execution,omitempty" koanf:"parallel_execution" toml:"parallel_execution"`
+	ParallelExecution *bool `json:"parallel_execution,omitempty" koanf:"parallel_execution" toml:"parallel_execution,omitempty"`
 
 	// MaxCPUWorkers is the maximum number of concurrent CPU-bound validators.
 	// Default: runtime.NumCPU()
-	MaxCPUWorkers *int `json:"max_cpu_workers,omitempty" koanf:"max_cpu_workers" toml:"max_cpu_workers"`
+	MaxCPUWorkers *int `json:"max_cpu_workers,omitempty" koanf:"max_cpu_workers" toml:"max_cpu_workers,omitempty"`
 
 	// MaxIOWorkers is the maximum number of concurrent I/O-bound validators.
 	// Default: runtime.NumCPU() * 2
-	MaxIOWorkers *int `json:"max_io_workers,omitempty" koanf:"max_io_workers" toml:"max_io_workers"`
+	MaxIOWorkers *int `json:"max_io_workers,omitempty" koanf:"max_io_workers" toml:"max_io_workers,omitempty"`
 
 	// MaxGitWorkers is the maximum number of concurrent git operations.
 	// Default: 1 (serialized to avoid index lock contention)
-	MaxGitWorkers *int `json:"max_git_workers,omitempty" koanf:"max_git_workers" toml:"max_git_workers"`
+	MaxGitWorkers *int `json:"max_git_workers,omitempty" koanf:"max_git_workers" toml:"max_git_workers,omitempty"`
 }
 
 // IsParallelExecutionEnabled returns whether parallel execution is enabled.

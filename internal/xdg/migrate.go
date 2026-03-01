@@ -55,10 +55,40 @@ func NeedsMigration() bool {
 // Migrate moves files from ~/.klaudiush/ to XDG directories.
 // Idempotent: skips files that already exist at the destination.
 // Creates symlinks for config.toml and dispatcher.log after moving.
+// Uses file locking to prevent races from parallel invocations.
 func Migrate(log logger.Logger) (*MigrationResult, error) {
 	result := &MigrationResult{}
 
 	// If marker exists, already done
+	if fileExists(MigrationMarker()) {
+		return result, nil
+	}
+
+	// Acquire lock to prevent parallel migrations (TOCTOU between NeedsMigration and Migrate).
+	lockPath := MigrationMarker() + ".lock"
+
+	if err := EnsureDir(filepath.Dir(lockPath)); err != nil {
+		return result, errors.Wrap(err, "creating lock directory")
+	}
+
+	const lockPerm = 0o600
+
+	lockFlags := os.O_CREATE | os.O_EXCL | os.O_WRONLY
+
+	//nolint:gosec // lockPath is from MigrationMarker()
+	lockFile, err := os.OpenFile(lockPath, lockFlags, lockPerm)
+	if err != nil {
+		// Another process is migrating or lock is stale - skip gracefully
+		log.Debug("migration lock already held, skipping", "lock", lockPath)
+
+		return result, nil
+	}
+
+	_ = lockFile.Close()
+
+	defer func() { _ = os.Remove(lockPath) }()
+
+	// Re-check marker after acquiring lock (another process may have finished)
 	if fileExists(MigrationMarker()) {
 		return result, nil
 	}
@@ -144,7 +174,10 @@ func createBackwardCompatSymlinks(legacy string, result *MigrationResult, log lo
 		result.Symlinks++
 	}
 
-	if err := createSymlink(LogFile(), LegacyLogFile(), log); err != nil {
+	// Always symlink to the standard XDG log path, not LogFile() which respects KLAUDIUSH_LOG_FILE.
+	xdgLogFile := filepath.Join(StateDir(), "dispatcher.log")
+
+	if err := createSymlink(xdgLogFile, LegacyLogFile(), log); err != nil {
 		result.Warnings = append(result.Warnings, err.Error())
 	} else {
 		result.Symlinks++
@@ -170,7 +203,13 @@ func migrateFile(src, dest string, log logger.Logger) (moved bool, err error) {
 
 	if err := os.Rename(src, dest); err != nil {
 		// Cross-device: copy + remove
-		return false, copyAndRemove(src, dest)
+		if copyErr := copyAndRemove(src, dest); copyErr != nil {
+			return false, copyErr
+		}
+
+		log.Info("migrated file (cross-device)", "from", src, "to", dest)
+
+		return true, nil
 	}
 
 	log.Info("migrated file", "from", src, "to", dest)
@@ -195,7 +234,14 @@ func migrateDir(src, dest string, log logger.Logger) (moved, skipped int, err er
 	}
 
 	if err := os.Rename(src, dest); err != nil {
-		return 0, 0, errors.Wrapf(err, "moving directory %s to %s", src, dest)
+		// Cross-device: copy entries individually + remove source dir
+		if copyErr := copyDirAndRemove(src, dest); copyErr != nil {
+			return 0, 0, errors.Wrapf(copyErr, "moving directory %s to %s", src, dest)
+		}
+
+		log.Info("migrated directory (cross-device)", "from", src, "to", dest)
+
+		return 1, 0, nil
 	}
 
 	log.Info("migrated directory", "from", src, "to", dest)
@@ -254,6 +300,42 @@ func copyAndRemove(src, dest string) error {
 
 	if err := os.WriteFile(dest, data, info.Mode()); err != nil {
 		return errors.Wrapf(err, "writing %s", dest)
+	}
+
+	if err := os.Remove(src); err != nil {
+		return errors.Wrapf(err, "removing source %s after copy to %s", src, dest)
+	}
+
+	return nil
+}
+
+// copyDirAndRemove copies a directory tree from src to dest, then removes src.
+// Used as cross-device fallback when os.Rename fails.
+func copyDirAndRemove(src, dest string) error {
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return errors.Wrapf(err, "reading directory %s", src)
+	}
+
+	if err := EnsureDir(dest); err != nil {
+		return errors.Wrapf(err, "creating destination directory %s", dest)
+	}
+
+	for _, entry := range entries {
+		srcPath := filepath.Join(src, entry.Name())
+		destPath := filepath.Join(dest, entry.Name())
+
+		if entry.IsDir() {
+			if err := copyDirAndRemove(srcPath, destPath); err != nil {
+				return err
+			}
+
+			continue
+		}
+
+		if err := copyAndRemove(srcPath, destPath); err != nil {
+			return err
+		}
 	}
 
 	return os.Remove(src)

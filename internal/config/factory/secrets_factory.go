@@ -57,10 +57,10 @@ func (f *SecretsValidatorFactory) CreateValidators(cfg *config.Config) []Validat
 	// Create gitleaks checker
 	gitleaks := f.createGitleaksChecker(timeout)
 
-	// Create rule adapter if rule engine is configured
-	var ruleAdapter *rules.RuleValidatorAdapter
+	// Create rule checker if rule engine is configured
+	var rc validator.RuleChecker
 	if f.ruleEngine != nil {
-		ruleAdapter = rules.NewRuleValidatorAdapter(
+		rc = rules.NewRuleValidatorAdapter(
 			f.ruleEngine,
 			rules.ValidatorSecrets,
 			rules.WithAdapterLogger(f.log),
@@ -68,7 +68,7 @@ func (f *SecretsValidatorFactory) CreateValidators(cfg *config.Config) []Validat
 	}
 
 	validators = append(validators, ValidatorWithPredicate{
-		Validator: secrets.NewSecretsValidator(f.log, detector, gitleaks, secretsCfg, ruleAdapter),
+		Validator: secrets.NewSecretsValidator(f.log, detector, gitleaks, secretsCfg, rc),
 		Predicate: validator.And(
 			validator.EventTypeIs(hook.EventTypePreToolUse),
 			validator.ToolTypeIn(hook.ToolTypeWrite, hook.ToolTypeEdit),

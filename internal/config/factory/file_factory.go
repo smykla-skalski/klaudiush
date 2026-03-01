@@ -135,9 +135,9 @@ func (f *FileValidatorFactory) createMarkdownValidator(
 	cfg *config.MarkdownValidatorConfig,
 	linter linters.MarkdownLinter,
 ) ValidatorWithPredicate {
-	var ruleAdapter *rules.RuleValidatorAdapter
+	var rc validator.RuleChecker
 	if f.ruleEngine != nil {
-		ruleAdapter = rules.NewRuleValidatorAdapter(
+		rc = rules.NewRuleValidatorAdapter(
 			f.ruleEngine,
 			rules.ValidatorFileMarkdown,
 			rules.WithAdapterLogger(f.log),
@@ -145,7 +145,7 @@ func (f *FileValidatorFactory) createMarkdownValidator(
 	}
 
 	return ValidatorWithPredicate{
-		Validator: filevalidators.NewMarkdownValidator(cfg, linter, f.log, ruleAdapter),
+		Validator: filevalidators.NewMarkdownValidator(cfg, linter, f.log, rc),
 		Predicate: validator.And(
 			validator.EventTypeIs(hook.EventTypePreToolUse),
 			validator.ToolTypeIn(hook.ToolTypeWrite, hook.ToolTypeEdit, hook.ToolTypeMultiEdit),
@@ -159,9 +159,9 @@ func (f *FileValidatorFactory) createTerraformValidator(
 	formatter linters.TerraformFormatter,
 	linter linters.TfLinter,
 ) ValidatorWithPredicate {
-	var ruleAdapter *rules.RuleValidatorAdapter
+	var rc validator.RuleChecker
 	if f.ruleEngine != nil {
-		ruleAdapter = rules.NewRuleValidatorAdapter(
+		rc = rules.NewRuleValidatorAdapter(
 			f.ruleEngine,
 			rules.ValidatorFileTerraform,
 			rules.WithAdapterLogger(f.log),
@@ -169,7 +169,7 @@ func (f *FileValidatorFactory) createTerraformValidator(
 	}
 
 	return ValidatorWithPredicate{
-		Validator: filevalidators.NewTerraformValidator(formatter, linter, f.log, cfg, ruleAdapter),
+		Validator: filevalidators.NewTerraformValidator(formatter, linter, f.log, cfg, rc),
 		Predicate: validator.And(
 			validator.EventTypeIs(hook.EventTypePreToolUse),
 			validator.ToolTypeIn(hook.ToolTypeWrite, hook.ToolTypeEdit, hook.ToolTypeMultiEdit),
@@ -182,9 +182,9 @@ func (f *FileValidatorFactory) createShellScriptValidator(
 	cfg *config.ShellScriptValidatorConfig,
 	checker linters.ShellChecker,
 ) ValidatorWithPredicate {
-	var ruleAdapter *rules.RuleValidatorAdapter
+	var rc validator.RuleChecker
 	if f.ruleEngine != nil {
-		ruleAdapter = rules.NewRuleValidatorAdapter(
+		rc = rules.NewRuleValidatorAdapter(
 			f.ruleEngine,
 			rules.ValidatorFileShell,
 			rules.WithAdapterLogger(f.log),
@@ -192,7 +192,7 @@ func (f *FileValidatorFactory) createShellScriptValidator(
 	}
 
 	return ValidatorWithPredicate{
-		Validator: filevalidators.NewShellScriptValidator(f.log, checker, cfg, ruleAdapter),
+		Validator: filevalidators.NewShellScriptValidator(f.log, checker, cfg, rc),
 		Predicate: validator.And(
 			validator.EventTypeIs(hook.EventTypePreToolUse),
 			validator.ToolTypeIn(hook.ToolTypeWrite, hook.ToolTypeEdit, hook.ToolTypeMultiEdit),
@@ -209,9 +209,9 @@ func (f *FileValidatorFactory) createWorkflowValidator(
 	linter linters.ActionLinter,
 	githubClient githubpkg.Client,
 ) ValidatorWithPredicate {
-	var ruleAdapter *rules.RuleValidatorAdapter
+	var rc validator.RuleChecker
 	if f.ruleEngine != nil {
-		ruleAdapter = rules.NewRuleValidatorAdapter(
+		rc = rules.NewRuleValidatorAdapter(
 			f.ruleEngine,
 			rules.ValidatorFileWorkflow,
 			rules.WithAdapterLogger(f.log),
@@ -220,7 +220,7 @@ func (f *FileValidatorFactory) createWorkflowValidator(
 
 	return ValidatorWithPredicate{
 		Validator: filevalidators.NewWorkflowValidator(
-			linter, githubClient, f.log, cfg, ruleAdapter,
+			linter, githubClient, f.log, cfg, rc,
 		),
 		Predicate: validator.And(
 			validator.EventTypeIs(hook.EventTypePreToolUse),
@@ -241,9 +241,9 @@ func (f *FileValidatorFactory) createGofumptValidator(
 	cfg *config.GofumptValidatorConfig,
 	checker linters.GofumptChecker,
 ) ValidatorWithPredicate {
-	var ruleAdapter *rules.RuleValidatorAdapter
+	var rc validator.RuleChecker
 	if f.ruleEngine != nil {
-		ruleAdapter = rules.NewRuleValidatorAdapter(
+		rc = rules.NewRuleValidatorAdapter(
 			f.ruleEngine,
 			rules.ValidatorFileGofumpt,
 			rules.WithAdapterLogger(f.log),
@@ -251,7 +251,7 @@ func (f *FileValidatorFactory) createGofumptValidator(
 	}
 
 	return ValidatorWithPredicate{
-		Validator: filevalidators.NewGofumptValidator(f.log, checker, cfg, ruleAdapter),
+		Validator: filevalidators.NewGofumptValidator(f.log, checker, cfg, rc),
 		Predicate: validator.And(
 			validator.EventTypeIs(hook.EventTypePreToolUse),
 			validator.ToolTypeIn(hook.ToolTypeWrite),
@@ -265,9 +265,9 @@ func (f *FileValidatorFactory) createPythonValidator(
 	cfg *config.PythonValidatorConfig,
 	checker linters.RuffChecker,
 ) ValidatorWithPredicate {
-	var ruleAdapter *rules.RuleValidatorAdapter
+	var rc validator.RuleChecker
 	if f.ruleEngine != nil {
-		ruleAdapter = rules.NewRuleValidatorAdapter(
+		rc = rules.NewRuleValidatorAdapter(
 			f.ruleEngine,
 			rules.ValidatorFilePython,
 			rules.WithAdapterLogger(f.log),
@@ -275,7 +275,7 @@ func (f *FileValidatorFactory) createPythonValidator(
 	}
 
 	return ValidatorWithPredicate{
-		Validator: filevalidators.NewPythonValidator(f.log, checker, cfg, ruleAdapter),
+		Validator: filevalidators.NewPythonValidator(f.log, checker, cfg, rc),
 		Predicate: validator.And(
 			validator.EventTypeIs(hook.EventTypePreToolUse),
 			validator.ToolTypeIn(hook.ToolTypeWrite, hook.ToolTypeEdit, hook.ToolTypeMultiEdit),
@@ -288,9 +288,9 @@ func (f *FileValidatorFactory) createJavaScriptValidator(
 	cfg *config.JavaScriptValidatorConfig,
 	checker linters.OxlintChecker,
 ) ValidatorWithPredicate {
-	var ruleAdapter *rules.RuleValidatorAdapter
+	var rc validator.RuleChecker
 	if f.ruleEngine != nil {
-		ruleAdapter = rules.NewRuleValidatorAdapter(
+		rc = rules.NewRuleValidatorAdapter(
 			f.ruleEngine,
 			rules.ValidatorFileJavaScript,
 			rules.WithAdapterLogger(f.log),
@@ -298,7 +298,7 @@ func (f *FileValidatorFactory) createJavaScriptValidator(
 	}
 
 	return ValidatorWithPredicate{
-		Validator: filevalidators.NewJavaScriptValidator(f.log, checker, cfg, ruleAdapter),
+		Validator: filevalidators.NewJavaScriptValidator(f.log, checker, cfg, rc),
 		Predicate: validator.And(
 			validator.EventTypeIs(hook.EventTypePreToolUse),
 			validator.ToolTypeIn(hook.ToolTypeWrite, hook.ToolTypeEdit, hook.ToolTypeMultiEdit),
@@ -317,9 +317,9 @@ func (f *FileValidatorFactory) createRustValidator(
 	cfg *config.RustValidatorConfig,
 	checker linters.RustfmtChecker,
 ) ValidatorWithPredicate {
-	var ruleAdapter *rules.RuleValidatorAdapter
+	var rc validator.RuleChecker
 	if f.ruleEngine != nil {
-		ruleAdapter = rules.NewRuleValidatorAdapter(
+		rc = rules.NewRuleValidatorAdapter(
 			f.ruleEngine,
 			rules.ValidatorFileRust,
 			rules.WithAdapterLogger(f.log),
@@ -327,7 +327,7 @@ func (f *FileValidatorFactory) createRustValidator(
 	}
 
 	return ValidatorWithPredicate{
-		Validator: filevalidators.NewRustValidator(f.log, checker, cfg, ruleAdapter),
+		Validator: filevalidators.NewRustValidator(f.log, checker, cfg, rc),
 		Predicate: validator.And(
 			validator.EventTypeIs(hook.EventTypePreToolUse),
 			validator.ToolTypeIn(hook.ToolTypeWrite, hook.ToolTypeEdit, hook.ToolTypeMultiEdit),
@@ -339,9 +339,9 @@ func (f *FileValidatorFactory) createRustValidator(
 func (f *FileValidatorFactory) createLinterIgnoreValidator(
 	cfg *config.LinterIgnoreValidatorConfig,
 ) ValidatorWithPredicate {
-	var ruleAdapter *rules.RuleValidatorAdapter
+	var rc validator.RuleChecker
 	if f.ruleEngine != nil {
-		ruleAdapter = rules.NewRuleValidatorAdapter(
+		rc = rules.NewRuleValidatorAdapter(
 			f.ruleEngine,
 			rules.ValidatorFileLinterIgnore,
 			rules.WithAdapterLogger(f.log),
@@ -349,7 +349,7 @@ func (f *FileValidatorFactory) createLinterIgnoreValidator(
 	}
 
 	return ValidatorWithPredicate{
-		Validator: filevalidators.NewLinterIgnoreValidator(f.log, cfg, ruleAdapter),
+		Validator: filevalidators.NewLinterIgnoreValidator(f.log, cfg, rc),
 		Predicate: validator.And(
 			validator.EventTypeIs(hook.EventTypePreToolUse),
 			validator.ToolTypeIn(hook.ToolTypeWrite, hook.ToolTypeEdit),

@@ -9,7 +9,6 @@ import (
 
 	execpkg "github.com/smykla-skalski/klaudiush/internal/exec"
 	"github.com/smykla-skalski/klaudiush/internal/linters"
-	"github.com/smykla-skalski/klaudiush/internal/rules"
 	"github.com/smykla-skalski/klaudiush/internal/validator"
 	"github.com/smykla-skalski/klaudiush/pkg/config"
 	"github.com/smykla-skalski/klaudiush/pkg/hook"
@@ -31,7 +30,6 @@ type TerraformValidator struct {
 	linter      linters.TfLinter
 	tempManager execpkg.TempFileManager
 	config      *config.TerraformValidatorConfig
-	ruleAdapter *rules.RuleValidatorAdapter
 }
 
 // NewTerraformValidator creates a new TerraformValidator
@@ -40,15 +38,14 @@ func NewTerraformValidator(
 	linter linters.TfLinter,
 	log logger.Logger,
 	cfg *config.TerraformValidatorConfig,
-	ruleAdapter *rules.RuleValidatorAdapter,
+	ruleAdapter validator.RuleChecker,
 ) *TerraformValidator {
 	return &TerraformValidator{
-		BaseValidator: *validator.NewBaseValidator("validate-terraform", log),
+		BaseValidator: *validator.NewBaseValidatorWithRules("validate-terraform", log, ruleAdapter),
 		formatter:     formatter,
 		linter:        linter,
 		tempManager:   execpkg.NewTempFileManager(),
 		config:        cfg,
-		ruleAdapter:   ruleAdapter,
 	}
 }
 
@@ -59,11 +56,9 @@ func (v *TerraformValidator) Validate(
 ) *validator.Result {
 	log := v.Logger()
 
-	// Check rules first if rule adapter is configured
-	if v.ruleAdapter != nil {
-		if result := v.ruleAdapter.CheckRules(ctx, hookCtx); result != nil {
-			return result
-		}
+	// Check rules first
+	if result := v.CheckRules(ctx, hookCtx); result != nil {
+		return result
 	}
 
 	content, err := v.getContent(hookCtx)

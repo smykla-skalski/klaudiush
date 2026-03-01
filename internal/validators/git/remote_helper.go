@@ -4,7 +4,6 @@ import (
 	"context"
 	"sort"
 
-	"github.com/smykla-skalski/klaudiush/internal/rules"
 	"github.com/smykla-skalski/klaudiush/internal/templates"
 	"github.com/smykla-skalski/klaudiush/internal/validator"
 	"github.com/smykla-skalski/klaudiush/pkg/hook"
@@ -83,22 +82,15 @@ func FormatRemoteNotFoundError(remote string, remotes map[string]string) string 
 }
 
 // ValidateGitSubcommand provides common validation loop for git subcommand validators.
-// It handles rule checking, command parsing, and subcommand filtering.
+// It handles command parsing and subcommand filtering.
+// Rule checking should be done by the caller via BaseValidator.CheckRules.
 func ValidateGitSubcommand(
-	ctx context.Context,
+	_ context.Context,
 	hookCtx *hook.Context,
-	ruleAdapter *rules.RuleValidatorAdapter,
 	log logger.Logger,
 	subcommand string,
 	validateCmd GitCommandValidatorFunc,
 ) *validator.Result {
-	// Check rules first if rule adapter is configured
-	if ruleAdapter != nil {
-		if result := ruleAdapter.CheckRules(ctx, hookCtx); result != nil {
-			return result
-		}
-	}
-
 	command := hookCtx.GetCommand()
 	if command == "" {
 		return validator.Pass()

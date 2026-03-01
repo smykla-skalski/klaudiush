@@ -5,6 +5,82 @@ All notable changes to klaudiush will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.26.5](https://github.com/smykla-skalski/klaudiush/compare/v1.26.4...v1.26.5) (2026-02-28)
+
+### Bug Fixes
+
+* **deps:** update module github.com/google/go-github/v83 to v84 ([#358](https://github.com/smykla-skalski/klaudiush/issues/358)) ([11a5146](https://github.com/smykla-skalski/klaudiush/commit/11a5146cfeea2e395980249c22f5b747e5f83805))
+
+## [1.26.4](https://github.com/smykla-skalski/klaudiush/compare/v1.26.3...v1.26.4) (2026-02-27)
+
+### Bug Fixes
+
+* **lint:** suppress gosec false positives ([620d36a](https://github.com/smykla-skalski/klaudiush/commit/620d36a76cccfb1c3fc59dec6142fd1b1fe0f85b))
+
+### Performance Improvements
+
+* **git:** cache git status, add timing logs ([47b72e2](https://github.com/smykla-skalski/klaudiush/commit/47b72e21aaa7003db06846c4844c1fae9e117bde))
+* **patterns:** cap patterns and sessions size ([c2ce7c7](https://github.com/smykla-skalski/klaudiush/commit/c2ce7c7efd0a2a8823e4c46681f09e52326a6558))
+
+## [1.26.3](https://github.com/smykla-skalski/klaudiush/compare/v1.26.2...v1.26.3) (2026-02-27)
+
+### Bug Fixes
+
+* **lint:** fix gci formatting after nolint removal ([5184154](https://github.com/smykla-skalski/klaudiush/commit/51841545de6fed89be8c65d791b8f3d258f77801))
+* **lint:** remove stale gosec nolint directives ([6fecdc9](https://github.com/smykla-skalski/klaudiush/commit/6fecdc9284a5f775064b6f9306e17e8d59e3969f))
+* **nix:** skip log dir creation in sandbox ([dc1ef5d](https://github.com/smykla-skalski/klaudiush/commit/dc1ef5d66b6a4d86ff508ffaccc2d77c982711ba))
+* **nix:** use TMPDIR for log file in sandbox ([1f3bd64](https://github.com/smykla-skalski/klaudiush/commit/1f3bd645eebce2e5aab8286985e50217f42c65f3))
+
+## [1.26.2](https://github.com/smykla-skalski/klaudiush/compare/v1.26.1...v1.26.2) (2026-02-24)
+
+### Bug Fixes
+
+* **markdown:** fix MD032 false positive ([#340](https://github.com/smykla-skalski/klaudiush/issues/340)) ([668f3a6](https://github.com/smykla-skalski/klaudiush/commit/668f3a6d5315550ef5599725a3644c3422156f20))
+
+## [1.26.1](https://github.com/smykla-skalski/klaudiush/compare/v1.26.0...v1.26.1) (2026-02-24)
+
+### Bug Fixes
+
+* **deps:** update module github.com/go-git/go-git/v6 to v6.0.0-20260222090600-424e9964d3a3 ([#335](https://github.com/smykla-skalski/klaudiush/issues/335)) ([354a44f](https://github.com/smykla-skalski/klaudiush/commit/354a44f36b884cb0962b7511de165093d7c1e09a))
+
+## [1.26.0](https://github.com/smykla-skalski/klaudiush/compare/v1.25.3...v1.26.0) (2026-02-23)
+
+### Features
+
+* **config:** walk up dirs for config ([#336](https://github.com/smykla-skalski/klaudiush/issues/336)) ([24c2772](https://github.com/smykla-skalski/klaudiush/commit/24c27721f37ad1f2a5229fab1cb59fb4881ed527))
+
+## [1.25.3](https://github.com/smykla-skalski/klaudiush/compare/v1.25.2...v1.25.3) (2026-02-22)
+
+### Bug Fixes
+
+* **config:** prevent zero-value pollution ([0a65e15](https://github.com/smykla-skalski/klaudiush/commit/0a65e1545bc2f07010afe7a11359cc08daccd59e))
+
+## [1.25.2](https://github.com/smykla-skalski/klaudiush/compare/v1.25.1...v1.25.2) (2026-02-21)
+
+### Code Refactoring
+
+* **build:** replace Taskfile with mise ([60ad5c0](https://github.com/smykla-skalski/klaudiush/commit/60ad5c04dbe7761cb03bada9ae29c0e5594ee800))
+
+## [1.25.1](https://github.com/smykla-skalski/klaudiush/compare/v1.25.0...v1.25.1) (2026-02-21)
+
+### Code Refactoring
+
+* **cleanup:** drop pkg/stringutil ([6b952ff](https://github.com/smykla-skalski/klaudiush/commit/6b952ff2e3107aa9ffbf3f9a94dddbc6a4aeb72d))
+* **cleanup:** remove dead code ([0c58e95](https://github.com/smykla-skalski/klaudiush/commit/0c58e95408273b7c838f227c800da94ae72439f7))
+* **file:** extract ContentExtractor ([b8acb2b](https://github.com/smykla-skalski/klaudiush/commit/b8acb2b41a2ed1374e64ebd587dddee411ef7616))
+* **git:** add defaultGitRunner helper ([d0abceb](https://github.com/smykla-skalski/klaudiush/commit/d0abcebb056cafd8c8f69f4667075e84f8bacbf0))
+* **validator:** move ruleAdapter to base ([46cde6a](https://github.com/smykla-skalski/klaudiush/commit/46cde6a4571a45f99299437af5a754ed0217c4ed))
+
+## [1.25.0](https://github.com/smykla-skalski/klaudiush/compare/v1.24.0...v1.25.0) (2026-02-21)
+
+### Features
+
+* **nix:** use XDG paths in home-manager module ([87df093](https://github.com/smykla-skalski/klaudiush/commit/87df0937fbcf7bc6b1469c5b04b5f4e2cc2faca0))
+
+### Bug Fixes
+
+* **xdg:** address QA findings in migration ([0174226](https://github.com/smykla-skalski/klaudiush/commit/0174226793ee6fe195183b16e72fc0930a748322))
+
 ## [1.24.0](https://github.com/smykla-skalski/klaudiush/compare/v1.23.2...v1.24.0) (2026-02-21)
 
 ### Features

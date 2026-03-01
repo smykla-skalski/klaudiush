@@ -18,37 +18,37 @@ var (
 type RulesConfig struct {
 	// Enabled controls whether the rule engine is active.
 	// Default: true
-	Enabled *bool `json:"enabled,omitempty" koanf:"enabled" toml:"enabled"`
+	Enabled *bool `json:"enabled,omitempty" koanf:"enabled" toml:"enabled,omitempty"`
 
 	// StopOnFirstMatch controls whether to stop after the first matching rule.
 	// Default: true
-	StopOnFirstMatch *bool `json:"stop_on_first_match,omitempty" koanf:"stop_on_first_match" toml:"stop_on_first_match"`
+	StopOnFirstMatch *bool `json:"stop_on_first_match,omitempty" koanf:"stop_on_first_match" toml:"stop_on_first_match,omitempty"`
 
 	// Rules is the list of validation rules.
-	Rules []RuleConfig `json:"rules,omitempty" koanf:"rules" toml:"rules"`
+	Rules []RuleConfig `json:"rules,omitempty" koanf:"rules" toml:"rules,omitempty"`
 }
 
 // RuleConfig represents a single validation rule configuration.
 type RuleConfig struct {
 	// Name uniquely identifies this rule. Used for override precedence.
-	Name string `json:"name,omitempty" koanf:"name" toml:"name"`
+	Name string `json:"name,omitempty" koanf:"name" toml:"name,omitempty"`
 
 	// Description provides human-readable explanation of the rule.
-	Description string `json:"description,omitempty" koanf:"description" toml:"description"`
+	Description string `json:"description,omitempty" koanf:"description" toml:"description,omitempty"`
 
 	// Enabled controls whether this rule is active.
 	// Default: true
-	Enabled *bool `json:"enabled,omitempty" koanf:"enabled" toml:"enabled"`
+	Enabled *bool `json:"enabled,omitempty" koanf:"enabled" toml:"enabled,omitempty"`
 
 	// Priority determines evaluation order (higher = evaluated first).
 	// Default: 0
-	Priority int `json:"priority,omitempty" koanf:"priority" toml:"priority"`
+	Priority int `json:"priority,omitempty" koanf:"priority" toml:"priority,omitempty"`
 
 	// Match contains the conditions that must be satisfied.
-	Match *RuleMatchConfig `json:"match,omitempty" koanf:"match" toml:"match"`
+	Match *RuleMatchConfig `json:"match,omitempty" koanf:"match" toml:"match,omitempty"`
 
 	// Action specifies what happens when the rule matches.
-	Action *RuleActionConfig `json:"action,omitempty" koanf:"action" toml:"action"`
+	Action *RuleActionConfig `json:"action,omitempty" koanf:"action" toml:"action,omitempty"`
 }
 
 // RuleMatchConfig contains all conditions for a rule to match.
@@ -56,61 +56,61 @@ type RuleConfig struct {
 type RuleMatchConfig struct {
 	// ValidatorType filters by validator type (supports wildcards).
 	// Examples: "git.push", "git.*", "*"
-	ValidatorType string `json:"validator_type,omitempty" koanf:"validator_type" toml:"validator_type"`
+	ValidatorType string `json:"validator_type,omitempty" koanf:"validator_type" toml:"validator_type,omitempty"`
 
 	// RepoPattern matches against the repository root path.
 	// Supports glob patterns (e.g., "**/myorg/**"), regex, and negation (! prefix).
-	RepoPattern string `json:"repo_pattern,omitempty" koanf:"repo_pattern" toml:"repo_pattern"`
+	RepoPattern string `json:"repo_pattern,omitempty" koanf:"repo_pattern" toml:"repo_pattern,omitempty"`
 
 	// RepoPatterns allows multiple repository patterns (any/all based on PatternMode).
-	RepoPatterns []string `json:"repo_patterns,omitempty" koanf:"repo_patterns" toml:"repo_patterns"`
+	RepoPatterns []string `json:"repo_patterns,omitempty" koanf:"repo_patterns" toml:"repo_patterns,omitempty"`
 
 	// Remote matches against git remote name (exact match).
-	Remote string `json:"remote,omitempty" koanf:"remote" toml:"remote"`
+	Remote string `json:"remote,omitempty" koanf:"remote" toml:"remote,omitempty"`
 
 	// BranchPattern matches against branch name.
 	// Supports glob patterns (e.g., "feat/*"), regex, and negation (! prefix).
-	BranchPattern string `json:"branch_pattern,omitempty" koanf:"branch_pattern" toml:"branch_pattern"`
+	BranchPattern string `json:"branch_pattern,omitempty" koanf:"branch_pattern" toml:"branch_pattern,omitempty"`
 
 	// BranchPatterns allows multiple branch patterns (any/all based on PatternMode).
-	BranchPatterns []string `json:"branch_patterns,omitempty" koanf:"branch_patterns" toml:"branch_patterns"`
+	BranchPatterns []string `json:"branch_patterns,omitempty" koanf:"branch_patterns" toml:"branch_patterns,omitempty"`
 
 	// FilePattern matches against file path.
 	// Supports glob patterns (e.g., "**/*.md"), regex, and negation (! prefix).
-	FilePattern string `json:"file_pattern,omitempty" koanf:"file_pattern" toml:"file_pattern"`
+	FilePattern string `json:"file_pattern,omitempty" koanf:"file_pattern" toml:"file_pattern,omitempty"`
 
 	// FilePatterns allows multiple file patterns (any/all based on PatternMode).
-	FilePatterns []string `json:"file_patterns,omitempty" koanf:"file_patterns" toml:"file_patterns"`
+	FilePatterns []string `json:"file_patterns,omitempty" koanf:"file_patterns" toml:"file_patterns,omitempty"`
 
 	// ContentPattern matches against file content.
 	// Always treated as regex. Supports negation (! prefix).
-	ContentPattern string `json:"content_pattern,omitempty" koanf:"content_pattern" toml:"content_pattern"`
+	ContentPattern string `json:"content_pattern,omitempty" koanf:"content_pattern" toml:"content_pattern,omitempty"`
 
 	// ContentPatterns allows multiple content patterns (any/all based on PatternMode).
-	ContentPatterns []string `json:"content_patterns,omitempty" koanf:"content_patterns" toml:"content_patterns"`
+	ContentPatterns []string `json:"content_patterns,omitempty" koanf:"content_patterns" toml:"content_patterns,omitempty"`
 
 	// CommandPattern matches against bash command.
 	// Supports glob patterns, regex, and negation (! prefix).
-	CommandPattern string `json:"command_pattern,omitempty" koanf:"command_pattern" toml:"command_pattern"`
+	CommandPattern string `json:"command_pattern,omitempty" koanf:"command_pattern" toml:"command_pattern,omitempty"`
 
 	// CommandPatterns allows multiple command patterns (any/all based on PatternMode).
-	CommandPatterns []string `json:"command_patterns,omitempty" koanf:"command_patterns" toml:"command_patterns"`
+	CommandPatterns []string `json:"command_patterns,omitempty" koanf:"command_patterns" toml:"command_patterns,omitempty"`
 
 	// ToolType matches against the hook tool type.
 	// Examples: "Bash", "Write", "Edit"
-	ToolType string `json:"tool_type,omitempty" jsonschema:"enum=Bash,enum=Write,enum=Edit,enum=MultiEdit,enum=Grep,enum=Read,enum=Glob" koanf:"tool_type" toml:"tool_type"`
+	ToolType string `json:"tool_type,omitempty" jsonschema:"enum=Bash,enum=Write,enum=Edit,enum=MultiEdit,enum=Grep,enum=Read,enum=Glob" koanf:"tool_type" toml:"tool_type,omitempty"`
 
 	// EventType matches against the hook event type.
 	// Examples: "PreToolUse", "PostToolUse"
-	EventType string `json:"event_type,omitempty" jsonschema:"enum=PreToolUse,enum=PostToolUse,enum=Notification" koanf:"event_type" toml:"event_type"`
+	EventType string `json:"event_type,omitempty" jsonschema:"enum=PreToolUse,enum=PostToolUse,enum=Notification" koanf:"event_type" toml:"event_type,omitempty"`
 
 	// CaseInsensitive enables case-insensitive pattern matching for all patterns.
 	// Default: false
-	CaseInsensitive *bool `json:"case_insensitive,omitempty" koanf:"case_insensitive" toml:"case_insensitive"`
+	CaseInsensitive *bool `json:"case_insensitive,omitempty" koanf:"case_insensitive" toml:"case_insensitive,omitempty"`
 
 	// PatternMode specifies how multiple patterns are combined when using pattern lists.
 	// Values: "any" (OR logic, default), "all" (AND logic)
-	PatternMode string `json:"pattern_mode,omitempty" jsonschema:"enum=any,enum=all" koanf:"pattern_mode" toml:"pattern_mode"`
+	PatternMode string `json:"pattern_mode,omitempty" jsonschema:"enum=any,enum=all" koanf:"pattern_mode" toml:"pattern_mode,omitempty"`
 }
 
 // IsCaseInsensitive returns true if case-insensitive matching is enabled.
@@ -159,13 +159,13 @@ func (m *RuleMatchConfig) HasMatchConditions() bool {
 type RuleActionConfig struct {
 	// Type is the action to take (block, warn, allow).
 	// Default: "block"
-	Type string `json:"type,omitempty" jsonschema:"enum=allow,enum=block,enum=warn" koanf:"type" toml:"type"`
+	Type string `json:"type,omitempty" jsonschema:"enum=allow,enum=block,enum=warn" koanf:"type" toml:"type,omitempty"`
 
 	// Message is the human-readable message to display.
-	Message string `json:"message,omitempty" koanf:"message" toml:"message"`
+	Message string `json:"message,omitempty" koanf:"message" toml:"message,omitempty"`
 
 	// Reference is an optional error reference code (e.g., "GIT019").
-	Reference string `json:"reference,omitempty" koanf:"reference" toml:"reference"`
+	Reference string `json:"reference,omitempty" koanf:"reference" toml:"reference,omitempty"`
 }
 
 // IsEnabled returns true if the rules engine is enabled.

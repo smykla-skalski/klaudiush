@@ -18,41 +18,41 @@ const (
 type BackupConfig struct {
 	// Enabled controls whether the backup system is active.
 	// Default: true
-	Enabled *bool `json:"enabled,omitempty" koanf:"enabled" toml:"enabled"`
+	Enabled *bool `json:"enabled,omitempty" koanf:"enabled" toml:"enabled,omitempty"`
 
 	// AutoBackup controls whether backups are created automatically before config changes.
 	// Default: true
-	AutoBackup *bool `json:"auto_backup,omitempty" koanf:"auto_backup" toml:"auto_backup"`
+	AutoBackup *bool `json:"auto_backup,omitempty" koanf:"auto_backup" toml:"auto_backup,omitempty"`
 
 	// MaxBackups is the maximum number of backups to keep per config directory.
 	// Default: 10
-	MaxBackups *int `json:"max_backups,omitempty" koanf:"max_backups" toml:"max_backups"`
+	MaxBackups *int `json:"max_backups,omitempty" koanf:"max_backups" toml:"max_backups,omitempty"`
 
 	// MaxAge is the maximum age of backups before they are pruned.
 	// Default: "720h" (30 days)
-	MaxAge Duration `json:"max_age,omitempty" koanf:"max_age" toml:"max_age"`
+	MaxAge Duration `json:"max_age,omitempty" koanf:"max_age" toml:"max_age,omitempty"`
 
 	// MaxSize is the maximum total size of all backups in bytes.
 	// Default: 52428800 (50MB)
-	MaxSize *int64 `json:"max_size,omitempty" koanf:"max_size" toml:"max_size"`
+	MaxSize *int64 `json:"max_size,omitempty" koanf:"max_size" toml:"max_size,omitempty"`
 
 	// AsyncBackup controls whether backups run asynchronously.
 	// Default: true
-	AsyncBackup *bool `json:"async_backup,omitempty" koanf:"async_backup" toml:"async_backup"`
+	AsyncBackup *bool `json:"async_backup,omitempty" koanf:"async_backup" toml:"async_backup,omitempty"`
 
 	// Delta contains configuration for delta backup strategy.
-	Delta *DeltaConfig `json:"delta,omitempty" koanf:"delta" toml:"delta"`
+	Delta *DeltaConfig `json:"delta,omitempty" koanf:"delta" toml:"delta,omitempty"`
 }
 
 // DeltaConfig contains configuration for delta backup strategy.
 type DeltaConfig struct {
 	// FullSnapshotInterval is the number of backups between full snapshots.
 	// Default: 10
-	FullSnapshotInterval *int `json:"full_snapshot_interval,omitempty" koanf:"full_snapshot_interval" toml:"full_snapshot_interval"`
+	FullSnapshotInterval *int `json:"full_snapshot_interval,omitempty" koanf:"full_snapshot_interval" toml:"full_snapshot_interval,omitempty"`
 
 	// FullSnapshotMaxAge is the maximum age before creating a new full snapshot.
 	// Default: "168h" (7 days)
-	FullSnapshotMaxAge Duration `json:"full_snapshot_max_age,omitempty" koanf:"full_snapshot_max_age" toml:"full_snapshot_max_age"`
+	FullSnapshotMaxAge Duration `json:"full_snapshot_max_age,omitempty" koanf:"full_snapshot_max_age" toml:"full_snapshot_max_age,omitempty"`
 }
 
 // IsEnabled returns whether the backup system is enabled.

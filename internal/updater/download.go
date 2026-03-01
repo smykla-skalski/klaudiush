@@ -76,7 +76,7 @@ func (d *Downloader) DownloadToFile(
 
 // DownloadToString downloads a URL and returns the body as a string.
 //
-//nolint:gosec // G704: URL is constructed internally by the updater, not user-controlled
+//nolint:gosec // G704: intentional HTTP request to GitHub releases API for update downloads
 func (d *Downloader) DownloadToString(ctx context.Context, url string) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {

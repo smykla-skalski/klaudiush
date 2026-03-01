@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/smykla-skalski/klaudiush/internal/rules"
 	"github.com/smykla-skalski/klaudiush/internal/validator"
 	"github.com/smykla-skalski/klaudiush/pkg/config"
 	"github.com/smykla-skalski/klaudiush/pkg/hook"
@@ -16,20 +15,18 @@ import (
 // BellValidator sends a bell character to /dev/tty for all notification events.
 type BellValidator struct {
 	*validator.BaseValidator
-	config      *config.BellValidatorConfig
-	ruleAdapter *rules.RuleValidatorAdapter
+	config *config.BellValidatorConfig
 }
 
 // NewBellValidator creates a new BellValidator.
 func NewBellValidator(
 	log logger.Logger,
 	cfg *config.BellValidatorConfig,
-	ruleAdapter *rules.RuleValidatorAdapter,
+	ruleAdapter validator.RuleChecker,
 ) *BellValidator {
 	return &BellValidator{
-		BaseValidator: validator.NewBaseValidator("bell", log),
+		BaseValidator: validator.NewBaseValidatorWithRules("bell", log, ruleAdapter),
 		config:        cfg,
-		ruleAdapter:   ruleAdapter,
 	}
 }
 
@@ -37,11 +34,8 @@ func NewBellValidator(
 func (v *BellValidator) Validate(ctx context.Context, hookCtx *hook.Context) *validator.Result {
 	v.Logger().Debug("handling notification", "notification_type", hookCtx.NotificationType)
 
-	// Check rules first if rule adapter is configured
-	if v.ruleAdapter != nil {
-		if result := v.ruleAdapter.CheckRules(ctx, hookCtx); result != nil {
-			return result
-		}
+	if result := v.CheckRules(ctx, hookCtx); result != nil {
+		return result
 	}
 
 	// Check if custom command is configured
@@ -85,8 +79,12 @@ func (v *BellValidator) sendBell() *validator.Result {
 func (v *BellValidator) executeCustomCommand(ctx context.Context, cmdStr string) *validator.Result {
 	v.Logger().Debug("executing custom notification command", "command", cmdStr)
 
-	//nolint:gosec // G204: cmdStr is a user-configured custom notification command; intentionally dynamic
-	cmd := exec.CommandContext(ctx, "sh", "-c", cmdStr)
+	cmd := exec.CommandContext( //nolint:gosec // G204: cmdStr is user-configured notification command, intentionally executed via shell
+		ctx,
+		"sh",
+		"-c",
+		cmdStr,
+	)
 
 	err := cmd.Run()
 	if err != nil {

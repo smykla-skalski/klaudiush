@@ -27,8 +27,11 @@ func main() {
 
 	const filePerms = 0o644
 
-	//nolint:gosec // dev tool, outDir from CLI arg
-	writeErr := os.WriteFile(outPath, data, filePerms)
+	writeErr := os.WriteFile( //nolint:gosec // G703: outPath is a CLI arg to a codegen tool, not user input
+		outPath,
+		data,
+		filePerms,
+	)
 	if writeErr != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", writeErr)
 		os.Exit(1)

@@ -103,16 +103,6 @@ func Fail(message string) *Result {
 	}
 }
 
-// FailWithDetails creates a failing validation result with details.
-func FailWithDetails(message string, details map[string]string) *Result {
-	return &Result{
-		Passed:      false,
-		Message:     message,
-		Details:     details,
-		ShouldBlock: true,
-	}
-}
-
 // Warn creates a failing validation result that only warns without blocking.
 func Warn(message string) *Result {
 	return &Result{
@@ -188,10 +178,17 @@ func (r *Result) String() string {
 	return "WARN"
 }
 
+// RuleChecker checks dynamic validation rules before built-in logic.
+// Satisfied by *rules.RuleValidatorAdapter.
+type RuleChecker interface {
+	CheckRules(ctx context.Context, hookCtx *hook.Context) *Result
+}
+
 // BaseValidator provides common validator functionality.
 type BaseValidator struct {
-	name   string
-	logger logger.Logger
+	name        string
+	logger      logger.Logger
+	ruleChecker RuleChecker
 }
 
 // NewBaseValidator creates a new BaseValidator.
@@ -200,6 +197,31 @@ func NewBaseValidator(name string, logger logger.Logger) *BaseValidator {
 		name:   name,
 		logger: logger,
 	}
+}
+
+// NewBaseValidatorWithRules creates a BaseValidator with a rule checker.
+func NewBaseValidatorWithRules(
+	name string,
+	log logger.Logger,
+	rc RuleChecker,
+) *BaseValidator {
+	return &BaseValidator{
+		name:        name,
+		logger:      log,
+		ruleChecker: rc,
+	}
+}
+
+// CheckRules evaluates dynamic rules. Returns non-nil if a rule matched.
+func (v *BaseValidator) CheckRules(
+	ctx context.Context,
+	hookCtx *hook.Context,
+) *Result {
+	if v.ruleChecker == nil {
+		return nil
+	}
+
+	return v.ruleChecker.CheckRules(ctx, hookCtx)
 }
 
 // Name returns the validator name.

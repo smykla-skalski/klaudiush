@@ -297,6 +297,89 @@ var _ = Describe("FilePatternStore", func() {
 		})
 	})
 
+	Describe("TrimPatterns", func() {
+		It("reduces count to the limit", func() {
+			store.RecordSequence("A", "X")
+			store.RecordSequence("B", "X")
+			store.RecordSequence("C", "X")
+			Expect(store.GetAllPatterns()).To(HaveLen(3))
+
+			removed := store.TrimPatterns(1)
+			Expect(removed).To(Equal(2))
+			Expect(store.GetAllPatterns()).To(HaveLen(1))
+		})
+
+		It("preserves the newest pattern when trimming to 1", func() {
+			// Save OLD pattern then reload to get a past timestamp in the file
+			store.RecordSequence("OLD", "X")
+			Expect(store.Save()).To(Succeed())
+
+			// New store loads OLD, then records NEW (which gets time.Now())
+			store2 := patterns.NewFilePatternStore(cfg, tmpDir)
+			Expect(store2.Load()).To(Succeed())
+			store2.RecordSequence("NEW", "Y")
+
+			removed := store2.TrimPatterns(1)
+			Expect(removed).To(Equal(1))
+
+			remaining := store2.GetAllPatterns()
+			Expect(remaining).To(HaveLen(1))
+			// The remaining pattern should be the more recently seen one
+			Expect(remaining[0].SourceCode).To(Equal("NEW"))
+		})
+
+		It("does nothing when count is at or below the limit", func() {
+			store.RecordSequence("GIT013", "GIT004")
+			removed := store.TrimPatterns(5)
+			Expect(removed).To(Equal(0))
+			Expect(store.GetAllPatterns()).To(HaveLen(1))
+		})
+
+		It("does nothing on empty store", func() {
+			removed := store.TrimPatterns(10)
+			Expect(removed).To(Equal(0))
+		})
+
+		It("does nothing when maxCount is 0", func() {
+			store.RecordSequence("GIT013", "GIT004")
+			removed := store.TrimPatterns(0)
+			Expect(removed).To(Equal(0))
+			Expect(store.GetAllPatterns()).To(HaveLen(1))
+		})
+	})
+
+	Describe("TrimSessions", func() {
+		It("reduces count to the limit", func() {
+			store.SetSessionCodes("s1", []string{"GIT013"})
+			store.SetSessionCodes("s2", []string{"GIT004"})
+			store.SetSessionCodes("s3", []string{"GIT005"})
+			Expect(store.GetActiveSessions()).To(Equal(3))
+
+			removed := store.TrimSessions(1)
+			Expect(removed).To(Equal(2))
+			Expect(store.GetActiveSessions()).To(Equal(1))
+		})
+
+		It("does nothing when count is at or below the limit", func() {
+			store.SetSessionCodes("sess1", []string{"GIT013"})
+			removed := store.TrimSessions(5)
+			Expect(removed).To(Equal(0))
+			Expect(store.GetActiveSessions()).To(Equal(1))
+		})
+
+		It("does nothing on empty store", func() {
+			removed := store.TrimSessions(10)
+			Expect(removed).To(Equal(0))
+		})
+
+		It("does nothing when maxCount is 0", func() {
+			store.SetSessionCodes("sess1", []string{"GIT013"})
+			removed := store.TrimSessions(0)
+			Expect(removed).To(Equal(0))
+			Expect(store.GetActiveSessions()).To(Equal(1))
+		})
+	})
+
 	Describe("Backward compatibility", func() {
 		It("migrates old session format on load", func() {
 			// Write old format: sessions as map[string][]string

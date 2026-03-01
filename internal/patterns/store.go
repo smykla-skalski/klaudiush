@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -273,6 +274,69 @@ func (s *FilePatternStore) CleanupSessions(maxAge time.Duration) int {
 	}
 
 	return removed
+}
+
+// TrimPatterns removes the least recently seen learned patterns until the count
+// is at or below maxCount. Seed patterns (in project data) are not affected.
+// Returns the number of patterns removed.
+//
+//nolint:dupl // TrimSessions has the same structure but operates on a different map type.
+func (s *FilePatternStore) TrimPatterns(maxCount int) int {
+	if maxCount <= 0 || len(s.globalData.Patterns) <= maxCount {
+		return 0
+	}
+
+	type entry struct {
+		key      string
+		lastSeen time.Time
+	}
+
+	entries := make([]entry, 0, len(s.globalData.Patterns))
+	for key, p := range s.globalData.Patterns {
+		entries = append(entries, entry{key: key, lastSeen: p.LastSeen})
+	}
+
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].lastSeen.Before(entries[j].lastSeen)
+	})
+
+	toRemove := len(s.globalData.Patterns) - maxCount
+	for i := range toRemove {
+		delete(s.globalData.Patterns, entries[i].key)
+	}
+
+	return toRemove
+}
+
+// TrimSessions removes the least recently seen sessions until the count is at or
+// below maxCount. Returns the number of sessions removed.
+//
+//nolint:dupl // TrimPatterns has the same structure but operates on a different map type.
+func (s *FilePatternStore) TrimSessions(maxCount int) int {
+	if maxCount <= 0 || len(s.globalData.Sessions) <= maxCount {
+		return 0
+	}
+
+	type entry struct {
+		id       string
+		lastSeen time.Time
+	}
+
+	entries := make([]entry, 0, len(s.globalData.Sessions))
+	for id, sess := range s.globalData.Sessions {
+		entries = append(entries, entry{id: id, lastSeen: sess.LastSeen})
+	}
+
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].lastSeen.Before(entries[j].lastSeen)
+	})
+
+	toRemove := len(s.globalData.Sessions) - maxCount
+	for i := range toRemove {
+		delete(s.globalData.Sessions, entries[i].id)
+	}
+
+	return toRemove
 }
 
 // GetActiveSessions returns the number of active sessions in global storage.

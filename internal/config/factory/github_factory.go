@@ -57,10 +57,10 @@ func (f *GitHubValidatorFactory) CreateValidators(cfg *config.Config) []Validato
 func (f *GitHubValidatorFactory) createIssueValidator(
 	cfg *config.IssueValidatorConfig,
 ) ValidatorWithPredicate {
-	var ruleAdapter *rules.RuleValidatorAdapter
+	var rc validator.RuleChecker
 
 	if f.ruleEngine != nil {
-		ruleAdapter = rules.NewRuleValidatorAdapter(
+		rc = rules.NewRuleValidatorAdapter(
 			f.ruleEngine,
 			rules.ValidatorGitHubIssue,
 			rules.WithAdapterLogger(f.log),
@@ -72,7 +72,7 @@ func (f *GitHubValidatorFactory) createIssueValidator(
 	linter := linters.NewMarkdownLinter(runner)
 
 	return ValidatorWithPredicate{
-		Validator: githubvalidators.NewIssueValidator(cfg, linter, f.log, ruleAdapter),
+		Validator: githubvalidators.NewIssueValidator(cfg, linter, f.log, rc),
 		Predicate: validator.And(
 			validator.EventTypeIs(hook.EventTypePreToolUse),
 			validator.ToolTypeIs(hook.ToolTypeBash),
