@@ -117,8 +117,6 @@ type CustomRuleData struct {
 type CascadeData struct {
 	SourceCode string
 	TargetCode string
-	SourceDesc string
-	TargetDesc string
 }
 
 // Collect extracts all relevant info from config into a SuggestData struct.
@@ -322,7 +320,6 @@ func collectLinters(file *config.FileConfig) []FileLinterData {
 		{FileLinterData{"Python", "*.py", "ruff"}, isLinterEnabled(file, "python")},
 		{FileLinterData{"JavaScript", "*.js, *.ts, *.jsx, *.tsx", "oxlint"}, isLinterEnabled(file, "javascript")},
 		{FileLinterData{"Rust", "*.rs", "rustfmt"}, isLinterEnabled(file, "rust")},
-		{FileLinterData{"LinterIgnore", "all", "pattern detection"}, isLinterEnabled(file, "linterignore")},
 	}
 
 	var result []FileLinterData
@@ -360,8 +357,6 @@ func isLinterEnabled(file *config.FileConfig, name string) bool {
 		return file.JavaScript == nil || file.JavaScript.IsEnabled()
 	case "rust":
 		return file.Rust == nil || file.Rust.IsEnabled()
-	case "linterignore":
-		return file.LinterIgnore == nil || file.LinterIgnore.IsEnabled()
 	default:
 		return true
 	}
@@ -430,7 +425,6 @@ func collectCustomRules(rules *config.RulesConfig) []CustomRuleData {
 }
 
 func collectCascades() []CascadeData {
-	descs := patterns.CodeDescriptions()
 	seedData := patterns.SeedPatterns()
 
 	var cascades []CascadeData
@@ -439,8 +433,6 @@ func collectCascades() []CascadeData {
 		cascades = append(cascades, CascadeData{
 			SourceCode: p.SourceCode,
 			TargetCode: p.TargetCode,
-			SourceDesc: descs[p.SourceCode],
-			TargetDesc: descs[p.TargetCode],
 		})
 	}
 
