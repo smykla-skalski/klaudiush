@@ -14,6 +14,11 @@ import (
 	"github.com/smykla-skalski/klaudiush/pkg/config"
 )
 
+const (
+	hashSubmatchMinCount = 2
+	hashSubmatchValueIdx = 1
+)
+
 // hashRegex matches the hash comment in a KLAUDIUSH.md file.
 var hashRegex = regexp.MustCompile(`<!-- klaudiush:hash:([0-9a-f]+) -->`)
 
@@ -21,22 +26,6 @@ var hashRegex = regexp.MustCompile(`<!-- klaudiush:hash:([0-9a-f]+) -->`)
 type seedPair struct {
 	Source string `json:"s"`
 	Target string `json:"t"`
-}
-
-// hashableData is a struct derived from SuggestData for deterministic hashing.
-// Uses the collected data (not raw config) to ensure the hash reflects
-// what actually gets rendered. This avoids issues with config mutation
-// from nil-safe getters like GetValidators().
-type hashableData struct {
-	Commit  *CommitRulesData  `json:"commit,omitempty"`
-	Push    *PushRulesData    `json:"push,omitempty"`
-	Branch  *BranchRulesData  `json:"branch,omitempty"`
-	PR      *PRRulesData      `json:"pr,omitempty"`
-	Linters []FileLinterData  `json:"linters,omitempty"`
-	Secrets *SecretsRulesData `json:"secrets,omitempty"`
-	Shell   *ShellRulesData   `json:"shell,omitempty"`
-	Rules   []CustomRuleData  `json:"rules,omitempty"`
-	Seeds   []seedPair        `json:"seeds"`
 }
 
 // ComputeHash computes a SHA-256 hash of the effective config.
@@ -47,19 +36,19 @@ func ComputeHash(cfg *config.Config) (string, error) {
 
 	seeds := collectSeedPairs()
 
-	hd := hashableData{
-		Commit:  collected.Commit,
-		Push:    collected.Push,
-		Branch:  collected.Branch,
-		PR:      collected.PR,
-		Linters: collected.Linters,
-		Secrets: collected.Secrets,
-		Shell:   collected.Shell,
-		Rules:   collected.Rules,
-		Seeds:   seeds,
+	payload := map[string]any{
+		"commit":  collected.Commit,
+		"push":    collected.Push,
+		"branch":  collected.Branch,
+		"pr":      collected.PR,
+		"linters": collected.Linters,
+		"secrets": collected.Secrets,
+		"shell":   collected.Shell,
+		"rules":   collected.Rules,
+		"seeds":   seeds,
 	}
 
-	data, err := json.Marshal(hd)
+	data, err := json.Marshal(payload)
 	if err != nil {
 		return "", errors.Wrap(err, "marshaling data for hash")
 	}
@@ -79,11 +68,11 @@ func ExtractHash(filePath string) (string, error) {
 	}
 
 	matches := hashRegex.FindSubmatch(content)
-	if len(matches) < 2 {
+	if len(matches) < hashSubmatchMinCount {
 		return "", nil
 	}
 
-	return string(matches[1]), nil
+	return string(matches[hashSubmatchValueIdx]), nil
 }
 
 // collectSeedPairs extracts seed patterns into a sorted slice for deterministic hashing.

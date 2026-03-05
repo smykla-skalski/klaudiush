@@ -23,10 +23,8 @@ const (
 	commitStyleAuto         = "auto"
 )
 
-var (
-	// Git revert commit format: Revert "original commit" or Revert 'original commit'
-	revertCommitRegex = regexp.MustCompile(`^Revert ["'].+["']$`)
-)
+// Git revert commit format: Revert "original commit" or Revert 'original commit'
+var revertCommitRegex = regexp.MustCompile(`^Revert ["'].+["']$`)
 
 // validateMessage validates the commit message content using the parser and rules.
 func (v *CommitValidator) validateMessage(ctx context.Context, message string) *validator.Result {

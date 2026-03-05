@@ -122,7 +122,13 @@ func extractPRType(title string, validTypes []string) string {
 //
 //nolint:revive // Exported for testing, intentionally similar to internal function
 func ValidatePRTitle(title string) PRTitleValidationResult {
-	return validatePRTitle(title, config.DefaultTitleMaxLength, true, true, config.DefaultValidTypes)
+	return validatePRTitle(
+		title,
+		config.DefaultTitleMaxLength,
+		true,
+		true,
+		config.DefaultValidTypes,
+	)
 }
 
 // ExtractPRType extracts the type with default valid types (exported for testing)

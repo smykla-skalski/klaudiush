@@ -68,7 +68,7 @@ func (g *Generator) Check(filePath string) (bool, error) {
 }
 
 // WriteFile writes content to a file atomically using tmp+rename.
-func (g *Generator) WriteFile(filePath, content string) error {
+func (*Generator) WriteFile(filePath, content string) error {
 	dir := filepath.Dir(filePath)
 	if err := os.MkdirAll(dir, dirPermissions); err != nil {
 		return errors.Wrap(err, "creating output directory")

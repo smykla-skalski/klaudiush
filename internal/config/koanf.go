@@ -56,9 +56,9 @@ const (
 
 // Default configuration constants for koanf map defaults.
 const (
-	defaultTimeoutStr        = "10s"
-	defaultGHAPITimeoutStr   = "5s"
-	defaultContextLines      = 2
+	defaultTimeoutStr      = "10s"
+	defaultGHAPITimeoutStr = "5s"
+	defaultContextLines    = 2
 
 	// Exception defaults.
 	defaultExceptionTokenPrefix     = "EXC"

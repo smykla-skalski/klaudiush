@@ -4,9 +4,6 @@
 package suggest
 
 import (
-	"sort"
-
-	"github.com/smykla-skalski/klaudiush/internal/patterns"
 	"github.com/smykla-skalski/klaudiush/pkg/config"
 )
 
@@ -315,14 +312,70 @@ func collectLinters(file *config.FileConfig) []FileLinterData {
 	}
 
 	entries := []linterEntry{
-		{FileLinterData{"Markdown", "*.md", "markdownlint + custom rules"}, isLinterEnabled(file, "markdown")},
-		{FileLinterData{"ShellScript", "*.sh, *.bash", "shellcheck"}, isLinterEnabled(file, "shellscript")},
-		{FileLinterData{"Terraform", "*.tf", "tofu/terraform fmt + tflint"}, isLinterEnabled(file, "terraform")},
-		{FileLinterData{"Workflow", ".github/workflows/*.yml", "actionlint"}, isLinterEnabled(file, "workflow")},
-		{FileLinterData{"Go", "*.go", "gofumpt"}, isLinterEnabled(file, "gofumpt")},
-		{FileLinterData{"Python", "*.py", "ruff"}, isLinterEnabled(file, "python")},
-		{FileLinterData{"JavaScript", "*.js, *.ts, *.jsx, *.tsx", "oxlint"}, isLinterEnabled(file, "javascript")},
-		{FileLinterData{"Rust", "*.rs", "rustfmt"}, isLinterEnabled(file, "rust")},
+		{
+			data: FileLinterData{
+				Name:     "Markdown",
+				FileType: "*.md",
+				Tool:     "markdownlint + custom rules",
+			},
+			enabled: isLinterEnabled(file, "markdown"),
+		},
+		{
+			data: FileLinterData{
+				Name:     "ShellScript",
+				FileType: "*.sh, *.bash",
+				Tool:     "shellcheck",
+			},
+			enabled: isLinterEnabled(file, "shellscript"),
+		},
+		{
+			data: FileLinterData{
+				Name:     "Terraform",
+				FileType: "*.tf",
+				Tool:     "tofu/terraform fmt + tflint",
+			},
+			enabled: isLinterEnabled(file, "terraform"),
+		},
+		{
+			data: FileLinterData{
+				Name:     "Workflow",
+				FileType: ".github/workflows/*.yml",
+				Tool:     "actionlint",
+			},
+			enabled: isLinterEnabled(file, "workflow"),
+		},
+		{
+			data: FileLinterData{
+				Name:     "Go",
+				FileType: "*.go",
+				Tool:     "gofumpt",
+			},
+			enabled: isLinterEnabled(file, "gofumpt"),
+		},
+		{
+			data: FileLinterData{
+				Name:     "Python",
+				FileType: "*.py",
+				Tool:     "ruff",
+			},
+			enabled: isLinterEnabled(file, "python"),
+		},
+		{
+			data: FileLinterData{
+				Name:     "JavaScript",
+				FileType: "*.js, *.ts, *.jsx, *.tsx",
+				Tool:     "oxlint",
+			},
+			enabled: isLinterEnabled(file, "javascript"),
+		},
+		{
+			data: FileLinterData{
+				Name:     "Rust",
+				FileType: "*.rs",
+				Tool:     "rustfmt",
+			},
+			enabled: isLinterEnabled(file, "rust"),
+		},
 	}
 
 	var result []FileLinterData
@@ -428,25 +481,15 @@ func collectCustomRules(rules *config.RulesConfig) []CustomRuleData {
 }
 
 func collectCascades() []CascadeData {
-	seedData := patterns.SeedPatterns()
+	seedPairs := collectSeedPairs()
+	cascades := make([]CascadeData, 0, len(seedPairs))
 
-	var cascades []CascadeData
-
-	for _, p := range seedData.Patterns {
+	for _, p := range seedPairs {
 		cascades = append(cascades, CascadeData{
-			SourceCode: p.SourceCode,
-			TargetCode: p.TargetCode,
+			SourceCode: p.Source,
+			TargetCode: p.Target,
 		})
 	}
-
-	// Sort for deterministic output
-	sort.Slice(cascades, func(i, j int) bool {
-		if cascades[i].SourceCode != cascades[j].SourceCode {
-			return cascades[i].SourceCode < cascades[j].SourceCode
-		}
-
-		return cascades[i].TargetCode < cascades[j].TargetCode
-	})
 
 	return cascades
 }
