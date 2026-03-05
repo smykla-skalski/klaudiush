@@ -707,7 +707,7 @@ func (v *MergeValidator) getForbiddenPatterns() []string {
 		return v.config.Message.ForbiddenPatterns
 	}
 
-	return defaultForbiddenPatterns
+	return config.DefaultForbiddenPatterns
 }
 
 // Category returns the validator category for parallel execution.

@@ -10,18 +10,22 @@ import (
 	"github.com/smykla-skalski/klaudiush/pkg/config"
 )
 
+const (
+	prTitleStyleConventional = "conventional"
+	prTitleStyleNone         = "none"
+)
 
 // SuggestData is the top-level data struct consumed by the template.
 type SuggestData struct {
-	Version   string
-	Hash      string
-	Commit    *CommitRulesData
-	Push      *PushRulesData
-	Branch    *BranchRulesData
-	PR        *PRRulesData
-	Linters   []FileLinterData
-	Secrets   *SecretsRulesData
-	Shell     *ShellRulesData
+	Version  string
+	Hash     string
+	Commit   *CommitRulesData
+	Push     *PushRulesData
+	Branch   *BranchRulesData
+	PR       *PRRulesData
+	Linters  []FileLinterData
+	Secrets  *SecretsRulesData
+	Shell    *ShellRulesData
 	Rules    []CustomRuleData
 	Cascades []CascadeData
 }
@@ -60,8 +64,11 @@ type BranchRulesData struct {
 
 // PRRulesData holds PR validation rules.
 type PRRulesData struct {
-	TitleMaxLength int
-	RequireBody    bool
+	TitleMaxLength    int
+	RequireBody       bool
+	TitleStyle        string
+	ValidTypes        []string
+	ForbiddenPatterns []string
 }
 
 // FileLinterData describes a single file linter.
@@ -135,6 +142,7 @@ func collectCommitRules(git *config.GitConfig) *CommitRulesData {
 		CommitStyle:        config.DefaultCommitStyle,
 		RequireScope:       true,
 		ValidTypes:         config.DefaultValidTypes,
+		ForbiddenPatterns:  config.DefaultForbiddenPatterns,
 		BlockInfraScope:    true,
 		BlockPRReferences:  true,
 		BlockAIAttribution: true,
@@ -263,8 +271,11 @@ func collectBranchRules(git *config.GitConfig) *BranchRulesData {
 
 func collectPRRules(git *config.GitConfig) *PRRulesData {
 	data := &PRRulesData{
-		TitleMaxLength: config.DefaultTitleMaxLength,
-		RequireBody:    true,
+		TitleMaxLength:    config.DefaultTitleMaxLength,
+		RequireBody:       true,
+		TitleStyle:        prTitleStyleConventional,
+		ValidTypes:        config.DefaultValidTypes,
+		ForbiddenPatterns: config.DefaultForbiddenPatterns,
 	}
 
 	pr := git.PR
@@ -278,6 +289,20 @@ func collectPRRules(git *config.GitConfig) *PRRulesData {
 
 	if pr.RequireBody != nil {
 		data.RequireBody = *pr.RequireBody
+	}
+
+	if pr.TitleStyle != "" {
+		data.TitleStyle = pr.TitleStyle
+	} else if pr.TitleConventionalCommits != nil && !*pr.TitleConventionalCommits {
+		data.TitleStyle = prTitleStyleNone
+	}
+
+	if len(pr.ValidTypes) > 0 {
+		data.ValidTypes = pr.ValidTypes
+	}
+
+	if len(pr.ForbiddenPatterns) > 0 {
+		data.ForbiddenPatterns = pr.ForbiddenPatterns
 	}
 
 	return data
@@ -425,5 +450,3 @@ func collectCascades() []CascadeData {
 
 	return cascades
 }
-
-

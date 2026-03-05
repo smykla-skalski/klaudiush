@@ -33,14 +33,7 @@ var (
 	heredocRegex       = regexp.MustCompile(`<<'?EOF'?\s*\n((?s:.+?))\nEOF`)
 	bodyRegex          = regexp.MustCompile(`--body\s+"([^"]+)"`)
 	bodySingleRegex    = regexp.MustCompile(`--body\s+'([^']+)'`)
-
-	// defaultPRForbiddenPatterns blocks mentions of tmp directory
-	defaultPRForbiddenPatterns = []string{
-		`\btmp/`,  // tmp/ path references
-		`\btmp\b`, // standalone tmp word
-	}
 )
-
 
 // PRValidator validates gh pr create commands
 type PRValidator struct {
@@ -625,5 +618,5 @@ func (v *PRValidator) getForbiddenPatterns() []string {
 		return v.config.ForbiddenPatterns
 	}
 
-	return defaultPRForbiddenPatterns
+	return config.DefaultForbiddenPatterns
 }

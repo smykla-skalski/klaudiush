@@ -22,3 +22,9 @@ var DefaultValidBranchTypes = []string{
 
 // DefaultProtectedBranches are branches that skip validation.
 var DefaultProtectedBranches = []string{"main", "master"}
+
+// DefaultForbiddenPatterns block mentions of tmp directory.
+var DefaultForbiddenPatterns = []string{
+	`\btmp/`,  // tmp/ path references
+	`\btmp\b`, // standalone tmp word
+}

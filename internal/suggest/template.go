@@ -64,6 +64,15 @@ Lowercase only.
 ## PRs
 
 Title ≤{{.PR.TitleMaxLength}} chars.{{if .PR.RequireBody}} Body required.{{end}}
+{{- if ne .PR.TitleStyle "none"}}
+Title style: {{.PR.TitleStyle}}.
+{{- end}}
+{{- if and (ne .PR.TitleStyle "none") (or (eq .PR.TitleStyle "conventional") (eq .PR.TitleStyle "auto"))}}
+Types: {{join .PR.ValidTypes ", "}}
+{{- end}}
+{{- if .PR.ForbiddenPatterns}}
+Forbidden: {{join .PR.ForbiddenPatterns ", "}}
+{{- end}}
 {{- end}}
 {{- if .Linters}}
 

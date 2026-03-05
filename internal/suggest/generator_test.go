@@ -23,6 +23,7 @@ var _ = Describe("Collector", func() {
 			Expect(data.Commit.ConventionalCommit).To(BeTrue())
 			Expect(data.Commit.RequireScope).To(BeTrue())
 			Expect(data.Commit.RequiredFlags).To(Equal([]string{"-s", "-S"}))
+			Expect(data.Commit.ForbiddenPatterns).To(Equal(config.DefaultForbiddenPatterns))
 
 			Expect(data.Push).NotTo(BeNil())
 			Expect(data.Push.RequireTracking).To(BeTrue())
@@ -30,6 +31,11 @@ var _ = Describe("Collector", func() {
 			Expect(data.Branch).NotTo(BeNil())
 			Expect(data.Branch.RequireType).To(BeTrue())
 			Expect(data.Branch.ProtectedBranches).To(ContainElements("main", "master"))
+
+			Expect(data.PR).NotTo(BeNil())
+			Expect(data.PR.TitleStyle).To(Equal("conventional"))
+			Expect(data.PR.ValidTypes).To(Equal(config.DefaultValidTypes))
+			Expect(data.PR.ForbiddenPatterns).To(Equal(config.DefaultForbiddenPatterns))
 
 			Expect(data.Linters).NotTo(BeEmpty())
 			Expect(data.Secrets).NotTo(BeNil())
@@ -57,6 +63,7 @@ var _ = Describe("Collector", func() {
 								TitleMaxLength:    &titleMax,
 								BodyMaxLineLength: &bodyMax,
 								ValidTypes:        []string{"feat", "fix"},
+								ForbiddenPatterns: []string{`\bworktree\b`},
 							},
 						},
 						Push: &config.PushValidatorConfig{
@@ -65,6 +72,12 @@ var _ = Describe("Collector", func() {
 						Branch: &config.BranchValidatorConfig{
 							ValidTypes:        []string{"feat", "fix", "chore"},
 							ProtectedBranches: []string{"main", "develop"},
+						},
+						PR: &config.PRValidatorConfig{
+							TitleStyle:        "scope-only",
+							ValidTypes:        []string{"feat", "fix"},
+							RequireBody:       &disabled,
+							ForbiddenPatterns: []string{`\bworktree\b`},
 						},
 					},
 					File: &config.FileConfig{
@@ -109,11 +122,17 @@ var _ = Describe("Collector", func() {
 			Expect(data.Commit.TitleMaxLength).To(Equal(72))
 			Expect(data.Commit.BodyMaxLineLength).To(Equal(100))
 			Expect(data.Commit.ValidTypes).To(Equal([]string{"feat", "fix"}))
+			Expect(data.Commit.ForbiddenPatterns).To(Equal([]string{`\bworktree\b`}))
 
 			Expect(data.Push.BlockedRemotes).To(Equal([]string{"origin"}))
 
 			Expect(data.Branch.ValidTypes).To(Equal([]string{"feat", "fix", "chore"}))
 			Expect(data.Branch.ProtectedBranches).To(Equal([]string{"main", "develop"}))
+
+			Expect(data.PR.TitleStyle).To(Equal("scope-only"))
+			Expect(data.PR.ValidTypes).To(Equal([]string{"feat", "fix"}))
+			Expect(data.PR.RequireBody).To(BeFalse())
+			Expect(data.PR.ForbiddenPatterns).To(Equal([]string{`\bworktree\b`}))
 
 			// Python linter should be filtered out
 			linterNames := make([]string, 0, len(data.Linters))
@@ -132,6 +151,24 @@ var _ = Describe("Collector", func() {
 			Expect(data.Rules).To(HaveLen(1))
 			Expect(data.Rules[0].Name).To(Equal("block-force-push"))
 			Expect(data.Rules[0].Priority).To(Equal(10))
+		})
+
+		It("maps legacy title_conventional_commits to none style", func() {
+			disabled := false
+
+			cfg := &config.Config{
+				Validators: &config.ValidatorsConfig{
+					Git: &config.GitConfig{
+						PR: &config.PRValidatorConfig{
+							TitleConventionalCommits: &disabled,
+						},
+					},
+				},
+			}
+
+			data := suggest.Collect(cfg, "test")
+
+			Expect(data.PR.TitleStyle).To(Equal("none"))
 		})
 	})
 })
@@ -229,6 +266,9 @@ var _ = Describe("Renderer", func() {
 		Expect(content).To(ContainSubstring("## Commits"))
 		Expect(content).To(ContainSubstring("## Push"))
 		Expect(content).To(ContainSubstring("## Branches"))
+		Expect(content).To(ContainSubstring("## PRs"))
+		Expect(content).To(ContainSubstring("Title style: conventional."))
+		Expect(content).To(ContainSubstring("Forbidden: \\btmp/, \\btmp\\b"))
 		Expect(content).To(ContainSubstring("## Linters"))
 	})
 
@@ -275,6 +315,30 @@ var _ = Describe("Renderer", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(content).To(ContainSubstring("## Custom Rules"))
 		Expect(content).To(ContainSubstring("test-rule"))
+	})
+
+	It("renders PR-specific forbidden patterns", func() {
+		cfg := &config.Config{
+			Validators: &config.ValidatorsConfig{
+				Git: &config.GitConfig{
+					Commit: &config.CommitValidatorConfig{
+						Message: &config.CommitMessageConfig{
+							ForbiddenPatterns: []string{`\bcommit-only\b`},
+						},
+					},
+					PR: &config.PRValidatorConfig{
+						ForbiddenPatterns: []string{`\bpr-only\b`},
+					},
+				},
+			},
+		}
+
+		data := suggest.Collect(cfg, "test")
+		data.Hash = "abc"
+
+		content, err := suggest.Render(data)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(content).To(ContainSubstring("Forbidden: \\bpr-only\\b"))
 	})
 })
 

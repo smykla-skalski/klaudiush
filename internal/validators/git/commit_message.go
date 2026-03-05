@@ -24,12 +24,6 @@ const (
 )
 
 var (
-	// defaultForbiddenPatterns blocks mentions of tmp directory
-	defaultForbiddenPatterns = []string{
-		`\btmp/`,  // tmp/ path references
-		`\btmp\b`, // standalone tmp word
-	}
-
 	// Git revert commit format: Revert "original commit" or Revert 'original commit'
 	revertCommitRegex = regexp.MustCompile(`^Revert ["'].+["']$`)
 )
@@ -499,7 +493,7 @@ func (v *CommitValidator) getForbiddenPatterns() []string {
 		return v.config.Message.ForbiddenPatterns
 	}
 
-	return defaultForbiddenPatterns
+	return config.DefaultForbiddenPatterns
 }
 
 // isRevertCommit checks if the title follows git's revert commit format.
