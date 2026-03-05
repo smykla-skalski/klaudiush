@@ -9,14 +9,11 @@ import (
 
 	"github.com/smykla-skalski/klaudiush/internal/validator"
 	"github.com/smykla-skalski/klaudiush/internal/validators"
+	"github.com/smykla-skalski/klaudiush/pkg/config"
 )
 
 const (
-	// Default values for commit message validation
-	defaultMaxTitleLength    = 50
-	defaultMaxBodyLineLength = 72
-	defaultBodyLineTolerance = 5  // Additional tolerance beyond max body line length
-	truncateErrorLineAt      = 60 // Truncate long lines in error messages for readability
+	truncateErrorLineAt = 60 // Truncate long lines in error messages for readability
 
 	// Commit style constants for commit_style config field.
 	commitStyleConventional = "conventional"
@@ -27,21 +24,6 @@ const (
 )
 
 var (
-	// defaultValidTypes from commitlint config-conventional
-	defaultValidTypes = []string{
-		"build",
-		"chore",
-		"ci",
-		"docs",
-		"feat",
-		"fix",
-		"perf",
-		"refactor",
-		"revert",
-		"style",
-		"test",
-	}
-
 	// defaultForbiddenPatterns blocks mentions of tmp directory
 	defaultForbiddenPatterns = []string{
 		`\btmp/`,  // tmp/ path references
@@ -388,7 +370,7 @@ func (v *CommitValidator) getTitleMaxLength() int {
 		return *v.config.Message.TitleMaxLength
 	}
 
-	return defaultMaxTitleLength
+	return config.DefaultTitleMaxLength
 }
 
 // shouldAllowUnlimitedRevertTitle returns whether revert commits are exempt from title length limits.
@@ -407,7 +389,7 @@ func (v *CommitValidator) getBodyMaxLineLength() int {
 		return *v.config.Message.BodyMaxLineLength
 	}
 
-	return defaultMaxBodyLineLength
+	return config.DefaultBodyMaxLineLength
 }
 
 // getBodyLineTolerance returns the body line tolerance from config, or default.
@@ -416,7 +398,7 @@ func (v *CommitValidator) getBodyLineTolerance() int {
 		return *v.config.Message.BodyLineTolerance
 	}
 
-	return defaultBodyLineTolerance
+	return config.DefaultBodyLineTolerance
 }
 
 // shouldCheckConventionalCommits returns whether conventional commits validation is enabled.
@@ -463,7 +445,7 @@ func (v *CommitValidator) getValidTypes() []string {
 		return v.config.Message.ValidTypes
 	}
 
-	return defaultValidTypes
+	return config.DefaultValidTypes
 }
 
 // shouldRequireScope returns whether scope is required in conventional commits.
