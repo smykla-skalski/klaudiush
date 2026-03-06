@@ -5,6 +5,17 @@ All notable changes to klaudiush will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.27.0](https://github.com/smykla-skalski/klaudiush/compare/v1.26.5...v1.27.0) (2026-03-06)
+
+### Features
+
+* **suggest:** add klaudiush suggest command ([#326](https://github.com/smykla-skalski/klaudiush/issues/326)) ([f6626cb](https://github.com/smykla-skalski/klaudiush/commit/f6626cb7efa81111056ea22bf281cfbc69d47785))
+
+### Bug Fixes
+
+* **lint:** unblock push checks for suggest ([662918e](https://github.com/smykla-skalski/klaudiush/commit/662918e67fe9e3b8f43cddc0b70d7c15641068e7))
+* **suggest:** align generated guidance with enforced git rules ([e1c384b](https://github.com/smykla-skalski/klaudiush/commit/e1c384b49e1d620cfa815e116955ecc937db8fe7))
+
 ## [1.26.5](https://github.com/smykla-skalski/klaudiush/compare/v1.26.4...v1.26.5) (2026-02-28)
 
 ### Bug Fixes
