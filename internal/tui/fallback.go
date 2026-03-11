@@ -57,6 +57,12 @@ func (f *FallbackUI) RunInitForm(opts InitFormOptions) (*pkgConfig.Config, bool,
 		return nil, false, err
 	}
 
+	fmt.Println()
+
+	if err := f.promptGeminiSettingsPath(&result); err != nil {
+		return nil, false, err
+	}
+
 	// Prompt for git exclude if applicable
 	if opts.ShowGitExclude {
 		fmt.Println()
@@ -161,6 +167,35 @@ func (f *FallbackUI) promptCodexHooksPath(result *InitFormResult) error {
 		fmt.Println("✓ Codex hooks not configured")
 	} else {
 		fmt.Printf("✓ Codex hooks path configured: %s\n", hooksPath)
+	}
+
+	return nil
+}
+
+// promptGeminiSettingsPath prompts for optional Gemini settings configuration.
+//
+//nolint:unparam // error return kept for consistent API
+func (f *FallbackUI) promptGeminiSettingsPath(result *InitFormResult) error {
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println("Gemini Hooks")
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println(
+		"Optionally configure Gemini BeforeTool/AfterTool/SessionStart/SessionEnd/Notification/PreCompress hook installation.",
+	)
+	fmt.Println("Leave empty to skip Gemini support for now.")
+	fmt.Println()
+
+	settingsPath, err := f.prompter.Input("Gemini settings.json path", "")
+	if err != nil {
+		settingsPath = ""
+	}
+
+	result.GeminiSettingsPath = settingsPath
+
+	if settingsPath == "" {
+		fmt.Println("✓ Gemini hooks not configured")
+	} else {
+		fmt.Printf("✓ Gemini settings path configured: %s\n", settingsPath)
 	}
 
 	return nil

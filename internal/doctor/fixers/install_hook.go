@@ -53,7 +53,7 @@ func (f *InstallHookFixer) Fix(_ context.Context, interactive bool) error {
 		return errors.Wrap(err, "klaudiush binary not found in PATH")
 	}
 
-	claudeEnabled, codexHooksPath := configuredInstallTargets(f.cfg)
+	claudeEnabled, codexHooksPath, geminiSettingsPath := configuredInstallTargets(f.cfg)
 
 	var targets []string
 	if claudeEnabled {
@@ -62,6 +62,10 @@ func (f *InstallHookFixer) Fix(_ context.Context, interactive bool) error {
 
 	if codexHooksPath != "" {
 		targets = append(targets, codexHooksPath)
+	}
+
+	if geminiSettingsPath != "" {
+		targets = append(targets, geminiSettingsPath)
 	}
 
 	if len(targets) == 0 {
@@ -96,15 +100,22 @@ func (f *InstallHookFixer) Fix(_ context.Context, interactive bool) error {
 		}
 	}
 
+	if geminiSettingsPath != "" {
+		if _, err := settings.InstallGeminiDispatcher(geminiSettingsPath, binaryPath); err != nil {
+			return errors.Wrap(err, "failed to install Gemini hooks")
+		}
+	}
+
 	return nil
 }
 
-func configuredInstallTargets(cfg *pkgConfig.Config) (bool, string) {
+func configuredInstallTargets(cfg *pkgConfig.Config) (bool, string, string) {
 	claudeEnabled := true
 	codexHooksPath := ""
+	geminiSettingsPath := ""
 
 	if cfg == nil {
-		return claudeEnabled, codexHooksPath
+		return claudeEnabled, codexHooksPath, geminiSettingsPath
 	}
 
 	providers := cfg.GetProviders()
@@ -115,5 +126,10 @@ func configuredInstallTargets(cfg *pkgConfig.Config) (bool, string) {
 		codexHooksPath = codexCfg.HooksConfigPath
 	}
 
-	return claudeEnabled, codexHooksPath
+	geminiCfg := providers.GetGemini()
+	if geminiCfg.IsEnabled() && geminiCfg.HasSettingsPath() {
+		geminiSettingsPath = geminiCfg.SettingsPath
+	}
+
+	return claudeEnabled, codexHooksPath, geminiSettingsPath
 }

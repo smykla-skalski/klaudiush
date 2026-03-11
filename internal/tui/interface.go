@@ -40,6 +40,9 @@ type InitFormResult struct {
 	// CodexHooksPath enables experimental Codex hook automation when set.
 	CodexHooksPath string
 
+	// GeminiSettingsPath enables Gemini hook automation when set.
+	GeminiSettingsPath string
+
 	// AddToExclude indicates whether to add config to .git/info/exclude.
 	AddToExclude bool
 }

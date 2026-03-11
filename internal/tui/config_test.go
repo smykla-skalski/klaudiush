@@ -25,4 +25,15 @@ var _ = Describe("buildConfigFromResult", func() {
 		Expect(cfg.GetProviders().GetCodex().IsExperimentalEnabled()).To(BeTrue())
 		Expect(cfg.GetProviders().GetCodex().HooksConfigPath).To(Equal("/tmp/hooks.json"))
 	})
+
+	It("enables Gemini settings integration when settings path is provided", func() {
+		cfg := buildConfigFromResult(&InitFormResult{
+			BellEnabled:        true,
+			GeminiSettingsPath: "/tmp/settings.json",
+		})
+
+		Expect(cfg.Providers).NotTo(BeNil())
+		Expect(cfg.GetProviders().GetGemini().IsEnabled()).To(BeTrue())
+		Expect(cfg.GetProviders().GetGemini().SettingsPath).To(Equal("/tmp/settings.json"))
+	})
 })

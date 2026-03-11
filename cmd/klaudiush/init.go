@@ -24,12 +24,13 @@ import (
 const defaultHookTimeout = 30
 
 var (
-	globalFlag       bool
-	forceFlag        bool
-	noTUIFlag        bool
-	installHooksFlag bool
-	providersFlag    []string
-	codexHooksFlag   string
+	globalFlag         bool
+	forceFlag          bool
+	noTUIFlag          bool
+	installHooksFlag   bool
+	providersFlag      []string
+	codexHooksFlag     string
+	geminiSettingsFlag string
 )
 
 var initCmd = &cobra.Command{
@@ -38,7 +39,7 @@ var initCmd = &cobra.Command{
 	Long: `Initialize klaudiush configuration file and register hooks.
 
 By default, creates a project-local configuration file (.klaudiush/config.toml)
-and registers supported hooks for enabled providers. Claude installation is enabled by default; experimental Codex installation runs when providers.codex is enabled with experimental=true and hooks_config_path set.
+and registers supported hooks for enabled providers. Claude installation is enabled by default; Codex installation runs when providers.codex is enabled with experimental=true and hooks_config_path set; Gemini installation runs when providers.gemini is enabled with settings_path set.
 
 Use --global or -g to create a global configuration file (~/.klaudiush/config.toml).
 Use --install-hooks to register hooks only (skip TUI).
@@ -85,7 +86,7 @@ func init() {
 		&providersFlag,
 		"providers",
 		nil,
-		"Providers to configure (claude,codex)",
+		"Providers to configure (claude,codex,gemini)",
 	)
 
 	initCmd.Flags().StringVar(
@@ -93,6 +94,13 @@ func init() {
 		"codex-hooks-path",
 		"",
 		"Codex hooks.json path to configure during init",
+	)
+
+	initCmd.Flags().StringVar(
+		&geminiSettingsFlag,
+		"gemini-settings-path",
+		"",
+		"Gemini settings.json path to configure during init",
 	)
 }
 
@@ -126,8 +134,16 @@ func normalizeInitProviderFlags(cmd *cobra.Command) error {
 		return errors.New("--providers requires at least one provider")
 	}
 
-	if codexHooksFlag != "" && !cmd.Flags().Changed("providers") {
-		providersFlag = []string{"claude", "codex"}
+	if (codexHooksFlag != "" || geminiSettingsFlag != "") && !cmd.Flags().Changed("providers") {
+		providersFlag = []string{"claude"}
+
+		if codexHooksFlag != "" {
+			providersFlag = append(providersFlag, "codex")
+		}
+
+		if geminiSettingsFlag != "" {
+			providersFlag = append(providersFlag, "gemini")
+		}
 	}
 
 	return nil
@@ -270,7 +286,7 @@ func maybeUpdateExistingConfig(
 		return nil, false, err
 	}
 
-	if len(providersFlag) > 0 || codexHooksFlag != "" {
+	if len(providersFlag) > 0 || codexHooksFlag != "" || geminiSettingsFlag != "" {
 		return updateExistingConfigFromFlags(writer, configPath, existingCfg)
 	}
 
@@ -286,7 +302,12 @@ func updateExistingConfigFromFlags(
 	configPath string,
 	existingCfg *pkgConfig.Config,
 ) (*pkgConfig.Config, bool, error) {
-	selection, resolveErr := resolveProviderSelection(providersFlag, codexHooksFlag, existingCfg)
+	selection, resolveErr := resolveProviderSelection(
+		providersFlag,
+		codexHooksFlag,
+		geminiSettingsFlag,
+		existingCfg,
+	)
 	if resolveErr != nil {
 		return nil, false, resolveErr
 	}
@@ -364,11 +385,16 @@ func updateExistingConfigInteractively(
 }
 
 func applyProviderFlags(cfg *pkgConfig.Config) (*pkgConfig.Config, error) {
-	if len(providersFlag) == 0 && codexHooksFlag == "" {
+	if len(providersFlag) == 0 && codexHooksFlag == "" && geminiSettingsFlag == "" {
 		return cfg, nil
 	}
 
-	selection, err := resolveProviderSelection(providersFlag, codexHooksFlag, cfg)
+	selection, err := resolveProviderSelection(
+		providersFlag,
+		codexHooksFlag,
+		geminiSettingsFlag,
+		cfg,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -566,6 +592,22 @@ func performCodexInstall(hooksPath, binaryPath string) error {
 	return nil
 }
 
+func performGeminiInstall(settingsPath, binaryPath string) error {
+	registered, err := settings.InstallGeminiDispatcher(settingsPath, binaryPath)
+	if err != nil {
+		return err
+	}
+
+	if registered {
+		fmt.Printf("klaudiush is already registered in %s\n", settingsPath)
+		return nil
+	}
+
+	fmt.Printf("klaudiush registered in %s\n", settingsPath)
+
+	return nil
+}
+
 func performConfiguredInstall(
 	claudeSettingsPath string,
 	binaryPath string,
@@ -573,6 +615,7 @@ func performConfiguredInstall(
 ) error {
 	claudeEnabled := true
 	codexHooksPath := ""
+	geminiSettingsPath := ""
 
 	if cfg != nil {
 		providers := cfg.GetProviders()
@@ -584,6 +627,11 @@ func performConfiguredInstall(
 			codexCfg.HasHooksConfigPath() {
 			codexHooksPath = codexCfg.HooksConfigPath
 		}
+
+		geminiCfg := providers.GetGemini()
+		if geminiCfg.IsEnabled() && geminiCfg.HasSettingsPath() {
+			geminiSettingsPath = geminiCfg.SettingsPath
+		}
 	}
 
 	if claudeEnabled {
@@ -594,6 +642,12 @@ func performConfiguredInstall(
 
 	if codexHooksPath != "" {
 		if err := performCodexInstall(codexHooksPath, binaryPath); err != nil {
+			return err
+		}
+	}
+
+	if geminiSettingsPath != "" {
+		if err := performGeminiInstall(geminiSettingsPath, binaryPath); err != nil {
 			return err
 		}
 	}

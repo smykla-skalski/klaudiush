@@ -366,16 +366,96 @@ var _ = Describe("Install", func() {
 		})
 	})
 
+	Describe("performGeminiInstall", func() {
+		const fakeBinary = "/usr/local/bin/klaudiush"
+
+		It("creates settings.json with all supported Gemini hooks", func() {
+			settingsPath := filepath.Join(tempDir, ".gemini", "settings.json")
+
+			err := performGeminiInstall(settingsPath, fakeBinary)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(settingsPath).To(BeAnExistingFile())
+
+			data, err := os.ReadFile(settingsPath)
+			Expect(err).NotTo(HaveOccurred())
+
+			var result map[string]any
+			Expect(json.Unmarshal(data, &result)).To(Succeed())
+
+			hooks := result["hooks"].(map[string]any)
+			for _, eventName := range []string{
+				"BeforeTool",
+				"AfterTool",
+				"SessionStart",
+				"SessionEnd",
+				"Notification",
+				"PreCompress",
+			} {
+				eventHooks := hooks[eventName].([]any)
+				Expect(eventHooks).To(HaveLen(1))
+
+				configHooks := eventHooks[0].(map[string]any)["hooks"].([]any)
+				Expect(configHooks[0].(map[string]any)["command"]).
+					To(Equal(fakeBinary + " --provider gemini --event " + eventName))
+			}
+		})
+
+		It("only adds missing Gemini events", func() {
+			settingsPath := filepath.Join(tempDir, ".gemini", "settings.json")
+			Expect(os.MkdirAll(filepath.Dir(settingsPath), 0o755)).To(Succeed())
+
+			existing := map[string]any{
+				"hooks": map[string]any{
+					"BeforeTool": []any{
+						map[string]any{
+							"matcher": "run_shell_command|write_file|replace|read_file|glob|grep|ls",
+							"hooks": []any{
+								map[string]any{
+									"type":    "command",
+									"command": fakeBinary + " --provider gemini --event BeforeTool",
+									"timeout": float64(30000),
+								},
+							},
+						},
+					},
+				},
+			}
+
+			data, err := json.MarshalIndent(existing, "", "  ")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(os.WriteFile(settingsPath, data, 0o600)).To(Succeed())
+
+			err = performGeminiInstall(settingsPath, fakeBinary)
+			Expect(err).NotTo(HaveOccurred())
+
+			data, err = os.ReadFile(settingsPath)
+			Expect(err).NotTo(HaveOccurred())
+
+			var result map[string]any
+			Expect(json.Unmarshal(data, &result)).To(Succeed())
+
+			hooks := result["hooks"].(map[string]any)
+			Expect(hooks["BeforeTool"].([]any)).To(HaveLen(1))
+			Expect(hooks["AfterTool"].([]any)).To(HaveLen(1))
+			Expect(hooks["SessionStart"].([]any)).To(HaveLen(1))
+			Expect(hooks["SessionEnd"].([]any)).To(HaveLen(1))
+			Expect(hooks["Notification"].([]any)).To(HaveLen(1))
+			Expect(hooks["PreCompress"].([]any)).To(HaveLen(1))
+		})
+	})
+
 	Describe("performConfiguredInstall", func() {
 		const fakeBinary = "/usr/local/bin/klaudiush"
 
 		It("installs only configured providers", func() {
 			claudeSettingsPath := filepath.Join(tempDir, ".claude", "settings.json")
 			codexHooksPath := filepath.Join(tempDir, ".codex", "hooks.json")
+			geminiSettingsPath := filepath.Join(tempDir, ".gemini", "settings.json")
 
 			claudeEnabled := false
 			codexEnabled := true
 			codexExperimental := true
+			geminiEnabled := true
 			cfg := &pkgConfig.Config{
 				Providers: &pkgConfig.ProvidersConfig{
 					Claude: &pkgConfig.ClaudeProviderConfig{Enabled: &claudeEnabled},
@@ -384,12 +464,17 @@ var _ = Describe("Install", func() {
 						Experimental:    &codexExperimental,
 						HooksConfigPath: codexHooksPath,
 					},
+					Gemini: &pkgConfig.GeminiProviderConfig{
+						Enabled:      &geminiEnabled,
+						SettingsPath: geminiSettingsPath,
+					},
 				},
 			}
 
 			err := performConfiguredInstall(claudeSettingsPath, fakeBinary, cfg)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(codexHooksPath).To(BeAnExistingFile())
+			Expect(geminiSettingsPath).To(BeAnExistingFile())
 			Expect(claudeSettingsPath).NotTo(BeAnExistingFile())
 		})
 	})

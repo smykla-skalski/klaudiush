@@ -408,4 +408,91 @@ var _ = Describe("SettingsParser", func() {
 			Expect(result.Hooks.Stop).To(HaveLen(1))
 		})
 	})
+
+	Describe("GeminiSettingsParser", func() {
+		var settingsPath string
+
+		BeforeEach(func() {
+			tempDir, err := os.MkdirTemp("", "gemini-settings-parser-*")
+			Expect(err).NotTo(HaveOccurred())
+			DeferCleanup(func() { _ = os.RemoveAll(tempDir) })
+
+			settingsPath = filepath.Join(tempDir, "settings.json")
+		})
+
+		It("parses valid Gemini settings files", func() {
+			Expect(os.WriteFile(
+				settingsPath,
+				[]byte(`{
+  "hooks": {
+    "BeforeTool": [{"matcher":"run_shell_command|write_file|replace|read_file|glob|grep|ls","hooks":[{"type":"command","command":"klaudiush --provider gemini --event BeforeTool","timeout":30000}]}],
+    "AfterTool": [{"matcher":"run_shell_command|write_file|replace|read_file|glob|grep|ls","hooks":[{"type":"command","command":"klaudiush --provider gemini --event AfterTool","timeout":30000}]}],
+    "SessionStart": [{"hooks":[{"type":"command","command":"klaudiush --provider gemini --event SessionStart","timeout":30000}]}],
+    "SessionEnd": [{"hooks":[{"type":"command","command":"klaudiush --provider gemini --event SessionEnd","timeout":30000}]}],
+    "Notification": [{"hooks":[{"type":"command","command":"klaudiush --provider gemini --event Notification","timeout":30000}]}],
+    "PreCompress": [{"hooks":[{"type":"command","command":"klaudiush --provider gemini --event PreCompress","timeout":30000}]}]
+  }
+}`),
+				0o600,
+			)).To(Succeed())
+
+			parser := settings.NewGeminiSettingsParser(settingsPath)
+			result, err := parser.Parse()
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.Hooks.BeforeTool).To(HaveLen(1))
+			Expect(result.Hooks.AfterTool).To(HaveLen(1))
+			Expect(result.Hooks.SessionStart).To(HaveLen(1))
+			Expect(result.Hooks.SessionEnd).To(HaveLen(1))
+			Expect(result.Hooks.Notification).To(HaveLen(1))
+			Expect(result.Hooks.PreCompress).To(HaveLen(1))
+			Expect(result.Hooks.BeforeTool[0].Hooks[0].Command).
+				To(Equal("klaudiush --provider gemini --event BeforeTool"))
+		})
+
+		It("finds Gemini hooks by event alias", func() {
+			Expect(os.WriteFile(
+				settingsPath,
+				[]byte(`{
+  "hooks": {
+    "PreCompress": [{"hooks":[{"type":"command","command":"klaudiush --provider gemini --event PreCompress","timeout":30000}]}]
+  }
+}`),
+				0o600,
+			)).To(Succeed())
+
+			parser := settings.NewGeminiSettingsParser(settingsPath)
+			hasHook, err := parser.HasEventHook("pre_compress", "/usr/local/bin/klaudiush")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(hasHook).To(BeTrue())
+		})
+
+		It("expands tilde paths before reading settings.json", func() {
+			homeDir := filepath.Join(filepath.Dir(settingsPath), "home")
+			Expect(os.MkdirAll(filepath.Join(homeDir, ".gemini"), 0o755)).To(Succeed())
+
+			oldHome := os.Getenv("HOME")
+
+			Expect(os.Setenv("HOME", homeDir)).To(Succeed())
+			DeferCleanup(func() {
+				_ = os.Setenv("HOME", oldHome)
+			})
+
+			Expect(os.WriteFile(
+				filepath.Join(homeDir, ".gemini", "settings.json"),
+				[]byte(`{
+  "hooks": {
+    "SessionEnd": [{"hooks":[{"type":"command","command":"klaudiush --provider gemini --event SessionEnd","timeout":30000}]}]
+  }
+}`),
+				0o600,
+			)).To(Succeed())
+
+			parser := settings.NewGeminiSettingsParser("~/.gemini/settings.json")
+			result, err := parser.Parse()
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.Hooks.SessionEnd).To(HaveLen(1))
+		})
+	})
 })

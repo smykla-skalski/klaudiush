@@ -13,6 +13,7 @@ import (
 const (
 	// DefaultCommandHookTimeout is the default timeout in seconds for provider command hooks.
 	DefaultCommandHookTimeout = 30
+	millisecondsPerSecond     = 1000
 
 	defaultDirPermissions  = 0o750
 	defaultFilePermissions = 0o600
@@ -113,6 +114,51 @@ func InstallCodexDispatcher(hooksPath, binaryPath string) (bool, error) {
 	return false, nil
 }
 
+// InstallGeminiDispatcher registers klaudiush in a Gemini settings.json file.
+// Returns true when all supported Gemini hooks were already present.
+func InstallGeminiDispatcher(settingsPath, binaryPath string) (bool, error) {
+	parser := NewGeminiSettingsParser(settingsPath)
+
+	allEvents := []string{
+		"BeforeTool",
+		"AfterTool",
+		"SessionStart",
+		"SessionEnd",
+		"Notification",
+		"PreCompress",
+	}
+
+	missing := make(map[string]bool, len(allEvents))
+	allPresent := true
+
+	for _, eventName := range allEvents {
+		hasHook, err := parser.HasEventHook(eventName, binaryPath)
+		if err != nil {
+			return false, errors.Wrapf(err, "failed to check %s hook", eventName)
+		}
+
+		missing[eventName] = !hasHook
+		allPresent = allPresent && hasHook
+	}
+
+	if allPresent {
+		return true, nil
+	}
+
+	raw, err := LoadRawJSONFile(settingsPath)
+	if err != nil {
+		return false, err
+	}
+
+	AddGeminiDispatcherHooks(raw, binaryPath, missing)
+
+	if err := writeRawJSONFile(settingsPath, raw); err != nil {
+		return false, errors.Wrap(err, "failed to write Gemini settings")
+	}
+
+	return false, nil
+}
+
 // AddClaudeDispatcherHook appends the standard Claude PreToolUse command hook.
 func AddClaudeDispatcherHook(raw map[string]any, binaryPath string) {
 	hooks := ensureHooksMap(raw)
@@ -168,6 +214,36 @@ func AddCodexDispatcherHooks(
 	}
 }
 
+// AddGeminiDispatcherHooks appends missing Gemini command hooks.
+func AddGeminiDispatcherHooks(raw map[string]any, binaryPath string, missing map[string]bool) {
+	hooks := ensureHooksMap(raw)
+
+	for _, eventName := range []string{
+		"BeforeTool",
+		"AfterTool",
+		"SessionStart",
+		"SessionEnd",
+		"Notification",
+		"PreCompress",
+	} {
+		if !missing[eventName] {
+			continue
+		}
+
+		matcher := ""
+		if eventName == "BeforeTool" || eventName == "AfterTool" {
+			matcher = geminiDispatcherMatcher()
+		}
+
+		hooks[eventName] = appendEventHookWithMatcher(
+			hooks[eventName],
+			geminiDispatcherEventCommand(binaryPath, eventName),
+			matcher,
+			DefaultCommandHookTimeout*millisecondsPerSecond,
+		)
+	}
+}
+
 // ClaudeDispatcherCommand returns the Claude hook command string.
 func ClaudeDispatcherCommand(binaryPath string) string {
 	return binaryPath + " --hook-type PreToolUse"
@@ -188,6 +264,36 @@ func CodexStopCommand(binaryPath string) string {
 	return binaryPath + " --provider codex --event Stop"
 }
 
+// GeminiBeforeToolCommand returns the Gemini BeforeTool command string.
+func GeminiBeforeToolCommand(binaryPath string) string {
+	return geminiDispatcherEventCommand(binaryPath, "BeforeTool")
+}
+
+// GeminiAfterToolCommand returns the Gemini AfterTool command string.
+func GeminiAfterToolCommand(binaryPath string) string {
+	return geminiDispatcherEventCommand(binaryPath, "AfterTool")
+}
+
+// GeminiSessionStartCommand returns the Gemini SessionStart command string.
+func GeminiSessionStartCommand(binaryPath string) string {
+	return geminiDispatcherEventCommand(binaryPath, "SessionStart")
+}
+
+// GeminiSessionEndCommand returns the Gemini SessionEnd command string.
+func GeminiSessionEndCommand(binaryPath string) string {
+	return geminiDispatcherEventCommand(binaryPath, "SessionEnd")
+}
+
+// GeminiNotificationCommand returns the Gemini Notification command string.
+func GeminiNotificationCommand(binaryPath string) string {
+	return geminiDispatcherEventCommand(binaryPath, "Notification")
+}
+
+// GeminiPreCompressCommand returns the Gemini PreCompress command string.
+func GeminiPreCompressCommand(binaryPath string) string {
+	return geminiDispatcherEventCommand(binaryPath, "PreCompress")
+}
+
 func ensureHooksMap(raw map[string]any) map[string]any {
 	hooks, ok := raw["hooks"].(map[string]any)
 	if ok {
@@ -201,18 +307,30 @@ func ensureHooksMap(raw map[string]any) map[string]any {
 }
 
 func appendEventHook(existingValue any, command string) []any {
+	return appendEventHookWithMatcher(existingValue, command, "", DefaultCommandHookTimeout)
+}
+
+func appendEventHookWithMatcher(
+	existingValue any,
+	command string,
+	matcher string,
+	timeout int,
+) []any {
 	existing, ok := existingValue.([]any)
 	if !ok {
 		existing = nil
 	}
 
-	entry := map[string]any{
-		"hooks": []any{
-			map[string]any{
-				"type":    "command",
-				"command": command,
-				"timeout": DefaultCommandHookTimeout,
-			},
+	entry := map[string]any{}
+	if matcher != "" {
+		entry["matcher"] = matcher
+	}
+
+	entry["hooks"] = []any{
+		map[string]any{
+			"type":    "command",
+			"command": command,
+			"timeout": timeout,
 		},
 	}
 

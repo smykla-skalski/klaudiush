@@ -1,8 +1,6 @@
 package settings
 
 import (
-	"encoding/json"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -49,38 +47,16 @@ func NewCodexHooksParser(path string) *CodexHooksParser {
 
 // Parse reads and parses the Codex hooks file.
 func (p *CodexHooksParser) Parse() (*CodexHooksFile, error) {
-	resolvedPath, err := resolveSettingsPath(p.hooksPath)
-	if err != nil {
+	hooksFile := &CodexHooksFile{}
+	if err := readJSONSettingsFile(
+		p.hooksPath,
+		hooksFile,
+		"failed to read hooks file",
+	); err != nil {
 		return nil, err
 	}
 
-	//nolint:gosec // Path comes from validated config and may include a resolved ~ prefix.
-	data, err := os.ReadFile(resolvedPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, errors.WithMessage(ErrSettingsNotFound, p.hooksPath)
-		}
-
-		if os.IsPermission(err) {
-			return nil, errors.WithMessage(ErrPermissionDenied, p.hooksPath)
-		}
-
-		return nil, errors.Wrap(err, "failed to read hooks file")
-	}
-
-	if len(data) == 0 {
-		return &CodexHooksFile{}, nil
-	}
-
-	var hooksFile CodexHooksFile
-	if err := json.Unmarshal(data, &hooksFile); err != nil {
-		return nil, errors.WithSecondaryError(
-			errors.WithMessage(ErrInvalidJSON, "in "+p.hooksPath),
-			err,
-		)
-	}
-
-	return &hooksFile, nil
+	return hooksFile, nil
 }
 
 // IsDispatcherRegistered checks whether any supported Codex event is configured for klaudiush.

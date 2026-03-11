@@ -52,6 +52,38 @@ func TestBuildDoctorRegistrySkipsClaudeHookChecksWhenProviderDisabled(t *testing
 	}
 }
 
+func TestBuildDoctorRegistryRegistersGeminiHookChecks(t *testing.T) {
+	claudeEnabled := false
+	geminiEnabled := true
+	cfg := &pkgConfig.Config{
+		Providers: &pkgConfig.ProvidersConfig{
+			Claude: &pkgConfig.ClaudeProviderConfig{Enabled: &claudeEnabled},
+			Gemini: &pkgConfig.GeminiProviderConfig{
+				Enabled:      &geminiEnabled,
+				SettingsPath: "/tmp/settings.json",
+			},
+		},
+	}
+
+	registry := buildDoctorRegistry(cfg)
+	names := checkerNames(registry.CheckersForCategories([]doctor.Category{doctor.CategoryHook}))
+
+	for _, expected := range []string{
+		"Gemini hooks configuration",
+		"Dispatcher registered in Gemini settings",
+		"BeforeTool hook in Gemini settings",
+		"AfterTool hook in Gemini settings",
+		"SessionStart hook in Gemini settings",
+		"SessionEnd hook in Gemini settings",
+		"Notification hook in Gemini settings",
+		"PreCompress hook in Gemini settings",
+	} {
+		if !slices.Contains(names, expected) {
+			t.Fatalf("expected hook checker %q to be registered", expected)
+		}
+	}
+}
+
 func checkerNames(checkers []doctor.HealthChecker) []string {
 	names := make([]string, 0, len(checkers))
 	for _, checker := range checkers {

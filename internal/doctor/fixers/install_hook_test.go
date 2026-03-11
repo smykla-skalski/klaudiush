@@ -82,4 +82,23 @@ var _ = Describe("InstallHookFixer", func() {
 		Expect(fixer.Fix(context.Background(), false)).To(Succeed())
 		Expect(hooksPath).To(BeAnExistingFile())
 	})
+
+	It("installs configured Gemini hooks", func() {
+		claudeEnabled := false
+		geminiEnabled := true
+		geminiSettingsPath := filepath.Join(tempDir, ".gemini", "settings.json")
+		cfg := &pkgConfig.Config{
+			Providers: &pkgConfig.ProvidersConfig{
+				Claude: &pkgConfig.ClaudeProviderConfig{Enabled: &claudeEnabled},
+				Gemini: &pkgConfig.GeminiProviderConfig{
+					Enabled:      &geminiEnabled,
+					SettingsPath: geminiSettingsPath,
+				},
+			},
+		}
+
+		fixer := NewInstallHookFixer(mockPrompt, cfg)
+		Expect(fixer.Fix(context.Background(), false)).To(Succeed())
+		Expect(geminiSettingsPath).To(BeAnExistingFile())
+	})
 })

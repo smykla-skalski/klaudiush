@@ -19,14 +19,17 @@ import (
 )
 
 const (
-	defaultCodexHooksPath  = "~/.codex/hooks.json"
-	configDiffContextLines = 3
+	defaultCodexHooksPath     = "~/.codex/hooks.json"
+	defaultGeminiSettingsPath = "~/.gemini/settings.json"
+	configDiffContextLines    = 3
 )
 
 type providerSelection struct {
-	ClaudeEnabled  bool
-	CodexEnabled   bool
-	CodexHooksPath string
+	ClaudeEnabled      bool
+	CodexEnabled       bool
+	CodexHooksPath     string
+	GeminiEnabled      bool
+	GeminiSettingsPath string
 }
 
 func providerSelectionFromConfig(cfg *pkgConfig.Config) providerSelection {
@@ -41,6 +44,8 @@ func providerSelectionFromConfig(cfg *pkgConfig.Config) providerSelection {
 	selection.ClaudeEnabled = cfg.GetProviders().GetClaude().IsEnabled()
 	selection.CodexEnabled = cfg.GetProviders().GetCodex().IsEnabled()
 	selection.CodexHooksPath = cfg.GetProviders().GetCodex().HooksConfigPath
+	selection.GeminiEnabled = cfg.GetProviders().GetGemini().IsEnabled()
+	selection.GeminiSettingsPath = cfg.GetProviders().GetGemini().SettingsPath
 
 	return selection
 }
@@ -48,6 +53,7 @@ func providerSelectionFromConfig(cfg *pkgConfig.Config) providerSelection {
 func resolveProviderSelection(
 	providers []string,
 	codexHooksPath string,
+	geminiSettingsPath string,
 	existing *pkgConfig.Config,
 ) (providerSelection, error) {
 	selection := providerSelectionFromConfig(existing)
@@ -55,39 +61,13 @@ func resolveProviderSelection(
 	if len(providers) > 0 {
 		selection = providerSelection{}
 
-		for _, provider := range providers {
-			for token := range strings.SplitSeq(provider, ",") {
-				switch strings.ToLower(strings.TrimSpace(token)) {
-				case "":
-					continue
-				case "claude":
-					selection.ClaudeEnabled = true
-				case "codex":
-					selection.CodexEnabled = true
-				default:
-					return providerSelection{}, errors.Errorf("unknown provider %q", token)
-				}
-			}
+		if err := applyProviderTokens(&selection, providers); err != nil {
+			return providerSelection{}, err
 		}
 	}
 
-	if codexHooksPath != "" {
-		selection.CodexEnabled = true
-		selection.CodexHooksPath = codexHooksPath
-	}
-
-	if selection.CodexEnabled && selection.CodexHooksPath == "" {
-		existingPath := providerSelectionFromConfig(existing).CodexHooksPath
-		if existingPath != "" {
-			selection.CodexHooksPath = existingPath
-		} else {
-			selection.CodexHooksPath = defaultCodexHooksPath
-		}
-	}
-
-	if !selection.CodexEnabled {
-		selection.CodexHooksPath = ""
-	}
+	applyExplicitProviderPaths(&selection, codexHooksPath, geminiSettingsPath)
+	fillProviderPathDefaults(&selection, providerSelectionFromConfig(existing))
 
 	return selection, nil
 }
@@ -108,6 +88,7 @@ func applyProviderSelection(
 	claudeEnabled := selection.ClaudeEnabled
 	codexEnabled := selection.CodexEnabled
 	codexExperimental := selection.CodexEnabled
+	geminiEnabled := selection.GeminiEnabled
 
 	updated.Providers = &pkgConfig.ProvidersConfig{
 		Claude: &pkgConfig.ClaudeProviderConfig{
@@ -117,10 +98,17 @@ func applyProviderSelection(
 			Enabled:      &codexEnabled,
 			Experimental: &codexExperimental,
 		},
+		Gemini: &pkgConfig.GeminiProviderConfig{
+			Enabled: &geminiEnabled,
+		},
 	}
 
 	if selection.CodexEnabled {
 		updated.Providers.Codex.HooksConfigPath = selection.CodexHooksPath
+	}
+
+	if selection.GeminiEnabled {
+		updated.Providers.Gemini.SettingsPath = selection.GeminiSettingsPath
 	}
 
 	return updated, nil
@@ -146,31 +134,14 @@ func promptProviderUpdate(
 
 	current := providerSelectionFromConfig(existing)
 
-	claudeEnabled, err := prompter.Confirm("Enable Claude integration", current.ClaudeEnabled)
+	selection, err := promptProviderToggleSelection(prompter, current)
 	if err != nil {
 		return nil, true, err
 	}
 
-	codexEnabled, err := prompter.Confirm("Enable Codex integration", current.CodexEnabled)
-	if err != nil {
-		return nil, true, err
-	}
-
-	selection := providerSelection{
-		ClaudeEnabled: claudeEnabled,
-		CodexEnabled:  codexEnabled,
-	}
-
-	if selection.CodexEnabled {
-		defaultPath := current.CodexHooksPath
-		if defaultPath == "" {
-			defaultPath = defaultCodexHooksPath
-		}
-
-		selection.CodexHooksPath, err = prompter.Input("Codex hooks.json path", defaultPath)
-		if err != nil {
-			return nil, true, err
-		}
+	pathErr := promptProviderPaths(prompter, current, &selection)
+	if pathErr != nil {
+		return nil, true, pathErr
 	}
 
 	updated, err := applyProviderSelection(existing, selection)
@@ -214,6 +185,138 @@ func promptProviderUpdate(
 	}
 
 	return updated, true, nil
+}
+
+func applyProviderTokens(selection *providerSelection, providers []string) error {
+	for _, provider := range providers {
+		for token := range strings.SplitSeq(provider, ",") {
+			switch strings.ToLower(strings.TrimSpace(token)) {
+			case "":
+				continue
+			case "claude":
+				selection.ClaudeEnabled = true
+			case "codex":
+				selection.CodexEnabled = true
+			case "gemini":
+				selection.GeminiEnabled = true
+			default:
+				return errors.Errorf("unknown provider %q", token)
+			}
+		}
+	}
+
+	return nil
+}
+
+func applyExplicitProviderPaths(
+	selection *providerSelection,
+	codexHooksPath string,
+	geminiSettingsPath string,
+) {
+	if codexHooksPath != "" {
+		selection.CodexEnabled = true
+		selection.CodexHooksPath = codexHooksPath
+	}
+
+	if geminiSettingsPath != "" {
+		selection.GeminiEnabled = true
+		selection.GeminiSettingsPath = geminiSettingsPath
+	}
+}
+
+func fillProviderPathDefaults(selection *providerSelection, existing providerSelection) {
+	if selection.CodexEnabled && selection.CodexHooksPath == "" {
+		selection.CodexHooksPath = existing.CodexHooksPath
+		if selection.CodexHooksPath == "" {
+			selection.CodexHooksPath = defaultCodexHooksPath
+		}
+	}
+
+	if !selection.CodexEnabled {
+		selection.CodexHooksPath = ""
+	}
+
+	if selection.GeminiEnabled && selection.GeminiSettingsPath == "" {
+		selection.GeminiSettingsPath = existing.GeminiSettingsPath
+		if selection.GeminiSettingsPath == "" {
+			selection.GeminiSettingsPath = defaultGeminiSettingsPath
+		}
+	}
+
+	if !selection.GeminiEnabled {
+		selection.GeminiSettingsPath = ""
+	}
+}
+
+func promptProviderToggleSelection(
+	prompter prompt.Prompter,
+	current providerSelection,
+) (providerSelection, error) {
+	selection := providerSelection{}
+
+	var err error
+
+	selection.ClaudeEnabled, err = prompter.Confirm(
+		"Enable Claude integration",
+		current.ClaudeEnabled,
+	)
+	if err != nil {
+		return providerSelection{}, err
+	}
+
+	selection.CodexEnabled, err = prompter.Confirm(
+		"Enable Codex integration",
+		current.CodexEnabled,
+	)
+	if err != nil {
+		return providerSelection{}, err
+	}
+
+	selection.GeminiEnabled, err = prompter.Confirm(
+		"Enable Gemini integration",
+		current.GeminiEnabled,
+	)
+	if err != nil {
+		return providerSelection{}, err
+	}
+
+	return selection, nil
+}
+
+func promptProviderPaths(
+	prompter prompt.Prompter,
+	current providerSelection,
+	selection *providerSelection,
+) error {
+	if selection.CodexEnabled {
+		defaultPath := current.CodexHooksPath
+		if defaultPath == "" {
+			defaultPath = defaultCodexHooksPath
+		}
+
+		value, err := prompter.Input("Codex hooks.json path", defaultPath)
+		if err != nil {
+			return err
+		}
+
+		selection.CodexHooksPath = value
+	}
+
+	if selection.GeminiEnabled {
+		defaultPath := current.GeminiSettingsPath
+		if defaultPath == "" {
+			defaultPath = defaultGeminiSettingsPath
+		}
+
+		value, err := prompter.Input("Gemini settings.json path", defaultPath)
+		if err != nil {
+			return err
+		}
+
+		selection.GeminiSettingsPath = value
+	}
+
+	return nil
 }
 
 func loadConfigFile(path string) (*pkgConfig.Config, error) {

@@ -17,6 +17,7 @@ var _ = Describe("init provider updates", func() {
 			selection, err := resolveProviderSelection(
 				[]string{"claude", "codex"},
 				"",
+				"",
 				nil,
 			)
 			Expect(err).NotTo(HaveOccurred())
@@ -25,8 +26,21 @@ var _ = Describe("init provider updates", func() {
 			Expect(selection.CodexHooksPath).To(Equal(defaultCodexHooksPath))
 		})
 
+		It("defaults the Gemini settings path when Gemini is selected by flags", func() {
+			selection, err := resolveProviderSelection(
+				[]string{"claude", "gemini"},
+				"",
+				"",
+				nil,
+			)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(selection.ClaudeEnabled).To(BeTrue())
+			Expect(selection.GeminiEnabled).To(BeTrue())
+			Expect(selection.GeminiSettingsPath).To(Equal(defaultGeminiSettingsPath))
+		})
+
 		It("rejects unknown provider names", func() {
-			_, err := resolveProviderSelection([]string{"claude", "cursor"}, "", nil)
+			_, err := resolveProviderSelection([]string{"claude", "cursor"}, "", "", nil)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("unknown provider"))
 		})
@@ -49,15 +63,20 @@ var _ = Describe("init provider updates", func() {
 			}
 
 			updated, err := applyProviderSelection(existing, providerSelection{
-				ClaudeEnabled:  true,
-				CodexEnabled:   true,
-				CodexHooksPath: defaultCodexHooksPath,
+				ClaudeEnabled:      true,
+				CodexEnabled:       true,
+				CodexHooksPath:     defaultCodexHooksPath,
+				GeminiEnabled:      true,
+				GeminiSettingsPath: defaultGeminiSettingsPath,
 			})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(updated.GetProviders().GetClaude().IsEnabled()).To(BeTrue())
 			Expect(updated.GetProviders().GetCodex().IsEnabled()).To(BeTrue())
 			Expect(updated.GetProviders().GetCodex().HooksConfigPath).
 				To(Equal(defaultCodexHooksPath))
+			Expect(updated.GetProviders().GetGemini().IsEnabled()).To(BeTrue())
+			Expect(updated.GetProviders().GetGemini().SettingsPath).
+				To(Equal(defaultGeminiSettingsPath))
 			Expect(updated.GetValidators().GetNotification().Bell.Enabled).
 				To(Equal(existing.GetValidators().GetNotification().Bell.Enabled))
 			Expect(existing.Providers).To(BeNil())
@@ -93,8 +112,14 @@ var _ = Describe("init provider updates", func() {
 					Confirm("Enable Codex integration", false).
 					Return(true, nil),
 				prompter.EXPECT().
+					Confirm("Enable Gemini integration", false).
+					Return(true, nil),
+				prompter.EXPECT().
 					Input("Codex hooks.json path", defaultCodexHooksPath).
 					Return(defaultCodexHooksPath, nil),
+				prompter.EXPECT().
+					Input("Gemini settings.json path", defaultGeminiSettingsPath).
+					Return(defaultGeminiSettingsPath, nil),
 				prompter.EXPECT().
 					Confirm("Apply these changes?", false).
 					Return(true, nil),
@@ -112,10 +137,14 @@ var _ = Describe("init provider updates", func() {
 			Expect(updated.GetProviders().GetCodex().IsEnabled()).To(BeTrue())
 			Expect(updated.GetProviders().GetCodex().HooksConfigPath).
 				To(Equal(defaultCodexHooksPath))
+			Expect(updated.GetProviders().GetGemini().IsEnabled()).To(BeTrue())
+			Expect(updated.GetProviders().GetGemini().SettingsPath).
+				To(Equal(defaultGeminiSettingsPath))
 			Expect(out.String()).
 				To(ContainSubstring("Proposed changes for /tmp/config.toml"))
 			Expect(out.String()).To(ContainSubstring("[providers]"))
 			Expect(out.String()).To(ContainSubstring("hooks_config_path"))
+			Expect(out.String()).To(ContainSubstring("settings_path"))
 		})
 	})
 })

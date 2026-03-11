@@ -305,3 +305,105 @@ var _ = Describe("Codex hook checkers", func() {
 		Expect(result.Message).To(ContainSubstring("not configured"))
 	})
 })
+
+var _ = Describe("Gemini hook checkers", func() {
+	var (
+		ctx          context.Context
+		tempDir      string
+		settingsPath string
+		originalPath string
+		pathSet      bool
+	)
+
+	BeforeEach(func() {
+		var err error
+
+		ctx = context.Background()
+		tempDir, err = os.MkdirTemp("", "gemini-hook-checker-*")
+		Expect(err).NotTo(HaveOccurred())
+
+		settingsPath = filepath.Join(tempDir, "settings.json")
+		binDir := filepath.Join(tempDir, "bin")
+		Expect(os.MkdirAll(binDir, 0o755)).To(Succeed())
+
+		Expect(
+			os.WriteFile(
+				filepath.Join(binDir, "klaudiush"),
+				[]byte("#!/bin/sh\nexit 0\n"),
+				0o755,
+			),
+		).
+			To(Succeed())
+
+		originalPath, pathSet = os.LookupEnv("PATH")
+		Expect(os.Setenv("PATH", binDir+string(os.PathListSeparator)+originalPath)).To(Succeed())
+	})
+
+	AfterEach(func() {
+		if pathSet {
+			Expect(os.Setenv("PATH", originalPath)).To(Succeed())
+		} else {
+			Expect(os.Unsetenv("PATH")).To(Succeed())
+		}
+
+		if tempDir != "" {
+			_ = os.RemoveAll(tempDir)
+		}
+	})
+
+	It("passes when configured Gemini settings register klaudiush", func() {
+		Expect(os.WriteFile(
+			settingsPath,
+			[]byte(`{
+  "hooks": {
+    "BeforeTool": [{"matcher":"run_shell_command|write_file|replace|read_file|glob|grep|ls","hooks":[{"type":"command","command":"klaudiush --provider gemini --event BeforeTool","timeout":30000}]}],
+    "AfterTool": [{"matcher":"run_shell_command|write_file|replace|read_file|glob|grep|ls","hooks":[{"type":"command","command":"klaudiush --provider gemini --event AfterTool","timeout":30000}]}],
+    "SessionStart": [{"hooks":[{"type":"command","command":"klaudiush --provider gemini --event SessionStart","timeout":30000}]}],
+    "SessionEnd": [{"hooks":[{"type":"command","command":"klaudiush --provider gemini --event SessionEnd","timeout":30000}]}],
+    "Notification": [{"hooks":[{"type":"command","command":"klaudiush --provider gemini --event Notification","timeout":30000}]}],
+    "PreCompress": [{"hooks":[{"type":"command","command":"klaudiush --provider gemini --event PreCompress","timeout":30000}]}]
+  }
+}`),
+			0o600,
+		)).To(Succeed())
+
+		enabled := true
+		cfg := &pkgConfig.GeminiProviderConfig{
+			Enabled:      &enabled,
+			SettingsPath: settingsPath,
+		}
+
+		registrationChecker := hook.NewGeminiRegistrationChecker(cfg)
+		beforeToolChecker := hook.NewGeminiEventChecker(cfg, "BeforeTool")
+		preCompressChecker := hook.NewGeminiEventChecker(cfg, "PreCompress")
+
+		Expect(registrationChecker.Check(ctx).Status).To(Equal(doctor.StatusPass))
+		Expect(beforeToolChecker.Check(ctx).Status).To(Equal(doctor.StatusPass))
+		Expect(preCompressChecker.Check(ctx).Status).To(Equal(doctor.StatusPass))
+	})
+
+	It("fails when the configured Gemini settings file is missing an event", func() {
+		Expect(os.WriteFile(
+			settingsPath,
+			[]byte(`{
+  "hooks": {
+    "BeforeTool": [{"matcher":"run_shell_command|write_file|replace|read_file|glob|grep|ls","hooks":[{"type":"command","command":"klaudiush --provider gemini --event BeforeTool","timeout":30000}]}]
+  }
+}`),
+			0o600,
+		)).To(Succeed())
+
+		enabled := true
+		cfg := &pkgConfig.GeminiProviderConfig{
+			Enabled:      &enabled,
+			SettingsPath: settingsPath,
+		}
+
+		sessionEndChecker := hook.NewGeminiEventChecker(cfg, "SessionEnd")
+		result := sessionEndChecker.Check(ctx)
+
+		Expect(result.Status).To(Equal(doctor.StatusFail))
+		Expect(result.FixID).To(Equal("install_hook"))
+		Expect(result.Message).To(ContainSubstring("not configured"))
+	})
+})

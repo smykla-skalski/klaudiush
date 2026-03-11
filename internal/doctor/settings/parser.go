@@ -212,3 +212,37 @@ func GetAllSettingsPaths() []SettingsLocation {
 
 	return locations
 }
+
+func readJSONSettingsFile(path string, target any, readFailureMessage string) error {
+	resolvedPath, err := resolveSettingsPath(path)
+	if err != nil {
+		return err
+	}
+
+	//nolint:gosec // Path comes from validated config and may include a resolved ~ prefix.
+	data, err := os.ReadFile(resolvedPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return errors.WithMessage(ErrSettingsNotFound, path)
+		}
+
+		if os.IsPermission(err) {
+			return errors.WithMessage(ErrPermissionDenied, path)
+		}
+
+		return errors.Wrap(err, readFailureMessage)
+	}
+
+	if len(data) == 0 {
+		return nil
+	}
+
+	if err := json.Unmarshal(data, target); err != nil {
+		return errors.WithSecondaryError(
+			errors.WithMessage(ErrInvalidJSON, "in "+path),
+			err,
+		)
+	}
+
+	return nil
+}
