@@ -58,7 +58,10 @@ func (f *ShellValidatorFactory) createBacktickValidator(
 	}
 
 	return ValidatorWithPredicate{
-		Validator: shellvalidators.NewBacktickValidator(f.log, cfg, rc),
+		Validator: wrapValidatorWithSeverity(
+			shellvalidators.NewBacktickValidator(f.log, cfg, rc),
+			cfg,
+		),
 		Predicate: validator.And(
 			beforeToolOrCodexAfterToolPredicate(),
 			validator.ToolTypeIs(hook.ToolTypeBash),

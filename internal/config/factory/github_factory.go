@@ -72,7 +72,10 @@ func (f *GitHubValidatorFactory) createIssueValidator(
 	linter := linters.NewMarkdownLinter(runner)
 
 	return ValidatorWithPredicate{
-		Validator: githubvalidators.NewIssueValidator(cfg, linter, f.log, rc),
+		Validator: wrapValidatorWithSeverity(
+			githubvalidators.NewIssueValidator(cfg, linter, f.log, rc),
+			cfg,
+		),
 		Predicate: validator.And(
 			beforeToolOrCodexAfterToolPredicate(),
 			validator.ToolTypeIs(hook.ToolTypeBash),

@@ -145,7 +145,10 @@ func (f *FileValidatorFactory) createMarkdownValidator(
 	}
 
 	return ValidatorWithPredicate{
-		Validator: filevalidators.NewMarkdownValidator(cfg, linter, f.log, rc),
+		Validator: wrapValidatorWithSeverity(
+			filevalidators.NewMarkdownValidator(cfg, linter, f.log, rc),
+			cfg,
+		),
 		Predicate: validator.And(
 			beforeToolOrCodexAfterToolPredicate(),
 			validator.ToolTypeIn(hook.ToolTypeWrite, hook.ToolTypeEdit, hook.ToolTypeMultiEdit),
@@ -169,7 +172,10 @@ func (f *FileValidatorFactory) createTerraformValidator(
 	}
 
 	return ValidatorWithPredicate{
-		Validator: filevalidators.NewTerraformValidator(formatter, linter, f.log, cfg, rc),
+		Validator: wrapValidatorWithSeverity(
+			filevalidators.NewTerraformValidator(formatter, linter, f.log, cfg, rc),
+			cfg,
+		),
 		Predicate: validator.And(
 			beforeToolOrCodexAfterToolPredicate(),
 			validator.ToolTypeIn(hook.ToolTypeWrite, hook.ToolTypeEdit, hook.ToolTypeMultiEdit),
@@ -192,7 +198,10 @@ func (f *FileValidatorFactory) createShellScriptValidator(
 	}
 
 	return ValidatorWithPredicate{
-		Validator: filevalidators.NewShellScriptValidator(f.log, checker, cfg, rc),
+		Validator: wrapValidatorWithSeverity(
+			filevalidators.NewShellScriptValidator(f.log, checker, cfg, rc),
+			cfg,
+		),
 		Predicate: validator.And(
 			beforeToolOrCodexAfterToolPredicate(),
 			validator.ToolTypeIn(hook.ToolTypeWrite, hook.ToolTypeEdit, hook.ToolTypeMultiEdit),
@@ -219,8 +228,11 @@ func (f *FileValidatorFactory) createWorkflowValidator(
 	}
 
 	return ValidatorWithPredicate{
-		Validator: filevalidators.NewWorkflowValidator(
-			linter, githubClient, f.log, cfg, rc,
+		Validator: wrapValidatorWithSeverity(
+			filevalidators.NewWorkflowValidator(
+				linter, githubClient, f.log, cfg, rc,
+			),
+			cfg,
 		),
 		Predicate: validator.And(
 			beforeToolOrCodexAfterToolPredicate(),
@@ -251,7 +263,10 @@ func (f *FileValidatorFactory) createGofumptValidator(
 	}
 
 	return ValidatorWithPredicate{
-		Validator: filevalidators.NewGofumptValidator(f.log, checker, cfg, rc),
+		Validator: wrapValidatorWithSeverity(
+			filevalidators.NewGofumptValidator(f.log, checker, cfg, rc),
+			cfg,
+		),
 		Predicate: validator.And(
 			beforeToolOrCodexAfterToolPredicate(),
 			validator.ToolTypeIn(hook.ToolTypeWrite),
@@ -274,7 +289,10 @@ func (f *FileValidatorFactory) createPythonValidator(
 	}
 
 	return ValidatorWithPredicate{
-		Validator: filevalidators.NewPythonValidator(f.log, checker, cfg, rc),
+		Validator: wrapValidatorWithSeverity(
+			filevalidators.NewPythonValidator(f.log, checker, cfg, rc),
+			cfg,
+		),
 		Predicate: validator.And(
 			beforeToolOrCodexAfterToolPredicate(),
 			validator.ToolTypeIn(hook.ToolTypeWrite, hook.ToolTypeEdit, hook.ToolTypeMultiEdit),
@@ -297,7 +315,10 @@ func (f *FileValidatorFactory) createJavaScriptValidator(
 	}
 
 	return ValidatorWithPredicate{
-		Validator: filevalidators.NewJavaScriptValidator(f.log, checker, cfg, rc),
+		Validator: wrapValidatorWithSeverity(
+			filevalidators.NewJavaScriptValidator(f.log, checker, cfg, rc),
+			cfg,
+		),
 		Predicate: validator.And(
 			beforeToolOrCodexAfterToolPredicate(),
 			validator.ToolTypeIn(hook.ToolTypeWrite, hook.ToolTypeEdit, hook.ToolTypeMultiEdit),
@@ -325,7 +346,10 @@ func (f *FileValidatorFactory) createRustValidator(
 	}
 
 	return ValidatorWithPredicate{
-		Validator: filevalidators.NewRustValidator(f.log, checker, cfg, rc),
+		Validator: wrapValidatorWithSeverity(
+			filevalidators.NewRustValidator(f.log, checker, cfg, rc),
+			cfg,
+		),
 		Predicate: validator.And(
 			beforeToolOrCodexAfterToolPredicate(),
 			validator.ToolTypeIn(hook.ToolTypeWrite, hook.ToolTypeEdit, hook.ToolTypeMultiEdit),
@@ -347,7 +371,10 @@ func (f *FileValidatorFactory) createLinterIgnoreValidator(
 	}
 
 	return ValidatorWithPredicate{
-		Validator: filevalidators.NewLinterIgnoreValidator(f.log, cfg, rc),
+		Validator: wrapValidatorWithSeverity(
+			filevalidators.NewLinterIgnoreValidator(f.log, cfg, rc),
+			cfg,
+		),
 		Predicate: validator.And(
 			beforeToolOrCodexAfterToolPredicate(),
 			validator.ToolTypeIn(hook.ToolTypeWrite, hook.ToolTypeEdit, hook.ToolTypeMultiEdit),
