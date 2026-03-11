@@ -1,25 +1,25 @@
 { lib, stdenv, fetchurl, installShellFiles }:
 
 let
-  version = "1.26.4";
+  version = "1.28.0";
 
   # Platform-specific release URLs and hashes
   sources = {
     aarch64-darwin = {
       url = "https://github.com/smykla-skalski/klaudiush/releases/download/v${version}/klaudiush_${version}_darwin_arm64.tar.gz";
-      hash = "sha256-8Y76aD+1SyWHbbfO/uwcNJ1KKWCKv/APkB39Ti2sWlU=";
+      hash = "sha256-goMx71IVYUCXfqrkilcztjVqf+lzYGAya6/lhb+vYe0=";
     };
     x86_64-darwin = {
       url = "https://github.com/smykla-skalski/klaudiush/releases/download/v${version}/klaudiush_${version}_darwin_amd64.tar.gz";
-      hash = "sha256-C4z+qz1jEeOlo2ed9B7F1LMAyGMIk5CNc063o2SLcYw=";
+      hash = "sha256-QgcrXssxPrOA67Bn/nQtlnN3NgUpM7VWvP9GYx1J53Y=";
     };
     x86_64-linux = {
       url = "https://github.com/smykla-skalski/klaudiush/releases/download/v${version}/klaudiush_${version}_linux_amd64.tar.gz";
-      hash = "sha256-DiSDzqqlcM18+muf5stoO+OusF/gV56yN8dm0e8JHe8=";
+      hash = "sha256-GEMkBapONB+8yF3uV4LVHSPEkVVPkWu1WsJs0N7sRWw=";
     };
     aarch64-linux = {
       url = "https://github.com/smykla-skalski/klaudiush/releases/download/v${version}/klaudiush_${version}_linux_arm64.tar.gz";
-      hash = "sha256-dyk1gx7bTWA65MeCD6lHFB23HEEjBsR3gENxAlpyAWg=";
+      hash = "sha256-JxW3rGpT5v7vRD2gjdjp62l7nBgbviJFMrJRjc+bvjQ=";
     };
   };
 
