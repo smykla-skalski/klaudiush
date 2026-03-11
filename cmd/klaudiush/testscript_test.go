@@ -29,6 +29,8 @@ func mainFunc() {
 	forceFlag = false
 	noTUIFlag = false
 	installHooksFlag = true
+	providersFlag = nil
+	codexHooksFlag = ""
 	verboseFlag = false
 	fixFlag = false
 	categoryFlag = []string{}

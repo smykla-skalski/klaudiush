@@ -62,7 +62,7 @@ func buildInitForm(opts InitFormOptions, result *InitFormResult) *huh.Form {
 
 	codexHooksInput := huh.NewInput().
 		Title("Codex hooks.json path").
-		Description("Optional. Configure experimental Codex SessionStart/Stop hook installation.\nLeave empty to skip Codex support.").
+		Description("Optional. Configure experimental Codex SessionStart/AfterToolUse/Stop hook installation.\nLeave empty to skip Codex support.").
 		Placeholder("~/.codex/hooks.json").
 		Value(&result.CodexHooksPath)
 

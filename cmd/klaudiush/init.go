@@ -15,6 +15,7 @@ import (
 	"github.com/smykla-skalski/klaudiush/internal/config"
 	"github.com/smykla-skalski/klaudiush/internal/doctor/settings"
 	"github.com/smykla-skalski/klaudiush/internal/git"
+	"github.com/smykla-skalski/klaudiush/internal/prompt"
 	"github.com/smykla-skalski/klaudiush/internal/tui"
 	pkgConfig "github.com/smykla-skalski/klaudiush/pkg/config"
 	"github.com/smykla-skalski/klaudiush/pkg/logger"
@@ -27,6 +28,8 @@ var (
 	forceFlag        bool
 	noTUIFlag        bool
 	installHooksFlag bool
+	providersFlag    []string
+	codexHooksFlag   string
 )
 
 var initCmd = &cobra.Command{
@@ -77,6 +80,20 @@ func init() {
 		true,
 		"Register klaudiush hooks for enabled providers",
 	)
+
+	initCmd.Flags().StringSliceVar(
+		&providersFlag,
+		"providers",
+		nil,
+		"Providers to configure (claude,codex)",
+	)
+
+	initCmd.Flags().StringVar(
+		&codexHooksFlag,
+		"codex-hooks-path",
+		"",
+		"Codex hooks.json path to configure during init",
+	)
 }
 
 func runInit(cmd *cobra.Command, _ []string) error {
@@ -85,69 +102,99 @@ func runInit(cmd *cobra.Command, _ []string) error {
 		return runInstallHooks()
 	}
 
-	writer := config.NewWriter()
-
-	// Check if config already exists
-	configPath, existingConfig, err := checkExistingConfig(writer)
-	if err != nil {
+	if err := normalizeInitProviderFlags(cmd); err != nil {
 		return err
 	}
 
-	// If --force and config exists, create backup before overwriting
-	if forceFlag && existingConfig {
-		if backupErr := backupBeforeForce(configPath); backupErr != nil {
-			// Log warning but don't fail
-			fmt.Fprintf(
-				os.Stderr,
-				"⚠️  Warning: failed to backup existing config: %v\n",
-				backupErr,
-			)
-		}
+	writer := config.NewWriter()
+
+	// Check if config already exists
+	configPath, existingConfig := resolveInitConfigPath(writer)
+	if handled, err := handleExistingInitConfig(
+		writer,
+		configPath,
+		existingConfig,
+	); handled || err != nil {
+		return err
 	}
 
-	// Get default signoff from git config
-	defaultSignoff := getDefaultSignoff()
+	return runFreshInit(writer, configPath, existingConfig)
+}
 
-	// Determine if we should show git exclude option
+func normalizeInitProviderFlags(cmd *cobra.Command) error {
+	if cmd.Flags().Changed("providers") && len(providersFlag) == 0 {
+		return errors.New("--providers requires at least one provider")
+	}
+
+	if codexHooksFlag != "" && !cmd.Flags().Changed("providers") {
+		providersFlag = []string{"claude", "codex"}
+	}
+
+	return nil
+}
+
+func handleExistingInitConfig(
+	writer *config.Writer,
+	configPath string,
+	existingConfig bool,
+) (bool, error) {
+	if !existingConfig || forceFlag {
+		return false, nil
+	}
+
+	updated, handled, err := maybeUpdateExistingConfig(writer, configPath)
+	if err != nil {
+		return true, err
+	}
+
+	if handled {
+		if updated != nil {
+			fmt.Println()
+			fmt.Println("Configuration updated successfully!")
+		}
+
+		return true, nil
+	}
+
+	return true, errors.Errorf(
+		"configuration file already exists: %s\nUse --force to overwrite",
+		configPath,
+	)
+}
+
+func runFreshInit(
+	writer *config.Writer,
+	configPath string,
+	existingConfig bool,
+) error {
+	backupExistingConfig(configPath, existingConfig)
+
 	showGitExclude := !globalFlag && git.IsInGitRepo()
-
-	// Create UI (TUI or fallback based on terminal capabilities and flags)
 	ui := tui.NewWithFallback(noTUIFlag)
 
-	// Run the init form
 	cfg, addToExclude, err := ui.RunInitForm(tui.InitFormOptions{
 		Global:         globalFlag,
-		DefaultSignoff: defaultSignoff,
+		DefaultSignoff: getDefaultSignoff(),
 		ShowGitExclude: showGitExclude,
 	})
 	if err != nil {
 		return errors.Wrap(err, "configuration form failed")
 	}
 
-	// Write configuration
+	if cfg, err = applyProviderFlags(cfg); err != nil {
+		return err
+	}
+
+	if err := validateConfigForWrite(cfg); err != nil {
+		return err
+	}
+
 	if err := writeConfig(writer, cfg, configPath); err != nil {
 		return err
 	}
 
-	// Handle .git/info/exclude for project config
-	if addToExclude && showGitExclude {
-		if err := addConfigToExclude(); err != nil {
-			fmt.Fprintf(
-				os.Stderr,
-				"⚠️  Warning: failed to add to .git/info/exclude: %v\n",
-				err,
-			)
-		} else {
-			fmt.Println("✅ Added to .git/info/exclude")
-		}
-	}
-
-	// Install hooks if enabled (default true, non-fatal)
-	if installHooksFlag {
-		if err := tryInstallHooks(cfg); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: hook registration failed: %v\n", err)
-		}
-	}
+	maybeAddConfigToExclude(addToExclude, showGitExclude)
+	maybeInstallInitHooks(cfg)
 
 	fmt.Println()
 	fmt.Println("Configuration initialized successfully!")
@@ -155,8 +202,49 @@ func runInit(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-// checkExistingConfig checks if config already exists and returns the path and existence flag.
-func checkExistingConfig(writer *config.Writer) (string, bool, error) {
+func backupExistingConfig(configPath string, existingConfig bool) {
+	if !forceFlag || !existingConfig {
+		return
+	}
+
+	if backupErr := backupBeforeForce(configPath); backupErr != nil {
+		fmt.Fprintf(
+			os.Stderr,
+			"⚠️  Warning: failed to backup existing config: %v\n",
+			backupErr,
+		)
+	}
+}
+
+func maybeAddConfigToExclude(addToExclude bool, showGitExclude bool) {
+	if !addToExclude || !showGitExclude {
+		return
+	}
+
+	if err := addConfigToExclude(); err != nil {
+		fmt.Fprintf(
+			os.Stderr,
+			"⚠️  Warning: failed to add to .git/info/exclude: %v\n",
+			err,
+		)
+
+		return
+	}
+
+	fmt.Println("✅ Added to .git/info/exclude")
+}
+
+func maybeInstallInitHooks(cfg *pkgConfig.Config) {
+	if !installHooksFlag {
+		return
+	}
+
+	if err := tryInstallHooks(cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: hook registration failed: %v\n", err)
+	}
+}
+
+func resolveInitConfigPath(writer *config.Writer) (string, bool) {
 	var (
 		configPath   string
 		configExists bool
@@ -170,14 +258,122 @@ func checkExistingConfig(writer *config.Writer) (string, bool, error) {
 		configExists = writer.IsProjectConfigExists()
 	}
 
-	if configExists && !forceFlag {
-		return "", false, errors.Errorf(
-			"configuration file already exists: %s\nUse --force to overwrite",
-			configPath,
-		)
+	return configPath, configExists
+}
+
+func maybeUpdateExistingConfig(
+	writer *config.Writer,
+	configPath string,
+) (*pkgConfig.Config, bool, error) {
+	existingCfg, err := loadConfigFile(configPath)
+	if err != nil {
+		return nil, false, err
 	}
 
-	return configPath, configExists, nil
+	if len(providersFlag) > 0 || codexHooksFlag != "" {
+		return updateExistingConfigFromFlags(writer, configPath, existingCfg)
+	}
+
+	if !isInteractive() {
+		return nil, false, nil
+	}
+
+	return updateExistingConfigInteractively(writer, configPath, existingCfg)
+}
+
+func updateExistingConfigFromFlags(
+	writer *config.Writer,
+	configPath string,
+	existingCfg *pkgConfig.Config,
+) (*pkgConfig.Config, bool, error) {
+	selection, resolveErr := resolveProviderSelection(providersFlag, codexHooksFlag, existingCfg)
+	if resolveErr != nil {
+		return nil, false, resolveErr
+	}
+
+	updated, applyErr := applyProviderSelection(existingCfg, selection)
+	if applyErr != nil {
+		return nil, false, applyErr
+	}
+
+	if validateErr := validateConfigForWrite(updated); validateErr != nil {
+		return nil, false, validateErr
+	}
+
+	diff, diffErr := renderConfigDiff(configPath, existingCfg, updated)
+	if diffErr != nil {
+		return nil, false, diffErr
+	}
+
+	if diff == "" {
+		fmt.Printf("No configuration changes are needed for %s\n", configPath)
+		return nil, true, nil
+	}
+
+	fmt.Printf("Applying provider changes to %s:\n%s", configPath, diff)
+
+	if writeErr := writeConfig(writer, updated, configPath); writeErr != nil {
+		return nil, false, writeErr
+	}
+
+	return updated, true, nil
+}
+
+func updateExistingConfigInteractively(
+	writer *config.Writer,
+	configPath string,
+	existingCfg *pkgConfig.Config,
+) (*pkgConfig.Config, bool, error) {
+	updated, handled, err := promptProviderUpdate(
+		prompt.NewStdPrompter(),
+		os.Stdout,
+		configPath,
+		existingCfg,
+	)
+	if err != nil {
+		return nil, false, err
+	}
+
+	if !handled {
+		return nil, false, nil
+	}
+
+	if updated == nil {
+		fmt.Println("Configuration update cancelled.")
+		return nil, true, nil
+	}
+
+	diff, err := renderConfigDiff(configPath, existingCfg, updated)
+	if err != nil {
+		return nil, false, err
+	}
+
+	if diff == "" {
+		return updated, true, nil
+	}
+
+	if validateErr := validateConfigForWrite(updated); validateErr != nil {
+		return nil, false, validateErr
+	}
+
+	if writeErr := writeConfig(writer, updated, configPath); writeErr != nil {
+		return nil, false, writeErr
+	}
+
+	return updated, true, nil
+}
+
+func applyProviderFlags(cfg *pkgConfig.Config) (*pkgConfig.Config, error) {
+	if len(providersFlag) == 0 && codexHooksFlag == "" {
+		return cfg, nil
+	}
+
+	selection, err := resolveProviderSelection(providersFlag, codexHooksFlag, cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	return applyProviderSelection(cfg, selection)
 }
 
 // backupBeforeForce creates a backup before overwriting config with --force.

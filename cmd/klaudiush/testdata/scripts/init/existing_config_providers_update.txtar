@@ -1,0 +1,20 @@
+# Test: Init updates an existing config when providers are passed via flags
+# This exercises the provider-only patch path without entering the full init form.
+
+mkdir .klaudiush
+cp config.toml .klaudiush/config.toml
+
+exec klaudiush init --providers claude,codex
+stdout 'Applying provider changes to'
+stdout 'Configuration written to'
+stdout 'Configuration updated successfully'
+
+exec cat .klaudiush/config.toml
+stdout 'hooks_config_path = .~/.codex/hooks.json.'
+stdout 'experimental = true'
+
+-- config.toml --
+version = 1
+
+[validators.notification.bell]
+enabled = true
