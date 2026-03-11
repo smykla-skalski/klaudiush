@@ -688,8 +688,10 @@ var _ = Describe("ExecLoader", func() {
 				err = json.Unmarshal(capturedStdin, &capturedReq)
 
 				Expect(err).NotTo(HaveOccurred())
-				Expect(capturedReq.EventType).To(Equal("PreToolUse"))
-				Expect(capturedReq.ToolName).To(Equal("Bash"))
+				Expect(capturedReq.EventName).To(Equal("before_tool"))
+				Expect(capturedReq.RawEventName).To(Equal("PreToolUse"))
+				Expect(capturedReq.ToolFamily).To(Equal("shell"))
+				Expect(capturedReq.RawToolName).To(Equal("Bash"))
 				Expect(capturedReq.Command).To(Equal("git commit"))
 			})
 		})

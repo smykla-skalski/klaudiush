@@ -103,6 +103,84 @@ var _ = Describe("JSONParser", func() {
 		})
 	})
 
+	Describe("Parse with Codex input", func() {
+		It("parses SessionStart payloads with provider-aware metadata", func() {
+			input := `{
+				"session_id": "sess-123",
+				"cwd": "/tmp/project",
+				"permission_mode": "workspace-write",
+				"model": "gpt-5.4",
+				"source": "cli"
+			}`
+
+			p := parser.NewJSONParser(bytes.NewReader([]byte(input)))
+			ctx, err := p.ParseWithOptions(parser.ParseOptions{
+				Provider:  hook.ProviderCodex,
+				EventName: "SessionStart",
+			})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ctx.Provider).To(Equal(hook.ProviderCodex))
+			Expect(ctx.Event).To(Equal(hook.CanonicalEventSessionStart))
+			Expect(ctx.EventName()).To(Equal("SessionStart"))
+			Expect(ctx.WorkingDir).To(Equal("/tmp/project"))
+			Expect(ctx.PermissionMode).To(Equal("workspace-write"))
+			Expect(ctx.Model).To(Equal("gpt-5.4"))
+			Expect(ctx.Source).To(Equal("cli"))
+		})
+
+		It("parses AfterToolUse payloads and derives affected paths", func() {
+			input := `{
+				"session_id": "sess-123",
+				"cwd": "/tmp/project",
+				"hook_event": {
+					"event_type": "AfterToolUse",
+					"call_id": "call-123",
+					"tool_name": "apply_patch",
+					"tool_input": {
+						"input": "*** Begin Patch\n*** Add File: docs/new.md\n+hello\n*** Update File: go.mod\n@@\n-go 1.25\n+go 1.26\n*** End Patch\n"
+					}
+				}
+			}`
+
+			p := parser.NewJSONParser(bytes.NewReader([]byte(input)))
+			ctx, err := p.ParseWithOptions(parser.ParseOptions{
+				Provider: hook.ProviderCodex,
+			})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ctx.Provider).To(Equal(hook.ProviderCodex))
+			Expect(ctx.Event).To(Equal(hook.CanonicalEventAfterTool))
+			Expect(ctx.EventName()).To(Equal("AfterToolUse"))
+			Expect(ctx.ToolUseID).To(Equal("call-123"))
+			Expect(ctx.ToolName).To(Equal(hook.ToolTypeEdit))
+			Expect(ctx.ToolFamily).To(Equal(hook.ToolFamilyEdit))
+			Expect(ctx.AffectedPaths).To(ConsistOf("docs/new.md", "go.mod"))
+		})
+
+		It("parses Stop payloads with stop-hook fields", func() {
+			input := `{
+				"session_id": "sess-123",
+				"cwd": "/tmp/project",
+				"last_assistant_message": "done",
+				"stop_hook_active": true
+			}`
+
+			p := parser.NewJSONParser(bytes.NewReader([]byte(input)))
+			ctx, err := p.ParseWithOptions(parser.ParseOptions{
+				Provider:  hook.ProviderCodex,
+				EventName: "Stop",
+			})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ctx.Provider).To(Equal(hook.ProviderCodex))
+			Expect(ctx.Event).To(Equal(hook.CanonicalEventTurnStop))
+			Expect(ctx.EventName()).To(Equal("Stop"))
+			Expect(ctx.LastAssistantMessage).To(Equal("done"))
+			Expect(ctx.StopHookActive).To(BeTrue())
+		})
+	})
+
 	Describe("Backward compatibility", func() {
 		It("works with inputs without session fields", func() {
 			input := `{

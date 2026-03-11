@@ -95,8 +95,10 @@ var _ = Describe("ValidatorAdapter", func() {
 			Expect(result).NotTo(BeNil())
 			Expect(result.Passed).To(BeTrue())
 			Expect(capturedRequest).NotTo(BeNil())
-			Expect(capturedRequest.EventType).To(Equal("PreToolUse"))
-			Expect(capturedRequest.ToolName).To(Equal("Bash"))
+			Expect(capturedRequest.EventName).To(Equal("before_tool"))
+			Expect(capturedRequest.RawEventName).To(Equal("PreToolUse"))
+			Expect(capturedRequest.ToolFamily).To(Equal("shell"))
+			Expect(capturedRequest.RawToolName).To(Equal("Bash"))
 			Expect(capturedRequest.Command).To(Equal("git commit -m 'test'"))
 		})
 

@@ -40,7 +40,7 @@ func createExecPlugin(
 			response.Passed, response.ShouldBlock, response.Message)
 	}
 
-	content := fmt.Sprintf(`#!/bin/bash
+	content := fmt.Sprintf(`#!/bin/sh
 # Integration test exec plugin
 
 # Handle --info flag

@@ -79,6 +79,20 @@ var _ = Describe("API", func() {
 			Expect(req.Content).To(BeEmpty())
 			Expect(req.Config).To(BeNil())
 		})
+
+		It("should backfill normalized event and tool fields from legacy values", func() {
+			req := &plugin.ValidateRequest{
+				EventType: "PreToolUse",
+				ToolName:  "Bash",
+			}
+
+			req.PopulateNormalizedFields()
+
+			Expect(req.EventName).To(Equal("before_tool"))
+			Expect(req.RawEventName).To(Equal("PreToolUse"))
+			Expect(req.ToolFamily).To(Equal("shell"))
+			Expect(req.RawToolName).To(Equal("Bash"))
+		})
 	})
 
 	Describe("ValidateResponse", func() {

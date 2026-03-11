@@ -9,6 +9,7 @@ import (
 	"github.com/smykla-skalski/klaudiush/internal/dispatcher"
 	"github.com/smykla-skalski/klaudiush/internal/hookresponse"
 	"github.com/smykla-skalski/klaudiush/internal/validator"
+	"github.com/smykla-skalski/klaudiush/pkg/hook"
 )
 
 var _ = Describe("Build", func() {
@@ -205,5 +206,72 @@ var _ = Describe("Build", func() {
 		var decoded hookresponse.HookResponse
 		Expect(json.Unmarshal(data, &decoded)).To(Succeed())
 		Expect(decoded.HookSpecificOutput.PermissionDecision).To(Equal("deny"))
+	})
+
+	It("builds SessionStart Codex advisory responses", func() {
+		errs := []*dispatcher.ValidationError{
+			{
+				Validator:   "patterns",
+				Message:     "session guidance",
+				ShouldBlock: false,
+			},
+		}
+
+		resp := hookresponse.BuildForContext(&hook.Context{
+			Provider: hook.ProviderCodex,
+			Event:    hook.CanonicalEventSessionStart,
+		}, errs, nil)
+
+		codexResp, ok := resp.(*hookresponse.CodexCommandResponse)
+		Expect(ok).To(BeTrue())
+		Expect(codexResp.Continue).To(BeTrue())
+		Expect(codexResp.StopReason).To(BeEmpty())
+		Expect(codexResp.HookSpecificOutput).NotTo(BeNil())
+		Expect(codexResp.HookSpecificOutput.HookEventName).To(Equal("SessionStart"))
+		Expect(codexResp.HookSpecificOutput.AdditionalContext).To(ContainSubstring("warning"))
+	})
+
+	It("builds SessionStart Codex blocking responses", func() {
+		errs := []*dispatcher.ValidationError{
+			{
+				Validator:   "config",
+				Message:     "invalid setup",
+				ShouldBlock: true,
+				Reference:   validator.RefGitNoSignoff,
+			},
+		}
+
+		resp := hookresponse.BuildForContext(&hook.Context{
+			Provider: hook.ProviderCodex,
+			Event:    hook.CanonicalEventSessionStart,
+		}, errs, nil)
+
+		codexResp, ok := resp.(*hookresponse.CodexCommandResponse)
+		Expect(ok).To(BeTrue())
+		Expect(codexResp.Continue).To(BeFalse())
+		Expect(codexResp.StopReason).To(ContainSubstring("[GIT001]"))
+		Expect(codexResp.HookSpecificOutput).To(BeNil())
+	})
+
+	It("builds Stop Codex blocking responses", func() {
+		errs := []*dispatcher.ValidationError{
+			{
+				Validator:   "summary",
+				Message:     "must stop",
+				ShouldBlock: true,
+				Reference:   validator.RefGitNoSignoff,
+			},
+		}
+
+		resp := hookresponse.BuildForContext(&hook.Context{
+			Provider: hook.ProviderCodex,
+			Event:    hook.CanonicalEventTurnStop,
+		}, errs, nil)
+
+		codexResp, ok := resp.(*hookresponse.CodexCommandResponse)
+		Expect(ok).To(BeTrue())
+		Expect(codexResp.Decision).To(Equal("block"))
+		Expect(codexResp.Reason).To(ContainSubstring("[GIT001]"))
+		Expect(codexResp.Continue).To(BeTrue())
 	})
 })
