@@ -25,8 +25,9 @@ path = "~/.klaudiush/plugins/file_validator.sh"
 timeout = "5s"
 
 [plugins.plugins.predicate]
-event_types = ["PreToolUse"]
-tool_types = ["Write", "Edit"]
+providers = ["claude", "codex"]
+event_types = ["before_tool", "after_tool"]
+tool_types = ["write", "edit"]
 
 [plugins.plugins.config]
 warn_on_exe = "true"
@@ -45,26 +46,26 @@ Run `--info` to check the plugin loads:
 Test a binary file (should block):
 
 ```bash
-echo '{"tool_name":"Write","file_path":"malware.exe","content":"binary"}' | ./file_validator.sh
+echo '{"tool_family":"write","file_path":"malware.exe","content":"binary"}' | ./file_validator.sh
 ```
 
 Test an executable script (should warn):
 
 ```bash
-echo '{"tool_name":"Write","file_path":"script.sh","content":"#!/bin/bash\necho hello"}' | ./file_validator.sh
+echo '{"tool_family":"write","file_path":"script.sh","content":"#!/bin/bash\necho hello"}' | ./file_validator.sh
 ```
 
 Test a normal file (should pass):
 
 ```bash
-echo '{"tool_name":"Write","file_path":"README.md","content":"# Docs"}' | ./file_validator.sh
+echo '{"tool_family":"write","file_path":"README.md","content":"# Docs"}' | ./file_validator.sh
 ```
 
 ## Protocol
 
 Plugins receive a JSON request on stdin and return a JSON response on stdout.
 
-Request fields: `event_type`, `tool_name`, `file_path`, `content`, `config`.
+Request fields: `provider`, `event_name`, `tool_family`, `file_path`, `content`, `config`. Legacy `event_type` and `tool_name` fields are still provided for compatibility.
 
 Pass response:
 

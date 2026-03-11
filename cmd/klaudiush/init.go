@@ -35,7 +35,7 @@ var initCmd = &cobra.Command{
 	Long: `Initialize klaudiush configuration file and register hooks.
 
 By default, creates a project-local configuration file (.klaudiush/config.toml)
-and registers klaudiush as a PreToolUse hook in Claude Code settings.
+and registers supported hooks for enabled providers. Claude installation is enabled by default; experimental Codex installation runs when providers.codex is enabled with experimental=true and hooks_config_path set.
 
 Use --global or -g to create a global configuration file (~/.klaudiush/config.toml).
 Use --install-hooks to register hooks only (skip TUI).
@@ -75,7 +75,7 @@ func init() {
 		&installHooksFlag,
 		"install-hooks",
 		true,
-		"Register klaudiush hooks in Claude Code settings",
+		"Register klaudiush hooks for enabled providers",
 	)
 }
 

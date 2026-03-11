@@ -7,9 +7,9 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Release](https://img.shields.io/github/v/release/smykla-skalski/klaudiush)](https://github.com/smykla-skalski/klaudiush/releases/latest)
 
-A validation dispatcher for Claude Code hooks. Intercepts tool invocations before execution and enforces git workflow standards, commit conventions, and code quality rules.
+A validation dispatcher for AI coding-agent hooks. Klaudiush supports Claude Code hooks today and experimental Codex command hooks, enforcing git workflow standards, commit conventions, and code quality rules.
 
-Klaudiush runs as a PreToolUse hook in Claude Code. It parses Bash commands via `mvdan.cc/sh`, detects file operations, and validates them against project-specific rules - all before the tool runs.
+For Claude, klaudiush runs in blocking `before_tool` flows (`PreToolUse`). For Codex, it can also participate in experimental `session_start`, `after_tool`, and `turn_stop` command hooks. It parses Bash commands via `mvdan.cc/sh`, detects file operations, and validates them against project-specific rules.
 
 - Git workflow validation (commits, pushes, branches, PRs)
 - Code quality checks (shellcheck, terraform fmt, actionlint, gofumpt, ruff, oxlint, rustfmt)
@@ -64,7 +64,7 @@ mise run build && mise run install
 
 ### Setup
 
-After installing, register the hook and verify:
+After installing, register the hooks and verify:
 
 ```bash
 klaudiush init --global
@@ -78,22 +78,22 @@ Shell completions are available for bash, zsh, fish, and PowerShell via `klaudiu
 ## How it works
 
 ```text
-Claude Code JSON -> CLI -> JSON Parser -> Dispatcher -> Registry -> Validators -> Result
+Provider Hook JSON -> CLI -> JSON Parser -> Dispatcher -> Registry -> Validators -> Result
 ```
 
-Claude Code sends tool invocations as JSON on stdin. Klaudiush parses the payload, matches it against registered validators using a predicate system, and returns a result: pass (no output), deny (JSON on stdout), or warn (allows with context). Exit code is always 0. On crash, exit code 3 with panic info on stderr.
+Claude Code and Codex send hook payloads as JSON on stdin. Klaudiush normalizes the provider payload, matches it against registered validators using a predicate system, and returns a result: pass (no output), deny/block (JSON on stdout), or warn/advisory context. Exit code is always 0. On crash, exit code 3 with panic info on stderr.
 
 Validators register with predicates that control when they fire:
 
 ```go
 registry.Register(validator, validator.And(
-    validator.EventTypeIs(hook.PreToolUse),
+    validator.EventIs(hook.CanonicalEventBeforeTool),
     validator.ToolTypeIs(hook.Bash),
     validator.CommandContains("git commit"),
 ))
 ```
 
-Available predicates: `EventTypeIs`, `ToolTypeIs`, `CommandContains`, `FileExtensionIs`, `FilePathMatches`, `And`, `Or`, `Not`.
+Available predicates: `EventIs`, `EventTypeIs`, `ProviderIs`, `ToolTypeIs`, `CommandContains`, `FileExtensionIs`, `FilePathMatches`, `And`, `Or`, `Not`.
 
 ### Validators
 
@@ -171,6 +171,8 @@ git push origin main  # EXC:GIT019:Emergency+hotfix
 ```
 
 Exceptions require explicit policy configuration per error code, enforce rate limits, and log to an audit trail. See the [exceptions guide](docs/EXCEPTIONS_GUIDE.md).
+
+Exceptions only apply to blocking `before_tool` command flows. They are not used for Codex lifecycle hooks.
 
 ## Performance
 

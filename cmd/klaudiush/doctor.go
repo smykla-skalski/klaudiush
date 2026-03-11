@@ -40,7 +40,7 @@ var doctorCmd = &cobra.Command{
 
 Checks:
 - Binary availability and permissions
-- Hook registration in Claude settings
+- Hook registration for enabled providers
 - Configuration file validity
 - Pattern learning system health
 - Backup system health
