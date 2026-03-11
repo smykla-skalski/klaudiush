@@ -49,12 +49,12 @@ func (f *PluginValidatorFactory) CreateValidators(cfg *config.Config) []Validato
 		registry:      f.registry,
 	}
 
-	// Register with a predicate that matches all PreToolUse events
-	// Individual plugins will do more specific matching
+	// Register with a catch-all predicate and let per-plugin predicates
+	// decide which lifecycle/tool/provider combinations should run.
 	return []ValidatorWithPredicate{
 		{
 			Validator: pluginValidator,
-			Predicate: validator.EventTypeIs(hook.EventTypePreToolUse),
+			Predicate: validator.Always(),
 		},
 	}
 }

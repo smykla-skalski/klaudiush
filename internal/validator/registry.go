@@ -67,6 +67,41 @@ func EventTypeIs(eventType hook.EventType) Predicate {
 	}
 }
 
+// EventIs returns a predicate that matches the given canonical event.
+func EventIs(event hook.CanonicalEvent) Predicate {
+	return func(ctx *hook.Context) bool {
+		if ctx == nil {
+			return false
+		}
+
+		if ctx.Event == event || ctx.MatchesEventName(string(event)) {
+			return true
+		}
+
+		switch event {
+		case hook.CanonicalEventBeforeTool:
+			return ctx.EventType == hook.EventTypePreToolUse
+		case hook.CanonicalEventAfterTool:
+			return ctx.EventType == hook.EventTypePostToolUse
+		case hook.CanonicalEventNotification:
+			return ctx.EventType == hook.EventTypeNotification
+		default:
+			return false
+		}
+	}
+}
+
+// ProviderIs returns a predicate that matches the given provider.
+func ProviderIs(provider hook.Provider) Predicate {
+	return func(ctx *hook.Context) bool {
+		if ctx == nil {
+			return false
+		}
+
+		return ctx.Provider == provider || ctx.MatchesProvider(string(provider))
+	}
+}
+
 // ToolTypeIs returns a predicate that matches the given tool type.
 func ToolTypeIs(toolType hook.ToolType) Predicate {
 	return func(ctx *hook.Context) bool {

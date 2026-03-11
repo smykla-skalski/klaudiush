@@ -18,6 +18,7 @@ import (
 	"github.com/smykla-skalski/klaudiush/internal/dispatcher"
 	"github.com/smykla-skalski/klaudiush/internal/exceptions"
 	"github.com/smykla-skalski/klaudiush/internal/hookresponse"
+	"github.com/smykla-skalski/klaudiush/internal/hooksession"
 	"github.com/smykla-skalski/klaudiush/internal/parser"
 	"github.com/smykla-skalski/klaudiush/internal/patterns"
 	"github.com/smykla-skalski/klaudiush/internal/xdg"
@@ -238,7 +239,11 @@ func run(cmd *cobra.Command, _ []string) error {
 
 	// Build validator registry from configuration
 	registryBuilder := factory.NewRegistryBuilder(log)
-	registry := registryBuilder.Build(cfg)
+
+	registry, _, err := registryBuilder.BuildWithRuleEngine(cfg)
+	if err != nil {
+		return errors.Wrap(err, "failed to build validator registry")
+	}
 
 	bt.mark("registry")
 
@@ -256,6 +261,8 @@ func run(cmd *cobra.Command, _ []string) error {
 
 	// Dispatch validation
 	errs := disp.Dispatch(context.Background(), ctx)
+	sessionStore := hooksession.NewStore()
+	errs, sessionCleanup := applyHookSessionLifecycle(sessionStore, ctx, errs, log)
 
 	bt.mark("dispatch")
 
@@ -267,6 +274,8 @@ func run(cmd *cobra.Command, _ []string) error {
 
 	// Build and write response
 	writeErr := writeResponse(ctx, errs, patternWarnings, log)
+
+	sessionCleanup()
 
 	bt.mark("response")
 

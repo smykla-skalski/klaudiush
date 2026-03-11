@@ -139,6 +139,11 @@ func ExceptionAuditFile() string {
 	return filepath.Join(StateDir(), "exception_audit.jsonl")
 }
 
+// HookSessionStateFile returns StateDir()/hook_sessions/state.json.
+func HookSessionStateFile() string {
+	return filepath.Join(StateDir(), "hook_sessions", "state.json")
+}
+
 // CrashDumpDir returns DataDir()/crash_dumps.
 func CrashDumpDir() string {
 	return filepath.Join(DataDir(), "crash_dumps")

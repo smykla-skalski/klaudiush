@@ -60,7 +60,7 @@ func (f *ShellValidatorFactory) createBacktickValidator(
 	return ValidatorWithPredicate{
 		Validator: shellvalidators.NewBacktickValidator(f.log, cfg, rc),
 		Predicate: validator.And(
-			validator.EventTypeIs(hook.EventTypePreToolUse),
+			beforeToolOrCodexAfterToolPredicate(),
 			validator.ToolTypeIs(hook.ToolTypeBash),
 			validator.Or(
 				// git commit with -m or --message

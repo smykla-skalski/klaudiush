@@ -110,6 +110,18 @@ type ValidateRequest struct {
 	// SessionID is the hook/session identifier when present.
 	SessionID string `json:"session_id,omitempty"`
 
+	// TurnID is the provider turn identifier when present.
+	TurnID string `json:"turn_id,omitempty"`
+
+	// ToolExecuted reports whether the provider executed the tool.
+	ToolExecuted bool `json:"tool_executed,omitempty"`
+
+	// ToolSucceeded reports whether the provider considered the tool successful.
+	ToolSucceeded bool `json:"tool_succeeded,omitempty"`
+
+	// ToolMutating reports whether the provider considers the tool mutating.
+	ToolMutating bool `json:"tool_mutating,omitempty"`
+
 	// AffectedPaths are provider-derived paths affected by the tool, when available.
 	AffectedPaths []string `json:"affected_paths,omitempty"`
 

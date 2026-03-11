@@ -1,14 +1,65 @@
 package factory_test
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"time"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	"github.com/smykla-skalski/klaudiush/internal/config/factory"
 	"github.com/smykla-skalski/klaudiush/internal/rules"
 	"github.com/smykla-skalski/klaudiush/pkg/config"
+	"github.com/smykla-skalski/klaudiush/pkg/hook"
 	"github.com/smykla-skalski/klaudiush/pkg/logger"
+	pluginapi "github.com/smykla-skalski/klaudiush/pkg/plugin"
 )
+
+func createExecPlugin(
+	tmpDir string,
+	name string,
+	response *pluginapi.ValidateResponse,
+) (string, error) {
+	script := filepath.Join(tmpDir, name)
+
+	infoJSON := fmt.Sprintf(
+		`{"name":"%s","version":"1.0.0","description":"Test exec plugin"}`,
+		name,
+	)
+
+	respJSON := `{"passed":true,"should_block":false,"message":"ok"}`
+	if response != nil {
+		respJSON = fmt.Sprintf(
+			`{"passed":%t,"should_block":%t,"message":"%s"}`,
+			response.Passed,
+			response.ShouldBlock,
+			response.Message,
+		)
+	}
+
+	content := fmt.Sprintf(`#!/bin/sh
+if [ "$1" = "--info" ]; then
+  echo '%s'
+  exit 0
+fi
+
+if [ "$1" = "--version" ]; then
+  echo "1.0.0"
+  exit 0
+fi
+
+read -r input
+echo '%s'
+`, infoJSON, respJSON)
+
+	if err := os.WriteFile(script, []byte(content), 0o755); err != nil {
+		return "", err
+	}
+
+	return script, nil
+}
 
 var _ = Describe("DefaultValidatorFactory", func() {
 	var (
@@ -571,6 +622,48 @@ var _ = Describe("DefaultValidatorFactory", func() {
 			validators := validatorFactory.CreatePluginValidators(cfg)
 			Expect(validators).To(BeEmpty())
 		})
+
+		It("registers plugin dispatch for lifecycle events", func() {
+			tmpDir := GinkgoT().TempDir()
+			pluginDir := filepath.Join(tmpDir, ".klaudiush", "plugins")
+			Expect(os.MkdirAll(pluginDir, 0o755)).To(Succeed())
+
+			pluginPath, err := createExecPlugin(
+				pluginDir,
+				"session-plugin",
+				&pluginapi.ValidateResponse{Passed: true},
+			)
+			Expect(err).NotTo(HaveOccurred())
+
+			pluginsEnabled := true
+			cfg := &config.Config{
+				Validators: &config.ValidatorsConfig{},
+				Plugins: &config.PluginConfig{
+					Enabled: &pluginsEnabled,
+					Plugins: []*config.PluginInstanceConfig{
+						{
+							Name:        "session-plugin",
+							Type:        config.PluginTypeExec,
+							Path:        pluginPath,
+							ProjectRoot: tmpDir,
+							Timeout:     config.Duration(5 * time.Second),
+							Predicate: &config.PluginPredicate{
+								Providers:  []string{"codex"},
+								EventTypes: []string{"session_start"},
+							},
+						},
+					},
+				},
+			}
+
+			validators := validatorFactory.CreatePluginValidators(cfg)
+			Expect(validators).To(HaveLen(1))
+			Expect(validators[0].Predicate(&hook.Context{
+				Provider:     hook.ProviderCodex,
+				Event:        hook.CanonicalEventSessionStart,
+				RawEventName: "SessionStart",
+			})).To(BeTrue())
+		})
 	})
 
 	Describe("CreateAll", func() {
@@ -735,6 +828,45 @@ var _ = Describe("RegistryBuilder", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(registry).NotTo(BeNil())
 			Expect(engine).To(BeNil())
+		})
+
+		It("adds lifecycle rule validation for session events", func() {
+			rulesEnabled := true
+			cfg := &config.Config{
+				Rules: &config.RulesConfig{
+					Enabled: &rulesEnabled,
+					Rules: []config.RuleConfig{
+						{
+							Name: "session-start-guidance",
+							Match: &config.RuleMatchConfig{
+								Provider:  "codex",
+								EventType: "session_start",
+							},
+							Action: &config.RuleActionConfig{
+								Type:    "warn",
+								Message: "session guidance",
+							},
+						},
+					},
+				},
+				Validators: &config.ValidatorsConfig{
+					Git:          &config.GitConfig{},
+					File:         &config.FileConfig{},
+					Notification: &config.NotificationConfig{},
+					Secrets:      &config.SecretsConfig{},
+					Shell:        &config.ShellConfig{},
+				},
+			}
+
+			registry, _, err := builder.BuildWithRuleEngine(cfg)
+			Expect(err).NotTo(HaveOccurred())
+
+			validators := registry.FindValidators(&hook.Context{
+				Provider:     hook.ProviderCodex,
+				Event:        hook.CanonicalEventSessionStart,
+				RawEventName: "SessionStart",
+			})
+			Expect(validators).NotTo(BeEmpty())
 		})
 
 		It("should return error for invalid rule config", func() {

@@ -104,7 +104,7 @@ func (f *GitValidatorFactory) createAddValidator(
 	return ValidatorWithPredicate{
 		Validator: gitvalidators.NewAddValidator(f.log, f.getGitRunner(), cfg, rc),
 		Predicate: validator.And(
-			validator.EventTypeIs(hook.EventTypePreToolUse),
+			beforeToolOnlyPredicate(),
 			validator.GitSubcommandIs("add"),
 		),
 	}
@@ -125,7 +125,7 @@ func (f *GitValidatorFactory) createNoVerifyValidator(
 	return ValidatorWithPredicate{
 		Validator: gitvalidators.NewNoVerifyValidator(f.log, cfg, rc),
 		Predicate: validator.And(
-			validator.EventTypeIs(hook.EventTypePreToolUse),
+			beforeToolOrCodexAfterToolPredicate(),
 			validator.GitSubcommandIs("commit"),
 		),
 	}
@@ -146,7 +146,7 @@ func (f *GitValidatorFactory) createCommitValidator(
 	return ValidatorWithPredicate{
 		Validator: gitvalidators.NewCommitValidator(f.log, f.getGitRunner(), cfg, rc),
 		Predicate: validator.And(
-			validator.EventTypeIs(hook.EventTypePreToolUse),
+			beforeToolOrCodexAfterToolPredicate(),
 			validator.GitSubcommandIs("commit"),
 		),
 	}
@@ -167,7 +167,7 @@ func (f *GitValidatorFactory) createPushValidator(
 	return ValidatorWithPredicate{
 		Validator: gitvalidators.NewPushValidator(f.log, f.getGitRunner(), cfg, rc),
 		Predicate: validator.And(
-			validator.EventTypeIs(hook.EventTypePreToolUse),
+			beforeToolOrCodexAfterToolPredicate(),
 			validator.GitSubcommandIs("push"),
 		),
 	}
@@ -188,7 +188,7 @@ func (f *GitValidatorFactory) createFetchValidator(
 	return ValidatorWithPredicate{
 		Validator: gitvalidators.NewFetchValidator(f.log, f.getGitRunner(), cfg, rc),
 		Predicate: validator.And(
-			validator.EventTypeIs(hook.EventTypePreToolUse),
+			beforeToolOrCodexAfterToolPredicate(),
 			validator.GitSubcommandIs("fetch"),
 		),
 	}
@@ -209,7 +209,7 @@ func (f *GitValidatorFactory) createPRValidator(
 	return ValidatorWithPredicate{
 		Validator: gitvalidators.NewPRValidator(cfg, f.log, rc),
 		Predicate: validator.And(
-			validator.EventTypeIs(hook.EventTypePreToolUse),
+			beforeToolOrCodexAfterToolPredicate(),
 			validator.ToolTypeIs(hook.ToolTypeBash),
 			validator.CommandContains("gh pr create"),
 		),
@@ -231,7 +231,7 @@ func (f *GitValidatorFactory) createBranchValidator(
 	return ValidatorWithPredicate{
 		Validator: gitvalidators.NewBranchValidator(cfg, f.log, rc),
 		Predicate: validator.And(
-			validator.EventTypeIs(hook.EventTypePreToolUse),
+			beforeToolOrCodexAfterToolPredicate(),
 			validator.Or(
 				// git checkout -b or --branch (create new branch)
 				validator.GitSubcommandWithAnyFlag("checkout", "-b", "--branch"),
@@ -265,7 +265,7 @@ func (f *GitValidatorFactory) createMergeValidator(
 	return ValidatorWithPredicate{
 		Validator: gitvalidators.NewMergeValidator(f.log, f.getGitRunner(), cfg, rc),
 		Predicate: validator.And(
-			validator.EventTypeIs(hook.EventTypePreToolUse),
+			beforeToolOrCodexAfterToolPredicate(),
 			validator.ToolTypeIs(hook.ToolTypeBash),
 			validator.CommandContains("gh pr merge"),
 		),

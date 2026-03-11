@@ -147,7 +147,7 @@ func (f *FileValidatorFactory) createMarkdownValidator(
 	return ValidatorWithPredicate{
 		Validator: filevalidators.NewMarkdownValidator(cfg, linter, f.log, rc),
 		Predicate: validator.And(
-			validator.EventTypeIs(hook.EventTypePreToolUse),
+			beforeToolOrCodexAfterToolPredicate(),
 			validator.ToolTypeIn(hook.ToolTypeWrite, hook.ToolTypeEdit, hook.ToolTypeMultiEdit),
 			validator.FileExtensionIs(".md"),
 		),
@@ -171,7 +171,7 @@ func (f *FileValidatorFactory) createTerraformValidator(
 	return ValidatorWithPredicate{
 		Validator: filevalidators.NewTerraformValidator(formatter, linter, f.log, cfg, rc),
 		Predicate: validator.And(
-			validator.EventTypeIs(hook.EventTypePreToolUse),
+			beforeToolOrCodexAfterToolPredicate(),
 			validator.ToolTypeIn(hook.ToolTypeWrite, hook.ToolTypeEdit, hook.ToolTypeMultiEdit),
 			validator.FileExtensionIs(".tf"),
 		),
@@ -194,7 +194,7 @@ func (f *FileValidatorFactory) createShellScriptValidator(
 	return ValidatorWithPredicate{
 		Validator: filevalidators.NewShellScriptValidator(f.log, checker, cfg, rc),
 		Predicate: validator.And(
-			validator.EventTypeIs(hook.EventTypePreToolUse),
+			beforeToolOrCodexAfterToolPredicate(),
 			validator.ToolTypeIn(hook.ToolTypeWrite, hook.ToolTypeEdit, hook.ToolTypeMultiEdit),
 			validator.Or(
 				validator.FileExtensionIs(".sh"),
@@ -223,7 +223,7 @@ func (f *FileValidatorFactory) createWorkflowValidator(
 			linter, githubClient, f.log, cfg, rc,
 		),
 		Predicate: validator.And(
-			validator.EventTypeIs(hook.EventTypePreToolUse),
+			beforeToolOrCodexAfterToolPredicate(),
 			validator.ToolTypeIn(hook.ToolTypeWrite, hook.ToolTypeEdit, hook.ToolTypeMultiEdit),
 			validator.Or(
 				validator.FilePathContains(".github/workflows/"),
@@ -253,14 +253,13 @@ func (f *FileValidatorFactory) createGofumptValidator(
 	return ValidatorWithPredicate{
 		Validator: filevalidators.NewGofumptValidator(f.log, checker, cfg, rc),
 		Predicate: validator.And(
-			validator.EventTypeIs(hook.EventTypePreToolUse),
+			beforeToolOrCodexAfterToolPredicate(),
 			validator.ToolTypeIn(hook.ToolTypeWrite),
 			validator.FileExtensionIs(".go"),
 		),
 	}
 }
 
-//nolint:dupl // Similar pattern to createRustValidator, acceptable duplication
 func (f *FileValidatorFactory) createPythonValidator(
 	cfg *config.PythonValidatorConfig,
 	checker linters.RuffChecker,
@@ -277,7 +276,7 @@ func (f *FileValidatorFactory) createPythonValidator(
 	return ValidatorWithPredicate{
 		Validator: filevalidators.NewPythonValidator(f.log, checker, cfg, rc),
 		Predicate: validator.And(
-			validator.EventTypeIs(hook.EventTypePreToolUse),
+			beforeToolOrCodexAfterToolPredicate(),
 			validator.ToolTypeIn(hook.ToolTypeWrite, hook.ToolTypeEdit, hook.ToolTypeMultiEdit),
 			validator.FileExtensionIs(".py"),
 		),
@@ -300,7 +299,7 @@ func (f *FileValidatorFactory) createJavaScriptValidator(
 	return ValidatorWithPredicate{
 		Validator: filevalidators.NewJavaScriptValidator(f.log, checker, cfg, rc),
 		Predicate: validator.And(
-			validator.EventTypeIs(hook.EventTypePreToolUse),
+			beforeToolOrCodexAfterToolPredicate(),
 			validator.ToolTypeIn(hook.ToolTypeWrite, hook.ToolTypeEdit, hook.ToolTypeMultiEdit),
 			validator.Or(
 				validator.FileExtensionIs(".js"),
@@ -312,7 +311,6 @@ func (f *FileValidatorFactory) createJavaScriptValidator(
 	}
 }
 
-//nolint:dupl // Similar pattern to createPythonValidator, acceptable duplication
 func (f *FileValidatorFactory) createRustValidator(
 	cfg *config.RustValidatorConfig,
 	checker linters.RustfmtChecker,
@@ -329,7 +327,7 @@ func (f *FileValidatorFactory) createRustValidator(
 	return ValidatorWithPredicate{
 		Validator: filevalidators.NewRustValidator(f.log, checker, cfg, rc),
 		Predicate: validator.And(
-			validator.EventTypeIs(hook.EventTypePreToolUse),
+			beforeToolOrCodexAfterToolPredicate(),
 			validator.ToolTypeIn(hook.ToolTypeWrite, hook.ToolTypeEdit, hook.ToolTypeMultiEdit),
 			validator.FileExtensionIs(".rs"),
 		),
@@ -351,8 +349,8 @@ func (f *FileValidatorFactory) createLinterIgnoreValidator(
 	return ValidatorWithPredicate{
 		Validator: filevalidators.NewLinterIgnoreValidator(f.log, cfg, rc),
 		Predicate: validator.And(
-			validator.EventTypeIs(hook.EventTypePreToolUse),
-			validator.ToolTypeIn(hook.ToolTypeWrite, hook.ToolTypeEdit),
+			beforeToolOrCodexAfterToolPredicate(),
+			validator.ToolTypeIn(hook.ToolTypeWrite, hook.ToolTypeEdit, hook.ToolTypeMultiEdit),
 		),
 	}
 }

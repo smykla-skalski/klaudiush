@@ -70,8 +70,8 @@ func (f *SecretsValidatorFactory) CreateValidators(cfg *config.Config) []Validat
 	validators = append(validators, ValidatorWithPredicate{
 		Validator: secrets.NewSecretsValidator(f.log, detector, gitleaks, secretsCfg, rc),
 		Predicate: validator.And(
-			validator.EventTypeIs(hook.EventTypePreToolUse),
-			validator.ToolTypeIn(hook.ToolTypeWrite, hook.ToolTypeEdit),
+			beforeToolOrCodexAfterToolPredicate(),
+			validator.ToolTypeIn(hook.ToolTypeWrite, hook.ToolTypeEdit, hook.ToolTypeMultiEdit),
 		),
 	})
 

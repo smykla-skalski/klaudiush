@@ -52,6 +52,10 @@ func (a *ValidatorAdapter) Validate(ctx context.Context, hookCtx *hook.Context) 
 		Pattern:       hookCtx.ToolInput.Pattern,
 		WorkingDir:    hookCtx.GetWorkingDir(),
 		SessionID:     hookCtx.SessionID,
+		TurnID:        hookCtx.TurnID,
+		ToolExecuted:  hookCtx.ToolExecuted,
+		ToolSucceeded: hookCtx.ToolSucceeded,
+		ToolMutating:  hookCtx.ToolMutating,
 		AffectedPaths: hookCtx.AffectedPaths,
 	}
 	req.PopulateNormalizedFields()

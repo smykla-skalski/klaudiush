@@ -478,8 +478,8 @@ var _ = Describe("RateLimiter", func() {
 
 	Describe("Home directory expansion", func() {
 		It("expands ~ in state file path", func() {
-			home, err := os.UserHomeDir()
-			Expect(err).NotTo(HaveOccurred())
+			home := GinkgoT().TempDir()
+			GinkgoT().Setenv("HOME", home)
 
 			// Create limiter with ~ path
 			homePath := filepath.Join(home, ".klaudiush-test", "state.json")
@@ -491,7 +491,7 @@ var _ = Describe("RateLimiter", func() {
 			)
 
 			_ = limiter.Record("GIT022")
-			err = limiter.Save()
+			err := limiter.Save()
 			Expect(err).NotTo(HaveOccurred())
 
 			// Verify file was created at expanded path

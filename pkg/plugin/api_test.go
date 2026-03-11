@@ -42,14 +42,18 @@ var _ = Describe("API", func() {
 	Describe("ValidateRequest", func() {
 		It("should contain hook context information", func() {
 			req := &plugin.ValidateRequest{
-				EventType: "PreToolUse",
-				ToolName:  "Bash",
-				Command:   "git commit -m 'test'",
-				FilePath:  "/path/to/file",
-				Content:   "file content",
-				OldString: "old",
-				NewString: "new",
-				Pattern:   "*.go",
+				EventType:     "PreToolUse",
+				ToolName:      "Bash",
+				Command:       "git commit -m 'test'",
+				FilePath:      "/path/to/file",
+				Content:       "file content",
+				OldString:     "old",
+				NewString:     "new",
+				Pattern:       "*.go",
+				TurnID:        "turn-123",
+				ToolExecuted:  true,
+				ToolSucceeded: true,
+				ToolMutating:  true,
 				Config: map[string]any{
 					"key": "value",
 				},
@@ -63,6 +67,10 @@ var _ = Describe("API", func() {
 			Expect(req.OldString).To(Equal("old"))
 			Expect(req.NewString).To(Equal("new"))
 			Expect(req.Pattern).To(Equal("*.go"))
+			Expect(req.TurnID).To(Equal("turn-123"))
+			Expect(req.ToolExecuted).To(BeTrue())
+			Expect(req.ToolSucceeded).To(BeTrue())
+			Expect(req.ToolMutating).To(BeTrue())
 			Expect(req.Config).To(HaveKeyWithValue("key", "value"))
 		})
 

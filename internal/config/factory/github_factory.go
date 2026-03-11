@@ -74,7 +74,7 @@ func (f *GitHubValidatorFactory) createIssueValidator(
 	return ValidatorWithPredicate{
 		Validator: githubvalidators.NewIssueValidator(cfg, linter, f.log, rc),
 		Predicate: validator.And(
-			validator.EventTypeIs(hook.EventTypePreToolUse),
+			beforeToolOrCodexAfterToolPredicate(),
 			validator.ToolTypeIs(hook.ToolTypeBash),
 			validator.CommandContains("gh issue create"),
 		),

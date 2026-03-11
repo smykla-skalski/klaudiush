@@ -268,6 +268,101 @@ var _ = Describe("Dispatcher Exception Integration", func() {
 		})
 	})
 
+	Context("with exception checker on Codex after_tool", func() {
+		BeforeEach(func() {
+			reg = validator.NewRegistry()
+
+			reg.Register(
+				&mockBlockingValidator{
+					name:      "git.push",
+					reference: "https://klaudiu.sh/e/GIT022",
+				},
+				validator.And(
+					validator.EventTypeIs(hook.EventTypePostToolUse),
+					validator.ToolTypeIs(hook.ToolTypeBash),
+				),
+			)
+
+			stateFile := filepath.Join(tempDir, "state.json")
+			auditFile := filepath.Join(tempDir, "audit.jsonl")
+
+			handler := exceptions.NewHandler(&config.ExceptionsConfig{
+				RateLimit: &config.ExceptionRateLimitConfig{
+					StateFile: stateFile,
+				},
+				Audit: &config.ExceptionAuditConfig{
+					LogFile: auditFile,
+				},
+			})
+
+			checker := dispatcher.NewExceptionChecker(handler)
+
+			disp = dispatcher.NewDispatcherWithOptions(
+				reg,
+				log,
+				dispatcher.NewSequentialExecutor(log),
+				dispatcher.WithExceptionChecker(checker),
+			)
+		})
+
+		It("does not bypass blocking findings outside before_tool", func() {
+			hookCtx := &hook.Context{
+				Provider:     hook.ProviderCodex,
+				Event:        hook.CanonicalEventAfterTool,
+				RawEventName: "AfterToolUse",
+				EventType:    hook.EventTypePostToolUse,
+				ToolName:     hook.ToolTypeBash,
+				ToolFamily:   hook.ToolFamilyShell,
+				ToolInput: hook.ToolInput{
+					Command: "git push origin main # EXC:GIT022:Emergency+hotfix",
+				},
+			}
+
+			errors := disp.Dispatch(context.Background(), hookCtx)
+			Expect(errors).To(HaveLen(1))
+			Expect(errors[0].ShouldBlock).To(BeTrue())
+			Expect(errors[0].Bypassed).To(BeFalse())
+		})
+	})
+
+	Context("with synthetic Bash file writes on Codex after_tool", func() {
+		BeforeEach(func() {
+			reg = validator.NewRegistry()
+			reg.Register(
+				&mockBlockingValidator{
+					name:      "file.markdown",
+					reference: "https://klaudiu.sh/e/FILE001",
+				},
+				func(ctx *hook.Context) bool {
+					return ctx.Event == hook.CanonicalEventAfterTool &&
+						ctx.EventType == hook.EventTypePostToolUse &&
+						ctx.ToolName == hook.ToolTypeWrite &&
+						ctx.GetFilePath() == "README.md"
+				},
+			)
+
+			disp = dispatcher.NewDispatcher(reg, log)
+		})
+
+		It("validates synthetic write contexts for Codex after_tool Bash commands", func() {
+			hookCtx := &hook.Context{
+				Provider:     hook.ProviderCodex,
+				Event:        hook.CanonicalEventAfterTool,
+				RawEventName: "AfterToolUse",
+				EventType:    hook.EventTypePostToolUse,
+				ToolName:     hook.ToolTypeBash,
+				ToolFamily:   hook.ToolFamilyShell,
+				ToolInput: hook.ToolInput{
+					Command: "cat <<'EOF' > README.md\nhello\nEOF",
+				},
+			}
+
+			errors := disp.Dispatch(context.Background(), hookCtx)
+			Expect(errors).To(HaveLen(1))
+			Expect(errors[0].Validator).To(Equal("file.markdown"))
+		})
+	})
+
 	Context("with rate limiting", func() {
 		BeforeEach(func() {
 			reg = validator.NewRegistry()

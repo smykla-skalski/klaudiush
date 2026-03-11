@@ -120,6 +120,13 @@ func BuildCodex(
 				AdditionalContext: additionalContext,
 			}
 		}
+	case hook.CanonicalEventAfterTool:
+		if additionalContext != "" {
+			resp.HookSpecificOutput = &CodexHookSpecificOutput{
+				HookEventName:     hookCtx.EventName(),
+				AdditionalContext: additionalContext,
+			}
+		}
 	default:
 		if len(blocking) > 0 {
 			resp.Continue = false

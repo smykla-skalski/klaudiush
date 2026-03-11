@@ -274,4 +274,29 @@ var _ = Describe("Build", func() {
 		Expect(codexResp.Reason).To(ContainSubstring("[GIT001]"))
 		Expect(codexResp.Continue).To(BeTrue())
 	})
+
+	It("keeps AfterToolUse Codex responses advisory even for blocking findings", func() {
+		errs := []*dispatcher.ValidationError{
+			{
+				Validator:   "git.push",
+				Message:     "protected branch",
+				ShouldBlock: true,
+				Reference:   validator.RefGitKongOrgPush,
+			},
+		}
+
+		resp := hookresponse.BuildForContext(&hook.Context{
+			Provider:     hook.ProviderCodex,
+			Event:        hook.CanonicalEventAfterTool,
+			RawEventName: "AfterToolUse",
+		}, errs, nil)
+
+		codexResp, ok := resp.(*hookresponse.CodexCommandResponse)
+		Expect(ok).To(BeTrue())
+		Expect(codexResp.Continue).To(BeTrue())
+		Expect(codexResp.StopReason).To(BeEmpty())
+		Expect(codexResp.HookSpecificOutput).NotTo(BeNil())
+		Expect(codexResp.HookSpecificOutput.HookEventName).To(Equal("AfterToolUse"))
+		Expect(codexResp.HookSpecificOutput.AdditionalContext).To(ContainSubstring("Fix ALL"))
+	})
 })
