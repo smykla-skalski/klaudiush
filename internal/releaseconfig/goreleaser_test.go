@@ -21,16 +21,6 @@ type goreleaserConfig struct {
 	} `yaml:"release"`
 }
 
-type changelogAuthor struct {
-	Username string
-}
-
-type changelogCommit struct {
-	SHA     string
-	Message string
-	Author  changelogAuthor
-}
-
 func TestGoReleaserChangelogFormatLinksCommitsWithoutEmptyPrefix(t *testing.T) {
 	t.Parallel()
 
@@ -48,16 +38,16 @@ func TestGoReleaserChangelogFormatLinksCommitsWithoutEmptyPrefix(t *testing.T) {
 		t.Fatalf("changelog.format still relies on the raw SHA prefix: %q", config.Changelog.Format)
 	}
 
-	tmpl, err := template.New("changelog").Parse(config.Changelog.Format)
+	tmpl, err := template.New("changelog").Option("missingkey=error").Parse(config.Changelog.Format)
 	if err != nil {
 		t.Fatalf("parse changelog.format: %v", err)
 	}
 
-	commit := changelogCommit{
-		SHA:     "97156d6d2bd9f1d7ac76c4d6fcfe8bc8e1234567",
-		Message: "feat(hooks): normalize provider-aware hook runtime",
-		Author: changelogAuthor{
-			Username: "bartsmykla",
+	commit := map[string]any{
+		"SHA":     "97156d6d2bd9f1d7ac76c4d6fcfe8bc8e1234567",
+		"Message": "feat(hooks): normalize provider-aware hook runtime",
+		"Author": map[string]any{
+			"Username": "bartsmykla",
 		},
 	}
 
@@ -78,7 +68,7 @@ func TestGoReleaserChangelogFormatLinksCommitsWithoutEmptyPrefix(t *testing.T) {
 		t.Fatalf("rendered changelog item is missing the linked short SHA: %q", got)
 	}
 
-	if !strings.Contains(got, commit.Message) {
+	if !strings.Contains(got, commit["Message"].(string)) {
 		t.Fatalf("rendered changelog item is missing the commit message: %q", got)
 	}
 
@@ -87,7 +77,38 @@ func TestGoReleaserChangelogFormatLinksCommitsWithoutEmptyPrefix(t *testing.T) {
 	}
 }
 
-func TestGoReleaserReleaseHeaderMentionsCodexAndClaude(t *testing.T) {
+func TestGoReleaserChangelogFormatHandlesMissingAuthor(t *testing.T) {
+	t.Parallel()
+
+	config := loadGoReleaserConfig(t)
+
+	tmpl, err := template.New("changelog").Option("missingkey=error").Parse(config.Changelog.Format)
+	if err != nil {
+		t.Fatalf("parse changelog.format: %v", err)
+	}
+
+	commit := map[string]any{
+		"SHA":     "9b5d02d88ba452c6ddaf867b071ae34fc01fdb2f",
+		"Message": "feat(gemini): add init and doctor integration",
+	}
+
+	var rendered bytes.Buffer
+	if err := tmpl.Execute(&rendered, commit); err != nil {
+		t.Fatalf("render changelog.format without author: %v", err)
+	}
+
+	got := rendered.String()
+
+	if strings.Contains(got, "(@") {
+		t.Fatalf("rendered changelog item unexpectedly contains an author suffix: %q", got)
+	}
+
+	if !strings.Contains(got, commit["Message"].(string)) {
+		t.Fatalf("rendered changelog item is missing the commit message: %q", got)
+	}
+}
+
+func TestGoReleaserReleaseHeaderMentionsSupportedProviders(t *testing.T) {
 	t.Parallel()
 
 	config := loadGoReleaserConfig(t)
@@ -98,6 +119,10 @@ func TestGoReleaserReleaseHeaderMentionsCodexAndClaude(t *testing.T) {
 
 	if !strings.Contains(config.Release.Header, "Codex") {
 		t.Fatalf("release.header must mention Codex: %q", config.Release.Header)
+	}
+
+	if !strings.Contains(config.Release.Header, "Gemini") {
+		t.Fatalf("release.header must mention Gemini: %q", config.Release.Header)
 	}
 }
 

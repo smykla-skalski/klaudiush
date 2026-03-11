@@ -80,7 +80,7 @@ changelog:
   sort: asc
   format: >-
     [`{{ slice .SHA 0 7 }}`](https://github.com/smykla-skalski/klaudiush/commit/{{ .SHA }}):
-    {{ .Message }}{{ with .Author.Username }} (@{{ . }}){{ end }}
+    {{ .Message }}{{ with index . "Author" }}{{ with index . "Username" }} (@{{ . }}){{ end }}{{ end }}
   groups:
     - title: Features
       regexp: ^.*feat(\([^)]*\))?:.*$
@@ -120,7 +120,7 @@ release:
   header: |
     ## klaudiush v{{ .Version }}
 
-    Provider-aware hooks validator for Claude Code and Codex, with enforcement for git workflow standards and commit message conventions.
+    Provider-aware hooks validator for Claude Code, Codex, and Gemini, with enforcement for git workflow standards and commit message conventions.
   footer: |
     ## Installation
 
