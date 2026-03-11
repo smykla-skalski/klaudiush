@@ -13,11 +13,11 @@ import (
 
 	"github.com/smykla-skalski/klaudiush/internal/backup"
 	"github.com/smykla-skalski/klaudiush/internal/config"
-	"github.com/smykla-skalski/klaudiush/internal/doctor/fixers"
 	"github.com/smykla-skalski/klaudiush/internal/doctor/settings"
 	"github.com/smykla-skalski/klaudiush/internal/git"
 	"github.com/smykla-skalski/klaudiush/internal/tui"
 	pkgConfig "github.com/smykla-skalski/klaudiush/pkg/config"
+	"github.com/smykla-skalski/klaudiush/pkg/logger"
 )
 
 const defaultHookTimeout = 30
@@ -144,7 +144,7 @@ func runInit(cmd *cobra.Command, _ []string) error {
 
 	// Install hooks if enabled (default true, non-fatal)
 	if installHooksFlag {
-		if err := tryInstallHooks(); err != nil {
+		if err := tryInstallHooks(cfg); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: hook registration failed: %v\n", err)
 		}
 	}
@@ -307,17 +307,26 @@ func runInstallHooks() error {
 		return errors.Wrap(err, "klaudiush not found in PATH")
 	}
 
-	return performInstall(resolveSettingsPath(), binaryPath)
+	cfg, cfgErr := loadHookInstallConfig()
+	if cfgErr != nil {
+		fmt.Fprintf(
+			os.Stderr,
+			"Warning: failed to load config, installing default Claude hooks only: %v\n",
+			cfgErr,
+		)
+	}
+
+	return performConfiguredInstall(resolveSettingsPath(), binaryPath, cfg)
 }
 
 // tryInstallHooks attempts hook registration, returning error on failure.
-func tryInstallHooks() error {
+func tryInstallHooks(cfg *pkgConfig.Config) error {
 	binaryPath, err := exec.LookPath("klaudiush")
 	if err != nil {
 		return errors.Wrap(err, "klaudiush not found in PATH")
 	}
 
-	return performInstall(resolveSettingsPath(), binaryPath)
+	return performConfiguredInstall(resolveSettingsPath(), binaryPath, cfg)
 }
 
 // resolveSettingsPath returns the settings.json path based on --global flag.
@@ -329,14 +338,10 @@ func resolveSettingsPath() string {
 	return settings.GetProjectSettingsPath()
 }
 
-// performInstall registers klaudiush in the given settings file.
-func performInstall(settingsPath, binaryPath string) error {
-	// Check if already registered
-	parser := settings.NewSettingsParser(settingsPath)
-
-	registered, err := parser.IsDispatcherRegistered(binaryPath)
+func performClaudeInstall(settingsPath, binaryPath string) error {
+	registered, err := settings.InstallClaudeDispatcher(settingsPath, binaryPath)
 	if err != nil {
-		return errors.Wrap(err, "failed to check settings")
+		return err
 	}
 
 	if registered {
@@ -344,28 +349,64 @@ func performInstall(settingsPath, binaryPath string) error {
 		return nil
 	}
 
-	// Load existing settings as raw map to preserve unknown fields
-	raw, err := loadRawSettings(settingsPath)
+	fmt.Printf("klaudiush registered in %s\n", settingsPath)
+
+	return nil
+}
+
+func performCodexInstall(hooksPath, binaryPath string) error {
+	registered, err := settings.InstallCodexDispatcher(hooksPath, binaryPath)
 	if err != nil {
 		return err
 	}
 
-	addHookToSettings(raw, binaryPath)
-
-	data, err := json.MarshalIndent(raw, "", "  ")
-	if err != nil {
-		return errors.Wrap(err, "failed to marshal settings")
+	if registered {
+		fmt.Printf("klaudiush is already registered in %s\n", hooksPath)
+		return nil
 	}
 
-	data = append(data, '\n')
-
-	if err := fixers.AtomicWriteFile(settingsPath, data, true); err != nil {
-		return errors.Wrap(err, "failed to write settings")
-	}
-
-	fmt.Printf("klaudiush registered in %s\n", settingsPath)
+	fmt.Printf("klaudiush registered in %s\n", hooksPath)
 
 	return nil
+}
+
+func performConfiguredInstall(
+	claudeSettingsPath string,
+	binaryPath string,
+	cfg *pkgConfig.Config,
+) error {
+	claudeEnabled := true
+	codexHooksPath := ""
+
+	if cfg != nil {
+		providers := cfg.GetProviders()
+		claudeEnabled = providers.GetClaude().IsEnabled()
+
+		codexCfg := providers.GetCodex()
+		if codexCfg.IsEnabled() &&
+			codexCfg.IsExperimentalEnabled() &&
+			codexCfg.HasHooksConfigPath() {
+			codexHooksPath = codexCfg.HooksConfigPath
+		}
+	}
+
+	if claudeEnabled {
+		if err := performClaudeInstall(claudeSettingsPath, binaryPath); err != nil {
+			return err
+		}
+	}
+
+	if codexHooksPath != "" {
+		if err := performCodexInstall(codexHooksPath, binaryPath); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func loadHookInstallConfig() (*pkgConfig.Config, error) {
+	return loadConfig(logger.NewNoOpLogger(), "")
 }
 
 // loadRawSettings reads and parses a JSON settings file.

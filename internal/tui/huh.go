@@ -60,9 +60,15 @@ func buildInitForm(opts InitFormOptions, result *InitFormResult) *huh.Form {
 		Negative("No").
 		Value(&result.BellEnabled)
 
+	codexHooksInput := huh.NewInput().
+		Title("Codex hooks.json path").
+		Description("Optional. Configure experimental Codex SessionStart/Stop hook installation.\nLeave empty to skip Codex support.").
+		Placeholder("~/.codex/hooks.json").
+		Value(&result.CodexHooksPath)
+
 	// Build groups
 	groups := []*huh.Group{
-		huh.NewGroup(signoffInput, bellConfirm),
+		huh.NewGroup(signoffInput, bellConfirm, codexHooksInput),
 	}
 
 	// Add git exclude option if applicable
@@ -110,6 +116,18 @@ func buildConfigFromResult(result *InitFormResult) *pkgConfig.Config {
 				Enabled: &result.BellEnabled,
 			},
 		},
+	}
+
+	if result.CodexHooksPath != "" {
+		codexEnabled := true
+		codexExperimental := true
+		cfg.Providers = &pkgConfig.ProvidersConfig{
+			Codex: &pkgConfig.CodexProviderConfig{
+				Enabled:         &codexEnabled,
+				Experimental:    &codexExperimental,
+				HooksConfigPath: result.CodexHooksPath,
+			},
+		}
 	}
 
 	return cfg

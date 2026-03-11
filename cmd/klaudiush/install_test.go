@@ -7,6 +7,8 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	pkgConfig "github.com/smykla-skalski/klaudiush/pkg/config"
 )
 
 var _ = Describe("Install", func() {
@@ -125,7 +127,7 @@ var _ = Describe("Install", func() {
 		It("creates settings file when it does not exist", func() {
 			settingsPath := filepath.Join(tempDir, ".claude", "settings.json")
 
-			err := performInstall(settingsPath, fakeBinary)
+			err := performClaudeInstall(settingsPath, fakeBinary)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(settingsPath).To(BeAnExistingFile())
 
@@ -170,7 +172,7 @@ var _ = Describe("Install", func() {
 			originalData := make([]byte, len(data))
 			copy(originalData, data)
 
-			err = performInstall(settingsPath, fakeBinary)
+			err = performClaudeInstall(settingsPath, fakeBinary)
 			Expect(err).NotTo(HaveOccurred())
 
 			// File should be unchanged
@@ -194,7 +196,7 @@ var _ = Describe("Install", func() {
 			err = os.WriteFile(settingsPath, data, 0o600)
 			Expect(err).NotTo(HaveOccurred())
 
-			err = performInstall(settingsPath, fakeBinary)
+			err = performClaudeInstall(settingsPath, fakeBinary)
 			Expect(err).NotTo(HaveOccurred())
 
 			data, err = os.ReadFile(settingsPath)
@@ -235,7 +237,7 @@ var _ = Describe("Install", func() {
 			err = os.WriteFile(settingsPath, data, 0o600)
 			Expect(err).NotTo(HaveOccurred())
 
-			err = performInstall(settingsPath, fakeBinary)
+			err = performClaudeInstall(settingsPath, fakeBinary)
 			Expect(err).NotTo(HaveOccurred())
 
 			data, err = os.ReadFile(settingsPath)
@@ -256,8 +258,107 @@ var _ = Describe("Install", func() {
 			err := os.WriteFile(settingsPath, []byte(`{broken`), 0o600)
 			Expect(err).NotTo(HaveOccurred())
 
-			err = performInstall(settingsPath, fakeBinary)
+			err = performClaudeInstall(settingsPath, fakeBinary)
 			Expect(err).To(HaveOccurred())
+		})
+	})
+
+	Describe("performCodexInstall", func() {
+		const fakeBinary = "/usr/local/bin/klaudiush"
+
+		It("creates hooks.json with SessionStart and Stop hooks", func() {
+			hooksPath := filepath.Join(tempDir, ".codex", "hooks.json")
+
+			err := performCodexInstall(hooksPath, fakeBinary)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(hooksPath).To(BeAnExistingFile())
+
+			data, err := os.ReadFile(hooksPath)
+			Expect(err).NotTo(HaveOccurred())
+
+			var result map[string]any
+			Expect(json.Unmarshal(data, &result)).To(Succeed())
+
+			hooks := result["hooks"].(map[string]any)
+			sessionStart := hooks["SessionStart"].([]any)
+			stop := hooks["Stop"].([]any)
+
+			Expect(sessionStart).To(HaveLen(1))
+			Expect(stop).To(HaveLen(1))
+
+			sessionStartHooks := sessionStart[0].(map[string]any)["hooks"].([]any)
+			stopHooks := stop[0].(map[string]any)["hooks"].([]any)
+
+			Expect(sessionStartHooks[0].(map[string]any)["command"]).
+				To(Equal(fakeBinary + " --provider codex --event SessionStart"))
+			Expect(stopHooks[0].(map[string]any)["command"]).
+				To(Equal(fakeBinary + " --provider codex --event Stop"))
+		})
+
+		It("only adds missing Codex events", func() {
+			hooksPath := filepath.Join(tempDir, ".codex", "hooks.json")
+			Expect(os.MkdirAll(filepath.Dir(hooksPath), 0o755)).To(Succeed())
+
+			existing := map[string]any{
+				"hooks": map[string]any{
+					"SessionStart": []any{
+						map[string]any{
+							"hooks": []any{
+								map[string]any{
+									"type":    "command",
+									"command": fakeBinary + " --provider codex --event SessionStart",
+									"timeout": float64(30),
+								},
+							},
+						},
+					},
+				},
+			}
+
+			data, err := json.MarshalIndent(existing, "", "  ")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(os.WriteFile(hooksPath, data, 0o600)).To(Succeed())
+
+			err = performCodexInstall(hooksPath, fakeBinary)
+			Expect(err).NotTo(HaveOccurred())
+
+			data, err = os.ReadFile(hooksPath)
+			Expect(err).NotTo(HaveOccurred())
+
+			var result map[string]any
+			Expect(json.Unmarshal(data, &result)).To(Succeed())
+
+			hooks := result["hooks"].(map[string]any)
+			Expect(hooks["SessionStart"].([]any)).To(HaveLen(1))
+			Expect(hooks["Stop"].([]any)).To(HaveLen(1))
+		})
+	})
+
+	Describe("performConfiguredInstall", func() {
+		const fakeBinary = "/usr/local/bin/klaudiush"
+
+		It("installs only configured providers", func() {
+			claudeSettingsPath := filepath.Join(tempDir, ".claude", "settings.json")
+			codexHooksPath := filepath.Join(tempDir, ".codex", "hooks.json")
+
+			claudeEnabled := false
+			codexEnabled := true
+			codexExperimental := true
+			cfg := &pkgConfig.Config{
+				Providers: &pkgConfig.ProvidersConfig{
+					Claude: &pkgConfig.ClaudeProviderConfig{Enabled: &claudeEnabled},
+					Codex: &pkgConfig.CodexProviderConfig{
+						Enabled:         &codexEnabled,
+						Experimental:    &codexExperimental,
+						HooksConfigPath: codexHooksPath,
+					},
+				},
+			}
+
+			err := performConfiguredInstall(claudeSettingsPath, fakeBinary, cfg)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(codexHooksPath).To(BeAnExistingFile())
+			Expect(claudeSettingsPath).NotTo(BeAnExistingFile())
 		})
 	})
 })

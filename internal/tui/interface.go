@@ -37,6 +37,9 @@ type InitFormResult struct {
 	// BellEnabled indicates whether bell notifications are enabled.
 	BellEnabled bool
 
+	// CodexHooksPath enables experimental Codex hook automation when set.
+	CodexHooksPath string
+
 	// AddToExclude indicates whether to add config to .git/info/exclude.
 	AddToExclude bool
 }

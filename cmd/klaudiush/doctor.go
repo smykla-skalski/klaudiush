@@ -23,6 +23,7 @@ import (
 	"github.com/smykla-skalski/klaudiush/internal/doctor/fixers"
 	"github.com/smykla-skalski/klaudiush/internal/doctor/reporters"
 	"github.com/smykla-skalski/klaudiush/internal/prompt"
+	pkgConfig "github.com/smykla-skalski/klaudiush/pkg/config"
 	"github.com/smykla-skalski/klaudiush/pkg/logger"
 )
 
@@ -90,14 +91,19 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 		"categories", categoryFlag,
 	)
 
+	doctorCfg, cfgErr := loadDoctorConfig(log)
+	if cfgErr != nil {
+		log.Error("failed to load config for provider-aware doctor checks", "error", cfgErr)
+	}
+
 	// Build registry
-	registry := buildDoctorRegistry()
+	registry := buildDoctorRegistry(doctorCfg)
 
 	// Create prompter for interactive mode
 	prompter := prompt.NewStdPrompter()
 
 	// Register fixers
-	registerFixers(registry, prompter, log)
+	registerFixers(registry, prompter, log, doctorCfg)
 
 	// Create reporter based on terminal capabilities
 	reporter := selectReporter()
@@ -134,7 +140,7 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 }
 
 // buildDoctorRegistry creates and populates the health check registry.
-func buildDoctorRegistry() *doctor.Registry {
+func buildDoctorRegistry(cfg *pkgConfig.Config) *doctor.Registry {
 	registry := doctor.NewRegistry()
 
 	// Register binary checkers
@@ -148,6 +154,15 @@ func buildDoctorRegistry() *doctor.Registry {
 	registry.RegisterChecker(hook.NewProjectLocalRegistrationChecker())
 	registry.RegisterChecker(hook.NewUserPreToolUseChecker())
 	registry.RegisterChecker(hook.NewProjectPreToolUseChecker())
+
+	if cfg != nil {
+		codexCfg := cfg.GetProviders().GetCodex()
+		registry.RegisterChecker(hook.NewCodexConfigChecker(codexCfg))
+		registry.RegisterChecker(hook.NewCodexRegistrationChecker(codexCfg))
+		registry.RegisterChecker(hook.NewCodexEventChecker(codexCfg, "SessionStart"))
+		registry.RegisterChecker(hook.NewCodexEventChecker(codexCfg, "Stop"))
+	}
+
 	registry.RegisterChecker(hook.NewPathValidationChecker())
 
 	// Register config checkers
@@ -188,8 +203,13 @@ func buildDoctorRegistry() *doctor.Registry {
 }
 
 // registerFixers registers all available fixers.
-func registerFixers(registry *doctor.Registry, prompter prompt.Prompter, log logger.Logger) {
-	registry.RegisterFixer(fixers.NewInstallHookFixer(prompter))
+func registerFixers(
+	registry *doctor.Registry,
+	prompter prompt.Prompter,
+	log logger.Logger,
+	cfg *pkgConfig.Config,
+) {
+	registry.RegisterFixer(fixers.NewInstallHookFixer(prompter, cfg))
 	registry.RegisterFixer(fixers.NewPermissionsFixer(prompter))
 	registry.RegisterFixer(fixers.NewConfigFixer(prompter))
 	registry.RegisterFixer(fixers.NewInstallBinaryFixer(prompter))
@@ -198,6 +218,15 @@ func registerFixers(registry *doctor.Registry, prompter prompt.Prompter, log log
 	registry.RegisterFixer(fixers.NewBackupFixer(prompter))
 	registry.RegisterFixer(fixers.NewOverridesFixer(prompter))
 	registry.RegisterFixer(fixers.NewXDGFixer(prompter, log))
+}
+
+func loadDoctorConfig(log logger.Logger) (*pkgConfig.Config, error) {
+	cfg, err := loadConfig(log, "")
+	if err != nil {
+		return nil, err
+	}
+
+	return cfg, nil
 }
 
 // parseCategories converts string category names to Category types.

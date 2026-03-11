@@ -304,4 +304,59 @@ var _ = Describe("SettingsParser", func() {
 			})
 		})
 	})
+
+	Describe("CodexHooksParser", func() {
+		var hooksPath string
+
+		BeforeEach(func() {
+			tempDir, err := os.MkdirTemp("", "codex-hooks-parser-*")
+			Expect(err).NotTo(HaveOccurred())
+			DeferCleanup(func() { _ = os.RemoveAll(tempDir) })
+
+			hooksPath = filepath.Join(tempDir, "hooks.json")
+		})
+
+		It("parses valid Codex hooks files", func() {
+			Expect(os.WriteFile(
+				hooksPath,
+				[]byte(`{
+  "hooks": {
+    "SessionStart": [{"hooks":[{"type":"command","command":"klaudiush --provider codex --event SessionStart","timeout":30}]}],
+    "Stop": [{"hooks":[{"type":"command","command":"klaudiush --provider codex --event Stop","timeout":30}]}]
+  }
+}`),
+				0o600,
+			)).To(Succeed())
+
+			parser := settings.NewCodexHooksParser(hooksPath)
+			result, err := parser.Parse()
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.Hooks.SessionStart).To(HaveLen(1))
+			Expect(result.Hooks.Stop).To(HaveLen(1))
+			Expect(result.Hooks.SessionStart[0].Hooks[0].Command).
+				To(Equal("klaudiush --provider codex --event SessionStart"))
+		})
+
+		It("finds event-specific dispatcher hooks", func() {
+			Expect(os.WriteFile(
+				hooksPath,
+				[]byte(`{
+  "hooks": {
+    "SessionStart": [{"hooks":[{"type":"command","command":"klaudiush --provider codex --event SessionStart","timeout":30}]}]
+  }
+}`),
+				0o600,
+			)).To(Succeed())
+
+			parser := settings.NewCodexHooksParser(hooksPath)
+			hasSessionStart, err := parser.HasEventHook("SessionStart", "/usr/local/bin/klaudiush")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(hasSessionStart).To(BeTrue())
+
+			hasStop, err := parser.HasEventHook("Stop", "/usr/local/bin/klaudiush")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(hasStop).To(BeFalse())
+		})
+	})
 })

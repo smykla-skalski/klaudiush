@@ -2,6 +2,8 @@ package hook_test
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -9,6 +11,7 @@ import (
 
 	"github.com/smykla-skalski/klaudiush/internal/doctor"
 	"github.com/smykla-skalski/klaudiush/internal/doctor/checkers/hook"
+	pkgConfig "github.com/smykla-skalski/klaudiush/pkg/config"
 )
 
 func TestHook(t *testing.T) {
@@ -195,5 +198,107 @@ var _ = Describe("PathValidationChecker", func() {
 				doctor.StatusSkipped,
 			))
 		})
+	})
+})
+
+var _ = Describe("Codex hook checkers", func() {
+	var (
+		ctx          context.Context
+		tempDir      string
+		hooksPath    string
+		originalPath string
+		pathSet      bool
+	)
+
+	BeforeEach(func() {
+		var err error
+
+		ctx = context.Background()
+		tempDir, err = os.MkdirTemp("", "codex-hook-checker-*")
+		Expect(err).NotTo(HaveOccurred())
+
+		hooksPath = filepath.Join(tempDir, "hooks.json")
+		binDir := filepath.Join(tempDir, "bin")
+		Expect(os.MkdirAll(binDir, 0o755)).To(Succeed())
+
+		Expect(
+			os.WriteFile(
+				filepath.Join(binDir, "klaudiush"),
+				[]byte("#!/bin/sh\nexit 0\n"),
+				0o755,
+			),
+		).
+			To(Succeed())
+
+		originalPath, pathSet = os.LookupEnv("PATH")
+		Expect(os.Setenv("PATH", binDir+string(os.PathListSeparator)+originalPath)).To(Succeed())
+	})
+
+	AfterEach(func() {
+		if pathSet {
+			Expect(os.Setenv("PATH", originalPath)).To(Succeed())
+		} else {
+			Expect(os.Unsetenv("PATH")).To(Succeed())
+		}
+
+		if tempDir != "" {
+			_ = os.RemoveAll(tempDir)
+		}
+	})
+
+	It("passes when configured Codex hooks register klaudiush", func() {
+		Expect(os.WriteFile(
+			hooksPath,
+			[]byte(`{
+  "hooks": {
+    "SessionStart": [{"hooks":[{"type":"command","command":"klaudiush --provider codex --event SessionStart","timeout":30}]}],
+    "Stop": [{"hooks":[{"type":"command","command":"klaudiush --provider codex --event Stop","timeout":30}]}]
+  }
+}`),
+			0o600,
+		)).To(Succeed())
+
+		enabled := true
+		experimental := true
+		cfg := &pkgConfig.CodexProviderConfig{
+			Enabled:         &enabled,
+			Experimental:    &experimental,
+			HooksConfigPath: hooksPath,
+		}
+
+		registrationChecker := hook.NewCodexRegistrationChecker(cfg)
+		sessionStartChecker := hook.NewCodexEventChecker(cfg, "SessionStart")
+		stopChecker := hook.NewCodexEventChecker(cfg, "Stop")
+
+		Expect(registrationChecker.Check(ctx).Status).To(Equal(doctor.StatusPass))
+		Expect(sessionStartChecker.Check(ctx).Status).To(Equal(doctor.StatusPass))
+		Expect(stopChecker.Check(ctx).Status).To(Equal(doctor.StatusPass))
+	})
+
+	It("fails when the configured Codex hooks file is missing an event", func() {
+		Expect(os.WriteFile(
+			hooksPath,
+			[]byte(`{
+  "hooks": {
+    "SessionStart": [{"hooks":[{"type":"command","command":"klaudiush --provider codex --event SessionStart","timeout":30}]}]
+  }
+}`),
+			0o600,
+		)).To(Succeed())
+
+		enabled := true
+		experimental := true
+		cfg := &pkgConfig.CodexProviderConfig{
+			Enabled:         &enabled,
+			Experimental:    &experimental,
+			HooksConfigPath: hooksPath,
+		}
+
+		stopChecker := hook.NewCodexEventChecker(cfg, "Stop")
+		result := stopChecker.Check(ctx)
+
+		Expect(result.Status).To(Equal(doctor.StatusFail))
+		Expect(result.FixID).To(Equal("install_hook"))
+		Expect(result.Message).To(ContainSubstring("not configured"))
 	})
 })

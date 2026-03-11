@@ -1,0 +1,261 @@
+package settings
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"time"
+
+	"github.com/cockroachdb/errors"
+)
+
+const (
+	// DefaultCommandHookTimeout is the default timeout in seconds for provider command hooks.
+	DefaultCommandHookTimeout = 30
+
+	defaultDirPermissions  = 0o750
+	defaultFilePermissions = 0o600
+)
+
+// LoadRawJSONFile reads and parses a JSON file into a raw map.
+func LoadRawJSONFile(path string) (map[string]any, error) {
+	//nolint:gosec // Path comes from validated config or known settings helpers.
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return make(map[string]any), nil
+		}
+
+		return nil, errors.Wrap(err, "failed to read settings")
+	}
+
+	if len(data) == 0 {
+		return make(map[string]any), nil
+	}
+
+	var raw map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil, errors.Wrap(err, "failed to parse settings")
+	}
+
+	return raw, nil
+}
+
+// InstallClaudeDispatcher registers klaudiush in a Claude settings.json file.
+// Returns true when the dispatcher was already present.
+func InstallClaudeDispatcher(settingsPath, binaryPath string) (bool, error) {
+	parser := NewSettingsParser(settingsPath)
+
+	registered, err := parser.IsDispatcherRegistered(binaryPath)
+	if err != nil {
+		return false, errors.Wrap(err, "failed to check settings")
+	}
+
+	if registered {
+		return true, nil
+	}
+
+	raw, err := LoadRawJSONFile(settingsPath)
+	if err != nil {
+		return false, err
+	}
+
+	AddClaudeDispatcherHook(raw, binaryPath)
+
+	if err := writeRawJSONFile(settingsPath, raw); err != nil {
+		return false, errors.Wrap(err, "failed to write settings")
+	}
+
+	return false, nil
+}
+
+// InstallCodexDispatcher registers klaudiush in a Codex hooks.json file.
+// Returns true when both supported Codex hooks were already present.
+func InstallCodexDispatcher(hooksPath, binaryPath string) (bool, error) {
+	parser := NewCodexHooksParser(hooksPath)
+
+	hasSessionStart, err := parser.HasEventHook("SessionStart", binaryPath)
+	if err != nil {
+		return false, errors.Wrap(err, "failed to check SessionStart hook")
+	}
+
+	hasStop, err := parser.HasEventHook("Stop", binaryPath)
+	if err != nil {
+		return false, errors.Wrap(err, "failed to check Stop hook")
+	}
+
+	if hasSessionStart && hasStop {
+		return true, nil
+	}
+
+	raw, err := LoadRawJSONFile(hooksPath)
+	if err != nil {
+		return false, err
+	}
+
+	AddCodexDispatcherHooks(raw, binaryPath, !hasSessionStart, !hasStop)
+
+	if err := writeRawJSONFile(hooksPath, raw); err != nil {
+		return false, errors.Wrap(err, "failed to write hooks config")
+	}
+
+	return false, nil
+}
+
+// AddClaudeDispatcherHook appends the standard Claude PreToolUse command hook.
+func AddClaudeDispatcherHook(raw map[string]any, binaryPath string) {
+	hooks := ensureHooksMap(raw)
+
+	entry := map[string]any{
+		"matcher": "Bash|Write|Edit",
+		"hooks": []any{
+			map[string]any{
+				"type":    "command",
+				"command": ClaudeDispatcherCommand(binaryPath),
+				"timeout": DefaultCommandHookTimeout,
+			},
+		},
+	}
+
+	existing, ok := hooks["PreToolUse"].([]any)
+	if !ok {
+		existing = nil
+	}
+
+	hooks["PreToolUse"] = append(existing, entry)
+}
+
+// AddCodexDispatcherHooks appends missing Codex SessionStart and Stop command hooks.
+func AddCodexDispatcherHooks(
+	raw map[string]any,
+	binaryPath string,
+	addSessionStart bool,
+	addStop bool,
+) {
+	hooks := ensureHooksMap(raw)
+
+	if addSessionStart {
+		hooks["SessionStart"] = appendEventHook(
+			hooks["SessionStart"],
+			CodexSessionStartCommand(binaryPath),
+		)
+	}
+
+	if addStop {
+		hooks["Stop"] = appendEventHook(
+			hooks["Stop"],
+			CodexStopCommand(binaryPath),
+		)
+	}
+}
+
+// ClaudeDispatcherCommand returns the Claude hook command string.
+func ClaudeDispatcherCommand(binaryPath string) string {
+	return binaryPath + " --hook-type PreToolUse"
+}
+
+// CodexSessionStartCommand returns the Codex SessionStart command string.
+func CodexSessionStartCommand(binaryPath string) string {
+	return binaryPath + " --provider codex --event SessionStart"
+}
+
+// CodexStopCommand returns the Codex Stop command string.
+func CodexStopCommand(binaryPath string) string {
+	return binaryPath + " --provider codex --event Stop"
+}
+
+func ensureHooksMap(raw map[string]any) map[string]any {
+	hooks, ok := raw["hooks"].(map[string]any)
+	if ok {
+		return hooks
+	}
+
+	hooks = make(map[string]any)
+	raw["hooks"] = hooks
+
+	return hooks
+}
+
+func appendEventHook(existingValue any, command string) []any {
+	existing, ok := existingValue.([]any)
+	if !ok {
+		existing = nil
+	}
+
+	entry := map[string]any{
+		"hooks": []any{
+			map[string]any{
+				"type":    "command",
+				"command": command,
+				"timeout": DefaultCommandHookTimeout,
+			},
+		},
+	}
+
+	return append(existing, entry)
+}
+
+func writeRawJSONFile(path string, raw map[string]any) error {
+	data, err := json.MarshalIndent(raw, "", "  ")
+	if err != nil {
+		return errors.Wrap(err, "failed to marshal settings")
+	}
+
+	data = append(data, '\n')
+
+	return AtomicWriteFile(path, data, true)
+}
+
+// AtomicWriteFile writes data to a file atomically using a temp file and rename.
+// It creates a backup of the original file if it exists.
+func AtomicWriteFile(path string, data []byte, createBackup bool) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, defaultDirPermissions); err != nil {
+		return errors.Wrap(err, "failed to create directory")
+	}
+
+	perm := os.FileMode(defaultFilePermissions)
+	if info, err := os.Stat(path); err == nil {
+		perm = info.Mode().Perm()
+	}
+
+	if createBackup {
+		if _, err := os.Stat(path); err == nil {
+			backupPath := fmt.Sprintf("%s.backup.%d", path, time.Now().Unix())
+			if err := copyFile(path, backupPath); err != nil {
+				return errors.Wrap(err, "failed to create backup")
+			}
+		}
+	}
+
+	tmpFile := path + ".tmp"
+	if err := os.WriteFile(tmpFile, data, perm); err != nil {
+		return errors.Wrap(err, "failed to write temp file")
+	}
+
+	if err := os.Rename(tmpFile, path); err != nil {
+		_ = os.Remove(tmpFile)
+		return errors.Wrap(err, "failed to rename temp file")
+	}
+
+	return nil
+}
+
+func copyFile(src, dst string) error {
+	data, err := os.ReadFile(src) //nolint:gosec // src is controlled by caller
+	if err != nil {
+		return errors.Wrap(err, "failed to read source file")
+	}
+
+	info, err := os.Stat(src)
+	if err != nil {
+		return errors.Wrap(err, "failed to stat source file")
+	}
+
+	if err := os.WriteFile(dst, data, info.Mode()); err != nil {
+		return errors.Wrap(err, "failed to write destination file")
+	}
+
+	return nil
+}

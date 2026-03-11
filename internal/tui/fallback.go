@@ -51,6 +51,12 @@ func (f *FallbackUI) RunInitForm(opts InitFormOptions) (*pkgConfig.Config, bool,
 		return nil, false, err
 	}
 
+	fmt.Println()
+
+	if err := f.promptCodexHooksPath(&result); err != nil {
+		return nil, false, err
+	}
+
 	// Prompt for git exclude if applicable
 	if opts.ShowGitExclude {
 		fmt.Println()
@@ -128,6 +134,33 @@ func (f *FallbackUI) promptBell(result *InitFormResult) error {
 		fmt.Println("✓ Notification bell enabled")
 	} else {
 		fmt.Println("✓ Notification bell disabled")
+	}
+
+	return nil
+}
+
+// promptCodexHooksPath prompts for optional Codex hooks configuration.
+//
+//nolint:unparam // error return kept for consistent API
+func (f *FallbackUI) promptCodexHooksPath(result *InitFormResult) error {
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println("Experimental Codex Hooks")
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println("Optionally configure Codex SessionStart/Stop hook installation.")
+	fmt.Println("Leave empty to skip Codex support for now.")
+	fmt.Println()
+
+	hooksPath, err := f.prompter.Input("Codex hooks.json path", "")
+	if err != nil {
+		hooksPath = ""
+	}
+
+	result.CodexHooksPath = hooksPath
+
+	if hooksPath == "" {
+		fmt.Println("✓ Codex hooks not configured")
+	} else {
+		fmt.Printf("✓ Codex hooks path configured: %s\n", hooksPath)
 	}
 
 	return nil
