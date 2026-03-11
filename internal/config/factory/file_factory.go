@@ -279,26 +279,14 @@ func (f *FileValidatorFactory) createPythonValidator(
 	cfg *config.PythonValidatorConfig,
 	checker linters.RuffChecker,
 ) ValidatorWithPredicate {
-	var rc validator.RuleChecker
-	if f.ruleEngine != nil {
-		rc = rules.NewRuleValidatorAdapter(
-			f.ruleEngine,
-			rules.ValidatorFilePython,
-			rules.WithAdapterLogger(f.log),
-		)
-	}
-
-	return ValidatorWithPredicate{
-		Validator: wrapValidatorWithSeverity(
-			filevalidators.NewPythonValidator(f.log, checker, cfg, rc),
-			cfg,
-		),
-		Predicate: validator.And(
-			beforeToolOrCodexAfterToolPredicate(),
-			validator.ToolTypeIn(hook.ToolTypeWrite, hook.ToolTypeEdit, hook.ToolTypeMultiEdit),
-			validator.FileExtensionIs(".py"),
-		),
-	}
+	return f.createSingleExtensionValidator(
+		rules.ValidatorFilePython,
+		cfg,
+		".py",
+		func(rc validator.RuleChecker) validator.Validator {
+			return filevalidators.NewPythonValidator(f.log, checker, cfg, rc)
+		},
+	)
 }
 
 func (f *FileValidatorFactory) createJavaScriptValidator(
@@ -336,24 +324,40 @@ func (f *FileValidatorFactory) createRustValidator(
 	cfg *config.RustValidatorConfig,
 	checker linters.RustfmtChecker,
 ) ValidatorWithPredicate {
+	return f.createSingleExtensionValidator(
+		rules.ValidatorFileRust,
+		cfg,
+		".rs",
+		func(rc validator.RuleChecker) validator.Validator {
+			return filevalidators.NewRustValidator(f.log, checker, cfg, rc)
+		},
+	)
+}
+
+func (f *FileValidatorFactory) createSingleExtensionValidator(
+	ruleType rules.ValidatorType,
+	cfg severityConfig,
+	extension string,
+	builder func(validator.RuleChecker) validator.Validator,
+) ValidatorWithPredicate {
 	var rc validator.RuleChecker
 	if f.ruleEngine != nil {
 		rc = rules.NewRuleValidatorAdapter(
 			f.ruleEngine,
-			rules.ValidatorFileRust,
+			ruleType,
 			rules.WithAdapterLogger(f.log),
 		)
 	}
 
 	return ValidatorWithPredicate{
 		Validator: wrapValidatorWithSeverity(
-			filevalidators.NewRustValidator(f.log, checker, cfg, rc),
+			builder(rc),
 			cfg,
 		),
 		Predicate: validator.And(
 			beforeToolOrCodexAfterToolPredicate(),
 			validator.ToolTypeIn(hook.ToolTypeWrite, hook.ToolTypeEdit, hook.ToolTypeMultiEdit),
-			validator.FileExtensionIs(".rs"),
+			validator.FileExtensionIs(extension),
 		),
 	}
 }
