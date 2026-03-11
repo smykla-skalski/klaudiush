@@ -143,17 +143,24 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 func buildDoctorRegistry(cfg *pkgConfig.Config) *doctor.Registry {
 	registry := doctor.NewRegistry()
 
+	claudeEnabled := true
+	if cfg != nil {
+		claudeEnabled = cfg.GetProviders().GetClaude().IsEnabled()
+	}
+
 	// Register binary checkers
 	registry.RegisterChecker(binary.NewExistsChecker())
 	registry.RegisterChecker(binary.NewPermissionsChecker())
 	registry.RegisterChecker(binary.NewLocationChecker())
 
 	// Register hook checkers
-	registry.RegisterChecker(hook.NewUserRegistrationChecker())
-	registry.RegisterChecker(hook.NewProjectRegistrationChecker())
-	registry.RegisterChecker(hook.NewProjectLocalRegistrationChecker())
-	registry.RegisterChecker(hook.NewUserPreToolUseChecker())
-	registry.RegisterChecker(hook.NewProjectPreToolUseChecker())
+	if claudeEnabled {
+		registry.RegisterChecker(hook.NewUserRegistrationChecker())
+		registry.RegisterChecker(hook.NewProjectRegistrationChecker())
+		registry.RegisterChecker(hook.NewProjectLocalRegistrationChecker())
+		registry.RegisterChecker(hook.NewUserPreToolUseChecker())
+		registry.RegisterChecker(hook.NewProjectPreToolUseChecker())
+	}
 
 	if cfg != nil {
 		codexCfg := cfg.GetProviders().GetCodex()
