@@ -34,8 +34,8 @@ include_config = true
 
 # Include hook context in crash dumps
 # Captures the tool invocation that triggered the crash:
-#   - Event type (PreToolUse, PostToolUse, Notification)
-#   - Tool name (Bash, Write, Edit, etc.)
+#   - Event name (before_tool, after_tool, session_start, turn_stop, notification)
+#   - Tool family/name (shell, write, edit, etc.)
 #   - Command or file path being processed
 # Essential for reproducing crashes
 # Default: true
