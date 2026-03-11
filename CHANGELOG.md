@@ -5,6 +5,31 @@ All notable changes to klaudiush will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.28.0](https://github.com/smykla-skalski/klaudiush/compare/v1.27.0...v1.28.0) (2026-03-11)
+
+### Features
+
+* **codex:** add hook install and doctor integration ([9829627](https://github.com/smykla-skalski/klaudiush/commit/9829627017987b248c0d8f29584b03d6c5721718))
+* **codex:** complete lifecycle hook validation ([f20cee2](https://github.com/smykla-skalski/klaudiush/commit/f20cee2fc444a3b2a9cdc072d04350866368ca55))
+* **codex:** wire after-tool hook coverage ([8df3da5](https://github.com/smykla-skalski/klaudiush/commit/8df3da5fa8d0bd9d25222e2b27ddae946e7243fc))
+* **config:** add provider-aware hook predicates ([638a0fc](https://github.com/smykla-skalski/klaudiush/commit/638a0fc05aefea35a75bb8c0d8d9b208dace324f))
+* **hooks:** normalize provider-aware hook runtime ([97156d6](https://github.com/smykla-skalski/klaudiush/commit/97156d6e668eb89f3c9fdb41aba24769ecc62ab4))
+* **init:** support provider-only config updates ([bcd8074](https://github.com/smykla-skalski/klaudiush/commit/bcd80744155ca8f2c9a86e033efa067a07410f2d))
+* **patterns:** align defaults and persistence ([ae220d7](https://github.com/smykla-skalski/klaudiush/commit/ae220d788fdf49715769750ac0c6681a8e0d4ead))
+
+### Bug Fixes
+
+* **codex:** expand tilde hooks paths ([7b8fb49](https://github.com/smykla-skalski/klaudiush/commit/7b8fb49ca4d3bda6eab874e6fee71836bc713c78))
+* **crashdump:** restore legacy age pruning config ([f348535](https://github.com/smykla-skalski/klaudiush/commit/f348535265c297d6c091fbd5d9a55ef8842aacf9))
+* **doctor:** align patterns paths with project root ([4c59ee9](https://github.com/smykla-skalski/klaudiush/commit/4c59ee9e83079dc1eef9be8aed411ab7f077ffbf))
+* **doctor:** respect disabled claude provider ([1903065](https://github.com/smykla-skalski/klaudiush/commit/1903065dd88ce034c667a463b86fcea47446c4df))
+* **patterns:** resolve project root for local storage ([50b113a](https://github.com/smykla-skalski/klaudiush/commit/50b113a80863b6c08dd7ac7971c47fb6bba6c3dc))
+* **validators:** honor configured warning severity ([fe6bdae](https://github.com/smykla-skalski/klaudiush/commit/fe6bdaefb3a1b106ec7848f8b6ff99caf672b79b))
+
+### Code Refactoring
+
+* **factory:** deduplicate extension validators ([38ad8f7](https://github.com/smykla-skalski/klaudiush/commit/38ad8f7cb35f51459a28454207a6e8584dd96173))
+
 ## [1.27.0](https://github.com/smykla-skalski/klaudiush/compare/v1.26.5...v1.27.0) (2026-03-06)
 
 ### Features
