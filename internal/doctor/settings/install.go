@@ -20,8 +20,13 @@ const (
 
 // LoadRawJSONFile reads and parses a JSON file into a raw map.
 func LoadRawJSONFile(path string) (map[string]any, error) {
+	resolvedPath, err := resolveSettingsPath(path)
+	if err != nil {
+		return nil, err
+	}
+
 	//nolint:gosec // Path comes from validated config or known settings helpers.
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(resolvedPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return make(map[string]any), nil
@@ -228,31 +233,36 @@ func writeRawJSONFile(path string, raw map[string]any) error {
 // AtomicWriteFile writes data to a file atomically using a temp file and rename.
 // It creates a backup of the original file if it exists.
 func AtomicWriteFile(path string, data []byte, createBackup bool) error {
-	dir := filepath.Dir(path)
+	resolvedPath, err := resolveSettingsPath(path)
+	if err != nil {
+		return err
+	}
+
+	dir := filepath.Dir(resolvedPath)
 	if err := os.MkdirAll(dir, defaultDirPermissions); err != nil {
 		return errors.Wrap(err, "failed to create directory")
 	}
 
 	perm := os.FileMode(defaultFilePermissions)
-	if info, err := os.Stat(path); err == nil {
+	if info, err := os.Stat(resolvedPath); err == nil {
 		perm = info.Mode().Perm()
 	}
 
 	if createBackup {
-		if _, err := os.Stat(path); err == nil {
-			backupPath := fmt.Sprintf("%s.backup.%d", path, time.Now().Unix())
-			if err := copyFile(path, backupPath); err != nil {
+		if _, err := os.Stat(resolvedPath); err == nil {
+			backupPath := fmt.Sprintf("%s.backup.%d", resolvedPath, time.Now().Unix())
+			if err := copyFile(resolvedPath, backupPath); err != nil {
 				return errors.Wrap(err, "failed to create backup")
 			}
 		}
 	}
 
-	tmpFile := path + ".tmp"
+	tmpFile := resolvedPath + ".tmp"
 	if err := os.WriteFile(tmpFile, data, perm); err != nil {
 		return errors.Wrap(err, "failed to write temp file")
 	}
 
-	if err := os.Rename(tmpFile, path); err != nil {
+	if err := os.Rename(tmpFile, resolvedPath); err != nil {
 		_ = os.Remove(tmpFile)
 		return errors.Wrap(err, "failed to rename temp file")
 	}

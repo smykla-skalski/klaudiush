@@ -338,6 +338,32 @@ var _ = Describe("Install", func() {
 			Expect(hooks["AfterToolUse"].([]any)).To(HaveLen(1))
 			Expect(hooks["Stop"].([]any)).To(HaveLen(1))
 		})
+
+		It("expands tilde paths into the user home directory", func() {
+			homeDir := filepath.Join(tempDir, "home")
+			Expect(os.MkdirAll(homeDir, 0o755)).To(Succeed())
+
+			oldHome := os.Getenv("HOME")
+
+			Expect(os.Setenv("HOME", homeDir)).To(Succeed())
+			DeferCleanup(func() {
+				_ = os.Setenv("HOME", oldHome)
+			})
+
+			oldWD, err := os.Getwd()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(os.Chdir(tempDir)).To(Succeed())
+			DeferCleanup(func() {
+				_ = os.Chdir(oldWD)
+			})
+
+			err = performCodexInstall("~/.codex/hooks.json", fakeBinary)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(filepath.Join(homeDir, ".codex", "hooks.json")).To(BeAnExistingFile())
+
+			_, err = os.Stat(filepath.Join(tempDir, "~"))
+			Expect(os.IsNotExist(err)).To(BeTrue())
+		})
 	})
 
 	Describe("performConfiguredInstall", func() {

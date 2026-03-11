@@ -57,7 +57,13 @@ func NewSettingsParser(path string) *SettingsParser {
 
 // Parse reads and parses the Claude settings file.
 func (p *SettingsParser) Parse() (*ClaudeSettings, error) {
-	data, err := os.ReadFile(p.settingsPath)
+	resolvedPath, err := resolveSettingsPath(p.settingsPath)
+	if err != nil {
+		return nil, err
+	}
+
+	//nolint:gosec // Path comes from validated config and may include a resolved ~ prefix.
+	data, err := os.ReadFile(resolvedPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, errors.WithMessage(ErrSettingsNotFound, p.settingsPath)

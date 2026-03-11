@@ -49,7 +49,13 @@ func NewCodexHooksParser(path string) *CodexHooksParser {
 
 // Parse reads and parses the Codex hooks file.
 func (p *CodexHooksParser) Parse() (*CodexHooksFile, error) {
-	data, err := os.ReadFile(p.hooksPath)
+	resolvedPath, err := resolveSettingsPath(p.hooksPath)
+	if err != nil {
+		return nil, err
+	}
+
+	//nolint:gosec // Path comes from validated config and may include a resolved ~ prefix.
+	data, err := os.ReadFile(resolvedPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, errors.WithMessage(ErrSettingsNotFound, p.hooksPath)

@@ -379,5 +379,33 @@ var _ = Describe("SettingsParser", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(hasHook).To(BeTrue())
 		})
+
+		It("expands tilde paths before reading hooks.json", func() {
+			homeDir := filepath.Join(filepath.Dir(hooksPath), "home")
+			Expect(os.MkdirAll(filepath.Join(homeDir, ".codex"), 0o755)).To(Succeed())
+
+			oldHome := os.Getenv("HOME")
+
+			Expect(os.Setenv("HOME", homeDir)).To(Succeed())
+			DeferCleanup(func() {
+				_ = os.Setenv("HOME", oldHome)
+			})
+
+			Expect(os.WriteFile(
+				filepath.Join(homeDir, ".codex", "hooks.json"),
+				[]byte(`{
+  "hooks": {
+    "Stop": [{"hooks":[{"type":"command","command":"klaudiush --provider codex --event Stop","timeout":30}]}]
+  }
+}`),
+				0o600,
+			)).To(Succeed())
+
+			parser := settings.NewCodexHooksParser("~/.codex/hooks.json")
+			result, err := parser.Parse()
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.Hooks.Stop).To(HaveLen(1))
+		})
 	})
 })
