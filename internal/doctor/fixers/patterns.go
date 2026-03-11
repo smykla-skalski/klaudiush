@@ -8,6 +8,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 
+	internalconfig "github.com/smykla-skalski/klaudiush/internal/config"
 	"github.com/smykla-skalski/klaudiush/internal/doctor"
 	"github.com/smykla-skalski/klaudiush/internal/patterns"
 	"github.com/smykla-skalski/klaudiush/internal/prompt"
@@ -23,6 +24,9 @@ type PatternsFixer struct {
 // NewPatternsFixer creates a new PatternsFixer.
 func NewPatternsFixer(prompter prompt.Prompter) *PatternsFixer {
 	cwd, _ := os.Getwd()
+	if resolvedDir, err := internalconfig.ResolveProjectRoot(cwd); err == nil {
+		cwd = resolvedDir
+	}
 
 	return &PatternsFixer{
 		prompter:   prompter,
