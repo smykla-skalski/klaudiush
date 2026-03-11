@@ -73,6 +73,13 @@ func (v *Validator) Validate(cfg *config.Config) error {
 		}
 	}
 
+	// Validate patterns config
+	if cfg.Patterns != nil {
+		if err := v.validatePatternsConfig(cfg.Patterns); err != nil {
+			validationErrors = append(validationErrors, errors.Wrap(err, "patterns"))
+		}
+	}
+
 	if len(validationErrors) > 0 {
 		return errors.WithSecondaryError(
 			errors.Wrapf(
@@ -518,6 +525,72 @@ func (*Validator) validateBaseConfig(cfg *config.ValidatorConfig) error {
 			config.SeverityWarning.String(),
 			cfg.Severity.String(),
 		)
+	}
+
+	return nil
+}
+
+// validatePatternsConfig validates the failure-pattern tracking configuration.
+func (*Validator) validatePatternsConfig(cfg *config.PatternsConfig) error {
+	var validationErrors []error
+
+	if cfg.MinCount < 0 {
+		validationErrors = append(
+			validationErrors,
+			errors.Wrapf(
+				ErrInvalidLength,
+				"min_count must be non-negative, got %d",
+				cfg.MinCount,
+			),
+		)
+	}
+
+	if cfg.MaxWarningsPerError < 0 {
+		validationErrors = append(
+			validationErrors,
+			errors.Wrapf(
+				ErrInvalidLength,
+				"max_warnings_per_error must be non-negative, got %d",
+				cfg.MaxWarningsPerError,
+			),
+		)
+	}
+
+	if cfg.MaxWarningsTotal < 0 {
+		validationErrors = append(
+			validationErrors,
+			errors.Wrapf(
+				ErrInvalidLength,
+				"max_warnings_total must be non-negative, got %d",
+				cfg.MaxWarningsTotal,
+			),
+		)
+	}
+
+	if cfg.MaxPatterns < 0 {
+		validationErrors = append(
+			validationErrors,
+			errors.Wrapf(
+				ErrInvalidLength,
+				"max_patterns must be non-negative, got %d",
+				cfg.MaxPatterns,
+			),
+		)
+	}
+
+	if cfg.MaxSessions < 0 {
+		validationErrors = append(
+			validationErrors,
+			errors.Wrapf(
+				ErrInvalidLength,
+				"max_sessions must be non-negative, got %d",
+				cfg.MaxSessions,
+			),
+		)
+	}
+
+	if len(validationErrors) > 0 {
+		return combineErrors(validationErrors)
 	}
 
 	return nil

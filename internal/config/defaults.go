@@ -4,6 +4,7 @@ package config
 import (
 	"time"
 
+	"github.com/smykla-skalski/klaudiush/internal/xdg"
 	"github.com/smykla-skalski/klaudiush/pkg/config"
 )
 
@@ -22,6 +23,7 @@ func DefaultConfig() *config.Config {
 		Global:     DefaultGlobalConfig(),
 		Validators: DefaultValidatorsConfig(),
 		Rules:      DefaultRulesConfig(),
+		Patterns:   DefaultPatternsConfig(),
 	}
 }
 
@@ -36,6 +38,26 @@ func DefaultRulesConfig() *config.RulesConfig {
 		Enabled:          &enabled,
 		StopOnFirstMatch: &stopOnFirstMatch,
 		Rules:            []config.RuleConfig{},
+	}
+}
+
+// DefaultPatternsConfig returns the default patterns configuration.
+func DefaultPatternsConfig() *config.PatternsConfig {
+	enabled := true
+	useSeedData := true
+
+	return &config.PatternsConfig{
+		Enabled:             &enabled,
+		MinCount:            config.DefaultPatternsMinCount,
+		MaxAge:              config.Duration(config.DefaultPatternsMaxAge),
+		MaxWarningsPerError: config.DefaultPatternsMaxWarningsPerError,
+		MaxWarningsTotal:    config.DefaultPatternsMaxWarningsTotal,
+		ProjectDataFile:     config.DefaultPatternsProjectDataFile,
+		GlobalDataDir:       xdg.PatternsGlobalDir(),
+		SessionMaxAge:       config.Duration(config.DefaultPatternsSessionMaxAge),
+		UseSeedData:         &useSeedData,
+		MaxPatterns:         config.DefaultPatternsMaxPatterns,
+		MaxSessions:         config.DefaultPatternsMaxSessions,
 	}
 }
 

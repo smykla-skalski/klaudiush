@@ -1,6 +1,10 @@
 package config
 
-import "time"
+import (
+	"time"
+
+	"github.com/smykla-skalski/klaudiush/internal/xdg"
+)
 
 // Default values for patterns configuration.
 const (
@@ -19,8 +23,15 @@ const (
 	// DefaultPatternsProjectDataFile is the default project-local data file.
 	DefaultPatternsProjectDataFile = ".klaudiush/patterns.json"
 
-	// DefaultPatternsGlobalDataDir is the default global data directory.
-	DefaultPatternsGlobalDataDir = "~/.klaudiush/patterns"
+	// LegacyPatternsGlobalDataDir is the legacy global data directory.
+	// Kept for backward compatibility with explicit user configs and fallback reads.
+	LegacyPatternsGlobalDataDir = "~/.klaudiush/patterns"
+
+	// DefaultPatternsGlobalDataDir is the legacy global data directory.
+	// Kept for backward compatibility with explicit user configs and fallback reads.
+	//
+	// Deprecated: Unset config now defaults to xdg.PatternsGlobalDir().
+	DefaultPatternsGlobalDataDir = LegacyPatternsGlobalDataDir
 
 	// DefaultPatternsSessionMaxAge is how long session codes are kept before cleanup.
 	DefaultPatternsSessionMaxAge = 24 * time.Hour
@@ -61,7 +72,7 @@ type PatternsConfig struct {
 	ProjectDataFile string `json:"project_data_file,omitempty" koanf:"project_data_file" toml:"project_data_file,omitempty"`
 
 	// GlobalDataDir is the directory for global per-project pattern files.
-	// Default: "~/.klaudiush/patterns"
+	// Default: XDG data dir for patterns (for example "~/.local/share/klaudiush/patterns")
 	GlobalDataDir string `json:"global_data_dir,omitempty" koanf:"global_data_dir" toml:"global_data_dir,omitempty"`
 
 	// SessionMaxAge is how long session codes are kept before cleanup.
@@ -154,10 +165,10 @@ func (p *PatternsConfig) GetProjectDataFile() string {
 }
 
 // GetGlobalDataDir returns the global data directory path.
-// Returns DefaultPatternsGlobalDataDir if not set.
+// Returns the XDG patterns data directory if not set.
 func (p *PatternsConfig) GetGlobalDataDir() string {
 	if p == nil || p.GlobalDataDir == "" {
-		return DefaultPatternsGlobalDataDir
+		return xdg.PatternsGlobalDir()
 	}
 
 	return p.GlobalDataDir

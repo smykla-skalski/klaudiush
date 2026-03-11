@@ -677,6 +677,7 @@ func defaultsToMap() map[string]any {
 		"validators": defaultValidatorsMap(),
 		"rules":      defaultRulesMap(),
 		"exceptions": defaultExceptionsMap(),
+		"patterns":   defaultPatternsMap(),
 	}
 }
 
@@ -713,6 +714,22 @@ func defaultGlobalMap() map[string]any {
 	return map[string]any{
 		"use_sdk_git":     true,
 		"default_timeout": defaultTimeoutStr,
+	}
+}
+
+func defaultPatternsMap() map[string]any {
+	return map[string]any{
+		"enabled":                true,
+		"min_count":              config.DefaultPatternsMinCount,
+		"max_age":                config.DefaultPatternsMaxAge.String(),
+		"max_warnings_per_error": config.DefaultPatternsMaxWarningsPerError,
+		"max_warnings_total":     config.DefaultPatternsMaxWarningsTotal,
+		"project_data_file":      config.DefaultPatternsProjectDataFile,
+		"global_data_dir":        xdg.PatternsGlobalDir(),
+		"session_max_age":        config.DefaultPatternsSessionMaxAge.String(),
+		"use_seed_data":          true,
+		"max_patterns":           config.DefaultPatternsMaxPatterns,
+		"max_sessions":           config.DefaultPatternsMaxSessions,
 	}
 }
 

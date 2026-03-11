@@ -109,27 +109,48 @@ type PatternStore interface {
 // FilePatternStore implements PatternStore with file-based persistence.
 // It uses dual storage: project-local for seeds/shared and global for learned.
 type FilePatternStore struct {
-	projectPath string
-	globalPath  string
-	projectData *PatternData
-	globalData  *PatternData
+	projectPath        string
+	globalPath         string
+	legacyFallbackPath string
+	useLegacyFallback  bool
+	projectData        *PatternData
+	globalData         *PatternData
 }
 
 // NewFilePatternStore creates a store with dual storage paths.
 // projectPath holds seed/shared patterns, globalPath holds learned patterns.
 func NewFilePatternStore(cfg *config.PatternsConfig, projectDir string) *FilePatternStore {
+	if cfg == nil {
+		cfg = &config.PatternsConfig{}
+	}
+
 	projectFile := filepath.Join(projectDir, cfg.GetProjectDataFile())
 
 	// Global path uses a hash of the project directory for isolation
 	globalDir := xdg.ExpandPathSilent(cfg.GetGlobalDataDir())
 	hash := hashProjectPath(projectDir)
 	globalFile := filepath.Join(globalDir, hash+".json")
+	useLegacyFallback := cfg.GlobalDataDir == ""
+	legacyFallbackPath := ""
+
+	if useLegacyFallback {
+		legacyDir := xdg.ExpandPathSilent(config.LegacyPatternsGlobalDataDir)
+
+		legacyFile := filepath.Join(legacyDir, hash+".json")
+		if legacyFile != globalFile {
+			legacyFallbackPath = legacyFile
+		} else {
+			useLegacyFallback = false
+		}
+	}
 
 	return &FilePatternStore{
-		projectPath: projectFile,
-		globalPath:  globalFile,
-		projectData: newPatternData(),
-		globalData:  newPatternData(),
+		projectPath:        projectFile,
+		globalPath:         globalFile,
+		legacyFallbackPath: legacyFallbackPath,
+		useLegacyFallback:  useLegacyFallback,
+		projectData:        newPatternData(),
+		globalData:         newPatternData(),
 	}
 }
 
@@ -141,6 +162,12 @@ func (s *FilePatternStore) Load() error {
 
 	if data, err := loadPatternFile(s.globalPath); err == nil {
 		s.globalData = data
+	}
+
+	if s.useLegacyFallback && s.legacyFallbackPath != "" {
+		if legacyData, err := loadPatternFile(s.legacyFallbackPath); err == nil {
+			mergePatternData(s.globalData, legacyData)
+		}
 	}
 
 	return nil
@@ -414,6 +441,92 @@ func (s *FilePatternStore) mergePatterns() map[string]*FailurePattern {
 	}
 
 	return merged
+}
+
+func mergePatternData(dest, src *PatternData) {
+	if dest == nil || src == nil {
+		return
+	}
+
+	ensurePatternDataMaps(dest, src)
+	mergeFailurePatterns(dest.Patterns, src.Patterns)
+	mergeSessions(dest.Sessions, src.Sessions)
+	mergePatternMetadata(dest, src)
+}
+
+func ensurePatternDataMaps(dest, src *PatternData) {
+	if dest.Patterns == nil {
+		dest.Patterns = make(map[string]*FailurePattern)
+	}
+
+	if dest.Sessions == nil && len(src.Sessions) > 0 {
+		dest.Sessions = make(map[string]*SessionEntry, len(src.Sessions))
+	}
+}
+
+func mergeFailurePatterns(dest, src map[string]*FailurePattern) {
+	for key, pattern := range src {
+		existing, ok := dest[key]
+		if !ok {
+			dest[key] = cloneFailurePattern(pattern)
+			continue
+		}
+
+		existing.Count += pattern.Count
+
+		if pattern.FirstSeen.Before(existing.FirstSeen) || existing.FirstSeen.IsZero() {
+			existing.FirstSeen = pattern.FirstSeen
+		}
+
+		if pattern.LastSeen.After(existing.LastSeen) {
+			existing.LastSeen = pattern.LastSeen
+		}
+
+		existing.Seed = existing.Seed || pattern.Seed
+	}
+}
+
+func cloneFailurePattern(pattern *FailurePattern) *FailurePattern {
+	return &FailurePattern{
+		SourceCode: pattern.SourceCode,
+		TargetCode: pattern.TargetCode,
+		Count:      pattern.Count,
+		FirstSeen:  pattern.FirstSeen,
+		LastSeen:   pattern.LastSeen,
+		Seed:       pattern.Seed,
+	}
+}
+
+func mergeSessions(dest, src map[string]*SessionEntry) {
+	for id, session := range src {
+		existing, ok := dest[id]
+		if !ok {
+			dest[id] = cloneSessionEntry(session)
+			continue
+		}
+
+		if session.LastSeen.After(existing.LastSeen) {
+			existing.Codes = append([]string(nil), session.Codes...)
+			existing.LastSeen = session.LastSeen
+		}
+	}
+}
+
+func cloneSessionEntry(session *SessionEntry) *SessionEntry {
+	return &SessionEntry{
+		Codes:    append([]string(nil), session.Codes...),
+		LastSeen: session.LastSeen,
+	}
+}
+
+func mergePatternMetadata(dest, src *PatternData) {
+	if src.LastUpdated.After(dest.LastUpdated) {
+		dest.LastUpdated = src.LastUpdated
+	}
+
+	if src.Version > dest.Version {
+		dest.Version = src.Version
+	}
 }
 
 func newPatternData() *PatternData {

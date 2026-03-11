@@ -561,4 +561,112 @@ var _ = Describe("FilePatternStore", func() {
 			Expect(store2.GetAllPatterns()).To(BeEmpty())
 		})
 	})
+
+	Describe("legacy fallback and XDG migration compatibility", func() {
+		var (
+			homeDir string
+			xdgData string
+		)
+
+		BeforeEach(func() {
+			homeDir = filepath.Join(tmpDir, "home")
+			xdgData = filepath.Join(tmpDir, "xdg-data")
+
+			GinkgoT().Setenv("HOME", homeDir)
+			GinkgoT().Setenv("XDG_DATA_HOME", xdgData)
+		})
+
+		It("loads legacy learned data when the default XDG path has no data yet", func() {
+			legacyStore := patterns.NewFilePatternStore(&config.PatternsConfig{
+				ProjectDataFile: "patterns.json",
+				GlobalDataDir:   config.LegacyPatternsGlobalDataDir,
+			}, tmpDir)
+			legacyStore.RecordSequence("GIT013", "GIT004")
+			Expect(legacyStore.Save()).To(Succeed())
+
+			defaultStore := patterns.NewFilePatternStore(&config.PatternsConfig{
+				ProjectDataFile: "patterns.json",
+			}, tmpDir)
+			Expect(defaultStore.Load()).To(Succeed())
+
+			followUps := defaultStore.GetFollowUps("GIT013", 1)
+			Expect(followUps).To(HaveLen(1))
+			Expect(followUps[0].TargetCode).To(Equal("GIT004"))
+			Expect(followUps[0].Count).To(Equal(1))
+		})
+
+		It("merges XDG and legacy learned data when both exist", func() {
+			legacyStore := patterns.NewFilePatternStore(&config.PatternsConfig{
+				ProjectDataFile: "patterns.json",
+				GlobalDataDir:   config.LegacyPatternsGlobalDataDir,
+			}, tmpDir)
+			legacyStore.RecordSequence("GIT013", "GIT004")
+			legacyStore.SetSessionCodes("sess1", []string{"GIT013"})
+			Expect(legacyStore.Save()).To(Succeed())
+
+			time.Sleep(10 * time.Millisecond)
+
+			xdgStore := patterns.NewFilePatternStore(&config.PatternsConfig{
+				ProjectDataFile: "patterns.json",
+				GlobalDataDir:   filepath.Join(xdgData, "klaudiush", "patterns"),
+			}, tmpDir)
+			xdgStore.RecordSequence("GIT013", "GIT004")
+			xdgStore.RecordSequence("GIT013", "GIT004")
+			xdgStore.SetSessionCodes("sess1", []string{"GIT004"})
+			Expect(xdgStore.Save()).To(Succeed())
+
+			defaultStore := patterns.NewFilePatternStore(&config.PatternsConfig{
+				ProjectDataFile: "patterns.json",
+			}, tmpDir)
+			Expect(defaultStore.Load()).To(Succeed())
+
+			followUps := defaultStore.GetFollowUps("GIT013", 1)
+			Expect(followUps).To(HaveLen(1))
+			Expect(followUps[0].Count).To(Equal(3))
+
+			Expect(defaultStore.GetSessionCodes("sess1")).To(Equal([]string{"GIT004"}))
+		})
+
+		It("does not use the legacy fallback when global_data_dir is explicitly set", func() {
+			legacyStore := patterns.NewFilePatternStore(&config.PatternsConfig{
+				ProjectDataFile: "patterns.json",
+				GlobalDataDir:   config.LegacyPatternsGlobalDataDir,
+			}, tmpDir)
+			legacyStore.RecordSequence("GIT013", "GIT004")
+			Expect(legacyStore.Save()).To(Succeed())
+
+			customStore := patterns.NewFilePatternStore(&config.PatternsConfig{
+				ProjectDataFile: "patterns.json",
+				GlobalDataDir:   filepath.Join(tmpDir, "custom-patterns"),
+			}, tmpDir)
+			Expect(customStore.Load()).To(Succeed())
+			Expect(customStore.GetAllPatterns()).To(BeEmpty())
+		})
+
+		It("writes back to the XDG primary path after loading legacy data", func() {
+			legacyStore := patterns.NewFilePatternStore(&config.PatternsConfig{
+				ProjectDataFile: "patterns.json",
+				GlobalDataDir:   config.LegacyPatternsGlobalDataDir,
+			}, tmpDir)
+			legacyStore.RecordSequence("GIT013", "GIT004")
+			Expect(legacyStore.Save()).To(Succeed())
+
+			defaultStore := patterns.NewFilePatternStore(&config.PatternsConfig{
+				ProjectDataFile: "patterns.json",
+			}, tmpDir)
+			Expect(defaultStore.Load()).To(Succeed())
+			Expect(defaultStore.Save()).To(Succeed())
+
+			legacyDir := filepath.Join(homeDir, ".klaudiush", "patterns")
+			xdgDir := filepath.Join(xdgData, "klaudiush", "patterns")
+
+			legacyEntries, err := os.ReadDir(legacyDir)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(legacyEntries).NotTo(BeEmpty())
+
+			xdgEntries, err := os.ReadDir(xdgDir)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(xdgEntries).NotTo(BeEmpty())
+		})
+	})
 })

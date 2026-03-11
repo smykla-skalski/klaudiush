@@ -1,6 +1,8 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -17,6 +19,7 @@ var _ = Describe("Defaults", func() {
 			Expect(cfg.Global).NotTo(BeNil())
 			Expect(cfg.Validators).NotTo(BeNil())
 			Expect(cfg.Rules).NotTo(BeNil())
+			Expect(cfg.Patterns).NotTo(BeNil())
 		})
 	})
 
@@ -38,6 +41,30 @@ var _ = Describe("Defaults", func() {
 			Expect(cfg.StopOnFirstMatch).NotTo(BeNil())
 			Expect(*cfg.StopOnFirstMatch).To(BeTrue())
 			Expect(cfg.Rules).To(BeEmpty())
+		})
+	})
+
+	Describe("DefaultPatternsConfig", func() {
+		It("should return patterns config with correct defaults", func() {
+			GinkgoT().Setenv("XDG_DATA_HOME", filepath.Join(GinkgoT().TempDir(), "xdg-data"))
+
+			cfg := DefaultPatternsConfig()
+			Expect(cfg).NotTo(BeNil())
+			Expect(cfg.IsEnabled()).To(BeTrue())
+			Expect(cfg.GetMinCount()).To(Equal(config.DefaultPatternsMinCount))
+			Expect(cfg.GetMaxAge()).To(Equal(config.DefaultPatternsMaxAge))
+			Expect(cfg.GetMaxWarningsPerError()).To(
+				Equal(config.DefaultPatternsMaxWarningsPerError),
+			)
+			Expect(cfg.GetMaxWarningsTotal()).To(Equal(config.DefaultPatternsMaxWarningsTotal))
+			Expect(cfg.GetProjectDataFile()).To(Equal(config.DefaultPatternsProjectDataFile))
+			Expect(cfg.GetGlobalDataDir()).To(Equal(
+				filepath.Join(os.Getenv("XDG_DATA_HOME"), "klaudiush", "patterns"),
+			))
+			Expect(cfg.GetSessionMaxAge()).To(Equal(config.DefaultPatternsSessionMaxAge))
+			Expect(cfg.IsUseSeedData()).To(BeTrue())
+			Expect(cfg.GetMaxPatterns()).To(Equal(config.DefaultPatternsMaxPatterns))
+			Expect(cfg.GetMaxSessions()).To(Equal(config.DefaultPatternsMaxSessions))
 		})
 	})
 
