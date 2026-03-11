@@ -147,6 +147,44 @@ var _ = Describe("Build", func() {
 		).To(ContainSubstring("Wrong for your workflow? klaudiush disable GIT001"))
 	})
 
+	It("appends pattern warnings to deny-path additional context", func() {
+		errs := []*dispatcher.ValidationError{
+			{
+				Validator:   "git.commit",
+				Message:     "Missing conventional format",
+				ShouldBlock: true,
+				Reference:   validator.RefGitConventionalCommit,
+			},
+		}
+
+		resp := hookresponse.BuildWithPatterns("PreToolUse", errs, []string{
+			"Pattern hint: after fixing GIT013 (conventional format), GIT004 (title too long) often follows.",
+		})
+
+		Expect(resp).NotTo(BeNil())
+		Expect(resp.HookSpecificOutput.PermissionDecision).To(Equal("deny"))
+		Expect(resp.HookSpecificOutput.AdditionalContext).To(ContainSubstring("Pattern hint:"))
+		Expect(resp.HookSpecificOutput.AdditionalContext).To(ContainSubstring("GIT004"))
+	})
+
+	It("does not append pattern warnings for warnings-only responses", func() {
+		errs := []*dispatcher.ValidationError{
+			{
+				Validator:   "markdown",
+				Message:     "line too long",
+				ShouldBlock: false,
+			},
+		}
+
+		resp := hookresponse.BuildWithPatterns("PreToolUse", errs, []string{
+			"Pattern hint: after fixing GIT013 (conventional format), GIT004 (title too long) often follows.",
+		})
+
+		Expect(resp).NotTo(BeNil())
+		Expect(resp.HookSpecificOutput.PermissionDecision).To(Equal("allow"))
+		Expect(resp.HookSpecificOutput.AdditionalContext).NotTo(ContainSubstring("Pattern hint:"))
+	})
+
 	It("produces valid JSON", func() {
 		errs := []*dispatcher.ValidationError{
 			{

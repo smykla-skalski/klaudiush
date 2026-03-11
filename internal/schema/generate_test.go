@@ -59,6 +59,16 @@ var _ = Describe("Generate", func() {
 			Expect(dur["pattern"]).NotTo(BeEmpty())
 		})
 
+		It("defines PatternsConfig with storage limit fields", func() {
+			patternsCfg, ok := defs["PatternsConfig"].(map[string]any)
+			Expect(ok).To(BeTrue(), "PatternsConfig def should exist")
+
+			props, ok := patternsCfg["properties"].(map[string]any)
+			Expect(ok).To(BeTrue(), "PatternsConfig properties should exist")
+			Expect(props).To(HaveKey("max_patterns"))
+			Expect(props).To(HaveKey("max_sessions"))
+		})
+
 		It("defines Severity as string with enum", func() {
 			sev, ok := defs["Severity"].(map[string]any)
 			Expect(ok).To(BeTrue(), "Severity def should exist")

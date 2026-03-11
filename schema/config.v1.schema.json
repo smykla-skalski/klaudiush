@@ -908,6 +908,12 @@
         },
         "use_seed_data": {
           "type": "boolean"
+        },
+        "max_patterns": {
+          "type": "integer"
+        },
+        "max_sessions": {
+          "type": "integer"
         }
       },
       "additionalProperties": false,
