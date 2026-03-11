@@ -45,6 +45,10 @@ type CrashDumpConfig struct {
 	// Default: "720h" (30 days)
 	MaxAge Duration `json:"max_age,omitempty" koanf:"max_age" toml:"max_age,omitempty"`
 
+	// MaxAgeDays preserves support for legacy configs that still use integer days.
+	// A value of 0 disables age-based pruning and keeps count-only pruning.
+	MaxAgeDays *int `json:"-" koanf:"max_age_days" toml:"max_age_days,omitempty"`
+
 	// IncludeConfig controls whether the sanitized config is included in dumps.
 	// Default: true
 	IncludeConfig *bool `json:"include_config,omitempty" koanf:"include_config" toml:"include_config,omitempty"`
@@ -83,11 +87,19 @@ func (c *CrashDumpConfig) GetMaxDumps() int {
 
 // GetMaxAge returns the maximum age duration, using default if not set.
 func (c *CrashDumpConfig) GetMaxAge() Duration {
-	if c == nil || c.MaxAge.ToDuration() == 0 {
+	if c == nil {
 		return Duration(DefaultMaxAgeDays * 24 * time.Hour)
 	}
 
-	return c.MaxAge
+	if c.MaxAge.ToDuration() != 0 {
+		return c.MaxAge
+	}
+
+	if c.MaxAgeDays != nil {
+		return Duration(time.Duration(*c.MaxAgeDays) * 24 * time.Hour)
+	}
+
+	return Duration(DefaultMaxAgeDays * 24 * time.Hour)
 }
 
 // IsIncludeConfig returns whether config should be included in dumps.
