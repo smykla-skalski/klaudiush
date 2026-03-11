@@ -160,6 +160,7 @@ func buildDoctorRegistry(cfg *pkgConfig.Config) *doctor.Registry {
 		registry.RegisterChecker(hook.NewCodexConfigChecker(codexCfg))
 		registry.RegisterChecker(hook.NewCodexRegistrationChecker(codexCfg))
 		registry.RegisterChecker(hook.NewCodexEventChecker(codexCfg, "SessionStart"))
+		registry.RegisterChecker(hook.NewCodexEventChecker(codexCfg, "AfterToolUse"))
 		registry.RegisterChecker(hook.NewCodexEventChecker(codexCfg, "Stop"))
 	}
 

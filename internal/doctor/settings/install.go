@@ -71,7 +71,7 @@ func InstallClaudeDispatcher(settingsPath, binaryPath string) (bool, error) {
 }
 
 // InstallCodexDispatcher registers klaudiush in a Codex hooks.json file.
-// Returns true when both supported Codex hooks were already present.
+// Returns true when all supported Codex hooks were already present.
 func InstallCodexDispatcher(hooksPath, binaryPath string) (bool, error) {
 	parser := NewCodexHooksParser(hooksPath)
 
@@ -80,12 +80,17 @@ func InstallCodexDispatcher(hooksPath, binaryPath string) (bool, error) {
 		return false, errors.Wrap(err, "failed to check SessionStart hook")
 	}
 
+	hasAfterToolUse, err := parser.HasEventHook("AfterToolUse", binaryPath)
+	if err != nil {
+		return false, errors.Wrap(err, "failed to check AfterToolUse hook")
+	}
+
 	hasStop, err := parser.HasEventHook("Stop", binaryPath)
 	if err != nil {
 		return false, errors.Wrap(err, "failed to check Stop hook")
 	}
 
-	if hasSessionStart && hasStop {
+	if hasSessionStart && hasAfterToolUse && hasStop {
 		return true, nil
 	}
 
@@ -94,7 +99,7 @@ func InstallCodexDispatcher(hooksPath, binaryPath string) (bool, error) {
 		return false, err
 	}
 
-	AddCodexDispatcherHooks(raw, binaryPath, !hasSessionStart, !hasStop)
+	AddCodexDispatcherHooks(raw, binaryPath, !hasSessionStart, !hasAfterToolUse, !hasStop)
 
 	if err := writeRawJSONFile(hooksPath, raw); err != nil {
 		return false, errors.Wrap(err, "failed to write hooks config")
@@ -126,11 +131,12 @@ func AddClaudeDispatcherHook(raw map[string]any, binaryPath string) {
 	hooks["PreToolUse"] = append(existing, entry)
 }
 
-// AddCodexDispatcherHooks appends missing Codex SessionStart and Stop command hooks.
+// AddCodexDispatcherHooks appends missing Codex command hooks.
 func AddCodexDispatcherHooks(
 	raw map[string]any,
 	binaryPath string,
 	addSessionStart bool,
+	addAfterToolUse bool,
 	addStop bool,
 ) {
 	hooks := ensureHooksMap(raw)
@@ -139,6 +145,13 @@ func AddCodexDispatcherHooks(
 		hooks["SessionStart"] = appendEventHook(
 			hooks["SessionStart"],
 			CodexSessionStartCommand(binaryPath),
+		)
+	}
+
+	if addAfterToolUse {
+		hooks["AfterToolUse"] = appendEventHook(
+			hooks["AfterToolUse"],
+			CodexAfterToolUseCommand(binaryPath),
 		)
 	}
 
@@ -158,6 +171,11 @@ func ClaudeDispatcherCommand(binaryPath string) string {
 // CodexSessionStartCommand returns the Codex SessionStart command string.
 func CodexSessionStartCommand(binaryPath string) string {
 	return binaryPath + " --provider codex --event SessionStart"
+}
+
+// CodexAfterToolUseCommand returns the Codex AfterToolUse command string.
+func CodexAfterToolUseCommand(binaryPath string) string {
+	return binaryPath + " --provider codex --event AfterToolUse"
 }
 
 // CodexStopCommand returns the Codex Stop command string.

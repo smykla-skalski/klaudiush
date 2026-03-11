@@ -58,12 +58,15 @@ type JSONInput struct {
 
 // CodexAfterToolEvent represents the nested Codex AfterToolUse payload.
 type CodexAfterToolEvent struct {
-	EventType string          `json:"event_type,omitempty"`
-	TurnID    string          `json:"turn_id,omitempty"`
-	CallID    string          `json:"call_id,omitempty"`
-	ToolName  string          `json:"tool_name,omitempty"`
-	ToolKind  string          `json:"tool_kind,omitempty"`
-	ToolInput json.RawMessage `json:"tool_input,omitempty"`
+	EventType     string          `json:"event_type,omitempty"`
+	TurnID        string          `json:"turn_id,omitempty"`
+	CallID        string          `json:"call_id,omitempty"`
+	ToolName      string          `json:"tool_name,omitempty"`
+	ToolKind      string          `json:"tool_kind,omitempty"`
+	ToolInput     json.RawMessage `json:"tool_input,omitempty"`
+	ToolExecuted  bool            `json:"tool_executed,omitempty"`
+	ToolSucceeded bool            `json:"tool_succeeded,omitempty"`
+	ToolMutating  bool            `json:"tool_mutating,omitempty"`
 }
 
 // JSONParser parses JSON input from stdin or environment variable.
@@ -127,6 +130,13 @@ func (p *JSONParser) ParseWithOptions(opts ParseOptions) (*hook.Context, error) 
 
 	if input.LastAssistant != nil {
 		ctx.LastAssistantMessage = *input.LastAssistant
+	}
+
+	if afterTool != nil {
+		ctx.TurnID = afterTool.TurnID
+		ctx.ToolExecuted = afterTool.ToolExecuted
+		ctx.ToolSucceeded = afterTool.ToolSucceeded
+		ctx.ToolMutating = afterTool.ToolMutating
 	}
 
 	ctx.StopHookActive = input.StopHookActive
@@ -243,7 +253,7 @@ func inferProvider(eventName string, input JSONInput) hook.Provider {
 	}
 
 	switch hook.NormalizeEventName(eventName) {
-	case hook.CanonicalEventSessionStart, hook.CanonicalEventTurnStop:
+	case hook.CanonicalEventSessionStart, hook.CanonicalEventTurnStop, hook.CanonicalEventAfterTool:
 		return hook.ProviderCodex
 	default:
 		return hook.ProviderClaude

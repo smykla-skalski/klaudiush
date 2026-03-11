@@ -252,6 +252,7 @@ var _ = Describe("Codex hook checkers", func() {
 			[]byte(`{
   "hooks": {
     "SessionStart": [{"hooks":[{"type":"command","command":"klaudiush --provider codex --event SessionStart","timeout":30}]}],
+    "AfterToolUse": [{"hooks":[{"type":"command","command":"klaudiush --provider codex --event AfterToolUse","timeout":30}]}],
     "Stop": [{"hooks":[{"type":"command","command":"klaudiush --provider codex --event Stop","timeout":30}]}]
   }
 }`),
@@ -268,10 +269,12 @@ var _ = Describe("Codex hook checkers", func() {
 
 		registrationChecker := hook.NewCodexRegistrationChecker(cfg)
 		sessionStartChecker := hook.NewCodexEventChecker(cfg, "SessionStart")
+		afterToolUseChecker := hook.NewCodexEventChecker(cfg, "AfterToolUse")
 		stopChecker := hook.NewCodexEventChecker(cfg, "Stop")
 
 		Expect(registrationChecker.Check(ctx).Status).To(Equal(doctor.StatusPass))
 		Expect(sessionStartChecker.Check(ctx).Status).To(Equal(doctor.StatusPass))
+		Expect(afterToolUseChecker.Check(ctx).Status).To(Equal(doctor.StatusPass))
 		Expect(stopChecker.Check(ctx).Status).To(Equal(doctor.StatusPass))
 	})
 
@@ -294,8 +297,8 @@ var _ = Describe("Codex hook checkers", func() {
 			HooksConfigPath: hooksPath,
 		}
 
-		stopChecker := hook.NewCodexEventChecker(cfg, "Stop")
-		result := stopChecker.Check(ctx)
+		afterToolUseChecker := hook.NewCodexEventChecker(cfg, "AfterToolUse")
+		result := afterToolUseChecker.Check(ctx)
 
 		Expect(result.Status).To(Equal(doctor.StatusFail))
 		Expect(result.FixID).To(Equal("install_hook"))

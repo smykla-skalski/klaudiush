@@ -322,6 +322,7 @@ var _ = Describe("SettingsParser", func() {
 				[]byte(`{
   "hooks": {
     "SessionStart": [{"hooks":[{"type":"command","command":"klaudiush --provider codex --event SessionStart","timeout":30}]}],
+    "AfterToolUse": [{"hooks":[{"type":"command","command":"klaudiush --provider codex --event AfterToolUse","timeout":30}]}],
     "Stop": [{"hooks":[{"type":"command","command":"klaudiush --provider codex --event Stop","timeout":30}]}]
   }
 }`),
@@ -333,9 +334,12 @@ var _ = Describe("SettingsParser", func() {
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.Hooks.SessionStart).To(HaveLen(1))
+			Expect(result.Hooks.AfterToolUse).To(HaveLen(1))
 			Expect(result.Hooks.Stop).To(HaveLen(1))
 			Expect(result.Hooks.SessionStart[0].Hooks[0].Command).
 				To(Equal("klaudiush --provider codex --event SessionStart"))
+			Expect(result.Hooks.AfterToolUse[0].Hooks[0].Command).
+				To(Equal("klaudiush --provider codex --event AfterToolUse"))
 		})
 
 		It("finds event-specific dispatcher hooks", func() {
@@ -357,6 +361,23 @@ var _ = Describe("SettingsParser", func() {
 			hasStop, err := parser.HasEventHook("Stop", "/usr/local/bin/klaudiush")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(hasStop).To(BeFalse())
+		})
+
+		It("finds AfterToolUse hooks by canonical alias", func() {
+			Expect(os.WriteFile(
+				hooksPath,
+				[]byte(`{
+  "hooks": {
+    "AfterToolUse": [{"hooks":[{"type":"command","command":"klaudiush --provider codex --event AfterToolUse","timeout":30}]}]
+  }
+}`),
+				0o600,
+			)).To(Succeed())
+
+			parser := settings.NewCodexHooksParser(hooksPath)
+			hasHook, err := parser.HasEventHook("after_tool", "/usr/local/bin/klaudiush")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(hasHook).To(BeTrue())
 		})
 	})
 })

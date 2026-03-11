@@ -143,6 +143,18 @@ type Context struct {
 	// StopHookActive indicates whether a stop hook is already active.
 	StopHookActive bool
 
+	// TurnID identifies the provider turn when available.
+	TurnID string
+
+	// ToolExecuted reports whether the provider actually ran the tool.
+	ToolExecuted bool
+
+	// ToolSucceeded reports whether the tool completed successfully.
+	ToolSucceeded bool
+
+	// ToolMutating reports whether the tool changed repository or filesystem state.
+	ToolMutating bool
+
 	// AffectedPaths contains provider-derived file paths affected by the tool.
 	AffectedPaths []string
 }

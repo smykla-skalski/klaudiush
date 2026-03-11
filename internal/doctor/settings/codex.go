@@ -22,6 +22,7 @@ type CodexHooksFile struct {
 // CodexHookEvents groups supported Codex hook events.
 type CodexHookEvents struct {
 	SessionStart []CodexMatcherGroup `json:"SessionStart,omitempty"`
+	AfterToolUse []CodexMatcherGroup `json:"AfterToolUse,omitempty"`
 	Stop         []CodexMatcherGroup `json:"Stop,omitempty"`
 }
 
@@ -78,7 +79,7 @@ func (p *CodexHooksParser) Parse() (*CodexHooksFile, error) {
 
 // IsDispatcherRegistered checks whether any supported Codex event is configured for klaudiush.
 func (p *CodexHooksParser) IsDispatcherRegistered(dispatcherPath string) (bool, error) {
-	for _, eventName := range []string{"SessionStart", "Stop"} {
+	for _, eventName := range []string{"SessionStart", "AfterToolUse", "Stop"} {
 		hasHook, err := p.HasEventHook(eventName, dispatcherPath)
 		if err != nil {
 			return false, err
@@ -110,6 +111,8 @@ func codexEventGroups(hooksFile *CodexHooksFile, eventName string) []CodexMatche
 	switch strings.ToLower(eventName) {
 	case "sessionstart", "session_start":
 		return hooksFile.Hooks.SessionStart
+	case "aftertooluse", "after_tool":
+		return hooksFile.Hooks.AfterToolUse
 	case "stop", "turn_stop":
 		return hooksFile.Hooks.Stop
 	default:

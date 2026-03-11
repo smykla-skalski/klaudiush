@@ -135,7 +135,11 @@ var _ = Describe("JSONParser", func() {
 				"cwd": "/tmp/project",
 				"hook_event": {
 					"event_type": "AfterToolUse",
+					"turn_id": "turn-123",
 					"call_id": "call-123",
+					"tool_executed": true,
+					"tool_succeeded": true,
+					"tool_mutating": true,
 					"tool_name": "apply_patch",
 					"tool_input": {
 						"input": "*** Begin Patch\n*** Add File: docs/new.md\n+hello\n*** Update File: go.mod\n@@\n-go 1.25\n+go 1.26\n*** End Patch\n"
@@ -152,7 +156,11 @@ var _ = Describe("JSONParser", func() {
 			Expect(ctx.Provider).To(Equal(hook.ProviderCodex))
 			Expect(ctx.Event).To(Equal(hook.CanonicalEventAfterTool))
 			Expect(ctx.EventName()).To(Equal("AfterToolUse"))
+			Expect(ctx.TurnID).To(Equal("turn-123"))
 			Expect(ctx.ToolUseID).To(Equal("call-123"))
+			Expect(ctx.ToolExecuted).To(BeTrue())
+			Expect(ctx.ToolSucceeded).To(BeTrue())
+			Expect(ctx.ToolMutating).To(BeTrue())
 			Expect(ctx.ToolName).To(Equal(hook.ToolTypeEdit))
 			Expect(ctx.ToolFamily).To(Equal(hook.ToolFamilyEdit))
 			Expect(ctx.AffectedPaths).To(ConsistOf("docs/new.md", "go.mod"))

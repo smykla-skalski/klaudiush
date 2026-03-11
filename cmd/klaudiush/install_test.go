@@ -266,7 +266,7 @@ var _ = Describe("Install", func() {
 	Describe("performCodexInstall", func() {
 		const fakeBinary = "/usr/local/bin/klaudiush"
 
-		It("creates hooks.json with SessionStart and Stop hooks", func() {
+		It("creates hooks.json with SessionStart, AfterToolUse, and Stop hooks", func() {
 			hooksPath := filepath.Join(tempDir, ".codex", "hooks.json")
 
 			err := performCodexInstall(hooksPath, fakeBinary)
@@ -281,16 +281,21 @@ var _ = Describe("Install", func() {
 
 			hooks := result["hooks"].(map[string]any)
 			sessionStart := hooks["SessionStart"].([]any)
+			afterToolUse := hooks["AfterToolUse"].([]any)
 			stop := hooks["Stop"].([]any)
 
 			Expect(sessionStart).To(HaveLen(1))
+			Expect(afterToolUse).To(HaveLen(1))
 			Expect(stop).To(HaveLen(1))
 
 			sessionStartHooks := sessionStart[0].(map[string]any)["hooks"].([]any)
+			afterToolUseHooks := afterToolUse[0].(map[string]any)["hooks"].([]any)
 			stopHooks := stop[0].(map[string]any)["hooks"].([]any)
 
 			Expect(sessionStartHooks[0].(map[string]any)["command"]).
 				To(Equal(fakeBinary + " --provider codex --event SessionStart"))
+			Expect(afterToolUseHooks[0].(map[string]any)["command"]).
+				To(Equal(fakeBinary + " --provider codex --event AfterToolUse"))
 			Expect(stopHooks[0].(map[string]any)["command"]).
 				To(Equal(fakeBinary + " --provider codex --event Stop"))
 		})
@@ -330,6 +335,7 @@ var _ = Describe("Install", func() {
 
 			hooks := result["hooks"].(map[string]any)
 			Expect(hooks["SessionStart"].([]any)).To(HaveLen(1))
+			Expect(hooks["AfterToolUse"].([]any)).To(HaveLen(1))
 			Expect(hooks["Stop"].([]any)).To(HaveLen(1))
 		})
 	})
