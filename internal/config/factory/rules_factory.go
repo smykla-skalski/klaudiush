@@ -90,6 +90,7 @@ func convertRuleConfig(cfg config.RuleConfig) *rules.Rule {
 	if cfg.Match != nil {
 		rule.Match = &rules.RuleMatch{
 			ValidatorType:   rules.ValidatorType(cfg.Match.ValidatorType),
+			Provider:        cfg.Match.Provider,
 			RepoPattern:     cfg.Match.RepoPattern,
 			RepoPatterns:    cfg.Match.RepoPatterns,
 			Remote:          cfg.Match.Remote,

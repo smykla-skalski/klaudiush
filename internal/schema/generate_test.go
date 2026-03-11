@@ -35,7 +35,7 @@ var _ = Describe("Generate", func() {
 		Expect(ok).To(BeTrue())
 
 		for _, key := range []string{
-			"version", "validators", "global", "plugins", "rules",
+			"version", "validators", "global", "providers", "plugins", "rules",
 			"exceptions", "backup", "crash_dump", "patterns",
 		} {
 			Expect(props).To(HaveKey(key), "missing top-level property: %s", key)
@@ -67,6 +67,24 @@ var _ = Describe("Generate", func() {
 			Expect(ok).To(BeTrue(), "PatternsConfig properties should exist")
 			Expect(props).To(HaveKey("max_patterns"))
 			Expect(props).To(HaveKey("max_sessions"))
+		})
+
+		It("defines ProvidersConfig and Codex hooks fields", func() {
+			providersCfg, ok := defs["ProvidersConfig"].(map[string]any)
+			Expect(ok).To(BeTrue(), "ProvidersConfig def should exist")
+
+			props, ok := providersCfg["properties"].(map[string]any)
+			Expect(ok).To(BeTrue(), "ProvidersConfig properties should exist")
+			Expect(props).To(HaveKey("claude"))
+			Expect(props).To(HaveKey("codex"))
+
+			codexCfg, ok := defs["CodexProviderConfig"].(map[string]any)
+			Expect(ok).To(BeTrue(), "CodexProviderConfig def should exist")
+			codexProps, ok := codexCfg["properties"].(map[string]any)
+			Expect(ok).To(BeTrue(), "CodexProviderConfig properties should exist")
+			Expect(codexProps).To(HaveKey("enabled"))
+			Expect(codexProps).To(HaveKey("experimental"))
+			Expect(codexProps).To(HaveKey("hooks_config_path"))
 		})
 
 		It("defines Severity as string with enum", func() {

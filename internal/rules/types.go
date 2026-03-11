@@ -84,6 +84,9 @@ type RuleMatch struct {
 	// ValidatorType filters by validator type (supports wildcards).
 	ValidatorType ValidatorType
 
+	// Provider filters by hook provider.
+	Provider string
+
 	// RepoPattern matches against the repository root path.
 	RepoPattern string
 

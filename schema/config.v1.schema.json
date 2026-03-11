@@ -134,6 +134,30 @@
         10485760
       ]
     },
+    "ClaudeProviderConfig": {
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "CodexProviderConfig": {
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "experimental": {
+          "type": "boolean"
+        },
+        "hooks_config_path": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
     "CommitMessageConfig": {
       "properties": {
         "enabled": {
@@ -979,6 +1003,12 @@
     },
     "PluginPredicate": {
       "properties": {
+        "providers": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "event_types": {
           "items": {
             "type": "string"
@@ -1012,6 +1042,18 @@
       "enum": [
         "exec"
       ]
+    },
+    "ProvidersConfig": {
+      "properties": {
+        "claude": {
+          "$ref": "#/$defs/ClaudeProviderConfig"
+        },
+        "codex": {
+          "$ref": "#/$defs/CodexProviderConfig"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
     },
     "PushValidatorConfig": {
       "properties": {
@@ -1128,6 +1170,13 @@
         "validator_type": {
           "type": "string"
         },
+        "provider": {
+          "type": "string",
+          "enum": [
+            "claude",
+            "codex"
+          ]
+        },
         "repo_pattern": {
           "type": "string"
         },
@@ -1179,6 +1228,13 @@
         "tool_type": {
           "type": "string",
           "enum": [
+            "shell",
+            "write",
+            "edit",
+            "multiedit",
+            "grep",
+            "read",
+            "glob",
             "Bash",
             "Write",
             "Edit",
@@ -1191,9 +1247,17 @@
         "event_type": {
           "type": "string",
           "enum": [
+            "before_tool",
+            "after_tool",
+            "session_start",
+            "turn_stop",
+            "notification",
             "PreToolUse",
             "PostToolUse",
-            "Notification"
+            "Notification",
+            "SessionStart",
+            "Stop",
+            "AfterToolUse"
           ]
         },
         "case_insensitive": {
@@ -1495,6 +1559,9 @@
     },
     "global": {
       "$ref": "#/$defs/GlobalConfig"
+    },
+    "providers": {
+      "$ref": "#/$defs/ProvidersConfig"
     },
     "plugins": {
       "$ref": "#/$defs/PluginConfig"

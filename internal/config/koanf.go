@@ -674,10 +674,24 @@ func defaultsToMap() map[string]any {
 	return map[string]any{
 		"version":    config.CurrentConfigVersion,
 		"global":     defaultGlobalMap(),
+		"providers":  defaultProvidersMap(),
 		"validators": defaultValidatorsMap(),
 		"rules":      defaultRulesMap(),
 		"exceptions": defaultExceptionsMap(),
 		"patterns":   defaultPatternsMap(),
+	}
+}
+
+func defaultProvidersMap() map[string]any {
+	return map[string]any{
+		"claude": map[string]any{
+			"enabled": true,
+		},
+		"codex": map[string]any{
+			"enabled":           false,
+			"experimental":      false,
+			"hooks_config_path": "",
+		},
 	}
 }
 

@@ -441,6 +441,30 @@ func (m *ValidatorTypeMatcher) Name() string {
 	return "validator_type:" + string(m.validatorType)
 }
 
+// ProviderMatcher matches against the hook provider.
+type ProviderMatcher struct {
+	provider string
+}
+
+// NewProviderMatcher creates a matcher for providers.
+func NewProviderMatcher(provider string) *ProviderMatcher {
+	return &ProviderMatcher{provider: provider}
+}
+
+// Match returns true if the provider matches.
+func (m *ProviderMatcher) Match(ctx *MatchContext) bool {
+	if ctx.HookContext == nil {
+		return false
+	}
+
+	return ctx.HookContext.MatchesProvider(m.provider)
+}
+
+// Name returns the matcher name.
+func (m *ProviderMatcher) Name() string {
+	return "provider:" + m.provider
+}
+
 // ToolTypeMatcher matches against the hook tool type.
 type ToolTypeMatcher struct {
 	toolType string
@@ -457,7 +481,7 @@ func (m *ToolTypeMatcher) Match(ctx *MatchContext) bool {
 		return false
 	}
 
-	return strings.EqualFold(ctx.HookContext.ToolName.String(), m.toolType)
+	return ctx.HookContext.MatchesToolName(m.toolType)
 }
 
 // Name returns the matcher name.
@@ -481,7 +505,7 @@ func (m *EventTypeMatcher) Match(ctx *MatchContext) bool {
 		return false
 	}
 
-	return strings.EqualFold(ctx.HookContext.EventType.String(), m.eventType)
+	return ctx.HookContext.MatchesEventName(m.eventType)
 }
 
 // Name returns the matcher name.
@@ -813,6 +837,10 @@ func buildMatcherLegacy(match *RuleMatch) (Matcher, error) {
 		b.addSimple(NewValidatorTypeMatcher(match.ValidatorType))
 	}
 
+	if match.Provider != "" {
+		b.addSimple(NewProviderMatcher(match.Provider))
+	}
+
 	if match.Remote != "" {
 		b.addSimple(NewRemoteMatcher(match.Remote))
 	}
@@ -849,6 +877,10 @@ func buildMatcherAdvanced(match *RuleMatch) (Matcher, error) {
 	// Add simple matchers.
 	if match.ValidatorType != "" {
 		b.addSimple(NewValidatorTypeMatcher(match.ValidatorType))
+	}
+
+	if match.Provider != "" {
+		b.addSimple(NewProviderMatcher(match.Provider))
 	}
 
 	if match.Remote != "" {
@@ -913,6 +945,7 @@ var (
 	_ Matcher = (*ContentPatternMatcher)(nil)
 	_ Matcher = (*CommandPatternMatcher)(nil)
 	_ Matcher = (*ValidatorTypeMatcher)(nil)
+	_ Matcher = (*ProviderMatcher)(nil)
 	_ Matcher = (*ToolTypeMatcher)(nil)
 	_ Matcher = (*EventTypeMatcher)(nil)
 	_ Matcher = (*CompositeMatcher)(nil)

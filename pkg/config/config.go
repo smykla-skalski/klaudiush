@@ -15,6 +15,9 @@ type Config struct {
 	// Global settings that apply across all validators.
 	Global *GlobalConfig `json:"global,omitempty" koanf:"global" toml:"global,omitempty"`
 
+	// Providers contains provider-specific integration configuration.
+	Providers *ProvidersConfig `json:"providers,omitempty" koanf:"providers" toml:"providers,omitempty"`
+
 	// Plugins contains configuration for external plugins.
 	Plugins *PluginConfig `json:"plugins,omitempty" koanf:"plugins" toml:"plugins,omitempty"`
 
@@ -93,6 +96,15 @@ func (g *GlobalConfig) IsParallelExecutionEnabled() bool {
 	}
 
 	return *g.ParallelExecution
+}
+
+// GetProviders returns the provider config, creating it if it doesn't exist.
+func (c *Config) GetProviders() *ProvidersConfig {
+	if c.Providers == nil {
+		c.Providers = &ProvidersConfig{}
+	}
+
+	return c.Providers
 }
 
 // GetValidators returns the validators config, creating it if it doesn't exist.

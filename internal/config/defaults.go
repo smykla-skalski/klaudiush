@@ -21,9 +21,27 @@ func DefaultConfig() *config.Config {
 	return &config.Config{
 		Version:    config.CurrentConfigVersion,
 		Global:     DefaultGlobalConfig(),
+		Providers:  DefaultProvidersConfig(),
 		Validators: DefaultValidatorsConfig(),
 		Rules:      DefaultRulesConfig(),
 		Patterns:   DefaultPatternsConfig(),
+	}
+}
+
+// DefaultProvidersConfig returns the default provider integration configuration.
+func DefaultProvidersConfig() *config.ProvidersConfig {
+	claudeEnabled := true
+	codexEnabled := false
+	codexExperimental := false
+
+	return &config.ProvidersConfig{
+		Claude: &config.ClaudeProviderConfig{
+			Enabled: &claudeEnabled,
+		},
+		Codex: &config.CodexProviderConfig{
+			Enabled:      &codexEnabled,
+			Experimental: &codexExperimental,
+		},
 	}
 }
 
