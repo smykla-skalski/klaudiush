@@ -61,7 +61,7 @@ type Info struct {
 
 // ValidateRequest contains the context passed to plugin validators.
 type ValidateRequest struct {
-	// Provider is the source provider ("claude", "codex").
+	// Provider is the source provider ("claude", "codex", "gemini").
 	Provider string `json:"provider,omitempty"`
 
 	// EventName is the normalized event name ("before_tool", "session_start", etc.).

@@ -69,7 +69,7 @@ var _ = Describe("Generate", func() {
 			Expect(props).To(HaveKey("max_sessions"))
 		})
 
-		It("defines ProvidersConfig and Codex hooks fields", func() {
+		It("defines ProvidersConfig and provider hook fields", func() {
 			providersCfg, ok := defs["ProvidersConfig"].(map[string]any)
 			Expect(ok).To(BeTrue(), "ProvidersConfig def should exist")
 
@@ -77,6 +77,7 @@ var _ = Describe("Generate", func() {
 			Expect(ok).To(BeTrue(), "ProvidersConfig properties should exist")
 			Expect(props).To(HaveKey("claude"))
 			Expect(props).To(HaveKey("codex"))
+			Expect(props).To(HaveKey("gemini"))
 
 			codexCfg, ok := defs["CodexProviderConfig"].(map[string]any)
 			Expect(ok).To(BeTrue(), "CodexProviderConfig def should exist")
@@ -85,6 +86,13 @@ var _ = Describe("Generate", func() {
 			Expect(codexProps).To(HaveKey("enabled"))
 			Expect(codexProps).To(HaveKey("experimental"))
 			Expect(codexProps).To(HaveKey("hooks_config_path"))
+
+			geminiCfg, ok := defs["GeminiProviderConfig"].(map[string]any)
+			Expect(ok).To(BeTrue(), "GeminiProviderConfig def should exist")
+			geminiProps, ok := geminiCfg["properties"].(map[string]any)
+			Expect(ok).To(BeTrue(), "GeminiProviderConfig properties should exist")
+			Expect(geminiProps).To(HaveKey("enabled"))
+			Expect(geminiProps).To(HaveKey("settings_path"))
 		})
 
 		It("defines Severity as string with enum", func() {

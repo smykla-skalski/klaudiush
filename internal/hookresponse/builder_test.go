@@ -299,4 +299,74 @@ var _ = Describe("Build", func() {
 		Expect(codexResp.HookSpecificOutput.HookEventName).To(Equal("AfterToolUse"))
 		Expect(codexResp.HookSpecificOutput.AdditionalContext).To(ContainSubstring("Fix ALL"))
 	})
+
+	It("builds Gemini BeforeTool blocking responses", func() {
+		errs := []*dispatcher.ValidationError{
+			{
+				Validator:   "git.commit",
+				Message:     "missing signoff",
+				ShouldBlock: true,
+				Reference:   validator.RefGitNoSignoff,
+			},
+		}
+
+		resp := hookresponse.BuildForContext(&hook.Context{
+			Provider: hook.ProviderGemini,
+			Event:    hook.CanonicalEventBeforeTool,
+		}, errs, nil)
+
+		geminiResp, ok := resp.(*hookresponse.GeminiCommandResponse)
+		Expect(ok).To(BeTrue())
+		Expect(geminiResp.Decision).To(Equal("deny"))
+		Expect(geminiResp.Reason).To(ContainSubstring("[GIT001]"))
+		Expect(geminiResp.HookSpecificOutput).To(BeNil())
+	})
+
+	It("keeps Gemini AfterTool responses advisory even for blocking findings", func() {
+		errs := []*dispatcher.ValidationError{
+			{
+				Validator:   "git.push",
+				Message:     "protected branch",
+				ShouldBlock: true,
+				Reference:   validator.RefGitKongOrgPush,
+			},
+		}
+
+		resp := hookresponse.BuildForContext(&hook.Context{
+			Provider:     hook.ProviderGemini,
+			Event:        hook.CanonicalEventAfterTool,
+			RawEventName: "AfterTool",
+		}, errs, nil)
+
+		geminiResp, ok := resp.(*hookresponse.GeminiCommandResponse)
+		Expect(ok).To(BeTrue())
+		Expect(geminiResp.Decision).To(BeEmpty())
+		Expect(geminiResp.Reason).To(BeEmpty())
+		Expect(geminiResp.HookSpecificOutput).NotTo(BeNil())
+		Expect(geminiResp.HookSpecificOutput.HookEventName).To(Equal("AfterTool"))
+		Expect(geminiResp.HookSpecificOutput.AdditionalContext).To(ContainSubstring("Fix ALL"))
+	})
+
+	It("builds Gemini SessionEnd summary responses without flow-control fields", func() {
+		errs := []*dispatcher.ValidationError{
+			{
+				Validator:   "summary",
+				Message:     "cleanup summary",
+				ShouldBlock: true,
+				Reference:   validator.RefGitNoSignoff,
+			},
+		}
+
+		resp := hookresponse.BuildForContext(&hook.Context{
+			Provider:     hook.ProviderGemini,
+			Event:        hook.CanonicalEventTurnStop,
+			RawEventName: "SessionEnd",
+		}, errs, nil)
+
+		geminiResp, ok := resp.(*hookresponse.GeminiCommandResponse)
+		Expect(ok).To(BeTrue())
+		Expect(geminiResp.Decision).To(BeEmpty())
+		Expect(geminiResp.Reason).To(BeEmpty())
+		Expect(geminiResp.SystemMessage).To(ContainSubstring("GIT001"))
+	})
 })

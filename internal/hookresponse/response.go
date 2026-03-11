@@ -31,3 +31,21 @@ type CodexHookSpecificOutput struct {
 	HookEventName     string `json:"hookEventName"`
 	AdditionalContext string `json:"additionalContext,omitempty"`
 }
+
+// GeminiCommandResponse is the top-level JSON structure for Gemini command hooks.
+type GeminiCommandResponse struct {
+	Continue           bool                      `json:"continue,omitempty"`
+	HookSpecificOutput *GeminiHookSpecificOutput `json:"hookSpecificOutput,omitempty"`
+	Decision           string                    `json:"decision,omitempty"`
+	Reason             string                    `json:"reason,omitempty"`
+	StopReason         string                    `json:"stopReason,omitempty"`
+	SuppressOutput     bool                      `json:"suppressOutput,omitempty"`
+	SystemMessage      string                    `json:"systemMessage,omitempty"`
+}
+
+// GeminiHookSpecificOutput carries Gemini hook-specific fields.
+type GeminiHookSpecificOutput struct {
+	HookEventName     string         `json:"hookEventName"`
+	AdditionalContext string         `json:"additionalContext,omitempty"`
+	ToolInput         map[string]any `json:"tool_input,omitempty"`
+}

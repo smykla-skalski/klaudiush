@@ -189,6 +189,100 @@ var _ = Describe("JSONParser", func() {
 		})
 	})
 
+	Describe("Parse with Gemini input", func() {
+		It("parses BeforeTool payloads with Gemini tool mappings", func() {
+			input := `{
+				"session_id": "sess-gemini",
+				"cwd": "/tmp/project",
+				"hook_event_name": "BeforeTool",
+				"tool_name": "run_shell_command",
+				"tool_input": {
+					"command": "git status"
+				}
+			}`
+
+			p := parser.NewJSONParser(bytes.NewReader([]byte(input)))
+			ctx, err := p.ParseWithOptions(parser.ParseOptions{
+				Provider:  hook.ProviderGemini,
+				EventName: "BeforeTool",
+			})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ctx.Provider).To(Equal(hook.ProviderGemini))
+			Expect(ctx.Event).To(Equal(hook.CanonicalEventBeforeTool))
+			Expect(ctx.EventName()).To(Equal("BeforeTool"))
+			Expect(ctx.ToolName).To(Equal(hook.ToolTypeBash))
+			Expect(ctx.ToolFamily).To(Equal(hook.ToolFamilyShell))
+			Expect(ctx.GetCommand()).To(Equal("git status"))
+		})
+
+		It("parses AfterTool payloads and derives affected paths", func() {
+			input := `{
+				"session_id": "sess-gemini",
+				"cwd": "/tmp/project",
+				"hook_event_name": "AfterTool",
+				"tool_name": "write_file",
+				"tool_input": {
+					"file_path": "README.md",
+					"content": "# hello"
+				},
+				"tool_response": {
+					"llmContent": "ok"
+				}
+			}`
+
+			p := parser.NewJSONParser(bytes.NewReader([]byte(input)))
+			ctx, err := p.ParseWithOptions(parser.ParseOptions{
+				Provider:  hook.ProviderGemini,
+				EventName: "AfterTool",
+			})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ctx.Provider).To(Equal(hook.ProviderGemini))
+			Expect(ctx.Event).To(Equal(hook.CanonicalEventAfterTool))
+			Expect(ctx.EventName()).To(Equal("AfterTool"))
+			Expect(ctx.ToolName).To(Equal(hook.ToolTypeWrite))
+			Expect(ctx.ToolFamily).To(Equal(hook.ToolFamilyWrite))
+			Expect(ctx.AffectedPaths).To(ConsistOf("README.md"))
+		})
+
+		It("parses SessionEnd and PreCompress lifecycle payloads", func() {
+			sessionEndInput := `{
+				"session_id": "sess-gemini",
+				"cwd": "/tmp/project",
+				"reason": "exit"
+			}`
+
+			p := parser.NewJSONParser(bytes.NewReader([]byte(sessionEndInput)))
+			sessionEndCtx, err := p.ParseWithOptions(parser.ParseOptions{
+				Provider:  hook.ProviderGemini,
+				EventName: "SessionEnd",
+			})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(sessionEndCtx.Provider).To(Equal(hook.ProviderGemini))
+			Expect(sessionEndCtx.Event).To(Equal(hook.CanonicalEventTurnStop))
+			Expect(sessionEndCtx.EventName()).To(Equal("SessionEnd"))
+
+			preCompressInput := `{
+				"session_id": "sess-gemini",
+				"cwd": "/tmp/project",
+				"trigger": "manual"
+			}`
+
+			p = parser.NewJSONParser(bytes.NewReader([]byte(preCompressInput)))
+			preCompressCtx, err := p.ParseWithOptions(parser.ParseOptions{
+				Provider:  hook.ProviderGemini,
+				EventName: "PreCompress",
+			})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(preCompressCtx.Provider).To(Equal(hook.ProviderGemini))
+			Expect(preCompressCtx.Event).To(Equal(hook.CanonicalEventPreCompress))
+			Expect(preCompressCtx.EventName()).To(Equal("PreCompress"))
+		})
+	})
+
 	Describe("Backward compatibility", func() {
 		It("works with inputs without session fields", func() {
 			input := `{

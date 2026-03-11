@@ -129,7 +129,7 @@ func init() {
 		&providerName,
 		"provider",
 		string(hook.ProviderClaude),
-		"Hook provider (claude, codex)",
+		"Hook provider (claude, codex, gemini)",
 	)
 	rootCmd.Flags().StringVar(
 		&eventName,
@@ -427,7 +427,8 @@ func loadConfig(log logger.Logger, workDir string) (*config.Config, error) {
 // Returns "" if no cd-prefixed git command is detected (caller uses os.Getwd()).
 func extractEffectiveWorkDir(ctx *hook.Context, log logger.Logger) string {
 	if ctx.GetWorkingDir() != "" {
-		if ctx.Provider == hook.ProviderCodex || !ctx.IsBashTool() {
+		if ctx.Provider == hook.ProviderCodex || ctx.Provider == hook.ProviderGemini ||
+			!ctx.IsBashTool() {
 			return ctx.GetWorkingDir()
 		}
 	}

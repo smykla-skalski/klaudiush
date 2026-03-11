@@ -692,6 +692,10 @@ func defaultProvidersMap() map[string]any {
 			"experimental":      false,
 			"hooks_config_path": "",
 		},
+		"gemini": map[string]any{
+			"enabled":       false,
+			"settings_path": "~/.gemini/settings.json",
+		},
 	}
 }
 

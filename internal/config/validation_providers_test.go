@@ -40,4 +40,16 @@ var _ = Describe("Provider validation", func() {
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("providers.codex.experimental"))
 	})
+
+	It("accepts Gemini settings config when enabled", func() {
+		enabled := true
+		err := validator.validateProvidersConfig(&config.ProvidersConfig{
+			Gemini: &config.GeminiProviderConfig{
+				Enabled:      &enabled,
+				SettingsPath: "/tmp/settings.json",
+			},
+		})
+
+		Expect(err).NotTo(HaveOccurred())
+	})
 })

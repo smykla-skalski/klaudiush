@@ -18,6 +18,9 @@ const (
 
 	// ProviderCodex represents Codex hook payloads.
 	ProviderCodex Provider = "codex"
+
+	// ProviderGemini represents Gemini hook payloads.
+	ProviderGemini Provider = "gemini"
 )
 
 // CanonicalEvent represents the normalized cross-provider hook event name.
@@ -41,6 +44,9 @@ const (
 
 	// CanonicalEventNotification is a notification event.
 	CanonicalEventNotification CanonicalEvent = "notification"
+
+	// CanonicalEventPreCompress is a pre-compress lifecycle event.
+	CanonicalEventPreCompress CanonicalEvent = "pre_compress"
 )
 
 // ToolFamily represents the normalized cross-provider tool family.
@@ -79,6 +85,8 @@ func ParseProvider(s string) (Provider, error) {
 		return ProviderClaude, nil
 	case string(ProviderCodex):
 		return ProviderCodex, nil
+	case string(ProviderGemini):
+		return ProviderGemini, nil
 	default:
 		return ProviderUnknown, errors.Newf("unknown provider %q", s)
 	}
@@ -93,10 +101,12 @@ func NormalizeEventName(name string) CanonicalEvent {
 		return CanonicalEventAfterTool
 	case "sessionstart":
 		return CanonicalEventSessionStart
-	case "turnstop", "stop":
+	case "turnstop", "stop", "sessionend":
 		return CanonicalEventTurnStop
 	case "notification":
 		return CanonicalEventNotification
+	case "precompress":
+		return CanonicalEventPreCompress
 	default:
 		return CanonicalEventUnknown
 	}
@@ -111,7 +121,8 @@ func ResolveLegacyEventType(
 	canonical := NormalizeEventName(rawEventName)
 
 	switch canonical {
-	case CanonicalEventUnknown, CanonicalEventSessionStart, CanonicalEventTurnStop:
+	case CanonicalEventUnknown, CanonicalEventSessionStart, CanonicalEventTurnStop,
+		CanonicalEventPreCompress:
 	case CanonicalEventBeforeTool:
 		return EventTypePreToolUse
 	case CanonicalEventAfterTool:
@@ -138,6 +149,8 @@ func DefaultEventName(provider Provider) string {
 		return ""
 	case ProviderClaude:
 		return EventTypePreToolUse.String()
+	case ProviderGemini:
+		return "BeforeTool"
 	default:
 		return ""
 	}
@@ -150,6 +163,7 @@ func DisplayEventName(provider Provider, canonical CanonicalEvent, fallback Even
 	case ProviderCodex:
 		switch canonical {
 		case CanonicalEventUnknown:
+		case CanonicalEventPreCompress:
 		case CanonicalEventSessionStart:
 			return "SessionStart"
 		case CanonicalEventTurnStop:
@@ -161,9 +175,26 @@ func DisplayEventName(provider Provider, canonical CanonicalEvent, fallback Even
 		case CanonicalEventBeforeTool:
 			return "BeforeToolUse"
 		}
+	case ProviderGemini:
+		switch canonical {
+		case CanonicalEventUnknown:
+		case CanonicalEventBeforeTool:
+			return "BeforeTool"
+		case CanonicalEventAfterTool:
+			return "AfterTool"
+		case CanonicalEventSessionStart:
+			return "SessionStart"
+		case CanonicalEventTurnStop:
+			return "SessionEnd"
+		case CanonicalEventNotification:
+			return "Notification"
+		case CanonicalEventPreCompress:
+			return "PreCompress"
+		}
 	case ProviderClaude:
 		switch canonical {
-		case CanonicalEventUnknown, CanonicalEventSessionStart, CanonicalEventTurnStop:
+		case CanonicalEventUnknown, CanonicalEventSessionStart, CanonicalEventTurnStop,
+			CanonicalEventPreCompress:
 		case CanonicalEventBeforeTool:
 			return EventTypePreToolUse.String()
 		case CanonicalEventAfterTool:
@@ -183,19 +214,19 @@ func DisplayEventName(provider Provider, canonical CanonicalEvent, fallback Even
 // ResolveToolMetadata maps a raw tool name onto the legacy enum and canonical family.
 func ResolveToolMetadata(rawToolName string) (ToolType, ToolFamily) {
 	switch normalizeToken(rawToolName) {
-	case "bash", "execcommand", "runusershellcommand", "shell":
+	case "bash", "execcommand", "runusershellcommand", "runshellcommand", "shell":
 		return ToolTypeBash, ToolFamilyShell
 	case "write", "writefile":
 		return ToolTypeWrite, ToolFamilyWrite
-	case "edit", "applypatch":
+	case "edit", "applypatch", "replace":
 		return ToolTypeEdit, ToolFamilyEdit
 	case "multiedit", "multifileedit":
 		return ToolTypeMultiEdit, ToolFamilyMultiEdit
 	case "grep", "search":
 		return ToolTypeGrep, ToolFamilyGrep
-	case "read", "viewimage":
+	case "read", "readfile", "viewimage":
 		return ToolTypeRead, ToolFamilyRead
-	case "glob", "listfiles":
+	case "glob", "listfiles", "ls":
 		return ToolTypeGlob, ToolFamilyGlob
 	default:
 		if toolType, err := ToolTypeString(rawToolName); err == nil {

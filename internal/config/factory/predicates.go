@@ -13,7 +13,10 @@ func beforeToolOrCodexAfterToolPredicate() validator.Predicate {
 	return validator.Or(
 		validator.EventIs(hook.CanonicalEventBeforeTool),
 		validator.And(
-			validator.ProviderIs(hook.ProviderCodex),
+			validator.Or(
+				validator.ProviderIs(hook.ProviderCodex),
+				validator.ProviderIs(hook.ProviderGemini),
+			),
 			validator.EventIs(hook.CanonicalEventAfterTool),
 		),
 	)
@@ -23,5 +26,6 @@ func lifecycleEventPredicate() validator.Predicate {
 	return validator.Or(
 		validator.EventIs(hook.CanonicalEventSessionStart),
 		validator.EventIs(hook.CanonicalEventTurnStop),
+		validator.EventIs(hook.CanonicalEventPreCompress),
 	)
 }

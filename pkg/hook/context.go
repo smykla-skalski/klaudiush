@@ -241,6 +241,8 @@ func (c *Context) EventNames() []string {
 		names = appendUniqueFold(names, "Stop")
 	case CanonicalEventNotification:
 		names = appendUniqueFold(names, "Notification")
+	case CanonicalEventPreCompress:
+		names = appendUniqueFold(names, "PreCompress")
 	}
 
 	return names

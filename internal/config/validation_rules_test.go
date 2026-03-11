@@ -168,10 +168,14 @@ var _ = Describe("Validator", func() {
 				eventTypes := []string{
 					"PreToolUse", "pretooluse", "PRETOOLUSE",
 					"PostToolUse", "posttooluse",
+					"BeforeTool", "beforetool",
+					"AfterTool", "aftertool",
 					"Notification", "notification",
 					"SessionStart", "sessionstart",
+					"SessionEnd", "sessionend",
 					"Stop", "stop",
 					"AfterToolUse", "aftertooluse",
+					"PreCompress", "precompress",
 				}
 
 				for _, eventType := range eventTypes {
@@ -190,7 +194,9 @@ var _ = Describe("Validator", func() {
 			})
 
 			It("should accept all valid providers (case-insensitive)", func() {
-				for _, provider := range []string{"claude", "CLAUDE", "codex", "CODEX"} {
+				for _, provider := range []string{
+					"claude", "CLAUDE", "codex", "CODEX", "gemini", "GEMINI",
+				} {
 					err := validator.validateRulesConfig(&config.RulesConfig{
 						Rules: []config.RuleConfig{
 							{

@@ -8,18 +8,21 @@ var (
 	ValidActionTypes = []string{"allow", "block", "warn"}
 
 	// ValidProviders are the valid provider filters for rules.
-	ValidProviders = []string{"claude", "codex"}
+	ValidProviders = []string{"claude", "codex", "gemini"}
 
 	// ValidEventTypes are the valid event types for rules (case-insensitive matching supported).
 	ValidEventTypes = []string{
 		"before_tool", "after_tool", "session_start", "turn_stop", "notification",
+		"pre_compress",
 		"PreToolUse", "PostToolUse", "Notification", "SessionStart", "Stop", "AfterToolUse",
+		"BeforeTool", "AfterTool", "SessionEnd", "PreCompress",
 	}
 
 	// ValidToolTypes are the valid tool types for rules (case-insensitive matching supported).
 	ValidToolTypes = []string{
 		"shell", "write", "edit", "multiedit", "grep", "read", "glob",
 		"Bash", "Write", "Edit", "MultiEdit", "Grep", "Read", "Glob",
+		"run_shell_command", "write_file", "replace", "read_file", "ls",
 	}
 )
 
@@ -68,8 +71,8 @@ type RuleMatchConfig struct {
 	ValidatorType string `json:"validator_type,omitempty" koanf:"validator_type" toml:"validator_type,omitempty"`
 
 	// Provider filters by hook provider.
-	// Examples: "claude", "codex"
-	Provider string `json:"provider,omitempty" jsonschema:"enum=claude,enum=codex" koanf:"provider" toml:"provider,omitempty"`
+	// Examples: "claude", "codex", "gemini"
+	Provider string `json:"provider,omitempty" jsonschema:"enum=claude,enum=codex,enum=gemini" koanf:"provider" toml:"provider,omitempty"`
 
 	// RepoPattern matches against the repository root path.
 	// Supports glob patterns (e.g., "**/myorg/**"), regex, and negation (! prefix).
@@ -115,7 +118,7 @@ type RuleMatchConfig struct {
 
 	// EventType matches against the hook event type.
 	// Examples: "before_tool", "PreToolUse", "SessionStart"
-	EventType string `json:"event_type,omitempty" jsonschema:"enum=before_tool,enum=after_tool,enum=session_start,enum=turn_stop,enum=notification,enum=PreToolUse,enum=PostToolUse,enum=Notification,enum=SessionStart,enum=Stop,enum=AfterToolUse" koanf:"event_type" toml:"event_type,omitempty"`
+	EventType string `json:"event_type,omitempty" jsonschema:"enum=before_tool,enum=after_tool,enum=session_start,enum=turn_stop,enum=notification,enum=pre_compress,enum=PreToolUse,enum=PostToolUse,enum=Notification,enum=SessionStart,enum=Stop,enum=AfterToolUse,enum=BeforeTool,enum=AfterTool,enum=SessionEnd,enum=PreCompress" koanf:"event_type" toml:"event_type,omitempty"`
 
 	// CaseInsensitive enables case-insensitive pattern matching for all patterns.
 	// Default: false

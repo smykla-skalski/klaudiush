@@ -73,6 +73,10 @@ func BuildForContext(
 		return BuildCodex(hookCtx, errs, patternWarnings)
 	}
 
+	if hookCtx != nil && hookCtx.Provider == hook.ProviderGemini {
+		return BuildGemini(hookCtx, errs, patternWarnings)
+	}
+
 	eventName := ""
 	if hookCtx != nil {
 		eventName = hookCtx.EventName()
@@ -137,6 +141,66 @@ func BuildCodex(
 
 		if additionalContext != "" {
 			resp.HookSpecificOutput = &CodexHookSpecificOutput{
+				HookEventName:     hookCtx.EventName(),
+				AdditionalContext: additionalContext,
+			}
+		}
+	}
+
+	return resp
+}
+
+// BuildGemini constructs a Gemini command-hook response.
+func BuildGemini(
+	hookCtx *hook.Context,
+	errs []*dispatcher.ValidationError,
+	patternWarnings []string,
+) *GeminiCommandResponse {
+	if len(errs) == 0 {
+		return nil
+	}
+
+	blocking, warnings, bypassed := categorize(errs)
+	additionalContext := formatAdditionalContext(blocking, warnings, bypassed, patternWarnings)
+
+	resp := &GeminiCommandResponse{
+		SystemMessage: FormatSystemMessage(errs),
+	}
+
+	switch hookCtx.Event {
+	case hook.CanonicalEventBeforeTool:
+		if len(blocking) > 0 {
+			resp.Decision = "deny"
+			resp.Reason = formatDecisionReason(blocking)
+
+			return resp
+		}
+
+		if additionalContext != "" {
+			resp.HookSpecificOutput = &GeminiHookSpecificOutput{
+				HookEventName:     hookCtx.EventName(),
+				AdditionalContext: additionalContext,
+			}
+		}
+	case hook.CanonicalEventAfterTool, hook.CanonicalEventSessionStart:
+		if additionalContext != "" {
+			resp.HookSpecificOutput = &GeminiHookSpecificOutput{
+				HookEventName:     hookCtx.EventName(),
+				AdditionalContext: additionalContext,
+			}
+		}
+	case hook.CanonicalEventTurnStop, hook.CanonicalEventNotification,
+		hook.CanonicalEventPreCompress:
+	default:
+		if len(blocking) > 0 {
+			resp.Decision = "deny"
+			resp.Reason = formatDecisionReason(blocking)
+
+			return resp
+		}
+
+		if additionalContext != "" {
+			resp.HookSpecificOutput = &GeminiHookSpecificOutput{
 				HookEventName:     hookCtx.EventName(),
 				AdditionalContext: additionalContext,
 			}

@@ -44,6 +44,8 @@ type JSONInput struct {
 	Command          string          `json:"command,omitempty"`
 	HookEventName    string          `json:"hook_event_name,omitempty"`
 	NotificationType string          `json:"notification_type,omitempty"`
+	Message          string          `json:"message,omitempty"`
+	Details          json.RawMessage `json:"details,omitempty"`
 	Cwd              string          `json:"cwd,omitempty"`
 	PermissionMode   string          `json:"permission_mode,omitempty"`
 	Model            string          `json:"model,omitempty"`
@@ -252,12 +254,36 @@ func inferProvider(eventName string, input JSONInput) hook.Provider {
 		return hook.ProviderCodex
 	}
 
+	switch normalizeToolName(input.ToolName) {
+	case "runshellcommand", "writefile", "replace", "readfile", "ls":
+		return hook.ProviderGemini
+	}
+
 	switch hook.NormalizeEventName(eventName) {
-	case hook.CanonicalEventSessionStart, hook.CanonicalEventTurnStop, hook.CanonicalEventAfterTool:
+	case hook.CanonicalEventPreCompress:
+		return hook.ProviderGemini
+	case hook.CanonicalEventSessionStart, hook.CanonicalEventTurnStop,
+		hook.CanonicalEventAfterTool:
+		normalizedEventName := normalizeToolName(eventName)
+		if normalizedEventName == "sessionend" || normalizedEventName == "aftertool" {
+			return hook.ProviderGemini
+		}
+
 		return hook.ProviderCodex
+	case hook.CanonicalEventBeforeTool:
+		if normalizeToolName(eventName) == "beforetool" {
+			return hook.ProviderGemini
+		}
+	case hook.CanonicalEventNotification:
+		if strings.EqualFold(input.HookEventName, "Notification") &&
+			(input.Message != "" || len(input.Details) > 0) {
+			return hook.ProviderGemini
+		}
 	default:
 		return hook.ProviderClaude
 	}
+
+	return hook.ProviderClaude
 }
 
 func parseToolInput(
