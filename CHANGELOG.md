@@ -5,6 +5,17 @@ All notable changes to klaudiush will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.29.0](https://github.com/smykla-skalski/klaudiush/compare/v1.28.0...v1.29.0) (2026-03-11)
+
+### Features
+
+* **gemini:** add init and doctor integration ([9b5d02d](https://github.com/smykla-skalski/klaudiush/commit/9b5d02d88ba452c6ddaf867b071ae34fc01fdb2f))
+* **gemini:** add provider-aware runtime support ([d7d6c2d](https://github.com/smykla-skalski/klaudiush/commit/d7d6c2d947fc5079638a4020d779c32cfc7fe1c5))
+
+### Bug Fixes
+
+* **release:** format GitHub changelog entries ([0079a90](https://github.com/smykla-skalski/klaudiush/commit/0079a90a03f200fb7775de8e906e4913eb66ec3b))
+
 ## [1.28.0](https://github.com/smykla-skalski/klaudiush/compare/v1.27.0...v1.28.0) (2026-03-11)
 
 ### Features
