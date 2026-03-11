@@ -3,7 +3,6 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -58,14 +57,9 @@ func runDebugPatterns(cmd *cobra.Command, _ []string) error {
 
 	patternsCfg := cfg.GetPatterns()
 
-	workDir, err := os.Getwd()
+	store, err := loadPatternStore(patternsCfg, "", loggerFromCmd(cmd))
 	if err != nil {
-		return errors.Wrap(err, "getting working directory")
-	}
-
-	store := patterns.NewFilePatternStore(patternsCfg, workDir)
-	if loadErr := store.Load(); loadErr != nil {
-		return errors.Wrap(loadErr, "loading pattern store")
+		return errors.Wrap(err, "loading pattern store")
 	}
 
 	displayPatternStatus(patternsCfg, store)

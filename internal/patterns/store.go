@@ -118,6 +118,7 @@ type FilePatternStore struct {
 }
 
 // NewFilePatternStore creates a store with dual storage paths.
+// projectDir should be the resolved project root, not an arbitrary subdirectory.
 // projectPath holds seed/shared patterns, globalPath holds learned patterns.
 func NewFilePatternStore(cfg *config.PatternsConfig, projectDir string) *FilePatternStore {
 	if cfg == nil {

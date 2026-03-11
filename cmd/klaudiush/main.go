@@ -488,30 +488,7 @@ func initPatternStore(
 	workDir string,
 	log logger.Logger,
 ) (*patterns.FilePatternStore, error) {
-	projectDir := workDir
-	if projectDir == "" {
-		var err error
-
-		projectDir, err = os.Getwd()
-		if err != nil {
-			log.Debug("failed to get working directory for patterns", "error", err)
-
-			return nil, errors.Wrap(err, "getting working directory")
-		}
-	}
-
-	store := patterns.NewFilePatternStore(cfg, projectDir)
-	if err := store.Load(); err != nil {
-		log.Debug("failed to load pattern store", "error", err)
-	}
-
-	if cfg.IsUseSeedData() {
-		if err := patterns.EnsureSeedData(store); err != nil {
-			log.Debug("failed to ensure seed data", "error", err)
-		}
-	}
-
-	return store, nil
+	return loadPatternStore(cfg, workDir, log)
 }
 
 // extractBlockingCodes returns the error codes from blocking validation errors.
