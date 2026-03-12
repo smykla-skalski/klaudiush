@@ -391,7 +391,7 @@ func (u *Updater) extractBinary(archivePath string) (string, func(), error) {
 
 // removeTempFile removes a temporary file, ignoring errors.
 func removeTempFile(path string) {
-	_ = os.Remove(path) //nolint:gosec // G703: path comes from os.CreateTemp, not user input
+	_ = os.Remove(path) // #nosec G703 -- path comes from updater temp file lifecycle
 }
 
 // isSpecificVersion returns true if the tag looks like a specific version (v1.X.Y)

@@ -58,7 +58,7 @@ func AtomicWriteFile(path string, data []byte, createBackup bool) error {
 
 // copyFile copies src file to dst
 func copyFile(src, dst string) error {
-	data, err := os.ReadFile(src) //nolint:gosec // src is controlled by caller
+	data, err := os.ReadFile(src) // #nosec G304 -- source is from internal settings migration path
 	if err != nil {
 		return errors.Wrap(err, "failed to read source file")
 	}
@@ -68,6 +68,7 @@ func copyFile(src, dst string) error {
 		return errors.Wrap(err, "failed to stat source file")
 	}
 
+	// #nosec G703 -- destination path is derived from resolved source location
 	if err := os.WriteFile(dst, data, info.Mode()); err != nil {
 		return errors.Wrap(err, "failed to write destination file")
 	}

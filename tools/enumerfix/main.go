@@ -34,7 +34,7 @@ func run(args []string) error {
 
 	filename := filepath.Clean(args[1])
 
-	content, err := os.ReadFile( //nolint:gosec // G703: filename is a CLI arg to a codegen tool, not user input
+	content, err := os.ReadFile(
 		filename,
 	)
 	if err != nil {
@@ -43,7 +43,8 @@ func run(args []string) error {
 
 	fixed := fixEnumerFile(content)
 
-	if err := os.WriteFile( //nolint:gosec // G703: filename is a CLI arg to a codegen tool, not user input
+	// #nosec G703 -- filename is resolved CLI argument for a local codegen tool
+	if err := os.WriteFile(
 		filename,
 		fixed,
 		filePermissions,

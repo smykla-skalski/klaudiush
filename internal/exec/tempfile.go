@@ -36,7 +36,7 @@ func (*tempFileManager) Create(pattern, content string) (string, func(), error) 
 	// Write content
 	if _, err := tmpFile.WriteString(content); err != nil {
 		_ = tmpFile.Close()
-		_ = os.Remove( //nolint:gosec // G703: filePath comes from os.CreateTemp, not user input
+		_ = os.Remove( // #nosec G703 -- filePath comes from os.CreateTemp, not user input
 			filePath,
 		)
 
@@ -45,7 +45,7 @@ func (*tempFileManager) Create(pattern, content string) (string, func(), error) 
 
 	// Close file
 	if err := tmpFile.Close(); err != nil {
-		_ = os.Remove( //nolint:gosec // G703: filePath comes from os.CreateTemp, not user input
+		_ = os.Remove( // #nosec G703 -- filePath comes from os.CreateTemp, not user input
 			filePath,
 		)
 
