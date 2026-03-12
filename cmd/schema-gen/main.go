@@ -27,7 +27,7 @@ func main() {
 
 	const filePerms = 0o644
 
-	writeErr := os.WriteFile( //nolint:gosec // G703: outPath is a CLI arg to a codegen tool, not user input
+	writeErr := os.WriteFile(
 		outPath,
 		data,
 		filePerms,

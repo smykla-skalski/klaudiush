@@ -288,7 +288,7 @@ func writeMigrationMarker() error {
 }
 
 func copyAndRemove(src, dest string) error {
-	data, err := os.ReadFile(src) //nolint:gosec // G304: src is from internal migration paths
+	data, err := os.ReadFile(src) // #nosec G304 -- source is from internal migration paths
 	if err != nil {
 		return errors.Wrapf(err, "reading %s", src)
 	}
@@ -298,6 +298,7 @@ func copyAndRemove(src, dest string) error {
 		return errors.Wrapf(err, "stat %s", src)
 	}
 
+	// #nosec G703 -- destination path is controlled by migration target resolution
 	if err := os.WriteFile(dest, data, info.Mode()); err != nil {
 		return errors.Wrapf(err, "writing %s", dest)
 	}

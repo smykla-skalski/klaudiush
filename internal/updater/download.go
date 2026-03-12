@@ -28,8 +28,6 @@ func NewDownloader(client *http.Client) *Downloader {
 }
 
 // DownloadToFile downloads a URL to a local file path.
-//
-//nolint:gosec // G304/G704: URL and destPath are constructed internally by the updater, not user-controlled
 func (d *Downloader) DownloadToFile(
 	ctx context.Context,
 	url, destPath string,
@@ -50,6 +48,7 @@ func (d *Downloader) DownloadToFile(
 		return errors.Errorf("download failed: HTTP %d", resp.StatusCode)
 	}
 
+	// #nosec G304 -- destination path is controlled internally by updater flow.
 	out, err := os.Create(destPath)
 	if err != nil {
 		return errors.Wrap(err, "creating destination file")
@@ -75,8 +74,6 @@ func (d *Downloader) DownloadToFile(
 }
 
 // DownloadToString downloads a URL and returns the body as a string.
-//
-//nolint:gosec // G704: intentional HTTP request to GitHub releases API for update downloads
 func (d *Downloader) DownloadToString(ctx context.Context, url string) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
