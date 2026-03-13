@@ -5,6 +5,15 @@ All notable changes to klaudiush will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.29.3](https://github.com/smykla-skalski/klaudiush/compare/v1.29.2...v1.29.3) (2026-03-13)
+
+### Bug Fixes
+
+* **deps:** update module github.com/knadh/koanf/v2 to v2.3.3 ([#368](https://github.com/smykla-skalski/klaudiush/issues/368)) ([018368a](https://github.com/smykla-skalski/klaudiush/commit/018368ad48a716654b8f76cb2a83d54a2b7061ee))
+* **deps:** update module github.com/mattn/go-runewidth to v0.0.21 ([#374](https://github.com/smykla-skalski/klaudiush/issues/374)) ([45435c5](https://github.com/smykla-skalski/klaudiush/commit/45435c5bd969816dbe234fbf818067edac251fb1))
+* **deps:** update module github.com/olekukonko/tablewriter to v1.1.4 ([#383](https://github.com/smykla-skalski/klaudiush/issues/383)) ([6cc6840](https://github.com/smykla-skalski/klaudiush/commit/6cc684020f850fe436a21000427c8d4e6105f2c9))
+* **deps:** update module golang.org/x/term to v0.41.0 ([#380](https://github.com/smykla-skalski/klaudiush/issues/380)) ([15cbde2](https://github.com/smykla-skalski/klaudiush/commit/15cbde29c2c2c66ccff8c9663b8e3df721fca517))
+
 ## [1.29.2](https://github.com/smykla-skalski/klaudiush/compare/v1.29.1...v1.29.2) (2026-03-12)
 
 ### Bug Fixes

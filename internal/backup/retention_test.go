@@ -22,29 +22,26 @@ var _ = Describe("Retention Policies", func() {
 		now = time.Now()
 
 		// Chain 1: 3 snapshots (oldest chain)
-		chain1 = []backup.Snapshot{
-			{
-				ID:          "snap1",
-				ChainID:     "chain-1",
-				SequenceNum: 1,
-				Timestamp:   now.Add(-10 * 24 * time.Hour), // 10 days ago
-				Size:        1000,
-			},
-			{
-				ID:          "snap2",
-				ChainID:     "chain-1",
-				SequenceNum: 2,
-				Timestamp:   now.Add(-9 * 24 * time.Hour), // 9 days ago
-				Size:        500,
-			},
-			{
-				ID:          "snap3",
-				ChainID:     "chain-1",
-				SequenceNum: 3,
-				Timestamp:   now.Add(-8 * 24 * time.Hour), // 8 days ago
-				Size:        500,
-			},
-		}
+		chain1 = make([]backup.Snapshot, 0, 3)
+		chain1 = append(chain1, backup.Snapshot{
+			ID:          "snap1",
+			ChainID:     "chain-1",
+			SequenceNum: 1,
+			Timestamp:   now.Add(-10 * 24 * time.Hour), // 10 days ago
+			Size:        1000,
+		}, backup.Snapshot{
+			ID:          "snap2",
+			ChainID:     "chain-1",
+			SequenceNum: 2,
+			Timestamp:   now.Add(-9 * 24 * time.Hour), // 9 days ago
+			Size:        500,
+		}, backup.Snapshot{
+			ID:          "snap3",
+			ChainID:     "chain-1",
+			SequenceNum: 3,
+			Timestamp:   now.Add(-8 * 24 * time.Hour), // 8 days ago
+			Size:        500,
+		})
 
 		// Chain 2: 2 snapshots (newer chain)
 		chain2 = []backup.Snapshot{
@@ -64,7 +61,9 @@ var _ = Describe("Retention Policies", func() {
 			},
 		}
 
-		allSnaps = append(chain1, chain2...)
+		allSnaps = make([]backup.Snapshot, 0, len(chain1)+len(chain2))
+		allSnaps = append(allSnaps, chain1...)
+		allSnaps = append(allSnaps, chain2...)
 		totalSize = int64(5000) // 1000 + 500 + 500 + 2000 + 1000
 	})
 

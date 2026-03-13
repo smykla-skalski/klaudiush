@@ -98,8 +98,7 @@ func ResetRepositoryCache() {
 func DiscoverRepository() (*SDKRepository, error) {
 	repoOnce.Do(func() {
 		repo, err := git.PlainOpenWithOptions(".", &git.PlainOpenOptions{
-			DetectDotGit:          true,
-			EnableDotGitCommonDir: true,
+			DetectDotGit: true,
 		})
 		if err != nil {
 			if errors.Is(err, git.ErrRepositoryNotExists) {
@@ -129,8 +128,7 @@ func DiscoverRepository() (*SDKRepository, error) {
 // including remotes. See: https://github.com/go-git/go-git/issues/225
 func OpenRepository(path string) (*SDKRepository, error) {
 	repo, err := git.PlainOpenWithOptions(path, &git.PlainOpenOptions{
-		DetectDotGit:          true,
-		EnableDotGitCommonDir: true,
+		DetectDotGit: true,
 	})
 	if err != nil {
 		if errors.Is(err, git.ErrRepositoryNotExists) {
