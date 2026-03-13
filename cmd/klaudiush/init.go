@@ -682,29 +682,7 @@ func loadRawSettings(path string) (map[string]any, error) {
 	return raw, nil
 }
 
-// addHookToSettings adds a PreToolUse hook entry for klaudiush.
+// addHookToSettings adds the standard Claude hook entries for klaudiush.
 func addHookToSettings(raw map[string]any, binaryPath string) {
-	hooks, ok := raw["hooks"].(map[string]any)
-	if !ok {
-		hooks = make(map[string]any)
-		raw["hooks"] = hooks
-	}
-
-	entry := map[string]any{
-		"matcher": "Bash|Write|Edit",
-		"hooks": []any{
-			map[string]any{
-				"type":    "command",
-				"command": binaryPath + " --hook-type PreToolUse",
-				"timeout": defaultHookTimeout,
-			},
-		},
-	}
-
-	existing, ok := hooks["PreToolUse"].([]any)
-	if !ok {
-		existing = nil
-	}
-
-	hooks["PreToolUse"] = append(existing, entry)
+	settings.AddClaudeDispatcherHooks(raw, binaryPath, true, true)
 }

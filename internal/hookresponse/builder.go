@@ -77,12 +77,49 @@ func BuildForContext(
 		return BuildGemini(hookCtx, errs, patternWarnings)
 	}
 
+	if hookCtx != nil &&
+		hookCtx.Provider == hook.ProviderClaude &&
+		hookCtx.Event == hook.CanonicalEventAfterTool {
+		return BuildClaudeAfterTool(hookCtx, errs, patternWarnings)
+	}
+
 	eventName := ""
 	if hookCtx != nil {
 		eventName = hookCtx.EventName()
 	}
 
 	return BuildWithPatterns(eventName, errs, patternWarnings)
+}
+
+// BuildClaudeAfterTool constructs a Claude PostToolUse response.
+func BuildClaudeAfterTool(
+	hookCtx *hook.Context,
+	errs []*dispatcher.ValidationError,
+	patternWarnings []string,
+) *HookResponse {
+	if len(errs) == 0 {
+		return nil
+	}
+
+	blocking, warnings, bypassed := categorize(errs)
+	additionalContext := formatAdditionalContext(blocking, warnings, bypassed, patternWarnings)
+	resp := &HookResponse{
+		SystemMessage: FormatSystemMessage(errs),
+	}
+
+	if len(blocking) > 0 {
+		resp.Decision = "block"
+		resp.Reason = formatDecisionReason(blocking)
+	}
+
+	if additionalContext != "" {
+		resp.HookSpecificOutput = &HookSpecificOutput{
+			HookEventName:     hookCtx.EventName(),
+			AdditionalContext: additionalContext,
+		}
+	}
+
+	return resp
 }
 
 // BuildCodex constructs a Codex command-hook response.

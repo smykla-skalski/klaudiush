@@ -49,16 +49,21 @@ func LoadRawJSONFile(path string) (map[string]any, error) {
 }
 
 // InstallClaudeDispatcher registers klaudiush in a Claude settings.json file.
-// Returns true when the dispatcher was already present.
+// Returns true when all supported Claude hooks were already present.
 func InstallClaudeDispatcher(settingsPath, binaryPath string) (bool, error) {
 	parser := NewSettingsParser(settingsPath)
 
-	registered, err := parser.IsDispatcherRegistered(binaryPath)
+	hasPreToolUse, err := parser.HasEventHookCommand("PreToolUse", binaryPath)
 	if err != nil {
 		return false, errors.Wrap(err, "failed to check settings")
 	}
 
-	if registered {
+	hasPostToolUse, err := parser.HasEventHookCommand("PostToolUse", binaryPath)
+	if err != nil {
+		return false, errors.Wrap(err, "failed to check settings")
+	}
+
+	if hasPreToolUse && hasPostToolUse {
 		return true, nil
 	}
 
@@ -67,7 +72,7 @@ func InstallClaudeDispatcher(settingsPath, binaryPath string) (bool, error) {
 		return false, err
 	}
 
-	AddClaudeDispatcherHook(raw, binaryPath)
+	AddClaudeDispatcherHooks(raw, binaryPath, !hasPreToolUse, !hasPostToolUse)
 
 	if err := writeRawJSONFile(settingsPath, raw); err != nil {
 		return false, errors.Wrap(err, "failed to write settings")
@@ -159,27 +164,32 @@ func InstallGeminiDispatcher(settingsPath, binaryPath string) (bool, error) {
 	return false, nil
 }
 
-// AddClaudeDispatcherHook appends the standard Claude PreToolUse command hook.
-func AddClaudeDispatcherHook(raw map[string]any, binaryPath string) {
+// AddClaudeDispatcherHooks appends missing Claude command hooks.
+func AddClaudeDispatcherHooks(
+	raw map[string]any,
+	binaryPath string,
+	addPreToolUse bool,
+	addPostToolUse bool,
+) {
 	hooks := ensureHooksMap(raw)
 
-	entry := map[string]any{
-		"matcher": "Bash|Write|Edit",
-		"hooks": []any{
-			map[string]any{
-				"type":    "command",
-				"command": ClaudeDispatcherCommand(binaryPath),
-				"timeout": DefaultCommandHookTimeout,
-			},
-		},
+	if addPreToolUse {
+		hooks["PreToolUse"] = appendEventHookWithMatcher(
+			hooks["PreToolUse"],
+			ClaudeDispatcherCommand(binaryPath, "PreToolUse"),
+			claudeDispatcherMatcher(),
+			DefaultCommandHookTimeout,
+		)
 	}
 
-	existing, ok := hooks["PreToolUse"].([]any)
-	if !ok {
-		existing = nil
+	if addPostToolUse {
+		hooks["PostToolUse"] = appendEventHookWithMatcher(
+			hooks["PostToolUse"],
+			ClaudeDispatcherCommand(binaryPath, "PostToolUse"),
+			claudeDispatcherMatcher(),
+			DefaultCommandHookTimeout,
+		)
 	}
-
-	hooks["PreToolUse"] = append(existing, entry)
 }
 
 // AddCodexDispatcherHooks appends missing Codex command hooks.
@@ -245,8 +255,8 @@ func AddGeminiDispatcherHooks(raw map[string]any, binaryPath string, missing map
 }
 
 // ClaudeDispatcherCommand returns the Claude hook command string.
-func ClaudeDispatcherCommand(binaryPath string) string {
-	return binaryPath + " --hook-type PreToolUse"
+func ClaudeDispatcherCommand(binaryPath, eventName string) string {
+	return binaryPath + " --hook-type " + eventName
 }
 
 // CodexSessionStartCommand returns the Codex SessionStart command string.
@@ -292,6 +302,10 @@ func GeminiNotificationCommand(binaryPath string) string {
 // GeminiPreCompressCommand returns the Gemini PreCompress command string.
 func GeminiPreCompressCommand(binaryPath string) string {
 	return geminiDispatcherEventCommand(binaryPath, "PreCompress")
+}
+
+func claudeDispatcherMatcher() string {
+	return "Bash|Write|Edit|MultiEdit"
 }
 
 func ensureHooksMap(raw map[string]any) map[string]any {

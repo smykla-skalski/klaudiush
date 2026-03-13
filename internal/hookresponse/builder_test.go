@@ -369,4 +369,30 @@ var _ = Describe("Build", func() {
 		Expect(geminiResp.Reason).To(BeEmpty())
 		Expect(geminiResp.SystemMessage).To(ContainSubstring("GIT001"))
 	})
+
+	It("builds Claude PostToolUse blocking responses with top-level decision fields", func() {
+		errs := []*dispatcher.ValidationError{
+			{
+				Validator:   "git.push",
+				Message:     "protected branch",
+				ShouldBlock: true,
+				Reference:   validator.RefGitKongOrgPush,
+			},
+		}
+
+		resp := hookresponse.BuildForContext(&hook.Context{
+			Provider:     hook.ProviderClaude,
+			Event:        hook.CanonicalEventAfterTool,
+			RawEventName: "PostToolUse",
+		}, errs, nil)
+
+		claudeResp, ok := resp.(*hookresponse.HookResponse)
+		Expect(ok).To(BeTrue())
+		Expect(claudeResp.Decision).To(Equal("block"))
+		Expect(claudeResp.Reason).To(ContainSubstring("[GIT022]"))
+		Expect(claudeResp.HookSpecificOutput).NotTo(BeNil())
+		Expect(claudeResp.HookSpecificOutput.HookEventName).To(Equal("PostToolUse"))
+		Expect(claudeResp.HookSpecificOutput.AdditionalContext).To(ContainSubstring("Fix ALL"))
+		Expect(claudeResp.HookSpecificOutput.PermissionDecision).To(BeEmpty())
+	})
 })

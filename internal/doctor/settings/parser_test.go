@@ -38,13 +38,16 @@ var _ = Describe("SettingsParser", func() {
 				Expect(err).NotTo(HaveOccurred())
 				Expect(result).NotTo(BeNil())
 				Expect(result.Hooks).To(HaveKey("PreToolUse"))
+				Expect(result.Hooks).To(HaveKey("PostToolUse"))
 				Expect(result.Hooks["PreToolUse"]).To(HaveLen(1))
-				Expect(result.Hooks["PreToolUse"][0].Matcher).To(Equal("Bash|Write|Edit"))
+				Expect(result.Hooks["PreToolUse"][0].Matcher).To(Equal("Bash|Write|Edit|MultiEdit"))
 				Expect(result.Hooks["PreToolUse"][0].Hooks).To(HaveLen(1))
 				Expect(result.Hooks["PreToolUse"][0].Hooks[0].Type).To(Equal("command"))
 				Expect(result.Hooks["PreToolUse"][0].Hooks[0].Command).
 					To(Equal("klaudiush --hook-type PreToolUse"))
 				Expect(result.Hooks["PreToolUse"][0].Hooks[0].Timeout).To(Equal(30))
+				Expect(result.Hooks["PostToolUse"][0].Hooks[0].Command).
+					To(Equal("klaudiush --hook-type PostToolUse"))
 			})
 		})
 
@@ -219,6 +222,52 @@ var _ = Describe("SettingsParser", func() {
 				Expect(errors.Is(err, settings.ErrInvalidJSON)).To(BeTrue())
 				Expect(hasHook).To(BeFalse())
 			})
+		})
+	})
+
+	Describe("HasPostToolUseHook", func() {
+		Context("when PostToolUse hook exists", func() {
+			It("should return true", func() {
+				parser := settings.NewSettingsParser(
+					filepath.Join(testdataDir, "valid_with_dispatcher.json"),
+				)
+
+				hasHook, err := parser.HasPostToolUseHook()
+				Expect(err).NotTo(HaveOccurred())
+				Expect(hasHook).To(BeTrue())
+			})
+		})
+
+		Context("when PostToolUse hook does not exist", func() {
+			It("should return false", func() {
+				parser := settings.NewSettingsParser(filepath.Join(testdataDir, "empty.json"))
+
+				hasHook, err := parser.HasPostToolUseHook()
+				Expect(err).NotTo(HaveOccurred())
+				Expect(hasHook).To(BeFalse())
+			})
+		})
+	})
+
+	Describe("HasEventHookCommand", func() {
+		It("matches a dispatcher command for a specific event", func() {
+			parser := settings.NewSettingsParser(
+				filepath.Join(testdataDir, "valid_with_dispatcher.json"),
+			)
+
+			hasHook, err := parser.HasEventHookCommand("PostToolUse", "/usr/local/bin/klaudiush")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(hasHook).To(BeTrue())
+		})
+
+		It("does not match an unrelated dispatcher command", func() {
+			parser := settings.NewSettingsParser(
+				filepath.Join(testdataDir, "valid_without_dispatcher.json"),
+			)
+
+			hasHook, err := parser.HasEventHookCommand("PreToolUse", "klaudiush")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(hasHook).To(BeFalse())
 		})
 	})
 

@@ -4,6 +4,8 @@ package hookresponse
 // HookResponse is the top-level JSON structure written to stdout.
 type HookResponse struct {
 	HookSpecificOutput *HookSpecificOutput `json:"hookSpecificOutput,omitempty"`
+	Decision           string              `json:"decision,omitempty"`
+	Reason             string              `json:"reason,omitempty"`
 	SystemMessage      string              `json:"systemMessage,omitempty"`
 }
 

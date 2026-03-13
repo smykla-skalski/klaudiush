@@ -81,9 +81,13 @@ var _ = Describe("Install", func() {
 			Expect(ok).To(BeTrue())
 			Expect(preToolUse).To(HaveLen(1))
 
+			postToolUse, ok := hooks["PostToolUse"].([]any)
+			Expect(ok).To(BeTrue())
+			Expect(postToolUse).To(HaveLen(1))
+
 			entry, ok := preToolUse[0].(map[string]any)
 			Expect(ok).To(BeTrue())
-			Expect(entry["matcher"]).To(Equal("Bash|Write|Edit"))
+			Expect(entry["matcher"]).To(Equal("Bash|Write|Edit|MultiEdit"))
 
 			innerHooks, ok := entry["hooks"].([]any)
 			Expect(ok).To(BeTrue())
@@ -94,9 +98,17 @@ var _ = Describe("Install", func() {
 			Expect(cmd["type"]).To(Equal("command"))
 			Expect(cmd["command"]).To(Equal("/usr/local/bin/klaudiush --hook-type PreToolUse"))
 			Expect(cmd["timeout"]).To(Equal(defaultHookTimeout))
+
+			postEntry, ok := postToolUse[0].(map[string]any)
+			Expect(ok).To(BeTrue())
+			postInnerHooks, ok := postEntry["hooks"].([]any)
+			Expect(ok).To(BeTrue())
+			postCmd, ok := postInnerHooks[0].(map[string]any)
+			Expect(ok).To(BeTrue())
+			Expect(postCmd["command"]).To(Equal("/usr/local/bin/klaudiush --hook-type PostToolUse"))
 		})
 
-		It("appends to existing PreToolUse hooks", func() {
+		It("appends missing Claude hooks without dropping existing entries", func() {
 			raw := map[string]any{
 				"hooks": map[string]any{
 					"PreToolUse": []any{
@@ -118,6 +130,9 @@ var _ = Describe("Install", func() {
 			hooks := raw["hooks"].(map[string]any)
 			preToolUse := hooks["PreToolUse"].([]any)
 			Expect(preToolUse).To(HaveLen(2))
+
+			postToolUse := hooks["PostToolUse"].([]any)
+			Expect(postToolUse).To(HaveLen(1))
 		})
 	})
 
@@ -142,6 +157,9 @@ var _ = Describe("Install", func() {
 			hooks, _ := result["hooks"].(map[string]any)
 			preToolUse, _ := hooks["PreToolUse"].([]any)
 			Expect(preToolUse).To(HaveLen(1))
+
+			postToolUse, _ := hooks["PostToolUse"].([]any)
+			Expect(postToolUse).To(HaveLen(1))
 		})
 
 		It("skips when already registered", func() {
@@ -150,11 +168,23 @@ var _ = Describe("Install", func() {
 				"hooks": map[string]any{
 					"PreToolUse": []any{
 						map[string]any{
-							"matcher": "Bash|Write|Edit",
+							"matcher": "Bash|Write|Edit|MultiEdit",
 							"hooks": []any{
 								map[string]any{
 									"type":    "command",
 									"command": fakeBinary + " --hook-type PreToolUse",
+									"timeout": float64(30),
+								},
+							},
+						},
+					},
+					"PostToolUse": []any{
+						map[string]any{
+							"matcher": "Bash|Write|Edit|MultiEdit",
+							"hooks": []any{
+								map[string]any{
+									"type":    "command",
+									"command": fakeBinary + " --hook-type PostToolUse",
 									"timeout": float64(30),
 								},
 							},
@@ -251,6 +281,9 @@ var _ = Describe("Install", func() {
 			hooks := result["hooks"].(map[string]any)
 			preToolUse := hooks["PreToolUse"].([]any)
 			Expect(preToolUse).To(HaveLen(2))
+
+			postToolUse := hooks["PostToolUse"].([]any)
+			Expect(postToolUse).To(HaveLen(1))
 		})
 
 		It("returns error for invalid JSON", func() {

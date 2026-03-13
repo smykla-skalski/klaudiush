@@ -18,6 +18,8 @@ var (
 	ErrDispatcherNotFound = errors.New("dispatcher not registered in settings")
 )
 
+const commandHookType = "command"
+
 // SettingsParser parses Claude Code settings.json files.
 type SettingsParser struct {
 	settingsPath string
@@ -116,8 +118,12 @@ func (p *SettingsParser) IsDispatcherRegistered(dispatcherPath string) (bool, er
 	for _, hookConfigs := range settings.Hooks {
 		for _, hookConfig := range hookConfigs {
 			for _, hook := range hookConfig.Hooks {
-				if hook.Type == "command" && (strings.Contains(hook.Command, dispatcherPath) ||
-					strings.Contains(hook.Command, dispatcherName)) {
+				if hook.Type != commandHookType {
+					continue
+				}
+
+				if strings.Contains(hook.Command, dispatcherPath) ||
+					strings.Contains(hook.Command, dispatcherName) {
 					return true, nil
 				}
 			}
@@ -129,6 +135,16 @@ func (p *SettingsParser) IsDispatcherRegistered(dispatcherPath string) (bool, er
 
 // HasPreToolUseHook checks if the settings file contains any PreToolUse hooks.
 func (p *SettingsParser) HasPreToolUseHook() (bool, error) {
+	return p.hasEventHook("PreToolUse")
+}
+
+// HasPostToolUseHook checks if the settings file contains any PostToolUse hooks.
+func (p *SettingsParser) HasPostToolUseHook() (bool, error) {
+	return p.hasEventHook("PostToolUse")
+}
+
+// HasEventHookCommand checks whether the given event registers the dispatcher command.
+func (p *SettingsParser) HasEventHookCommand(eventName, dispatcherPath string) (bool, error) {
 	settings, err := p.Parse()
 	if err != nil {
 		if errors.Is(err, ErrSettingsNotFound) {
@@ -138,7 +154,35 @@ func (p *SettingsParser) HasPreToolUseHook() (bool, error) {
 		return false, err
 	}
 
-	_, exists := settings.Hooks["PreToolUse"]
+	dispatcherName := filepath.Base(dispatcherPath)
+
+	for _, hookConfig := range settings.Hooks[eventName] {
+		for _, hookCmd := range hookConfig.Hooks {
+			if hookCmd.Type != commandHookType {
+				continue
+			}
+
+			if strings.Contains(hookCmd.Command, dispatcherPath) ||
+				strings.Contains(hookCmd.Command, dispatcherName) {
+				return true, nil
+			}
+		}
+	}
+
+	return false, nil
+}
+
+func (p *SettingsParser) hasEventHook(eventName string) (bool, error) {
+	settings, err := p.Parse()
+	if err != nil {
+		if errors.Is(err, ErrSettingsNotFound) {
+			return false, nil
+		}
+
+		return false, err
+	}
+
+	_, exists := settings.Hooks[eventName]
 
 	return exists, nil
 }

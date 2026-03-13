@@ -165,6 +165,14 @@ func NewProjectPreToolUseChecker() *PreToolUseChecker {
 	}
 }
 
+// NewProjectLocalPreToolUseChecker creates a PreToolUse checker for project-local settings.
+func NewProjectLocalPreToolUseChecker() *PreToolUseChecker {
+	return &PreToolUseChecker{
+		settingsPath: settings.GetProjectLocalSettingsPath(),
+		settingsType: settingsTypeProjectLocal,
+	}
+}
+
 // Name returns the name of the check
 func (c *PreToolUseChecker) Name() string {
 	return fmt.Sprintf("PreToolUse hook in %s settings", c.settingsType)
@@ -177,46 +185,115 @@ func (*PreToolUseChecker) Category() doctor.Category {
 
 // Check performs the PreToolUse hook check
 func (c *PreToolUseChecker) Check(_ context.Context) doctor.CheckResult {
-	parser := settings.NewSettingsParser(c.settingsPath)
+	return checkClaudeToolHook(
+		c.settingsPath,
+		c.settingsType,
+		"PreToolUse",
+		"The dispatcher requires PreToolUse hooks to function",
+		func(parser *settings.SettingsParser) (bool, error) {
+			return parser.HasPreToolUseHook()
+		},
+	)
+}
 
-	hasHook, err := parser.HasPreToolUseHook()
+// PostToolUseChecker checks if PostToolUse hooks are configured.
+type PostToolUseChecker struct {
+	settingsPath string
+	settingsType string
+}
+
+// NewUserPostToolUseChecker creates a PostToolUse checker for user settings.
+func NewUserPostToolUseChecker() *PostToolUseChecker {
+	return &PostToolUseChecker{
+		settingsPath: settings.GetUserSettingsPath(),
+		settingsType: settingsTypeUser,
+	}
+}
+
+// NewProjectPostToolUseChecker creates a PostToolUse checker for project settings.
+func NewProjectPostToolUseChecker() *PostToolUseChecker {
+	return &PostToolUseChecker{
+		settingsPath: settings.GetProjectSettingsPath(),
+		settingsType: settingsTypeProject,
+	}
+}
+
+// NewProjectLocalPostToolUseChecker creates a PostToolUse checker for project-local settings.
+func NewProjectLocalPostToolUseChecker() *PostToolUseChecker {
+	return &PostToolUseChecker{
+		settingsPath: settings.GetProjectLocalSettingsPath(),
+		settingsType: settingsTypeProjectLocal,
+	}
+}
+
+// Name returns the name of the check.
+func (c *PostToolUseChecker) Name() string {
+	return fmt.Sprintf("PostToolUse hook in %s settings", c.settingsType)
+}
+
+// Category returns the category of the check.
+func (*PostToolUseChecker) Category() doctor.Category {
+	return doctor.CategoryHook
+}
+
+// Check performs the PostToolUse hook check.
+func (c *PostToolUseChecker) Check(_ context.Context) doctor.CheckResult {
+	return checkClaudeToolHook(
+		c.settingsPath,
+		c.settingsType,
+		"PostToolUse",
+		"The dispatcher requires PostToolUse hooks to validate completed edits and writes",
+		func(parser *settings.SettingsParser) (bool, error) {
+			return parser.HasPostToolUseHook()
+		},
+	)
+}
+
+func checkClaudeToolHook(
+	settingsPath string,
+	settingsType string,
+	eventName string,
+	requiredMessage string,
+	checkFn func(*settings.SettingsParser) (bool, error),
+) doctor.CheckResult {
+	parser := settings.NewSettingsParser(settingsPath)
+
+	hasHook, err := checkFn(parser)
 	if err != nil {
 		if errors.Is(err, settings.ErrSettingsNotFound) {
 			return doctor.Skip(
-				fmt.Sprintf("PreToolUse hook in %s settings", c.settingsType),
+				fmt.Sprintf("%s hook in %s settings", eventName, settingsType),
 				"Settings file not found",
 			)
 		}
 
 		return doctor.FailWarning(
-			fmt.Sprintf("PreToolUse hook in %s settings", c.settingsType),
+			fmt.Sprintf("%s hook in %s settings", eventName, settingsType),
 			fmt.Sprintf("Failed to check: %v", err),
 		)
 	}
 
 	if !hasHook {
-		// For project settings, not having hook is just informational
-		if c.settingsType == settingsTypeProject || c.settingsType == settingsTypeProjectLocal {
+		if settingsType == settingsTypeProject || settingsType == settingsTypeProjectLocal {
 			return doctor.Pass(
-				fmt.Sprintf("PreToolUse hook in %s settings", c.settingsType),
+				fmt.Sprintf("%s hook in %s settings", eventName, settingsType),
 				"Not configured (optional, using user settings)",
 			)
 		}
 
-		// For user settings, not having hook is an error
 		return doctor.FailError(
-			fmt.Sprintf("PreToolUse hook in %s settings", c.settingsType),
-			"PreToolUse hook not configured",
+			fmt.Sprintf("%s hook in %s settings", eventName, settingsType),
+			eventName+" hook not configured",
 		).
 			WithDetails(
-				"The dispatcher requires PreToolUse hooks to function",
+				requiredMessage,
 				"Configure with: klaudiush doctor --fix",
 			).
 			WithFixID("install_hook")
 	}
 
 	return doctor.Pass(
-		fmt.Sprintf("PreToolUse hook in %s settings", c.settingsType),
+		fmt.Sprintf("%s hook in %s settings", eventName, settingsType),
 		"Configured",
 	)
 }

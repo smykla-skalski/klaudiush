@@ -101,6 +101,31 @@ var _ = Describe("JSONParser", func() {
 			Expect(ctx.ToolName).To(Equal(hook.ToolTypeBash))
 			Expect(ctx.GetCommand()).To(Equal("git status"))
 		})
+
+		It("prefers payload hook_event_name over the configured hook type", func() {
+			input := `{
+				"hook_event_name": "PostToolUse",
+				"tool_name": "Write",
+				"tool_input": {
+					"file_path": "README.md",
+					"content": "# hello"
+				}
+			}`
+
+			p := parser.NewJSONParser(bytes.NewReader([]byte(input)))
+			ctx, err := p.ParseWithOptions(parser.ParseOptions{
+				Provider:  hook.ProviderClaude,
+				EventType: hook.EventTypePreToolUse,
+				EventName: "PreToolUse",
+			})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ctx.Provider).To(Equal(hook.ProviderClaude))
+			Expect(ctx.Event).To(Equal(hook.CanonicalEventAfterTool))
+			Expect(ctx.EventType).To(Equal(hook.EventTypePostToolUse))
+			Expect(ctx.EventName()).To(Equal("PostToolUse"))
+			Expect(ctx.AffectedPaths).To(ConsistOf("README.md"))
+		})
 	})
 
 	Describe("Parse with Codex input", func() {

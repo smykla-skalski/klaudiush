@@ -109,7 +109,7 @@ func (p *JSONParser) ParseWithOptions(opts ParseOptions) (*hook.Context, error) 
 		Provider:         provider,
 		Event:            canonicalEvent,
 		RawEventName:     hook.DisplayEventName(provider, canonicalEvent, eventType),
-		EventType:        opts.EventType,
+		EventType:        eventType,
 		RawToolName:      toolName,
 		ToolFamily:       toolFamily,
 		ToolName:         parsedToolType,
@@ -124,10 +124,6 @@ func (p *JSONParser) ParseWithOptions(opts ParseOptions) (*hook.Context, error) 
 		ToolUseID:        toolUseID,
 		TranscriptPath:   input.TranscriptPath,
 		AffectedPaths:    deriveAffectedPaths(toolName, toolInput),
-	}
-
-	if ctx.EventType == hook.EventTypeUnknown {
-		ctx.EventType = eventType
 	}
 
 	if input.LastAssistant != nil {
@@ -182,9 +178,9 @@ func resolveEventMetadata(
 		provider = inferProvider(opts.EventName, input)
 	}
 
-	rawEventName := strings.TrimSpace(opts.EventName)
+	rawEventName := strings.TrimSpace(input.HookEventName)
 	if rawEventName == "" {
-		rawEventName = input.HookEventName
+		rawEventName = strings.TrimSpace(opts.EventName)
 	}
 
 	codexAfterToolEvent := decodeCodexAfterToolEvent(input.HookEvent)

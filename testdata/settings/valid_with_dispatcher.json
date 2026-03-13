@@ -2,11 +2,23 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Bash|Write|Edit",
+        "matcher": "Bash|Write|Edit|MultiEdit",
         "hooks": [
           {
             "type": "command",
             "command": "klaudiush --hook-type PreToolUse",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash|Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "klaudiush --hook-type PostToolUse",
             "timeout": 30
           }
         ]

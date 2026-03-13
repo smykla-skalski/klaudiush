@@ -163,6 +163,76 @@ var _ = Describe("PreToolUseChecker", func() {
 			))
 		})
 	})
+
+	Describe("NewProjectLocalPreToolUseChecker", func() {
+		var checker *hook.PreToolUseChecker
+
+		BeforeEach(func() {
+			checker = hook.NewProjectLocalPreToolUseChecker()
+		})
+
+		It("should have correct name", func() {
+			Expect(checker.Name()).To(Equal("PreToolUse hook in project-local settings"))
+		})
+	})
+})
+
+var _ = Describe("PostToolUseChecker", func() {
+	var ctx context.Context
+
+	BeforeEach(func() {
+		ctx = context.Background()
+	})
+
+	Describe("NewUserPostToolUseChecker", func() {
+		var checker *hook.PostToolUseChecker
+
+		BeforeEach(func() {
+			checker = hook.NewUserPostToolUseChecker()
+		})
+
+		It("should have correct name", func() {
+			Expect(checker.Name()).To(Equal("PostToolUse hook in user settings"))
+		})
+
+		It("should have hook category", func() {
+			Expect(checker.Category()).To(Equal(doctor.CategoryHook))
+		})
+
+		It("should perform check", func() {
+			result := checker.Check(ctx)
+			Expect(result.Name).To(Equal("PostToolUse hook in user settings"))
+			Expect(result.Status).To(BeElementOf(
+				doctor.StatusPass,
+				doctor.StatusFail,
+				doctor.StatusSkipped,
+			))
+		})
+	})
+
+	Describe("NewProjectPostToolUseChecker", func() {
+		var checker *hook.PostToolUseChecker
+
+		BeforeEach(func() {
+			checker = hook.NewProjectPostToolUseChecker()
+		})
+
+		It("should have correct name", func() {
+			Expect(checker.Name()).To(Equal("PostToolUse hook in project settings"))
+		})
+	})
+
+	Describe("NewProjectLocalPostToolUseChecker", func() {
+		var checker *hook.PostToolUseChecker
+
+		BeforeEach(func() {
+			checker = hook.NewProjectLocalPostToolUseChecker()
+		})
+
+		It("should have correct name", func() {
+			Expect(checker.Name()).To(Equal("PostToolUse hook in project-local settings"))
+		})
+	})
 })
 
 var _ = Describe("PathValidationChecker", func() {

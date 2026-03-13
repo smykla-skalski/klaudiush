@@ -107,7 +107,7 @@ func hasCodexDispatcherCommand(groups []CodexMatcherGroup, dispatcherPath string
 
 	for _, group := range groups {
 		for _, hook := range group.Hooks {
-			if hook.Type != "command" {
+			if hook.Type != commandHookType {
 				continue
 			}
 
