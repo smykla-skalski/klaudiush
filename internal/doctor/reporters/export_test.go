@@ -1,7 +1,7 @@
 package reporters
 
 import (
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/smykla-skalski/klaudiush/internal/color"
 	"github.com/smykla-skalski/klaudiush/internal/doctor"
