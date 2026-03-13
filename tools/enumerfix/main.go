@@ -34,9 +34,7 @@ func run(args []string) error {
 
 	filename := filepath.Clean(args[1])
 
-	content, err := os.ReadFile(
-		filename,
-	)
+	content, err := os.ReadFile(filename)
 	if err != nil {
 		return errors.Wrap(err, "reading file")
 	}
