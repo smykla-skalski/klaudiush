@@ -4,7 +4,7 @@ package color
 import (
 	"os"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 )
 
 // Profile detects the current color profile based on environment variables and flags.

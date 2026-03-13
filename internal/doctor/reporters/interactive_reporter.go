@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/smykla-skalski/klaudiush/internal/color"
 	"github.com/smykla-skalski/klaudiush/internal/doctor"
@@ -50,6 +50,16 @@ func (r *InteractiveReporter) RunAndReport(
 		fmt.Println("No checks to run.")
 
 		return nil
+	}
+
+	// BubbleTea input handling can fail in non-interactive environments
+	// (for example, tests or redirected stderr). Fall back to static mode.
+	stderrInfo, statErr := os.Stderr.Stat()
+	if statErr != nil || (stderrInfo.Mode()&os.ModeCharDevice) == 0 {
+		results := runCheckersBatch(ctx, checkers)
+		r.Report(results, verbose)
+
+		return results
 	}
 
 	model := newDoctorModel(checkers, verbose, r.theme)

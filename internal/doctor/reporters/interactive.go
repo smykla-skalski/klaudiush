@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/spinner"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/spinner"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/smykla-skalski/klaudiush/internal/color"
 	"github.com/smykla-skalski/klaudiush/internal/doctor"
@@ -118,15 +118,15 @@ func (m doctorModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m doctorModel) View() string {
+func (m doctorModel) View() tea.View {
 	if m.phase == phaseRunning {
-		return m.viewRunning()
+		return tea.NewView(m.viewRunning())
 	}
 
 	// phaseTable: return empty so BubbleTea clears the spinner view.
 	// The table is printed to stdout after the program exits, allowing
 	// it to scroll naturally instead of being clipped to terminal height.
-	return ""
+	return tea.NewView("")
 }
 
 func (m doctorModel) viewRunning() string {
