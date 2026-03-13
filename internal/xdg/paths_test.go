@@ -169,6 +169,17 @@ func TestExceptionAuditFile(t *testing.T) {
 	}
 }
 
+func TestHookSessionStateFile(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", "/xdg/state")
+
+	got := xdg.HookSessionStateFile()
+	want := "/xdg/state/klaudiush/hook_sessions/state.json"
+
+	if got != want {
+		t.Errorf("HookSessionStateFile() = %q, want %q", got, want)
+	}
+}
+
 func TestCrashDumpDir(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", "/xdg/data")
 

@@ -1,6 +1,8 @@
 package config_test
 
 import (
+	"os"
+	"path/filepath"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -139,10 +141,12 @@ var _ = Describe("PatternsConfig", func() {
 
 	Describe("GetGlobalDataDir", func() {
 		It("returns default for empty config", func() {
+			GinkgoT().Setenv("XDG_DATA_HOME", filepath.Join(GinkgoT().TempDir(), "xdg-data"))
+
 			cfg := &config.PatternsConfig{}
-			Expect(cfg.GetGlobalDataDir()).To(
-				Equal(config.DefaultPatternsGlobalDataDir),
-			)
+			Expect(cfg.GetGlobalDataDir()).To(Equal(
+				filepath.Join(os.Getenv("XDG_DATA_HOME"), "klaudiush", "patterns"),
+			))
 		})
 
 		It("returns custom value when set", func() {
@@ -153,10 +157,12 @@ var _ = Describe("PatternsConfig", func() {
 		})
 
 		It("returns default for nil config", func() {
+			GinkgoT().Setenv("XDG_DATA_HOME", filepath.Join(GinkgoT().TempDir(), "xdg-data"))
+
 			var cfg *config.PatternsConfig
-			Expect(cfg.GetGlobalDataDir()).To(
-				Equal(config.DefaultPatternsGlobalDataDir),
-			)
+			Expect(cfg.GetGlobalDataDir()).To(Equal(
+				filepath.Join(os.Getenv("XDG_DATA_HOME"), "klaudiush", "patterns"),
+			))
 		})
 	})
 
@@ -181,6 +187,30 @@ var _ = Describe("PatternsConfig", func() {
 		It("returns true for nil config", func() {
 			var cfg *config.PatternsConfig
 			Expect(cfg.IsUseSeedData()).To(BeTrue())
+		})
+	})
+
+	Describe("GetMaxPatterns", func() {
+		It("returns default for empty config", func() {
+			cfg := &config.PatternsConfig{}
+			Expect(cfg.GetMaxPatterns()).To(Equal(config.DefaultPatternsMaxPatterns))
+		})
+
+		It("returns custom value when set", func() {
+			cfg := &config.PatternsConfig{MaxPatterns: 42}
+			Expect(cfg.GetMaxPatterns()).To(Equal(42))
+		})
+	})
+
+	Describe("GetMaxSessions", func() {
+		It("returns default for empty config", func() {
+			cfg := &config.PatternsConfig{}
+			Expect(cfg.GetMaxSessions()).To(Equal(config.DefaultPatternsMaxSessions))
+		})
+
+		It("returns custom value when set", func() {
+			cfg := &config.PatternsConfig{MaxSessions: 84}
+			Expect(cfg.GetMaxSessions()).To(Equal(84))
 		})
 	})
 })

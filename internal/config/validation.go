@@ -66,10 +66,24 @@ func (v *Validator) Validate(cfg *config.Config) error {
 		}
 	}
 
+	// Validate providers config
+	if cfg.Providers != nil {
+		if err := v.validateProvidersConfig(cfg.Providers); err != nil {
+			validationErrors = append(validationErrors, err)
+		}
+	}
+
 	// Validate rules config
 	if cfg.Rules != nil {
 		if err := v.validateRulesConfig(cfg.Rules); err != nil {
 			validationErrors = append(validationErrors, err)
+		}
+	}
+
+	// Validate patterns config
+	if cfg.Patterns != nil {
+		if err := v.validatePatternsConfig(cfg.Patterns); err != nil {
+			validationErrors = append(validationErrors, errors.Wrap(err, "patterns"))
 		}
 	}
 
@@ -90,6 +104,19 @@ func (v *Validator) Validate(cfg *config.Config) error {
 // validateGlobalConfig validates global configuration.
 func (*Validator) validateGlobalConfig(*config.GlobalConfig) error {
 	// No specific validation needed for global config currently
+	return nil
+}
+
+// validateProvidersConfig validates provider integration configuration.
+func (*Validator) validateProvidersConfig(cfg *config.ProvidersConfig) error {
+	if cfg == nil || cfg.Codex == nil {
+		return nil
+	}
+
+	if cfg.Codex.HooksConfigPath != "" && !cfg.Codex.IsExperimentalEnabled() {
+		return errors.New("providers.codex.experimental must be true when hooks_config_path is set")
+	}
+
 	return nil
 }
 
@@ -523,6 +550,72 @@ func (*Validator) validateBaseConfig(cfg *config.ValidatorConfig) error {
 	return nil
 }
 
+// validatePatternsConfig validates the failure-pattern tracking configuration.
+func (*Validator) validatePatternsConfig(cfg *config.PatternsConfig) error {
+	var validationErrors []error
+
+	if cfg.MinCount < 0 {
+		validationErrors = append(
+			validationErrors,
+			errors.Wrapf(
+				ErrInvalidLength,
+				"min_count must be non-negative, got %d",
+				cfg.MinCount,
+			),
+		)
+	}
+
+	if cfg.MaxWarningsPerError < 0 {
+		validationErrors = append(
+			validationErrors,
+			errors.Wrapf(
+				ErrInvalidLength,
+				"max_warnings_per_error must be non-negative, got %d",
+				cfg.MaxWarningsPerError,
+			),
+		)
+	}
+
+	if cfg.MaxWarningsTotal < 0 {
+		validationErrors = append(
+			validationErrors,
+			errors.Wrapf(
+				ErrInvalidLength,
+				"max_warnings_total must be non-negative, got %d",
+				cfg.MaxWarningsTotal,
+			),
+		)
+	}
+
+	if cfg.MaxPatterns < 0 {
+		validationErrors = append(
+			validationErrors,
+			errors.Wrapf(
+				ErrInvalidLength,
+				"max_patterns must be non-negative, got %d",
+				cfg.MaxPatterns,
+			),
+		)
+	}
+
+	if cfg.MaxSessions < 0 {
+		validationErrors = append(
+			validationErrors,
+			errors.Wrapf(
+				ErrInvalidLength,
+				"max_sessions must be non-negative, got %d",
+				cfg.MaxSessions,
+			),
+		)
+	}
+
+	if len(validationErrors) > 0 {
+		return combineErrors(validationErrors)
+	}
+
+	return nil
+}
+
 // validateRulesConfig validates the rules configuration.
 func (v *Validator) validateRulesConfig(cfg *config.RulesConfig) error {
 	if cfg == nil || len(cfg.Rules) == 0 {
@@ -609,6 +702,24 @@ func (*Validator) validateRuleMatchConditions(match *config.RuleMatchConfig, rul
 // validateRuleMatchFields validates the field values in a rule's match section.
 func (*Validator) validateRuleMatchFields(match *config.RuleMatchConfig, ruleID string) error {
 	var validationErrors []error
+
+	// Validate provider if specified
+	if match.Provider != "" {
+		if !slices.ContainsFunc(config.ValidProviders, func(s string) bool {
+			return strings.EqualFold(s, match.Provider)
+		}) {
+			validationErrors = append(
+				validationErrors,
+				errors.Wrapf(
+					ErrInvalidRule,
+					"%s has invalid provider %q (valid: %v)",
+					ruleID,
+					match.Provider,
+					config.ValidProviders,
+				),
+			)
+		}
+	}
 
 	// Validate event_type if specified
 	if match.EventType != "" {

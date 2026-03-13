@@ -297,6 +297,89 @@ var _ = Describe("FilePatternStore", func() {
 		})
 	})
 
+	Describe("TrimPatterns", func() {
+		It("reduces count to the limit", func() {
+			store.RecordSequence("A", "X")
+			store.RecordSequence("B", "X")
+			store.RecordSequence("C", "X")
+			Expect(store.GetAllPatterns()).To(HaveLen(3))
+
+			removed := store.TrimPatterns(1)
+			Expect(removed).To(Equal(2))
+			Expect(store.GetAllPatterns()).To(HaveLen(1))
+		})
+
+		It("preserves the newest pattern when trimming to 1", func() {
+			// Save OLD pattern then reload to get a past timestamp in the file
+			store.RecordSequence("OLD", "X")
+			Expect(store.Save()).To(Succeed())
+
+			// New store loads OLD, then records NEW (which gets time.Now())
+			store2 := patterns.NewFilePatternStore(cfg, tmpDir)
+			Expect(store2.Load()).To(Succeed())
+			store2.RecordSequence("NEW", "Y")
+
+			removed := store2.TrimPatterns(1)
+			Expect(removed).To(Equal(1))
+
+			remaining := store2.GetAllPatterns()
+			Expect(remaining).To(HaveLen(1))
+			// The remaining pattern should be the more recently seen one
+			Expect(remaining[0].SourceCode).To(Equal("NEW"))
+		})
+
+		It("does nothing when count is at or below the limit", func() {
+			store.RecordSequence("GIT013", "GIT004")
+			removed := store.TrimPatterns(5)
+			Expect(removed).To(Equal(0))
+			Expect(store.GetAllPatterns()).To(HaveLen(1))
+		})
+
+		It("does nothing on empty store", func() {
+			removed := store.TrimPatterns(10)
+			Expect(removed).To(Equal(0))
+		})
+
+		It("does nothing when maxCount is 0", func() {
+			store.RecordSequence("GIT013", "GIT004")
+			removed := store.TrimPatterns(0)
+			Expect(removed).To(Equal(0))
+			Expect(store.GetAllPatterns()).To(HaveLen(1))
+		})
+	})
+
+	Describe("TrimSessions", func() {
+		It("reduces count to the limit", func() {
+			store.SetSessionCodes("s1", []string{"GIT013"})
+			store.SetSessionCodes("s2", []string{"GIT004"})
+			store.SetSessionCodes("s3", []string{"GIT005"})
+			Expect(store.GetActiveSessions()).To(Equal(3))
+
+			removed := store.TrimSessions(1)
+			Expect(removed).To(Equal(2))
+			Expect(store.GetActiveSessions()).To(Equal(1))
+		})
+
+		It("does nothing when count is at or below the limit", func() {
+			store.SetSessionCodes("sess1", []string{"GIT013"})
+			removed := store.TrimSessions(5)
+			Expect(removed).To(Equal(0))
+			Expect(store.GetActiveSessions()).To(Equal(1))
+		})
+
+		It("does nothing on empty store", func() {
+			removed := store.TrimSessions(10)
+			Expect(removed).To(Equal(0))
+		})
+
+		It("does nothing when maxCount is 0", func() {
+			store.SetSessionCodes("sess1", []string{"GIT013"})
+			removed := store.TrimSessions(0)
+			Expect(removed).To(Equal(0))
+			Expect(store.GetActiveSessions()).To(Equal(1))
+		})
+	})
+
 	Describe("Backward compatibility", func() {
 		It("migrates old session format on load", func() {
 			// Write old format: sessions as map[string][]string
@@ -476,6 +559,114 @@ var _ = Describe("FilePatternStore", func() {
 			store2 := patterns.NewFilePatternStore(cfg, tmpDir)
 			Expect(store2.Load()).To(Succeed())
 			Expect(store2.GetAllPatterns()).To(BeEmpty())
+		})
+	})
+
+	Describe("legacy fallback and XDG migration compatibility", func() {
+		var (
+			homeDir string
+			xdgData string
+		)
+
+		BeforeEach(func() {
+			homeDir = filepath.Join(tmpDir, "home")
+			xdgData = filepath.Join(tmpDir, "xdg-data")
+
+			GinkgoT().Setenv("HOME", homeDir)
+			GinkgoT().Setenv("XDG_DATA_HOME", xdgData)
+		})
+
+		It("loads legacy learned data when the default XDG path has no data yet", func() {
+			legacyStore := patterns.NewFilePatternStore(&config.PatternsConfig{
+				ProjectDataFile: "patterns.json",
+				GlobalDataDir:   config.LegacyPatternsGlobalDataDir,
+			}, tmpDir)
+			legacyStore.RecordSequence("GIT013", "GIT004")
+			Expect(legacyStore.Save()).To(Succeed())
+
+			defaultStore := patterns.NewFilePatternStore(&config.PatternsConfig{
+				ProjectDataFile: "patterns.json",
+			}, tmpDir)
+			Expect(defaultStore.Load()).To(Succeed())
+
+			followUps := defaultStore.GetFollowUps("GIT013", 1)
+			Expect(followUps).To(HaveLen(1))
+			Expect(followUps[0].TargetCode).To(Equal("GIT004"))
+			Expect(followUps[0].Count).To(Equal(1))
+		})
+
+		It("merges XDG and legacy learned data when both exist", func() {
+			legacyStore := patterns.NewFilePatternStore(&config.PatternsConfig{
+				ProjectDataFile: "patterns.json",
+				GlobalDataDir:   config.LegacyPatternsGlobalDataDir,
+			}, tmpDir)
+			legacyStore.RecordSequence("GIT013", "GIT004")
+			legacyStore.SetSessionCodes("sess1", []string{"GIT013"})
+			Expect(legacyStore.Save()).To(Succeed())
+
+			time.Sleep(10 * time.Millisecond)
+
+			xdgStore := patterns.NewFilePatternStore(&config.PatternsConfig{
+				ProjectDataFile: "patterns.json",
+				GlobalDataDir:   filepath.Join(xdgData, "klaudiush", "patterns"),
+			}, tmpDir)
+			xdgStore.RecordSequence("GIT013", "GIT004")
+			xdgStore.RecordSequence("GIT013", "GIT004")
+			xdgStore.SetSessionCodes("sess1", []string{"GIT004"})
+			Expect(xdgStore.Save()).To(Succeed())
+
+			defaultStore := patterns.NewFilePatternStore(&config.PatternsConfig{
+				ProjectDataFile: "patterns.json",
+			}, tmpDir)
+			Expect(defaultStore.Load()).To(Succeed())
+
+			followUps := defaultStore.GetFollowUps("GIT013", 1)
+			Expect(followUps).To(HaveLen(1))
+			Expect(followUps[0].Count).To(Equal(3))
+
+			Expect(defaultStore.GetSessionCodes("sess1")).To(Equal([]string{"GIT004"}))
+		})
+
+		It("does not use the legacy fallback when global_data_dir is explicitly set", func() {
+			legacyStore := patterns.NewFilePatternStore(&config.PatternsConfig{
+				ProjectDataFile: "patterns.json",
+				GlobalDataDir:   config.LegacyPatternsGlobalDataDir,
+			}, tmpDir)
+			legacyStore.RecordSequence("GIT013", "GIT004")
+			Expect(legacyStore.Save()).To(Succeed())
+
+			customStore := patterns.NewFilePatternStore(&config.PatternsConfig{
+				ProjectDataFile: "patterns.json",
+				GlobalDataDir:   filepath.Join(tmpDir, "custom-patterns"),
+			}, tmpDir)
+			Expect(customStore.Load()).To(Succeed())
+			Expect(customStore.GetAllPatterns()).To(BeEmpty())
+		})
+
+		It("writes back to the XDG primary path after loading legacy data", func() {
+			legacyStore := patterns.NewFilePatternStore(&config.PatternsConfig{
+				ProjectDataFile: "patterns.json",
+				GlobalDataDir:   config.LegacyPatternsGlobalDataDir,
+			}, tmpDir)
+			legacyStore.RecordSequence("GIT013", "GIT004")
+			Expect(legacyStore.Save()).To(Succeed())
+
+			defaultStore := patterns.NewFilePatternStore(&config.PatternsConfig{
+				ProjectDataFile: "patterns.json",
+			}, tmpDir)
+			Expect(defaultStore.Load()).To(Succeed())
+			Expect(defaultStore.Save()).To(Succeed())
+
+			legacyDir := filepath.Join(homeDir, ".klaudiush", "patterns")
+			xdgDir := filepath.Join(xdgData, "klaudiush", "patterns")
+
+			legacyEntries, err := os.ReadDir(legacyDir)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(legacyEntries).NotTo(BeEmpty())
+
+			xdgEntries, err := os.ReadDir(xdgDir)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(xdgEntries).NotTo(BeEmpty())
 		})
 	})
 })

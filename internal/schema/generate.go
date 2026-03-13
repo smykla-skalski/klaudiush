@@ -66,5 +66,9 @@ func GenerateJSON(indent bool) ([]byte, error) {
 	}
 
 	// Append trailing newline for file output.
-	return append(data, '\n'), nil
+	output := make([]byte, 0, len(data))
+	output = append(output, data...)
+	output = append(output, '\n')
+
+	return output, nil
 }

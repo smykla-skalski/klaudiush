@@ -71,6 +71,14 @@ type Repository interface {
 // SDKRepository implements Repository using go-git SDK
 type SDKRepository struct {
 	repo *git.Repository
+
+	// statusOnce ensures worktree.Status() is called at most once.
+	// go-git's worktree.Status() walks the entire working directory, which is
+	// expensive on large repos. All three status-derived methods (GetStagedFiles,
+	// GetModifiedFiles, GetUntrackedFiles) share this cache.
+	statusOnce   sync.Once
+	cachedStatus git.Status
+	statusErr    error
 }
 
 var (
@@ -90,8 +98,7 @@ func ResetRepositoryCache() {
 func DiscoverRepository() (*SDKRepository, error) {
 	repoOnce.Do(func() {
 		repo, err := git.PlainOpenWithOptions(".", &git.PlainOpenOptions{
-			DetectDotGit:          true,
-			EnableDotGitCommonDir: true,
+			DetectDotGit: true,
 		})
 		if err != nil {
 			if errors.Is(err, git.ErrRepositoryNotExists) {
@@ -121,8 +128,7 @@ func DiscoverRepository() (*SDKRepository, error) {
 // including remotes. See: https://github.com/go-git/go-git/issues/225
 func OpenRepository(path string) (*SDKRepository, error) {
 	repo, err := git.PlainOpenWithOptions(path, &git.PlainOpenOptions{
-		DetectDotGit:          true,
-		EnableDotGitCommonDir: true,
+		DetectDotGit: true,
 	})
 	if err != nil {
 		if errors.Is(err, git.ErrRepositoryNotExists) {
@@ -150,16 +156,31 @@ func (r *SDKRepository) GetRoot() (string, error) {
 	return worktree.Filesystem.Root(), nil
 }
 
+// getStatus returns the worktree status, calling worktree.Status() at most once.
+// go-git's worktree.Status() walks the entire working directory, so we cache it.
+func (r *SDKRepository) getStatus() (git.Status, error) {
+	r.statusOnce.Do(func() {
+		wt, err := r.repo.Worktree()
+		if err != nil {
+			r.statusErr = errors.Wrap(err, "failed to get worktree")
+
+			return
+		}
+
+		r.cachedStatus, r.statusErr = wt.Status()
+		if r.statusErr != nil {
+			r.statusErr = errors.Wrap(r.statusErr, "failed to get status")
+		}
+	})
+
+	return r.cachedStatus, r.statusErr
+}
+
 // GetStagedFiles returns the list of staged files
 func (r *SDKRepository) GetStagedFiles() ([]string, error) {
-	worktree, err := r.repo.Worktree()
+	status, err := r.getStatus()
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to get worktree")
-	}
-
-	status, err := worktree.Status()
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to get status")
+		return nil, err
 	}
 
 	var staged []string
@@ -176,14 +197,9 @@ func (r *SDKRepository) GetStagedFiles() ([]string, error) {
 
 // GetModifiedFiles returns the list of modified but unstaged files
 func (r *SDKRepository) GetModifiedFiles() ([]string, error) {
-	worktree, err := r.repo.Worktree()
+	status, err := r.getStatus()
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to get worktree")
-	}
-
-	status, err := worktree.Status()
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to get status")
+		return nil, err
 	}
 
 	var modified []string
@@ -200,14 +216,9 @@ func (r *SDKRepository) GetModifiedFiles() ([]string, error) {
 
 // GetUntrackedFiles returns the list of untracked files
 func (r *SDKRepository) GetUntrackedFiles() ([]string, error) {
-	worktree, err := r.repo.Worktree()
+	status, err := r.getStatus()
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to get worktree")
-	}
-
-	status, err := worktree.Status()
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to get status")
+		return nil, err
 	}
 
 	var untracked []string

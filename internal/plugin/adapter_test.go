@@ -95,9 +95,59 @@ var _ = Describe("ValidatorAdapter", func() {
 			Expect(result).NotTo(BeNil())
 			Expect(result.Passed).To(BeTrue())
 			Expect(capturedRequest).NotTo(BeNil())
-			Expect(capturedRequest.EventType).To(Equal("PreToolUse"))
-			Expect(capturedRequest.ToolName).To(Equal("Bash"))
+			Expect(capturedRequest.EventName).To(Equal("before_tool"))
+			Expect(capturedRequest.RawEventName).To(Equal("PreToolUse"))
+			Expect(capturedRequest.ToolFamily).To(Equal("shell"))
+			Expect(capturedRequest.RawToolName).To(Equal("Bash"))
 			Expect(capturedRequest.Command).To(Equal("git commit -m 'test'"))
+		})
+
+		It("should include Codex lifecycle execution metadata", func() {
+			var capturedRequest *pluginapi.ValidateRequest
+
+			mockPlugin.EXPECT().
+				Validate(gomock.Any(), gomock.Any()).
+				DoAndReturn(func(
+					_ context.Context,
+					req *pluginapi.ValidateRequest,
+				) (*pluginapi.ValidateResponse, error) {
+					capturedRequest = req
+
+					return pluginapi.PassResponse(), nil
+				})
+
+			hookCtx := &hook.Context{
+				Provider:      hook.ProviderCodex,
+				Event:         hook.CanonicalEventAfterTool,
+				RawEventName:  "AfterToolUse",
+				ToolName:      hook.ToolTypeBash,
+				RawToolName:   "Bash",
+				ToolFamily:    hook.ToolFamilyShell,
+				SessionID:     "session-123",
+				TurnID:        "turn-456",
+				ToolExecuted:  true,
+				ToolSucceeded: false,
+				ToolMutating:  true,
+				AffectedPaths: []string{"go.mod", "README.md"},
+				ToolInput: hook.ToolInput{
+					Command: "go mod tidy",
+				},
+			}
+
+			result := adapter.Validate(ctx, hookCtx)
+
+			Expect(result).NotTo(BeNil())
+			Expect(result.Passed).To(BeTrue())
+			Expect(capturedRequest).NotTo(BeNil())
+			Expect(capturedRequest.Provider).To(Equal("codex"))
+			Expect(capturedRequest.EventName).To(Equal("after_tool"))
+			Expect(capturedRequest.RawEventName).To(Equal("AfterToolUse"))
+			Expect(capturedRequest.SessionID).To(Equal("session-123"))
+			Expect(capturedRequest.TurnID).To(Equal("turn-456"))
+			Expect(capturedRequest.ToolExecuted).To(BeTrue())
+			Expect(capturedRequest.ToolSucceeded).To(BeFalse())
+			Expect(capturedRequest.ToolMutating).To(BeTrue())
+			Expect(capturedRequest.AffectedPaths).To(Equal([]string{"go.mod", "README.md"}))
 		})
 
 		It("should handle Write tool with file path and content", func() {

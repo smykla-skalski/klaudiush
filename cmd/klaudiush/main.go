@@ -18,6 +18,7 @@ import (
 	"github.com/smykla-skalski/klaudiush/internal/dispatcher"
 	"github.com/smykla-skalski/klaudiush/internal/exceptions"
 	"github.com/smykla-skalski/klaudiush/internal/hookresponse"
+	"github.com/smykla-skalski/klaudiush/internal/hooksession"
 	"github.com/smykla-skalski/klaudiush/internal/parser"
 	"github.com/smykla-skalski/klaudiush/internal/patterns"
 	"github.com/smykla-skalski/klaudiush/internal/xdg"
@@ -55,6 +56,8 @@ func loggerFromCmd(cmd *cobra.Command) logger.Logger {
 
 var (
 	hookType     string
+	providerName string
+	eventName    string
 	debugMode    bool
 	traceMode    bool
 	configPath   string
@@ -95,9 +98,9 @@ func mainWithExitCode() (exitCode int) {
 
 var rootCmd = &cobra.Command{
 	Use:   "klaudiush",
-	Short: "Claude Code hooks validator",
-	Long: `Claude Code hooks validator - validates tool invocations and file operations
-before they are executed by Claude Code.`,
+	Short: "AI coding hooks validator",
+	Long: `AI coding hooks validator - validates tool invocations and file operations
+across supported hook providers.`,
 	PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 		checkVersionFlag()
 
@@ -122,12 +125,24 @@ before they are executed by Claude Code.`,
 }
 
 func init() {
+	rootCmd.Flags().StringVar(
+		&providerName,
+		"provider",
+		string(hook.ProviderClaude),
+		"Hook provider (claude, codex, gemini)",
+	)
+	rootCmd.Flags().StringVar(
+		&eventName,
+		"event",
+		"",
+		"Hook event name (provider-neutral or provider-specific)",
+	)
 	rootCmd.Flags().StringVarP(
 		&hookType,
 		"hook-type",
 		"T",
 		"",
-		"Hook event type (PreToolUse, PostToolUse, Notification)",
+		"Deprecated: use --event (Claude compatibility alias)",
 	)
 	rootCmd.Flags().BoolVar(&debugMode, "debug", true, "Enable debug logging")
 	rootCmd.Flags().BoolVar(&traceMode, "trace", false, "Enable trace logging")
@@ -168,37 +183,38 @@ func run(cmd *cobra.Command, _ []string) error {
 		log.Error("first-run migration failed", "error", migErr)
 	}
 
-	// Determine event type using enumer-generated function
-	eventType, err := hook.EventTypeString(hookType)
+	provider, eventType, requestedEventName, err := resolveHookInvocation()
 	if err != nil {
-		eventType = hook.EventTypePreToolUse // Default to PreToolUse
+		return err
 	}
 
 	log.Info("hook invoked",
+		"provider", provider,
+		"event", requestedEventName,
 		"eventType", eventType,
 		"debug", debugMode,
 		"trace", traceMode,
 	)
 
-	// Parse JSON input first so we can detect the effective working directory
-	// from cd commands (e.g. "cd /path/to/repo && git commit") before loading config.
-	jsonParser := parser.NewJSONParser(os.Stdin)
-
-	ctx, err := jsonParser.Parse(eventType)
+	ctx, err := parseHookContext(provider, eventType, requestedEventName, log)
 	if err != nil {
 		if errors.Is(err, parser.ErrEmptyInput) {
-			log.Info("no input provided, allowing")
-
 			return nil
 		}
 
-		return errors.Wrap(err, "failed to parse input")
+		return err
+	}
+
+	if ctx == nil {
+		return nil
 	}
 
 	bt.mark("parse")
 
 	log.Info("context parsed",
-		"tool", ctx.ToolName,
+		"provider", ctx.ProviderName(),
+		"event", ctx.EventName(),
+		"tool", ctx.ToolNameString(),
 		"command", ctx.GetCommand(),
 		"file", filepath.Base(ctx.GetFilePath()),
 	)
@@ -223,7 +239,11 @@ func run(cmd *cobra.Command, _ []string) error {
 
 	// Build validator registry from configuration
 	registryBuilder := factory.NewRegistryBuilder(log)
-	registry := registryBuilder.Build(cfg)
+
+	registry, _, err := registryBuilder.BuildWithRuleEngine(cfg)
+	if err != nil {
+		return errors.Wrap(err, "failed to build validator registry")
+	}
 
 	bt.mark("registry")
 
@@ -241,6 +261,8 @@ func run(cmd *cobra.Command, _ []string) error {
 
 	// Dispatch validation
 	errs := disp.Dispatch(context.Background(), ctx)
+	sessionStore := hooksession.NewStore()
+	errs, sessionCleanup := applyHookSessionLifecycle(sessionStore, ctx, errs, log)
 
 	bt.mark("dispatch")
 
@@ -251,11 +273,70 @@ func run(cmd *cobra.Command, _ []string) error {
 	patternWarnings := runPatternTracking(cfg, ctx, errs, workDir, log)
 
 	// Build and write response
-	writeErr := writeResponse(hookType, errs, patternWarnings, log)
+	writeErr := writeResponse(ctx, errs, patternWarnings, log)
+
+	sessionCleanup()
 
 	bt.mark("response")
 
 	return writeErr
+}
+
+func resolveHookInvocation() (hook.Provider, hook.EventType, string, error) {
+	provider, err := hook.ParseProvider(providerName)
+	if err != nil {
+		return hook.ProviderUnknown,
+			hook.EventTypeUnknown,
+			"",
+			errors.Wrap(err, "failed to parse provider")
+	}
+
+	requestedEventName := eventName
+	if requestedEventName == "" {
+		requestedEventName = hookType
+	}
+
+	eventType := hook.ResolveLegacyEventType(provider, requestedEventName, hook.EventTypeUnknown)
+	if requestedEventName == "" {
+		requestedEventName = hook.DefaultEventName(provider)
+		if eventType == hook.EventTypeUnknown {
+			eventType = hook.ResolveLegacyEventType(
+				provider,
+				requestedEventName,
+				hook.EventTypeUnknown,
+			)
+		}
+	}
+
+	return provider, eventType, requestedEventName, nil
+}
+
+func parseHookContext(
+	provider hook.Provider,
+	eventType hook.EventType,
+	requestedEventName string,
+	log logger.Logger,
+) (*hook.Context, error) {
+	// Parse JSON input first so we can detect the effective working directory
+	// from cd commands (e.g. "cd /path/to/repo && git commit") before loading config.
+	jsonParser := parser.NewJSONParser(os.Stdin)
+
+	ctx, err := jsonParser.ParseWithOptions(parser.ParseOptions{
+		Provider:  provider,
+		EventType: eventType,
+		EventName: requestedEventName,
+	})
+	if err != nil {
+		if errors.Is(err, parser.ErrEmptyInput) {
+			log.Info("no input provided, allowing")
+
+			return nil, parser.ErrEmptyInput
+		}
+
+		return nil, errors.Wrap(err, "failed to parse input")
+	}
+
+	return ctx, nil
 }
 
 // savePersistentState saves exception state after dispatch.
@@ -272,12 +353,12 @@ func savePersistentState(
 
 // writeResponse builds and writes the JSON hook response to stdout.
 func writeResponse(
-	hookType string,
+	hookCtx *hook.Context,
 	errs []*dispatcher.ValidationError,
 	patternWarnings []string,
 	log logger.Logger,
 ) error {
-	response := hookresponse.BuildWithPatterns(hookType, errs, patternWarnings)
+	response := hookresponse.BuildForContext(hookCtx, errs, patternWarnings)
 	if response == nil {
 		log.Info("validation passed")
 
@@ -291,7 +372,7 @@ func writeResponse(
 		return errors.Wrap(jsonErr, "marshal hook response")
 	}
 
-	//nolint:errcheck,gosec // G705: data is internal JSON from json.Marshal, not user-controlled HTML
+	//nolint:errcheck // Writing marshalled JSON to stdout is best-effort for hook responses.
 	fmt.Fprintf(os.Stdout, "%s\n", data)
 
 	if dispatcher.ShouldBlock(errs) {
@@ -345,6 +426,13 @@ func loadConfig(log logger.Logger, workDir string) (*config.Config, error) {
 // be loaded from /path, not from the shell's current working directory.
 // Returns "" if no cd-prefixed git command is detected (caller uses os.Getwd()).
 func extractEffectiveWorkDir(ctx *hook.Context, log logger.Logger) string {
+	if ctx.GetWorkingDir() != "" {
+		if ctx.Provider == hook.ProviderCodex || ctx.Provider == hook.ProviderGemini ||
+			!ctx.IsBashTool() {
+			return ctx.GetWorkingDir()
+		}
+	}
+
 	if !ctx.IsBashTool() {
 		return ""
 	}
@@ -386,9 +474,8 @@ func extractEffectiveWorkDir(ctx *hook.Context, log logger.Logger) string {
 
 	// Verify the target directory exists (filepath.Clean ensures no traversal)
 	cdTarget = filepath.Clean(cdTarget)
-	//nolint:gosec // G703: cdTarget is sanitized via filepath.Clean above; gosec cannot trace through variable assignment
 	if _, statErr := os.Stat(cdTarget); statErr != nil {
-		return ""
+		return ctx.GetWorkingDir()
 	}
 
 	log.Debug("detected cd target for config resolution", "workDir", cdTarget)
@@ -470,6 +557,8 @@ func runPatternTracking(
 
 		store.Cleanup(patternsCfg.GetMaxAge())
 		store.CleanupSessions(patternsCfg.GetSessionMaxAge())
+		store.TrimPatterns(patternsCfg.GetMaxPatterns())
+		store.TrimSessions(patternsCfg.GetMaxSessions())
 
 		if saveErr := store.Save(); saveErr != nil {
 			log.Debug("failed to save pattern store", "error", saveErr)
@@ -485,30 +574,7 @@ func initPatternStore(
 	workDir string,
 	log logger.Logger,
 ) (*patterns.FilePatternStore, error) {
-	projectDir := workDir
-	if projectDir == "" {
-		var err error
-
-		projectDir, err = os.Getwd()
-		if err != nil {
-			log.Debug("failed to get working directory for patterns", "error", err)
-
-			return nil, errors.Wrap(err, "getting working directory")
-		}
-	}
-
-	store := patterns.NewFilePatternStore(cfg, projectDir)
-	if err := store.Load(); err != nil {
-		log.Debug("failed to load pattern store", "error", err)
-	}
-
-	if cfg.IsUseSeedData() {
-		if err := patterns.EnsureSeedData(store); err != nil {
-			log.Debug("failed to ensure seed data", "error", err)
-		}
-	}
-
-	return store, nil
+	return loadPatternStore(cfg, workDir, log)
 }
 
 // extractBlockingCodes returns the error codes from blocking validation errors.

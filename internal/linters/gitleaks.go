@@ -18,9 +18,8 @@ type gitleaksFinding struct {
 	StartColumn int    `json:"StartColumn"`
 	EndColumn   int    `json:"EndColumn"`
 	Match       string `json:"Match"`
-	//nolint:gosec // G117: JSON key "Secret" is defined by the gitleaks tool output format; cannot be renamed
-	LeakValue string `json:"Secret"`
-	RuleID    string `json:"RuleID"`
+	LeakValue   string `json:"Secret"`
+	RuleID      string `json:"RuleID"`
 }
 
 // GitleaksChecker validates content for secrets using gitleaks.

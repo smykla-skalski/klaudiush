@@ -9,6 +9,16 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
+var (
+	createTempFile = os.CreateTemp
+	writeString    = func(file *os.File, content string) (int, error) {
+		return file.WriteString(content)
+	}
+	closeFile = func(file *os.File) error {
+		return file.Close()
+	}
+)
+
 // TempFileManager manages temporary files.
 type TempFileManager interface {
 	// Create creates a temporary file with the given pattern and content.
@@ -26,7 +36,7 @@ func NewTempFileManager() *tempFileManager {
 
 // Create creates a temporary file with the given pattern and content.
 func (*tempFileManager) Create(pattern, content string) (string, func(), error) {
-	tmpFile, err := os.CreateTemp("", pattern)
+	tmpFile, err := createTempFile("", pattern)
 	if err != nil {
 		return "", nil, errors.Wrap(err, "creating temp file")
 	}
@@ -34,18 +44,21 @@ func (*tempFileManager) Create(pattern, content string) (string, func(), error) 
 	filePath := filepath.Clean(tmpFile.Name())
 
 	// Write content
-	if _, err := tmpFile.WriteString(content); err != nil {
+	if _, err := writeString(tmpFile, content); err != nil {
 		_ = tmpFile.Close()
-		//nolint:gosec // G703: filePath is from os.CreateTemp via filepath.Clean above; gosec cannot trace through variable assignment
-		_ = os.Remove(filePath)
+		_ = os.Remove( // #nosec G703 -- filePath comes from os.CreateTemp, not user input
+			filePath,
+		)
 
 		return "", nil, errors.Wrap(err, "writing to temp file")
 	}
 
 	// Close file
-	if err := tmpFile.Close(); err != nil {
-		//nolint:gosec // G703: filePath is from os.CreateTemp via filepath.Clean above; gosec cannot trace through variable assignment
-		_ = os.Remove(filePath)
+	if err := closeFile(tmpFile); err != nil {
+		_ = os.Remove( // #nosec G703 -- filePath comes from os.CreateTemp, not user input
+			filePath,
+		)
+
 		return "", nil, errors.Wrap(err, "closing temp file")
 	}
 

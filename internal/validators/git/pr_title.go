@@ -5,6 +5,8 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+
+	"github.com/smykla-skalski/klaudiush/pkg/config"
 )
 
 const (
@@ -120,14 +122,20 @@ func extractPRType(title string, validTypes []string) string {
 //
 //nolint:revive // Exported for testing, intentionally similar to internal function
 func ValidatePRTitle(title string) PRTitleValidationResult {
-	return validatePRTitle(title, defaultPRTitleMaxLength, true, true, defaultValidTypes)
+	return validatePRTitle(
+		title,
+		config.DefaultTitleMaxLength,
+		true,
+		true,
+		config.DefaultValidTypes,
+	)
 }
 
 // ExtractPRType extracts the type with default valid types (exported for testing)
 //
 //nolint:revive // Exported for testing, intentionally similar to internal function
 func ExtractPRType(title string) string {
-	return extractPRType(title, defaultValidTypes)
+	return extractPRType(title, config.DefaultValidTypes)
 }
 
 // IsNonUserFacingType returns true if the type is non-user-facing

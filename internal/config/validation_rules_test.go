@@ -74,6 +74,20 @@ var _ = Describe("Validator", func() {
 				Expect(err).NotTo(HaveOccurred())
 			})
 
+			It("should pass for rule with provider filter", func() {
+				err := validator.validateRulesConfig(&config.RulesConfig{
+					Rules: []config.RuleConfig{
+						{
+							Name: "provider-rule",
+							Match: &config.RuleMatchConfig{
+								Provider: "codex",
+							},
+						},
+					},
+				})
+				Expect(err).NotTo(HaveOccurred())
+			})
+
 			It("should pass for rule with file_pattern", func() {
 				err := validator.validateRulesConfig(&config.RulesConfig{
 					Rules: []config.RuleConfig{
@@ -154,7 +168,14 @@ var _ = Describe("Validator", func() {
 				eventTypes := []string{
 					"PreToolUse", "pretooluse", "PRETOOLUSE",
 					"PostToolUse", "posttooluse",
+					"BeforeTool", "beforetool",
+					"AfterTool", "aftertool",
 					"Notification", "notification",
+					"SessionStart", "sessionstart",
+					"SessionEnd", "sessionend",
+					"Stop", "stop",
+					"AfterToolUse", "aftertooluse",
+					"PreCompress", "precompress",
 				}
 
 				for _, eventType := range eventTypes {
@@ -169,6 +190,24 @@ var _ = Describe("Validator", func() {
 						},
 					})
 					Expect(err).NotTo(HaveOccurred(), "event type %s should be valid", eventType)
+				}
+			})
+
+			It("should accept all valid providers (case-insensitive)", func() {
+				for _, provider := range []string{
+					"claude", "CLAUDE", "codex", "CODEX", "gemini", "GEMINI",
+				} {
+					err := validator.validateRulesConfig(&config.RulesConfig{
+						Rules: []config.RuleConfig{
+							{
+								Name: "provider-rule",
+								Match: &config.RuleMatchConfig{
+									Provider: provider,
+								},
+							},
+						},
+					})
+					Expect(err).NotTo(HaveOccurred(), "provider %s should be valid", provider)
 				}
 			})
 		})
@@ -249,6 +288,21 @@ var _ = Describe("Validator", func() {
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("invalid action type"))
 				Expect(err.Error()).To(ContainSubstring("invalid-action"))
+			})
+
+			It("should fail when provider is invalid", func() {
+				err := validator.validateRulesConfig(&config.RulesConfig{
+					Rules: []config.RuleConfig{
+						{
+							Name: "invalid-provider-rule",
+							Match: &config.RuleMatchConfig{
+								Provider: "invalid-provider",
+							},
+						},
+					},
+				})
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("invalid provider"))
 			})
 
 			It("should report multiple errors", func() {

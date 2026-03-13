@@ -5,6 +5,101 @@ All notable changes to klaudiush will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.29.3](https://github.com/smykla-skalski/klaudiush/compare/v1.29.2...v1.29.3) (2026-03-13)
+
+### Bug Fixes
+
+* **deps:** update module github.com/knadh/koanf/v2 to v2.3.3 ([#368](https://github.com/smykla-skalski/klaudiush/issues/368)) ([018368a](https://github.com/smykla-skalski/klaudiush/commit/018368ad48a716654b8f76cb2a83d54a2b7061ee))
+* **deps:** update module github.com/mattn/go-runewidth to v0.0.21 ([#374](https://github.com/smykla-skalski/klaudiush/issues/374)) ([45435c5](https://github.com/smykla-skalski/klaudiush/commit/45435c5bd969816dbe234fbf818067edac251fb1))
+* **deps:** update module github.com/olekukonko/tablewriter to v1.1.4 ([#383](https://github.com/smykla-skalski/klaudiush/issues/383)) ([6cc6840](https://github.com/smykla-skalski/klaudiush/commit/6cc684020f850fe436a21000427c8d4e6105f2c9))
+* **deps:** update module golang.org/x/term to v0.41.0 ([#380](https://github.com/smykla-skalski/klaudiush/issues/380)) ([15cbde2](https://github.com/smykla-skalski/klaudiush/commit/15cbde29c2c2c66ccff8c9663b8e3df721fca517))
+
+## [1.29.2](https://github.com/smykla-skalski/klaudiush/compare/v1.29.1...v1.29.2) (2026-03-12)
+
+### Bug Fixes
+
+* **deps:** update module golang.org/x/sync to v0.20.0 ([#375](https://github.com/smykla-skalski/klaudiush/issues/375)) ([b2cab95](https://github.com/smykla-skalski/klaudiush/commit/b2cab9519be880bc5d3b38419c0f76540c0bffe6))
+* **deps:** update module mvdan.cc/sh/v3 to v3.13.0 ([#376](https://github.com/smykla-skalski/klaudiush/issues/376)) ([a5f76db](https://github.com/smykla-skalski/klaudiush/commit/a5f76db6f742bea8b2f3adcd8b8bdeaeefd3fe00))
+
+## [1.29.1](https://github.com/smykla-skalski/klaudiush/compare/v1.29.0...v1.29.1) (2026-03-11)
+
+### Bug Fixes
+
+* **release:** tolerate missing changelog authors ([98cb1cb](https://github.com/smykla-skalski/klaudiush/commit/98cb1cb874555cde327df08b9c00848fc341cf8a))
+
+## [1.29.0](https://github.com/smykla-skalski/klaudiush/compare/v1.28.0...v1.29.0) (2026-03-11)
+
+### Features
+
+* **gemini:** add init and doctor integration ([9b5d02d](https://github.com/smykla-skalski/klaudiush/commit/9b5d02d88ba452c6ddaf867b071ae34fc01fdb2f))
+* **gemini:** add provider-aware runtime support ([d7d6c2d](https://github.com/smykla-skalski/klaudiush/commit/d7d6c2d947fc5079638a4020d779c32cfc7fe1c5))
+
+### Bug Fixes
+
+* **release:** format GitHub changelog entries ([0079a90](https://github.com/smykla-skalski/klaudiush/commit/0079a90a03f200fb7775de8e906e4913eb66ec3b))
+
+## [1.28.0](https://github.com/smykla-skalski/klaudiush/compare/v1.27.0...v1.28.0) (2026-03-11)
+
+### Features
+
+* **codex:** add hook install and doctor integration ([9829627](https://github.com/smykla-skalski/klaudiush/commit/9829627017987b248c0d8f29584b03d6c5721718))
+* **codex:** complete lifecycle hook validation ([f20cee2](https://github.com/smykla-skalski/klaudiush/commit/f20cee2fc444a3b2a9cdc072d04350866368ca55))
+* **codex:** wire after-tool hook coverage ([8df3da5](https://github.com/smykla-skalski/klaudiush/commit/8df3da5fa8d0bd9d25222e2b27ddae946e7243fc))
+* **config:** add provider-aware hook predicates ([638a0fc](https://github.com/smykla-skalski/klaudiush/commit/638a0fc05aefea35a75bb8c0d8d9b208dace324f))
+* **hooks:** normalize provider-aware hook runtime ([97156d6](https://github.com/smykla-skalski/klaudiush/commit/97156d6e668eb89f3c9fdb41aba24769ecc62ab4))
+* **init:** support provider-only config updates ([bcd8074](https://github.com/smykla-skalski/klaudiush/commit/bcd80744155ca8f2c9a86e033efa067a07410f2d))
+* **patterns:** align defaults and persistence ([ae220d7](https://github.com/smykla-skalski/klaudiush/commit/ae220d788fdf49715769750ac0c6681a8e0d4ead))
+
+### Bug Fixes
+
+* **codex:** expand tilde hooks paths ([7b8fb49](https://github.com/smykla-skalski/klaudiush/commit/7b8fb49ca4d3bda6eab874e6fee71836bc713c78))
+* **crashdump:** restore legacy age pruning config ([f348535](https://github.com/smykla-skalski/klaudiush/commit/f348535265c297d6c091fbd5d9a55ef8842aacf9))
+* **doctor:** align patterns paths with project root ([4c59ee9](https://github.com/smykla-skalski/klaudiush/commit/4c59ee9e83079dc1eef9be8aed411ab7f077ffbf))
+* **doctor:** respect disabled claude provider ([1903065](https://github.com/smykla-skalski/klaudiush/commit/1903065dd88ce034c667a463b86fcea47446c4df))
+* **patterns:** resolve project root for local storage ([50b113a](https://github.com/smykla-skalski/klaudiush/commit/50b113a80863b6c08dd7ac7971c47fb6bba6c3dc))
+* **validators:** honor configured warning severity ([fe6bdae](https://github.com/smykla-skalski/klaudiush/commit/fe6bdaefb3a1b106ec7848f8b6ff99caf672b79b))
+
+### Code Refactoring
+
+* **factory:** deduplicate extension validators ([38ad8f7](https://github.com/smykla-skalski/klaudiush/commit/38ad8f7cb35f51459a28454207a6e8584dd96173))
+
+## [1.27.0](https://github.com/smykla-skalski/klaudiush/compare/v1.26.5...v1.27.0) (2026-03-06)
+
+### Features
+
+* **suggest:** add klaudiush suggest command ([#326](https://github.com/smykla-skalski/klaudiush/issues/326)) ([f6626cb](https://github.com/smykla-skalski/klaudiush/commit/f6626cb7efa81111056ea22bf281cfbc69d47785))
+
+### Bug Fixes
+
+* **lint:** unblock push checks for suggest ([662918e](https://github.com/smykla-skalski/klaudiush/commit/662918e67fe9e3b8f43cddc0b70d7c15641068e7))
+* **suggest:** align generated guidance with enforced git rules ([e1c384b](https://github.com/smykla-skalski/klaudiush/commit/e1c384b49e1d620cfa815e116955ecc937db8fe7))
+
+## [1.26.5](https://github.com/smykla-skalski/klaudiush/compare/v1.26.4...v1.26.5) (2026-02-28)
+
+### Bug Fixes
+
+* **deps:** update module github.com/google/go-github/v83 to v84 ([#358](https://github.com/smykla-skalski/klaudiush/issues/358)) ([11a5146](https://github.com/smykla-skalski/klaudiush/commit/11a5146cfeea2e395980249c22f5b747e5f83805))
+
+## [1.26.4](https://github.com/smykla-skalski/klaudiush/compare/v1.26.3...v1.26.4) (2026-02-27)
+
+### Bug Fixes
+
+* **lint:** suppress gosec false positives ([620d36a](https://github.com/smykla-skalski/klaudiush/commit/620d36a76cccfb1c3fc59dec6142fd1b1fe0f85b))
+
+### Performance Improvements
+
+* **git:** cache git status, add timing logs ([47b72e2](https://github.com/smykla-skalski/klaudiush/commit/47b72e21aaa7003db06846c4844c1fae9e117bde))
+* **patterns:** cap patterns and sessions size ([c2ce7c7](https://github.com/smykla-skalski/klaudiush/commit/c2ce7c7efd0a2a8823e4c46681f09e52326a6558))
+
+## [1.26.3](https://github.com/smykla-skalski/klaudiush/compare/v1.26.2...v1.26.3) (2026-02-27)
+
+### Bug Fixes
+
+* **lint:** fix gci formatting after nolint removal ([5184154](https://github.com/smykla-skalski/klaudiush/commit/51841545de6fed89be8c65d791b8f3d258f77801))
+* **lint:** remove stale gosec nolint directives ([6fecdc9](https://github.com/smykla-skalski/klaudiush/commit/6fecdc9284a5f775064b6f9306e17e8d59e3969f))
+* **nix:** skip log dir creation in sandbox ([dc1ef5d](https://github.com/smykla-skalski/klaudiush/commit/dc1ef5d66b6a4d86ff508ffaccc2d77c982711ba))
+* **nix:** use TMPDIR for log file in sandbox ([1f3bd64](https://github.com/smykla-skalski/klaudiush/commit/1f3bd645eebce2e5aab8286985e50217f42c65f3))
+
 ## [1.26.2](https://github.com/smykla-skalski/klaudiush/compare/v1.26.1...v1.26.2) (2026-02-24)
 
 ### Bug Fixes

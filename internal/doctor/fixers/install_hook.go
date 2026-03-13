@@ -2,34 +2,32 @@ package fixers
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os/exec"
+	"strings"
 
 	"github.com/cockroachdb/errors"
 
 	"github.com/smykla-skalski/klaudiush/internal/doctor"
 	"github.com/smykla-skalski/klaudiush/internal/doctor/settings"
 	"github.com/smykla-skalski/klaudiush/internal/prompt"
-)
-
-const (
-	// DefaultHookTimeout is the default timeout for hook execution in seconds.
-	DefaultHookTimeout = 30
+	pkgConfig "github.com/smykla-skalski/klaudiush/pkg/config"
 )
 
 // ErrUserCancelled is returned when the user cancels the operation.
 var ErrUserCancelled = errors.New("user cancelled operation")
 
-// InstallHookFixer registers the klaudiush dispatcher in Claude settings.
+// InstallHookFixer registers the klaudiush dispatcher in configured provider hook files.
 type InstallHookFixer struct {
 	prompter prompt.Prompter
+	cfg      *pkgConfig.Config
 }
 
 // NewInstallHookFixer creates a new InstallHookFixer.
-func NewInstallHookFixer(prompter prompt.Prompter) *InstallHookFixer {
+func NewInstallHookFixer(prompter prompt.Prompter, cfg *pkgConfig.Config) *InstallHookFixer {
 	return &InstallHookFixer{
 		prompter: prompter,
+		cfg:      cfg,
 	}
 }
 
@@ -40,7 +38,7 @@ func (*InstallHookFixer) ID() string {
 
 // Description returns a human-readable description.
 func (*InstallHookFixer) Description() string {
-	return "Register klaudiush dispatcher in Claude settings"
+	return "Register klaudiush dispatcher in configured hook settings"
 }
 
 // CanFix checks if this fixer can fix the given result.
@@ -50,17 +48,32 @@ func (f *InstallHookFixer) CanFix(result doctor.CheckResult) bool {
 
 // Fix registers the dispatcher in the settings file.
 func (f *InstallHookFixer) Fix(_ context.Context, interactive bool) error {
-	// Get binary path
 	binaryPath, err := exec.LookPath("klaudiush")
 	if err != nil {
 		return errors.Wrap(err, "klaudiush binary not found in PATH")
 	}
 
-	// Determine which settings file to update
-	settingsPath := settings.GetUserSettingsPath()
+	claudeEnabled, codexHooksPath, geminiSettingsPath := configuredInstallTargets(f.cfg)
+
+	var targets []string
+	if claudeEnabled {
+		targets = append(targets, settings.GetUserSettingsPath())
+	}
+
+	if codexHooksPath != "" {
+		targets = append(targets, codexHooksPath)
+	}
+
+	if geminiSettingsPath != "" {
+		targets = append(targets, geminiSettingsPath)
+	}
+
+	if len(targets) == 0 {
+		return errors.New("no configured hook targets available for installation")
+	}
 
 	if interactive {
-		msg := fmt.Sprintf("Register dispatcher in %s?", settingsPath)
+		msg := fmt.Sprintf("Register dispatcher in %s?", strings.Join(targets, ", "))
 
 		confirmed, promptErr := f.prompter.Confirm(msg, true)
 		if promptErr != nil {
@@ -72,57 +85,51 @@ func (f *InstallHookFixer) Fix(_ context.Context, interactive bool) error {
 		}
 	}
 
-	// Load existing settings or create new ones
-	parser := settings.NewSettingsParser(settingsPath)
-
-	claudeSettings, err := parser.Parse()
-	if err != nil && !errors.Is(err, settings.ErrSettingsNotFound) {
-		return errors.Wrap(err, "failed to parse existing settings")
-	}
-
-	if claudeSettings == nil {
-		claudeSettings = &settings.ClaudeSettings{
-			Hooks: make(map[string][]settings.HookConfig),
+	if claudeEnabled {
+		if _, err := settings.InstallClaudeDispatcher(
+			settings.GetUserSettingsPath(),
+			binaryPath,
+		); err != nil {
+			return errors.Wrap(err, "failed to install Claude hooks")
 		}
 	}
 
-	// Check if already registered (shouldn't happen, but be defensive)
-	registered, _ := parser.IsDispatcherRegistered(binaryPath)
-	if registered {
-		return nil
+	if codexHooksPath != "" {
+		if _, err := settings.InstallCodexDispatcher(codexHooksPath, binaryPath); err != nil {
+			return errors.Wrap(err, "failed to install Codex hooks")
+		}
 	}
 
-	// Add PreToolUse hook configuration
-	hookConfig := settings.HookConfig{
-		Matcher: "Bash|Write|Edit",
-		Hooks: []settings.HookCommandConfig{
-			{
-				Type:    "command",
-				Command: binaryPath + " --hook-type PreToolUse",
-				Timeout: DefaultHookTimeout,
-			},
-		},
-	}
-
-	// Add to PreToolUse hooks
-	claudeSettings.Hooks["PreToolUse"] = append(
-		claudeSettings.Hooks["PreToolUse"],
-		hookConfig,
-	)
-
-	// Marshal to JSON with indentation
-	data, err := json.MarshalIndent(claudeSettings, "", "  ")
-	if err != nil {
-		return errors.Wrap(err, "failed to marshal settings")
-	}
-
-	// Add newline at end of file
-	data = append(data, '\n')
-
-	// Write atomically with backup
-	if err := AtomicWriteFile(settingsPath, data, true); err != nil {
-		return errors.Wrap(err, "failed to write settings file")
+	if geminiSettingsPath != "" {
+		if _, err := settings.InstallGeminiDispatcher(geminiSettingsPath, binaryPath); err != nil {
+			return errors.Wrap(err, "failed to install Gemini hooks")
+		}
 	}
 
 	return nil
+}
+
+func configuredInstallTargets(cfg *pkgConfig.Config) (bool, string, string) {
+	claudeEnabled := true
+	codexHooksPath := ""
+	geminiSettingsPath := ""
+
+	if cfg == nil {
+		return claudeEnabled, codexHooksPath, geminiSettingsPath
+	}
+
+	providers := cfg.GetProviders()
+	claudeEnabled = providers.GetClaude().IsEnabled()
+
+	codexCfg := providers.GetCodex()
+	if codexCfg.IsEnabled() && codexCfg.IsExperimentalEnabled() && codexCfg.HasHooksConfigPath() {
+		codexHooksPath = codexCfg.HooksConfigPath
+	}
+
+	geminiCfg := providers.GetGemini()
+	if geminiCfg.IsEnabled() && geminiCfg.HasSettingsPath() {
+		geminiSettingsPath = geminiCfg.SettingsPath
+	}
+
+	return claudeEnabled, codexHooksPath, geminiSettingsPath
 }

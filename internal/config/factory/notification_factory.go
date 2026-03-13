@@ -52,7 +52,10 @@ func (f *NotificationValidatorFactory) createBellValidator(
 	}
 
 	return ValidatorWithPredicate{
-		Validator: notificationvalidators.NewBellValidator(f.log, cfg, rc),
+		Validator: wrapValidatorWithSeverity(
+			notificationvalidators.NewBellValidator(f.log, cfg, rc),
+			cfg,
+		),
 		Predicate: validator.EventTypeIs(hook.EventTypeNotification),
 	}
 }

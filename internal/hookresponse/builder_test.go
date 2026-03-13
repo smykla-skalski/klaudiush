@@ -9,6 +9,7 @@ import (
 	"github.com/smykla-skalski/klaudiush/internal/dispatcher"
 	"github.com/smykla-skalski/klaudiush/internal/hookresponse"
 	"github.com/smykla-skalski/klaudiush/internal/validator"
+	"github.com/smykla-skalski/klaudiush/pkg/hook"
 )
 
 var _ = Describe("Build", func() {
@@ -147,6 +148,44 @@ var _ = Describe("Build", func() {
 		).To(ContainSubstring("Wrong for your workflow? klaudiush disable GIT001"))
 	})
 
+	It("appends pattern warnings to deny-path additional context", func() {
+		errs := []*dispatcher.ValidationError{
+			{
+				Validator:   "git.commit",
+				Message:     "Missing conventional format",
+				ShouldBlock: true,
+				Reference:   validator.RefGitConventionalCommit,
+			},
+		}
+
+		resp := hookresponse.BuildWithPatterns("PreToolUse", errs, []string{
+			"Pattern hint: after fixing GIT013 (conventional format), GIT004 (title too long) often follows.",
+		})
+
+		Expect(resp).NotTo(BeNil())
+		Expect(resp.HookSpecificOutput.PermissionDecision).To(Equal("deny"))
+		Expect(resp.HookSpecificOutput.AdditionalContext).To(ContainSubstring("Pattern hint:"))
+		Expect(resp.HookSpecificOutput.AdditionalContext).To(ContainSubstring("GIT004"))
+	})
+
+	It("does not append pattern warnings for warnings-only responses", func() {
+		errs := []*dispatcher.ValidationError{
+			{
+				Validator:   "markdown",
+				Message:     "line too long",
+				ShouldBlock: false,
+			},
+		}
+
+		resp := hookresponse.BuildWithPatterns("PreToolUse", errs, []string{
+			"Pattern hint: after fixing GIT013 (conventional format), GIT004 (title too long) often follows.",
+		})
+
+		Expect(resp).NotTo(BeNil())
+		Expect(resp.HookSpecificOutput.PermissionDecision).To(Equal("allow"))
+		Expect(resp.HookSpecificOutput.AdditionalContext).NotTo(ContainSubstring("Pattern hint:"))
+	})
+
 	It("produces valid JSON", func() {
 		errs := []*dispatcher.ValidationError{
 			{
@@ -167,5 +206,167 @@ var _ = Describe("Build", func() {
 		var decoded hookresponse.HookResponse
 		Expect(json.Unmarshal(data, &decoded)).To(Succeed())
 		Expect(decoded.HookSpecificOutput.PermissionDecision).To(Equal("deny"))
+	})
+
+	It("builds SessionStart Codex advisory responses", func() {
+		errs := []*dispatcher.ValidationError{
+			{
+				Validator:   "patterns",
+				Message:     "session guidance",
+				ShouldBlock: false,
+			},
+		}
+
+		resp := hookresponse.BuildForContext(&hook.Context{
+			Provider: hook.ProviderCodex,
+			Event:    hook.CanonicalEventSessionStart,
+		}, errs, nil)
+
+		codexResp, ok := resp.(*hookresponse.CodexCommandResponse)
+		Expect(ok).To(BeTrue())
+		Expect(codexResp.Continue).To(BeTrue())
+		Expect(codexResp.StopReason).To(BeEmpty())
+		Expect(codexResp.HookSpecificOutput).NotTo(BeNil())
+		Expect(codexResp.HookSpecificOutput.HookEventName).To(Equal("SessionStart"))
+		Expect(codexResp.HookSpecificOutput.AdditionalContext).To(ContainSubstring("warning"))
+	})
+
+	It("builds SessionStart Codex blocking responses", func() {
+		errs := []*dispatcher.ValidationError{
+			{
+				Validator:   "config",
+				Message:     "invalid setup",
+				ShouldBlock: true,
+				Reference:   validator.RefGitNoSignoff,
+			},
+		}
+
+		resp := hookresponse.BuildForContext(&hook.Context{
+			Provider: hook.ProviderCodex,
+			Event:    hook.CanonicalEventSessionStart,
+		}, errs, nil)
+
+		codexResp, ok := resp.(*hookresponse.CodexCommandResponse)
+		Expect(ok).To(BeTrue())
+		Expect(codexResp.Continue).To(BeFalse())
+		Expect(codexResp.StopReason).To(ContainSubstring("[GIT001]"))
+		Expect(codexResp.HookSpecificOutput).To(BeNil())
+	})
+
+	It("builds Stop Codex blocking responses", func() {
+		errs := []*dispatcher.ValidationError{
+			{
+				Validator:   "summary",
+				Message:     "must stop",
+				ShouldBlock: true,
+				Reference:   validator.RefGitNoSignoff,
+			},
+		}
+
+		resp := hookresponse.BuildForContext(&hook.Context{
+			Provider: hook.ProviderCodex,
+			Event:    hook.CanonicalEventTurnStop,
+		}, errs, nil)
+
+		codexResp, ok := resp.(*hookresponse.CodexCommandResponse)
+		Expect(ok).To(BeTrue())
+		Expect(codexResp.Decision).To(Equal("block"))
+		Expect(codexResp.Reason).To(ContainSubstring("[GIT001]"))
+		Expect(codexResp.Continue).To(BeTrue())
+	})
+
+	It("keeps AfterToolUse Codex responses advisory even for blocking findings", func() {
+		errs := []*dispatcher.ValidationError{
+			{
+				Validator:   "git.push",
+				Message:     "protected branch",
+				ShouldBlock: true,
+				Reference:   validator.RefGitKongOrgPush,
+			},
+		}
+
+		resp := hookresponse.BuildForContext(&hook.Context{
+			Provider:     hook.ProviderCodex,
+			Event:        hook.CanonicalEventAfterTool,
+			RawEventName: "AfterToolUse",
+		}, errs, nil)
+
+		codexResp, ok := resp.(*hookresponse.CodexCommandResponse)
+		Expect(ok).To(BeTrue())
+		Expect(codexResp.Continue).To(BeTrue())
+		Expect(codexResp.StopReason).To(BeEmpty())
+		Expect(codexResp.HookSpecificOutput).NotTo(BeNil())
+		Expect(codexResp.HookSpecificOutput.HookEventName).To(Equal("AfterToolUse"))
+		Expect(codexResp.HookSpecificOutput.AdditionalContext).To(ContainSubstring("Fix ALL"))
+	})
+
+	It("builds Gemini BeforeTool blocking responses", func() {
+		errs := []*dispatcher.ValidationError{
+			{
+				Validator:   "git.commit",
+				Message:     "missing signoff",
+				ShouldBlock: true,
+				Reference:   validator.RefGitNoSignoff,
+			},
+		}
+
+		resp := hookresponse.BuildForContext(&hook.Context{
+			Provider: hook.ProviderGemini,
+			Event:    hook.CanonicalEventBeforeTool,
+		}, errs, nil)
+
+		geminiResp, ok := resp.(*hookresponse.GeminiCommandResponse)
+		Expect(ok).To(BeTrue())
+		Expect(geminiResp.Decision).To(Equal("deny"))
+		Expect(geminiResp.Reason).To(ContainSubstring("[GIT001]"))
+		Expect(geminiResp.HookSpecificOutput).To(BeNil())
+	})
+
+	It("keeps Gemini AfterTool responses advisory even for blocking findings", func() {
+		errs := []*dispatcher.ValidationError{
+			{
+				Validator:   "git.push",
+				Message:     "protected branch",
+				ShouldBlock: true,
+				Reference:   validator.RefGitKongOrgPush,
+			},
+		}
+
+		resp := hookresponse.BuildForContext(&hook.Context{
+			Provider:     hook.ProviderGemini,
+			Event:        hook.CanonicalEventAfterTool,
+			RawEventName: "AfterTool",
+		}, errs, nil)
+
+		geminiResp, ok := resp.(*hookresponse.GeminiCommandResponse)
+		Expect(ok).To(BeTrue())
+		Expect(geminiResp.Decision).To(BeEmpty())
+		Expect(geminiResp.Reason).To(BeEmpty())
+		Expect(geminiResp.HookSpecificOutput).NotTo(BeNil())
+		Expect(geminiResp.HookSpecificOutput.HookEventName).To(Equal("AfterTool"))
+		Expect(geminiResp.HookSpecificOutput.AdditionalContext).To(ContainSubstring("Fix ALL"))
+	})
+
+	It("builds Gemini SessionEnd summary responses without flow-control fields", func() {
+		errs := []*dispatcher.ValidationError{
+			{
+				Validator:   "summary",
+				Message:     "cleanup summary",
+				ShouldBlock: true,
+				Reference:   validator.RefGitNoSignoff,
+			},
+		}
+
+		resp := hookresponse.BuildForContext(&hook.Context{
+			Provider:     hook.ProviderGemini,
+			Event:        hook.CanonicalEventTurnStop,
+			RawEventName: "SessionEnd",
+		}, errs, nil)
+
+		geminiResp, ok := resp.(*hookresponse.GeminiCommandResponse)
+		Expect(ok).To(BeTrue())
+		Expect(geminiResp.Decision).To(BeEmpty())
+		Expect(geminiResp.Reason).To(BeEmpty())
+		Expect(geminiResp.SystemMessage).To(ContainSubstring("GIT001"))
 	})
 })

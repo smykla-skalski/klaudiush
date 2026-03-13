@@ -1,0 +1,32 @@
+# Test: Commit severity warning downgrades blocking failures to allow
+# This tests that configured warning severity still reports the issue but does not deny the hook
+
+exec git init --initial-branch=main
+exec git config user.email "test@test.com"
+exec git config user.name "Test User"
+
+cp file.go staged.go
+exec git add staged.go
+
+stdin input.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"allow"'
+stdout 'GIT010'
+! stdout '"permissionDecision":"deny"'
+
+-- .klaudiush/config.toml --
+[validators.git.commit]
+severity = "warning"
+
+-- file.go --
+package main
+
+func main() {}
+
+-- input.json --
+{
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "git commit -S -m 'feat(api): add user endpoint'"
+  }
+}

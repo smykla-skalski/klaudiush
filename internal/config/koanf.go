@@ -56,12 +56,9 @@ const (
 
 // Default configuration constants for koanf map defaults.
 const (
-	defaultTimeoutStr        = "10s"
-	defaultGHAPITimeoutStr   = "5s"
-	defaultTitleMaxLength    = 50
-	defaultBodyMaxLineLength = 72
-	defaultBodyLineTolerance = 5
-	defaultContextLines      = 2
+	defaultTimeoutStr      = "10s"
+	defaultGHAPITimeoutStr = "5s"
+	defaultContextLines    = 2
 
 	// Exception defaults.
 	defaultExceptionTokenPrefix     = "EXC"
@@ -677,9 +674,28 @@ func defaultsToMap() map[string]any {
 	return map[string]any{
 		"version":    config.CurrentConfigVersion,
 		"global":     defaultGlobalMap(),
+		"providers":  defaultProvidersMap(),
 		"validators": defaultValidatorsMap(),
 		"rules":      defaultRulesMap(),
 		"exceptions": defaultExceptionsMap(),
+		"patterns":   defaultPatternsMap(),
+	}
+}
+
+func defaultProvidersMap() map[string]any {
+	return map[string]any{
+		"claude": map[string]any{
+			"enabled": true,
+		},
+		"codex": map[string]any{
+			"enabled":           false,
+			"experimental":      false,
+			"hooks_config_path": "",
+		},
+		"gemini": map[string]any{
+			"enabled":       false,
+			"settings_path": "~/.gemini/settings.json",
+		},
 	}
 }
 
@@ -719,6 +735,22 @@ func defaultGlobalMap() map[string]any {
 	}
 }
 
+func defaultPatternsMap() map[string]any {
+	return map[string]any{
+		"enabled":                true,
+		"min_count":              config.DefaultPatternsMinCount,
+		"max_age":                config.DefaultPatternsMaxAge.String(),
+		"max_warnings_per_error": config.DefaultPatternsMaxWarningsPerError,
+		"max_warnings_total":     config.DefaultPatternsMaxWarningsTotal,
+		"project_data_file":      config.DefaultPatternsProjectDataFile,
+		"global_data_dir":        xdg.PatternsGlobalDir(),
+		"session_max_age":        config.DefaultPatternsSessionMaxAge.String(),
+		"use_seed_data":          true,
+		"max_patterns":           config.DefaultPatternsMaxPatterns,
+		"max_sessions":           config.DefaultPatternsMaxSessions,
+	}
+}
+
 func defaultValidatorsMap() map[string]any {
 	return map[string]any{
 		"git":          defaultGitValidatorsMap(),
@@ -747,9 +779,9 @@ func defaultCommitMap() map[string]any {
 		"check_staging_area": true,
 		"message": map[string]any{
 			"enabled":                  true,
-			"title_max_length":         defaultTitleMaxLength,
-			"body_max_line_length":     defaultBodyMaxLineLength,
-			"body_line_tolerance":      defaultBodyLineTolerance,
+			"title_max_length":         config.DefaultTitleMaxLength,
+			"body_max_line_length":     config.DefaultBodyMaxLineLength,
+			"body_line_tolerance":      config.DefaultBodyLineTolerance,
 			"conventional_commits":     true,
 			"require_scope":            true,
 			"block_infra_scope_misuse": true,
@@ -789,7 +821,7 @@ func defaultPRMap() map[string]any {
 	return map[string]any{
 		"enabled":                    true,
 		"severity":                   "error",
-		"title_max_length":           defaultTitleMaxLength,
+		"title_max_length":           config.DefaultTitleMaxLength,
 		"title_conventional_commits": true,
 		"require_changelog":          false,
 		"check_ci_labels":            true,

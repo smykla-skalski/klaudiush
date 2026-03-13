@@ -37,15 +37,28 @@ func NewValidatorAdapter(
 func (a *ValidatorAdapter) Validate(ctx context.Context, hookCtx *hook.Context) *validator.Result {
 	// Convert hook context to plugin request
 	req := &plugin.ValidateRequest{
-		EventType: hookCtx.EventType.String(),
-		ToolName:  hookCtx.ToolName.String(),
-		Command:   hookCtx.GetCommand(),
-		FilePath:  hookCtx.GetFilePath(),
-		Content:   hookCtx.GetContent(),
-		OldString: hookCtx.ToolInput.OldString,
-		NewString: hookCtx.ToolInput.NewString,
-		Pattern:   hookCtx.ToolInput.Pattern,
+		Provider:      hookCtx.ProviderName(),
+		EventName:     string(hookCtx.Event),
+		RawEventName:  hookCtx.EventName(),
+		EventType:     hookCtx.EventType.String(),
+		ToolFamily:    string(hookCtx.ToolFamily),
+		RawToolName:   hookCtx.RawToolName,
+		ToolName:      hookCtx.ToolName.String(),
+		Command:       hookCtx.GetCommand(),
+		FilePath:      hookCtx.GetFilePath(),
+		Content:       hookCtx.GetContent(),
+		OldString:     hookCtx.ToolInput.OldString,
+		NewString:     hookCtx.ToolInput.NewString,
+		Pattern:       hookCtx.ToolInput.Pattern,
+		WorkingDir:    hookCtx.GetWorkingDir(),
+		SessionID:     hookCtx.SessionID,
+		TurnID:        hookCtx.TurnID,
+		ToolExecuted:  hookCtx.ToolExecuted,
+		ToolSucceeded: hookCtx.ToolSucceeded,
+		ToolMutating:  hookCtx.ToolMutating,
+		AffectedPaths: hookCtx.AffectedPaths,
 	}
+	req.PopulateNormalizedFields()
 
 	// Call the plugin
 	resp, err := a.plugin.Validate(ctx, req)

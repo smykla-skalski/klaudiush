@@ -3,11 +3,11 @@
 
 [tools]
 # Go language
-go = "1.26.0"
+go = "1.26.1"
 
 # Go linting tool with comprehensive checks
 # https://golangci-lint.run/
-golangci-lint = "2.10.1"
+golangci-lint = "2.11.3"
 
 # Markdown linter
 # https://github.com/DavidAnson/markdownlint-cli2
@@ -27,7 +27,7 @@ ginkgo = "2.28.1"
 
 # Git hooks manager
 # https://github.com/evilmartians/lefthook
-lefthook = "2.1.1"
+lefthook = "2.1.4"
 
 [env]
 # Ensure Go binaries are in PATH
@@ -101,10 +101,11 @@ depends = ["build"]
 run = """
 #!/usr/bin/env bash
 set -euo pipefail
+TEST_P="${GO_TEST_P:-4}"
 # Testscript tests (cmd/klaudiush) compile the binary inline.
-# CrowdStrike Falcon kills new executables under parallel load,
-# so these run separately with -p 1 (sequential).
-go test -race -cover $(go list ./... | grep -v /cmd/klaudiush)
+# Keep package-level test parallelism bounded so race+cover remains stable on smaller machines and in sandboxes.
+# Testscript tests (cmd/klaudiush) still run separately with -p 1 (sequential).
+go test -race -cover -p "$TEST_P" $(go list ./... | grep -v /cmd/klaudiush)
 go test -race -cover -p 1 ./cmd/klaudiush
 """
 
@@ -114,7 +115,8 @@ depends = ["build"]
 run = """
 #!/usr/bin/env bash
 set -euo pipefail
-go test -v -race -cover $(go list ./... | grep -v /cmd/klaudiush)
+TEST_P="${GO_TEST_P:-4}"
+go test -v -race -cover -p "$TEST_P" $(go list ./... | grep -v /cmd/klaudiush)
 go test -v -race -cover -p 1 ./cmd/klaudiush
 """
 
@@ -128,7 +130,8 @@ description = "Run unit tests only (short mode)"
 run = """
 #!/usr/bin/env bash
 set -euo pipefail
-go test -race -cover -short $(go list ./... | grep -v /cmd/klaudiush)
+TEST_P="${GO_TEST_P:-4}"
+go test -race -cover -short -p "$TEST_P" $(go list ./... | grep -v /cmd/klaudiush)
 go test -race -cover -short -p 1 ./cmd/klaudiush
 """
 

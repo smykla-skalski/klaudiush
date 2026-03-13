@@ -655,3 +655,25 @@ EOF
 		})
 	})
 })
+
+var _ = Describe("Provider-aware predicates", func() {
+	It("matches canonical events across provider-specific aliases", func() {
+		ctx := &hook.Context{
+			Provider:     hook.ProviderCodex,
+			Event:        hook.CanonicalEventAfterTool,
+			RawEventName: "AfterToolUse",
+			EventType:    hook.EventTypePostToolUse,
+		}
+
+		Expect(validator.EventIs(hook.CanonicalEventAfterTool)(ctx)).To(BeTrue())
+	})
+
+	It("matches provider filters against normalized provider names", func() {
+		ctx := &hook.Context{
+			Provider: hook.ProviderCodex,
+		}
+
+		Expect(validator.ProviderIs(hook.ProviderCodex)(ctx)).To(BeTrue())
+		Expect(validator.ProviderIs(hook.ProviderClaude)(ctx)).To(BeFalse())
+	})
+})

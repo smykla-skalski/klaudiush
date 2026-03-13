@@ -629,4 +629,50 @@ var _ = Describe("Validator", func() {
 			Expect(errors.Is(err, err2)).To(BeTrue())
 		})
 	})
+
+	Describe("validatePatternsConfig", func() {
+		It("should allow empty patterns config", func() {
+			err := validator.validatePatternsConfig(&config.PatternsConfig{})
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("should allow zero values because they fall back to defaults", func() {
+			err := validator.validatePatternsConfig(&config.PatternsConfig{
+				MinCount:            0,
+				MaxWarningsPerError: 0,
+				MaxWarningsTotal:    0,
+				MaxPatterns:         0,
+				MaxSessions:         0,
+			})
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("should reject negative min_count", func() {
+			err := validator.validatePatternsConfig(&config.PatternsConfig{
+				MinCount: -1,
+			})
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("min_count must be non-negative"))
+		})
+
+		It("should reject negative warning limits", func() {
+			err := validator.validatePatternsConfig(&config.PatternsConfig{
+				MaxWarningsPerError: -1,
+				MaxWarningsTotal:    -2,
+			})
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("max_warnings_per_error must be non-negative"))
+			Expect(err.Error()).To(ContainSubstring("max_warnings_total must be non-negative"))
+		})
+
+		It("should reject negative storage limits", func() {
+			err := validator.validatePatternsConfig(&config.PatternsConfig{
+				MaxPatterns: -1,
+				MaxSessions: -2,
+			})
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("max_patterns must be non-negative"))
+			Expect(err.Error()).To(ContainSubstring("max_sessions must be non-negative"))
+		})
+	})
 })

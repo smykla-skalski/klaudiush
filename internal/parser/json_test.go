@@ -103,6 +103,186 @@ var _ = Describe("JSONParser", func() {
 		})
 	})
 
+	Describe("Parse with Codex input", func() {
+		It("parses SessionStart payloads with provider-aware metadata", func() {
+			input := `{
+				"session_id": "sess-123",
+				"cwd": "/tmp/project",
+				"permission_mode": "workspace-write",
+				"model": "gpt-5.4",
+				"source": "cli"
+			}`
+
+			p := parser.NewJSONParser(bytes.NewReader([]byte(input)))
+			ctx, err := p.ParseWithOptions(parser.ParseOptions{
+				Provider:  hook.ProviderCodex,
+				EventName: "SessionStart",
+			})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ctx.Provider).To(Equal(hook.ProviderCodex))
+			Expect(ctx.Event).To(Equal(hook.CanonicalEventSessionStart))
+			Expect(ctx.EventName()).To(Equal("SessionStart"))
+			Expect(ctx.WorkingDir).To(Equal("/tmp/project"))
+			Expect(ctx.PermissionMode).To(Equal("workspace-write"))
+			Expect(ctx.Model).To(Equal("gpt-5.4"))
+			Expect(ctx.Source).To(Equal("cli"))
+		})
+
+		It("parses AfterToolUse payloads and derives affected paths", func() {
+			input := `{
+				"session_id": "sess-123",
+				"cwd": "/tmp/project",
+				"hook_event": {
+					"event_type": "AfterToolUse",
+					"turn_id": "turn-123",
+					"call_id": "call-123",
+					"tool_executed": true,
+					"tool_succeeded": true,
+					"tool_mutating": true,
+					"tool_name": "apply_patch",
+					"tool_input": {
+						"input": "*** Begin Patch\n*** Add File: docs/new.md\n+hello\n*** Update File: go.mod\n@@\n-go 1.25\n+go 1.26\n*** End Patch\n"
+					}
+				}
+			}`
+
+			p := parser.NewJSONParser(bytes.NewReader([]byte(input)))
+			ctx, err := p.ParseWithOptions(parser.ParseOptions{
+				Provider: hook.ProviderCodex,
+			})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ctx.Provider).To(Equal(hook.ProviderCodex))
+			Expect(ctx.Event).To(Equal(hook.CanonicalEventAfterTool))
+			Expect(ctx.EventName()).To(Equal("AfterToolUse"))
+			Expect(ctx.TurnID).To(Equal("turn-123"))
+			Expect(ctx.ToolUseID).To(Equal("call-123"))
+			Expect(ctx.ToolExecuted).To(BeTrue())
+			Expect(ctx.ToolSucceeded).To(BeTrue())
+			Expect(ctx.ToolMutating).To(BeTrue())
+			Expect(ctx.ToolName).To(Equal(hook.ToolTypeEdit))
+			Expect(ctx.ToolFamily).To(Equal(hook.ToolFamilyEdit))
+			Expect(ctx.AffectedPaths).To(ConsistOf("docs/new.md", "go.mod"))
+		})
+
+		It("parses Stop payloads with stop-hook fields", func() {
+			input := `{
+				"session_id": "sess-123",
+				"cwd": "/tmp/project",
+				"last_assistant_message": "done",
+				"stop_hook_active": true
+			}`
+
+			p := parser.NewJSONParser(bytes.NewReader([]byte(input)))
+			ctx, err := p.ParseWithOptions(parser.ParseOptions{
+				Provider:  hook.ProviderCodex,
+				EventName: "Stop",
+			})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ctx.Provider).To(Equal(hook.ProviderCodex))
+			Expect(ctx.Event).To(Equal(hook.CanonicalEventTurnStop))
+			Expect(ctx.EventName()).To(Equal("Stop"))
+			Expect(ctx.LastAssistantMessage).To(Equal("done"))
+			Expect(ctx.StopHookActive).To(BeTrue())
+		})
+	})
+
+	Describe("Parse with Gemini input", func() {
+		It("parses BeforeTool payloads with Gemini tool mappings", func() {
+			input := `{
+				"session_id": "sess-gemini",
+				"cwd": "/tmp/project",
+				"hook_event_name": "BeforeTool",
+				"tool_name": "run_shell_command",
+				"tool_input": {
+					"command": "git status"
+				}
+			}`
+
+			p := parser.NewJSONParser(bytes.NewReader([]byte(input)))
+			ctx, err := p.ParseWithOptions(parser.ParseOptions{
+				Provider:  hook.ProviderGemini,
+				EventName: "BeforeTool",
+			})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ctx.Provider).To(Equal(hook.ProviderGemini))
+			Expect(ctx.Event).To(Equal(hook.CanonicalEventBeforeTool))
+			Expect(ctx.EventName()).To(Equal("BeforeTool"))
+			Expect(ctx.ToolName).To(Equal(hook.ToolTypeBash))
+			Expect(ctx.ToolFamily).To(Equal(hook.ToolFamilyShell))
+			Expect(ctx.GetCommand()).To(Equal("git status"))
+		})
+
+		It("parses AfterTool payloads and derives affected paths", func() {
+			input := `{
+				"session_id": "sess-gemini",
+				"cwd": "/tmp/project",
+				"hook_event_name": "AfterTool",
+				"tool_name": "write_file",
+				"tool_input": {
+					"file_path": "README.md",
+					"content": "# hello"
+				},
+				"tool_response": {
+					"llmContent": "ok"
+				}
+			}`
+
+			p := parser.NewJSONParser(bytes.NewReader([]byte(input)))
+			ctx, err := p.ParseWithOptions(parser.ParseOptions{
+				Provider:  hook.ProviderGemini,
+				EventName: "AfterTool",
+			})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ctx.Provider).To(Equal(hook.ProviderGemini))
+			Expect(ctx.Event).To(Equal(hook.CanonicalEventAfterTool))
+			Expect(ctx.EventName()).To(Equal("AfterTool"))
+			Expect(ctx.ToolName).To(Equal(hook.ToolTypeWrite))
+			Expect(ctx.ToolFamily).To(Equal(hook.ToolFamilyWrite))
+			Expect(ctx.AffectedPaths).To(ConsistOf("README.md"))
+		})
+
+		It("parses SessionEnd and PreCompress lifecycle payloads", func() {
+			sessionEndInput := `{
+				"session_id": "sess-gemini",
+				"cwd": "/tmp/project",
+				"reason": "exit"
+			}`
+
+			p := parser.NewJSONParser(bytes.NewReader([]byte(sessionEndInput)))
+			sessionEndCtx, err := p.ParseWithOptions(parser.ParseOptions{
+				Provider:  hook.ProviderGemini,
+				EventName: "SessionEnd",
+			})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(sessionEndCtx.Provider).To(Equal(hook.ProviderGemini))
+			Expect(sessionEndCtx.Event).To(Equal(hook.CanonicalEventTurnStop))
+			Expect(sessionEndCtx.EventName()).To(Equal("SessionEnd"))
+
+			preCompressInput := `{
+				"session_id": "sess-gemini",
+				"cwd": "/tmp/project",
+				"trigger": "manual"
+			}`
+
+			p = parser.NewJSONParser(bytes.NewReader([]byte(preCompressInput)))
+			preCompressCtx, err := p.ParseWithOptions(parser.ParseOptions{
+				Provider:  hook.ProviderGemini,
+				EventName: "PreCompress",
+			})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(preCompressCtx.Provider).To(Equal(hook.ProviderGemini))
+			Expect(preCompressCtx.Event).To(Equal(hook.CanonicalEventPreCompress))
+			Expect(preCompressCtx.EventName()).To(Equal("PreCompress"))
+		})
+	})
+
 	Describe("Backward compatibility", func() {
 		It("works with inputs without session fields", func() {
 			input := `{

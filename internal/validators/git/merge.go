@@ -623,7 +623,7 @@ func (v *MergeValidator) getTitleMaxLength() int {
 		return *v.config.Message.TitleMaxLength
 	}
 
-	return defaultMaxTitleLength
+	return config.DefaultTitleMaxLength
 }
 
 func (v *MergeValidator) shouldAllowUnlimitedRevertTitle() bool {
@@ -643,7 +643,7 @@ func (v *MergeValidator) getBodyMaxLineLength() int {
 		return *v.config.Message.BodyMaxLineLength
 	}
 
-	return defaultMaxBodyLineLength
+	return config.DefaultBodyMaxLineLength
 }
 
 func (v *MergeValidator) getBodyLineTolerance() int {
@@ -651,7 +651,7 @@ func (v *MergeValidator) getBodyLineTolerance() int {
 		return *v.config.Message.BodyLineTolerance
 	}
 
-	return defaultBodyLineTolerance
+	return config.DefaultBodyLineTolerance
 }
 
 func (v *MergeValidator) shouldCheckConventionalCommits() bool {
@@ -667,7 +667,7 @@ func (v *MergeValidator) getValidTypes() []string {
 		return v.config.Message.ValidTypes
 	}
 
-	return defaultValidTypes
+	return config.DefaultValidTypes
 }
 
 func (v *MergeValidator) shouldRequireScope() bool {
@@ -707,7 +707,7 @@ func (v *MergeValidator) getForbiddenPatterns() []string {
 		return v.config.Message.ForbiddenPatterns
 	}
 
-	return defaultForbiddenPatterns
+	return config.DefaultForbiddenPatterns
 }
 
 // Category returns the validator category for parallel execution.

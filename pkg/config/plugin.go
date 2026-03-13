@@ -2,6 +2,7 @@ package config
 
 import (
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/invopop/jsonschema"
@@ -85,12 +86,16 @@ func (PluginType) JSONSchema() *jsonschema.Schema {
 
 // PluginPredicate configures when a plugin should be invoked.
 type PluginPredicate struct {
+	// Providers filters by hook provider.
+	// Example: ["claude", "codex"]
+	Providers []string `json:"providers,omitempty" koanf:"providers" toml:"providers,omitempty"`
+
 	// EventTypes filters by event type.
-	// Example: ["PreToolUse", "PostToolUse"]
+	// Example: ["before_tool", "PreToolUse", "SessionStart"]
 	EventTypes []string `json:"event_types,omitempty" koanf:"event_types" toml:"event_types,omitempty"`
 
 	// ToolTypes filters by tool type.
-	// Example: ["Bash", "Write", "Edit"]
+	// Example: ["shell", "Bash", "Edit"]
 	ToolTypes []string `json:"tool_types,omitempty" koanf:"tool_types" toml:"tool_types,omitempty"`
 
 	// FilePatterns filters by file path patterns (glob syntax).
@@ -150,26 +155,39 @@ func (c *PluginInstanceConfig) GetTimeout(defaultTimeout time.Duration) time.Dur
 	return time.Duration(c.Timeout)
 }
 
+// MatchesProvider returns whether this predicate matches the given provider.
+func (p *PluginPredicate) MatchesProvider(provider hook.Provider) bool {
+	if p == nil || len(p.Providers) == 0 {
+		return true
+	}
+
+	providerStr := string(provider)
+
+	return slices.ContainsFunc(p.Providers, func(candidate string) bool {
+		return strings.EqualFold(candidate, providerStr)
+	})
+}
+
 // MatchesEventType returns whether this predicate matches the given event type.
-func (p *PluginPredicate) MatchesEventType(eventType hook.EventType) bool {
+func (p *PluginPredicate) MatchesEventType(ctx *hook.Context) bool {
 	if p == nil || len(p.EventTypes) == 0 {
 		return true
 	}
 
-	eventTypeStr := eventType.String()
-
-	return slices.Contains(p.EventTypes, eventTypeStr)
+	return slices.ContainsFunc(p.EventTypes, func(candidate string) bool {
+		return ctx.MatchesEventName(candidate)
+	})
 }
 
 // MatchesToolType returns whether this predicate matches the given tool type.
-func (p *PluginPredicate) MatchesToolType(toolType hook.ToolType) bool {
+func (p *PluginPredicate) MatchesToolType(ctx *hook.Context) bool {
 	if p == nil || len(p.ToolTypes) == 0 {
 		return true
 	}
 
-	toolTypeStr := toolType.String()
-
-	return slices.Contains(p.ToolTypes, toolTypeStr)
+	return slices.ContainsFunc(p.ToolTypes, func(candidate string) bool {
+		return ctx.MatchesToolName(candidate)
+	})
 }
 
 // GetPlugin returns the plugin config, creating it if it doesn't exist.

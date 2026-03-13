@@ -30,6 +30,8 @@
 //	var Plugin MyPlugin  // exported symbol "Plugin" required for Go plugins
 package plugin
 
+import "github.com/smykla-skalski/klaudiush/pkg/hook"
+
 // Plugin is the interface that all plugins must implement.
 type Plugin interface {
 	// Info returns metadata about the plugin.
@@ -59,10 +61,29 @@ type Info struct {
 
 // ValidateRequest contains the context passed to plugin validators.
 type ValidateRequest struct {
+	// Provider is the source provider ("claude", "codex", "gemini").
+	Provider string `json:"provider,omitempty"`
+
+	// EventName is the normalized event name ("before_tool", "session_start", etc.).
+	EventName string `json:"event_name,omitempty"`
+
+	// RawEventName is the provider-specific event name ("PreToolUse", "SessionStart", etc.).
+	RawEventName string `json:"raw_event_name,omitempty"`
+
 	// EventType is the hook event type ("PreToolUse", "PostToolUse", "Notification").
+	//
+	// Deprecated: use EventName and RawEventName instead.
 	EventType string `json:"event_type"`
 
+	// ToolFamily is the normalized tool family ("shell", "edit", etc.).
+	ToolFamily string `json:"tool_family,omitempty"`
+
+	// RawToolName is the provider-specific tool name.
+	RawToolName string `json:"raw_tool_name,omitempty"`
+
 	// ToolName is the tool being invoked ("Bash", "Write", "Edit", etc.).
+	//
+	// Deprecated: use ToolFamily and RawToolName instead.
 	ToolName string `json:"tool_name"`
 
 	// Command is the shell command (for Bash tool).
@@ -83,9 +104,54 @@ type ValidateRequest struct {
 	// Pattern is the search pattern (for Grep/Glob tools).
 	Pattern string `json:"pattern,omitempty"`
 
+	// WorkingDir is the provider-reported current working directory.
+	WorkingDir string `json:"working_dir,omitempty"`
+
+	// SessionID is the hook/session identifier when present.
+	SessionID string `json:"session_id,omitempty"`
+
+	// TurnID is the provider turn identifier when present.
+	TurnID string `json:"turn_id,omitempty"`
+
+	// ToolExecuted reports whether the provider executed the tool.
+	ToolExecuted bool `json:"tool_executed,omitempty"`
+
+	// ToolSucceeded reports whether the provider considered the tool successful.
+	ToolSucceeded bool `json:"tool_succeeded,omitempty"`
+
+	// ToolMutating reports whether the provider considers the tool mutating.
+	ToolMutating bool `json:"tool_mutating,omitempty"`
+
+	// AffectedPaths are provider-derived paths affected by the tool, when available.
+	AffectedPaths []string `json:"affected_paths,omitempty"`
+
 	// Config contains plugin-specific configuration from the config file.
 	// The structure depends on how the plugin is configured in config.toml.
 	Config map[string]any `json:"config,omitempty"`
+}
+
+// PopulateNormalizedFields fills canonical event/tool fields from legacy compatibility values.
+func (r *ValidateRequest) PopulateNormalizedFields() {
+	if r == nil {
+		return
+	}
+
+	if r.RawEventName == "" {
+		r.RawEventName = r.EventType
+	}
+
+	if r.EventName == "" {
+		r.EventName = string(hook.NormalizeEventName(r.RawEventName))
+	}
+
+	if r.RawToolName == "" {
+		r.RawToolName = r.ToolName
+	}
+
+	if r.ToolFamily == "" {
+		_, toolFamily := hook.ResolveToolMetadata(r.RawToolName)
+		r.ToolFamily = string(toolFamily)
+	}
 }
 
 // ValidateResponse contains the validation result returned by a plugin.

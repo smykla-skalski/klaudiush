@@ -23,6 +23,7 @@ import (
 	"github.com/smykla-skalski/klaudiush/internal/doctor/fixers"
 	"github.com/smykla-skalski/klaudiush/internal/doctor/reporters"
 	"github.com/smykla-skalski/klaudiush/internal/prompt"
+	pkgConfig "github.com/smykla-skalski/klaudiush/pkg/config"
 	"github.com/smykla-skalski/klaudiush/pkg/logger"
 )
 
@@ -39,7 +40,7 @@ var doctorCmd = &cobra.Command{
 
 Checks:
 - Binary availability and permissions
-- Hook registration in Claude settings
+- Hook registration for enabled providers
 - Configuration file validity
 - Pattern learning system health
 - Backup system health
@@ -90,14 +91,19 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 		"categories", categoryFlag,
 	)
 
+	doctorCfg, cfgErr := loadDoctorConfig(log)
+	if cfgErr != nil {
+		log.Error("failed to load config for provider-aware doctor checks", "error", cfgErr)
+	}
+
 	// Build registry
-	registry := buildDoctorRegistry()
+	registry := buildDoctorRegistry(doctorCfg)
 
 	// Create prompter for interactive mode
 	prompter := prompt.NewStdPrompter()
 
 	// Register fixers
-	registerFixers(registry, prompter, log)
+	registerFixers(registry, prompter, log, doctorCfg)
 
 	// Create reporter based on terminal capabilities
 	reporter := selectReporter()
@@ -134,21 +140,9 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 }
 
 // buildDoctorRegistry creates and populates the health check registry.
-func buildDoctorRegistry() *doctor.Registry {
+func buildDoctorRegistry(cfg *pkgConfig.Config) *doctor.Registry {
 	registry := doctor.NewRegistry()
-
-	// Register binary checkers
-	registry.RegisterChecker(binary.NewExistsChecker())
-	registry.RegisterChecker(binary.NewPermissionsChecker())
-	registry.RegisterChecker(binary.NewLocationChecker())
-
-	// Register hook checkers
-	registry.RegisterChecker(hook.NewUserRegistrationChecker())
-	registry.RegisterChecker(hook.NewProjectRegistrationChecker())
-	registry.RegisterChecker(hook.NewProjectLocalRegistrationChecker())
-	registry.RegisterChecker(hook.NewUserPreToolUseChecker())
-	registry.RegisterChecker(hook.NewProjectPreToolUseChecker())
-	registry.RegisterChecker(hook.NewPathValidationChecker())
+	registerBinaryAndHookCheckers(registry, cfg)
 
 	// Register config checkers
 	registry.RegisterChecker(configchecker.NewGlobalChecker())
@@ -187,9 +181,65 @@ func buildDoctorRegistry() *doctor.Registry {
 	return registry
 }
 
+func registerBinaryAndHookCheckers(registry *doctor.Registry, cfg *pkgConfig.Config) {
+	registerBinaryCheckers(registry)
+	registerHookCheckers(registry, cfg)
+	registry.RegisterChecker(hook.NewPathValidationChecker())
+}
+
+func registerBinaryCheckers(registry *doctor.Registry) {
+	registry.RegisterChecker(binary.NewExistsChecker())
+	registry.RegisterChecker(binary.NewPermissionsChecker())
+	registry.RegisterChecker(binary.NewLocationChecker())
+}
+
+func registerHookCheckers(registry *doctor.Registry, cfg *pkgConfig.Config) {
+	if cfg == nil {
+		return
+	}
+
+	if cfg.GetProviders().GetClaude().IsEnabled() {
+		registry.RegisterChecker(hook.NewUserRegistrationChecker())
+		registry.RegisterChecker(hook.NewProjectRegistrationChecker())
+		registry.RegisterChecker(hook.NewProjectLocalRegistrationChecker())
+		registry.RegisterChecker(hook.NewUserPreToolUseChecker())
+		registry.RegisterChecker(hook.NewProjectPreToolUseChecker())
+	}
+
+	registerCodexHookCheckers(registry, cfg.GetProviders().GetCodex())
+	registerGeminiHookCheckers(registry, cfg.GetProviders().GetGemini())
+}
+
+func registerCodexHookCheckers(registry *doctor.Registry, cfg *pkgConfig.CodexProviderConfig) {
+	registry.RegisterChecker(hook.NewCodexConfigChecker(cfg))
+	registry.RegisterChecker(hook.NewCodexRegistrationChecker(cfg))
+	registry.RegisterChecker(hook.NewCodexEventChecker(cfg, "SessionStart"))
+	registry.RegisterChecker(hook.NewCodexEventChecker(cfg, "AfterToolUse"))
+	registry.RegisterChecker(hook.NewCodexEventChecker(cfg, "Stop"))
+}
+
+func registerGeminiHookCheckers(
+	registry *doctor.Registry,
+	cfg *pkgConfig.GeminiProviderConfig,
+) {
+	registry.RegisterChecker(hook.NewGeminiConfigChecker(cfg))
+	registry.RegisterChecker(hook.NewGeminiRegistrationChecker(cfg))
+	registry.RegisterChecker(hook.NewGeminiEventChecker(cfg, "BeforeTool"))
+	registry.RegisterChecker(hook.NewGeminiEventChecker(cfg, "AfterTool"))
+	registry.RegisterChecker(hook.NewGeminiEventChecker(cfg, "SessionStart"))
+	registry.RegisterChecker(hook.NewGeminiEventChecker(cfg, "SessionEnd"))
+	registry.RegisterChecker(hook.NewGeminiEventChecker(cfg, "Notification"))
+	registry.RegisterChecker(hook.NewGeminiEventChecker(cfg, "PreCompress"))
+}
+
 // registerFixers registers all available fixers.
-func registerFixers(registry *doctor.Registry, prompter prompt.Prompter, log logger.Logger) {
-	registry.RegisterFixer(fixers.NewInstallHookFixer(prompter))
+func registerFixers(
+	registry *doctor.Registry,
+	prompter prompt.Prompter,
+	log logger.Logger,
+	cfg *pkgConfig.Config,
+) {
+	registry.RegisterFixer(fixers.NewInstallHookFixer(prompter, cfg))
 	registry.RegisterFixer(fixers.NewPermissionsFixer(prompter))
 	registry.RegisterFixer(fixers.NewConfigFixer(prompter))
 	registry.RegisterFixer(fixers.NewInstallBinaryFixer(prompter))
@@ -198,6 +248,15 @@ func registerFixers(registry *doctor.Registry, prompter prompt.Prompter, log log
 	registry.RegisterFixer(fixers.NewBackupFixer(prompter))
 	registry.RegisterFixer(fixers.NewOverridesFixer(prompter))
 	registry.RegisterFixer(fixers.NewXDGFixer(prompter, log))
+}
+
+func loadDoctorConfig(log logger.Logger) (*pkgConfig.Config, error) {
+	cfg, err := loadConfig(log, "")
+	if err != nil {
+		return nil, err
+	}
+
+	return cfg, nil
 }
 
 // parseCategories converts string category names to Category types.

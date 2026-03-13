@@ -13,20 +13,24 @@ import (
 
 	"github.com/smykla-skalski/klaudiush/internal/backup"
 	"github.com/smykla-skalski/klaudiush/internal/config"
-	"github.com/smykla-skalski/klaudiush/internal/doctor/fixers"
 	"github.com/smykla-skalski/klaudiush/internal/doctor/settings"
 	"github.com/smykla-skalski/klaudiush/internal/git"
+	"github.com/smykla-skalski/klaudiush/internal/prompt"
 	"github.com/smykla-skalski/klaudiush/internal/tui"
 	pkgConfig "github.com/smykla-skalski/klaudiush/pkg/config"
+	"github.com/smykla-skalski/klaudiush/pkg/logger"
 )
 
 const defaultHookTimeout = 30
 
 var (
-	globalFlag       bool
-	forceFlag        bool
-	noTUIFlag        bool
-	installHooksFlag bool
+	globalFlag         bool
+	forceFlag          bool
+	noTUIFlag          bool
+	installHooksFlag   bool
+	providersFlag      []string
+	codexHooksFlag     string
+	geminiSettingsFlag string
 )
 
 var initCmd = &cobra.Command{
@@ -35,7 +39,7 @@ var initCmd = &cobra.Command{
 	Long: `Initialize klaudiush configuration file and register hooks.
 
 By default, creates a project-local configuration file (.klaudiush/config.toml)
-and registers klaudiush as a PreToolUse hook in Claude Code settings.
+and registers supported hooks for enabled providers. Claude installation is enabled by default; Codex installation runs when providers.codex is enabled with experimental=true and hooks_config_path set; Gemini installation runs when providers.gemini is enabled with settings_path set.
 
 Use --global or -g to create a global configuration file (~/.klaudiush/config.toml).
 Use --install-hooks to register hooks only (skip TUI).
@@ -75,7 +79,28 @@ func init() {
 		&installHooksFlag,
 		"install-hooks",
 		true,
-		"Register klaudiush hooks in Claude Code settings",
+		"Register klaudiush hooks for enabled providers",
+	)
+
+	initCmd.Flags().StringSliceVar(
+		&providersFlag,
+		"providers",
+		nil,
+		"Providers to configure (claude,codex,gemini)",
+	)
+
+	initCmd.Flags().StringVar(
+		&codexHooksFlag,
+		"codex-hooks-path",
+		"",
+		"Codex hooks.json path to configure during init",
+	)
+
+	initCmd.Flags().StringVar(
+		&geminiSettingsFlag,
+		"gemini-settings-path",
+		"",
+		"Gemini settings.json path to configure during init",
 	)
 }
 
@@ -85,69 +110,107 @@ func runInit(cmd *cobra.Command, _ []string) error {
 		return runInstallHooks()
 	}
 
-	writer := config.NewWriter()
-
-	// Check if config already exists
-	configPath, existingConfig, err := checkExistingConfig(writer)
-	if err != nil {
+	if err := normalizeInitProviderFlags(cmd); err != nil {
 		return err
 	}
 
-	// If --force and config exists, create backup before overwriting
-	if forceFlag && existingConfig {
-		if backupErr := backupBeforeForce(configPath); backupErr != nil {
-			// Log warning but don't fail
-			fmt.Fprintf(
-				os.Stderr,
-				"⚠️  Warning: failed to backup existing config: %v\n",
-				backupErr,
-			)
+	writer := config.NewWriter()
+
+	// Check if config already exists
+	configPath, existingConfig := resolveInitConfigPath(writer)
+	if handled, err := handleExistingInitConfig(
+		writer,
+		configPath,
+		existingConfig,
+	); handled || err != nil {
+		return err
+	}
+
+	return runFreshInit(writer, configPath, existingConfig)
+}
+
+func normalizeInitProviderFlags(cmd *cobra.Command) error {
+	if cmd.Flags().Changed("providers") && len(providersFlag) == 0 {
+		return errors.New("--providers requires at least one provider")
+	}
+
+	if (codexHooksFlag != "" || geminiSettingsFlag != "") && !cmd.Flags().Changed("providers") {
+		providersFlag = []string{"claude"}
+
+		if codexHooksFlag != "" {
+			providersFlag = append(providersFlag, "codex")
+		}
+
+		if geminiSettingsFlag != "" {
+			providersFlag = append(providersFlag, "gemini")
 		}
 	}
 
-	// Get default signoff from git config
-	defaultSignoff := getDefaultSignoff()
+	return nil
+}
 
-	// Determine if we should show git exclude option
+func handleExistingInitConfig(
+	writer *config.Writer,
+	configPath string,
+	existingConfig bool,
+) (bool, error) {
+	if !existingConfig || forceFlag {
+		return false, nil
+	}
+
+	updated, handled, err := maybeUpdateExistingConfig(writer, configPath)
+	if err != nil {
+		return true, err
+	}
+
+	if handled {
+		if updated != nil {
+			fmt.Println()
+			fmt.Println("Configuration updated successfully!")
+		}
+
+		return true, nil
+	}
+
+	return true, errors.Errorf(
+		"configuration file already exists: %s\nUse --force to overwrite",
+		configPath,
+	)
+}
+
+func runFreshInit(
+	writer *config.Writer,
+	configPath string,
+	existingConfig bool,
+) error {
+	backupExistingConfig(configPath, existingConfig)
+
 	showGitExclude := !globalFlag && git.IsInGitRepo()
-
-	// Create UI (TUI or fallback based on terminal capabilities and flags)
 	ui := tui.NewWithFallback(noTUIFlag)
 
-	// Run the init form
 	cfg, addToExclude, err := ui.RunInitForm(tui.InitFormOptions{
 		Global:         globalFlag,
-		DefaultSignoff: defaultSignoff,
+		DefaultSignoff: getDefaultSignoff(),
 		ShowGitExclude: showGitExclude,
 	})
 	if err != nil {
 		return errors.Wrap(err, "configuration form failed")
 	}
 
-	// Write configuration
+	if cfg, err = applyProviderFlags(cfg); err != nil {
+		return err
+	}
+
+	if err := validateConfigForWrite(cfg); err != nil {
+		return err
+	}
+
 	if err := writeConfig(writer, cfg, configPath); err != nil {
 		return err
 	}
 
-	// Handle .git/info/exclude for project config
-	if addToExclude && showGitExclude {
-		if err := addConfigToExclude(); err != nil {
-			fmt.Fprintf(
-				os.Stderr,
-				"⚠️  Warning: failed to add to .git/info/exclude: %v\n",
-				err,
-			)
-		} else {
-			fmt.Println("✅ Added to .git/info/exclude")
-		}
-	}
-
-	// Install hooks if enabled (default true, non-fatal)
-	if installHooksFlag {
-		if err := tryInstallHooks(); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: hook registration failed: %v\n", err)
-		}
-	}
+	maybeAddConfigToExclude(addToExclude, showGitExclude)
+	maybeInstallInitHooks(cfg)
 
 	fmt.Println()
 	fmt.Println("Configuration initialized successfully!")
@@ -155,8 +218,49 @@ func runInit(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-// checkExistingConfig checks if config already exists and returns the path and existence flag.
-func checkExistingConfig(writer *config.Writer) (string, bool, error) {
+func backupExistingConfig(configPath string, existingConfig bool) {
+	if !forceFlag || !existingConfig {
+		return
+	}
+
+	if backupErr := backupBeforeForce(configPath); backupErr != nil {
+		fmt.Fprintf(
+			os.Stderr,
+			"⚠️  Warning: failed to backup existing config: %v\n",
+			backupErr,
+		)
+	}
+}
+
+func maybeAddConfigToExclude(addToExclude bool, showGitExclude bool) {
+	if !addToExclude || !showGitExclude {
+		return
+	}
+
+	if err := addConfigToExclude(); err != nil {
+		fmt.Fprintf(
+			os.Stderr,
+			"⚠️  Warning: failed to add to .git/info/exclude: %v\n",
+			err,
+		)
+
+		return
+	}
+
+	fmt.Println("✅ Added to .git/info/exclude")
+}
+
+func maybeInstallInitHooks(cfg *pkgConfig.Config) {
+	if !installHooksFlag {
+		return
+	}
+
+	if err := tryInstallHooks(cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: hook registration failed: %v\n", err)
+	}
+}
+
+func resolveInitConfigPath(writer *config.Writer) (string, bool) {
 	var (
 		configPath   string
 		configExists bool
@@ -170,14 +274,132 @@ func checkExistingConfig(writer *config.Writer) (string, bool, error) {
 		configExists = writer.IsProjectConfigExists()
 	}
 
-	if configExists && !forceFlag {
-		return "", false, errors.Errorf(
-			"configuration file already exists: %s\nUse --force to overwrite",
-			configPath,
-		)
+	return configPath, configExists
+}
+
+func maybeUpdateExistingConfig(
+	writer *config.Writer,
+	configPath string,
+) (*pkgConfig.Config, bool, error) {
+	existingCfg, err := loadConfigFile(configPath)
+	if err != nil {
+		return nil, false, err
 	}
 
-	return configPath, configExists, nil
+	if len(providersFlag) > 0 || codexHooksFlag != "" || geminiSettingsFlag != "" {
+		return updateExistingConfigFromFlags(writer, configPath, existingCfg)
+	}
+
+	if !isInteractive() {
+		return nil, false, nil
+	}
+
+	return updateExistingConfigInteractively(writer, configPath, existingCfg)
+}
+
+func updateExistingConfigFromFlags(
+	writer *config.Writer,
+	configPath string,
+	existingCfg *pkgConfig.Config,
+) (*pkgConfig.Config, bool, error) {
+	selection, resolveErr := resolveProviderSelection(
+		providersFlag,
+		codexHooksFlag,
+		geminiSettingsFlag,
+		existingCfg,
+	)
+	if resolveErr != nil {
+		return nil, false, resolveErr
+	}
+
+	updated, applyErr := applyProviderSelection(existingCfg, selection)
+	if applyErr != nil {
+		return nil, false, applyErr
+	}
+
+	if validateErr := validateConfigForWrite(updated); validateErr != nil {
+		return nil, false, validateErr
+	}
+
+	diff, diffErr := renderConfigDiff(configPath, existingCfg, updated)
+	if diffErr != nil {
+		return nil, false, diffErr
+	}
+
+	if diff == "" {
+		fmt.Printf("No configuration changes are needed for %s\n", configPath)
+		return nil, true, nil
+	}
+
+	fmt.Printf("Applying provider changes to %s:\n%s", configPath, diff)
+
+	if writeErr := writeConfig(writer, updated, configPath); writeErr != nil {
+		return nil, false, writeErr
+	}
+
+	return updated, true, nil
+}
+
+func updateExistingConfigInteractively(
+	writer *config.Writer,
+	configPath string,
+	existingCfg *pkgConfig.Config,
+) (*pkgConfig.Config, bool, error) {
+	updated, handled, err := promptProviderUpdate(
+		prompt.NewStdPrompter(),
+		os.Stdout,
+		configPath,
+		existingCfg,
+	)
+	if err != nil {
+		return nil, false, err
+	}
+
+	if !handled {
+		return nil, false, nil
+	}
+
+	if updated == nil {
+		fmt.Println("Configuration update cancelled.")
+		return nil, true, nil
+	}
+
+	diff, err := renderConfigDiff(configPath, existingCfg, updated)
+	if err != nil {
+		return nil, false, err
+	}
+
+	if diff == "" {
+		return updated, true, nil
+	}
+
+	if validateErr := validateConfigForWrite(updated); validateErr != nil {
+		return nil, false, validateErr
+	}
+
+	if writeErr := writeConfig(writer, updated, configPath); writeErr != nil {
+		return nil, false, writeErr
+	}
+
+	return updated, true, nil
+}
+
+func applyProviderFlags(cfg *pkgConfig.Config) (*pkgConfig.Config, error) {
+	if len(providersFlag) == 0 && codexHooksFlag == "" && geminiSettingsFlag == "" {
+		return cfg, nil
+	}
+
+	selection, err := resolveProviderSelection(
+		providersFlag,
+		codexHooksFlag,
+		geminiSettingsFlag,
+		cfg,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return applyProviderSelection(cfg, selection)
 }
 
 // backupBeforeForce creates a backup before overwriting config with --force.
@@ -307,17 +529,26 @@ func runInstallHooks() error {
 		return errors.Wrap(err, "klaudiush not found in PATH")
 	}
 
-	return performInstall(resolveSettingsPath(), binaryPath)
+	cfg, cfgErr := loadHookInstallConfig()
+	if cfgErr != nil {
+		fmt.Fprintf(
+			os.Stderr,
+			"Warning: failed to load config, installing default Claude hooks only: %v\n",
+			cfgErr,
+		)
+	}
+
+	return performConfiguredInstall(resolveSettingsPath(), binaryPath, cfg)
 }
 
 // tryInstallHooks attempts hook registration, returning error on failure.
-func tryInstallHooks() error {
+func tryInstallHooks(cfg *pkgConfig.Config) error {
 	binaryPath, err := exec.LookPath("klaudiush")
 	if err != nil {
 		return errors.Wrap(err, "klaudiush not found in PATH")
 	}
 
-	return performInstall(resolveSettingsPath(), binaryPath)
+	return performConfiguredInstall(resolveSettingsPath(), binaryPath, cfg)
 }
 
 // resolveSettingsPath returns the settings.json path based on --global flag.
@@ -329,14 +560,10 @@ func resolveSettingsPath() string {
 	return settings.GetProjectSettingsPath()
 }
 
-// performInstall registers klaudiush in the given settings file.
-func performInstall(settingsPath, binaryPath string) error {
-	// Check if already registered
-	parser := settings.NewSettingsParser(settingsPath)
-
-	registered, err := parser.IsDispatcherRegistered(binaryPath)
+func performClaudeInstall(settingsPath, binaryPath string) error {
+	registered, err := settings.InstallClaudeDispatcher(settingsPath, binaryPath)
 	if err != nil {
-		return errors.Wrap(err, "failed to check settings")
+		return err
 	}
 
 	if registered {
@@ -344,28 +571,92 @@ func performInstall(settingsPath, binaryPath string) error {
 		return nil
 	}
 
-	// Load existing settings as raw map to preserve unknown fields
-	raw, err := loadRawSettings(settingsPath)
+	fmt.Printf("klaudiush registered in %s\n", settingsPath)
+
+	return nil
+}
+
+func performCodexInstall(hooksPath, binaryPath string) error {
+	registered, err := settings.InstallCodexDispatcher(hooksPath, binaryPath)
 	if err != nil {
 		return err
 	}
 
-	addHookToSettings(raw, binaryPath)
-
-	data, err := json.MarshalIndent(raw, "", "  ")
-	if err != nil {
-		return errors.Wrap(err, "failed to marshal settings")
+	if registered {
+		fmt.Printf("klaudiush is already registered in %s\n", hooksPath)
+		return nil
 	}
 
-	data = append(data, '\n')
+	fmt.Printf("klaudiush registered in %s\n", hooksPath)
 
-	if err := fixers.AtomicWriteFile(settingsPath, data, true); err != nil {
-		return errors.Wrap(err, "failed to write settings")
+	return nil
+}
+
+func performGeminiInstall(settingsPath, binaryPath string) error {
+	registered, err := settings.InstallGeminiDispatcher(settingsPath, binaryPath)
+	if err != nil {
+		return err
+	}
+
+	if registered {
+		fmt.Printf("klaudiush is already registered in %s\n", settingsPath)
+		return nil
 	}
 
 	fmt.Printf("klaudiush registered in %s\n", settingsPath)
 
 	return nil
+}
+
+func performConfiguredInstall(
+	claudeSettingsPath string,
+	binaryPath string,
+	cfg *pkgConfig.Config,
+) error {
+	claudeEnabled := true
+	codexHooksPath := ""
+	geminiSettingsPath := ""
+
+	if cfg != nil {
+		providers := cfg.GetProviders()
+		claudeEnabled = providers.GetClaude().IsEnabled()
+
+		codexCfg := providers.GetCodex()
+		if codexCfg.IsEnabled() &&
+			codexCfg.IsExperimentalEnabled() &&
+			codexCfg.HasHooksConfigPath() {
+			codexHooksPath = codexCfg.HooksConfigPath
+		}
+
+		geminiCfg := providers.GetGemini()
+		if geminiCfg.IsEnabled() && geminiCfg.HasSettingsPath() {
+			geminiSettingsPath = geminiCfg.SettingsPath
+		}
+	}
+
+	if claudeEnabled {
+		if err := performClaudeInstall(claudeSettingsPath, binaryPath); err != nil {
+			return err
+		}
+	}
+
+	if codexHooksPath != "" {
+		if err := performCodexInstall(codexHooksPath, binaryPath); err != nil {
+			return err
+		}
+	}
+
+	if geminiSettingsPath != "" {
+		if err := performGeminiInstall(geminiSettingsPath, binaryPath); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func loadHookInstallConfig() (*pkgConfig.Config, error) {
+	return loadConfig(logger.NewNoOpLogger(), "")
 }
 
 // loadRawSettings reads and parses a JSON settings file.

@@ -233,20 +233,9 @@ func setupPatternStore(
 
 	patternsCfg := cfg.GetPatterns()
 
-	projectDir, dirErr := os.Getwd()
-	if dirErr != nil {
-		return nil, nil, errors.Wrap(dirErr, "getting working directory")
-	}
-
-	store := patterns.NewFilePatternStore(patternsCfg, projectDir)
-	if loadErr := store.Load(); loadErr != nil {
-		log.Debug("failed to load pattern store", "error", loadErr)
-	}
-
-	if patternsCfg.IsUseSeedData() {
-		if seedErr := patterns.EnsureSeedData(store); seedErr != nil {
-			log.Debug("failed to ensure seed data", "error", seedErr)
-		}
+	store, err := loadPatternStore(patternsCfg, "", log)
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "loading pattern store")
 	}
 
 	return store, patternsCfg, nil

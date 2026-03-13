@@ -33,16 +33,6 @@ var (
 	heredocRegex       = regexp.MustCompile(`<<'?EOF'?\s*\n((?s:.+?))\nEOF`)
 	bodyRegex          = regexp.MustCompile(`--body\s+"([^"]+)"`)
 	bodySingleRegex    = regexp.MustCompile(`--body\s+'([^']+)'`)
-
-	// defaultPRForbiddenPatterns blocks mentions of tmp directory
-	defaultPRForbiddenPatterns = []string{
-		`\btmp/`,  // tmp/ path references
-		`\btmp\b`, // standalone tmp word
-	}
-)
-
-const (
-	defaultPRTitleMaxLength = 50
 )
 
 // PRValidator validates gh pr create commands
@@ -71,7 +61,7 @@ func (v *PRValidator) getTitleMaxLength() int {
 		return *v.config.TitleMaxLength
 	}
 
-	return defaultPRTitleMaxLength
+	return config.DefaultTitleMaxLength
 }
 
 // isTitleConventionalCommitsEnabled returns whether conventional commit format is required for titles
@@ -177,7 +167,7 @@ func (v *PRValidator) getValidTypes() []string {
 	}
 
 	// Default: same as commit message valid types
-	return defaultValidTypes
+	return config.DefaultValidTypes
 }
 
 // isRequireChangelog returns whether a changelog line is required in PR body
@@ -628,5 +618,5 @@ func (v *PRValidator) getForbiddenPatterns() []string {
 		return v.config.ForbiddenPatterns
 	}
 
-	return defaultPRForbiddenPatterns
+	return config.DefaultForbiddenPatterns
 }

@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
+	internalconfig "github.com/smykla-skalski/klaudiush/internal/config"
 	"github.com/smykla-skalski/klaudiush/internal/doctor"
 	"github.com/smykla-skalski/klaudiush/internal/patterns"
 	"github.com/smykla-skalski/klaudiush/pkg/config"
@@ -35,10 +36,7 @@ type DefaultPathProvider struct {
 func NewDefaultPathProvider() *DefaultPathProvider {
 	cwd, _ := os.Getwd()
 
-	return &DefaultPathProvider{
-		cfg:        &config.PatternsConfig{},
-		projectDir: cwd,
-	}
+	return NewDefaultPathProviderWithConfig(&config.PatternsConfig{}, cwd)
 }
 
 // NewDefaultPathProviderWithConfig creates a DefaultPathProvider with a specific config and project dir.
@@ -46,6 +44,10 @@ func NewDefaultPathProviderWithConfig(
 	cfg *config.PatternsConfig,
 	projectDir string,
 ) *DefaultPathProvider {
+	if resolvedDir, err := internalconfig.ResolveProjectRoot(projectDir); err == nil {
+		projectDir = resolvedDir
+	}
+
 	return &DefaultPathProvider{
 		cfg:        cfg,
 		projectDir: projectDir,

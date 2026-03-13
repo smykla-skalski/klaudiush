@@ -79,8 +79,12 @@ func (v *BellValidator) sendBell() *validator.Result {
 func (v *BellValidator) executeCustomCommand(ctx context.Context, cmdStr string) *validator.Result {
 	v.Logger().Debug("executing custom notification command", "command", cmdStr)
 
-	//nolint:gosec // G204: cmdStr is a user-configured custom notification command; intentionally dynamic
-	cmd := exec.CommandContext(ctx, "sh", "-c", cmdStr)
+	cmd := exec.CommandContext( //nolint:gosec // G204: cmdStr is user-configured notification command, intentionally executed via shell
+		ctx,
+		"sh",
+		"-c",
+		cmdStr,
+	)
 
 	err := cmd.Run()
 	if err != nil {

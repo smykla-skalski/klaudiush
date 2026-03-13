@@ -188,11 +188,24 @@ var _ = Describe("Security", func() {
 
 		Context("with tilde expansion", func() {
 			It("should expand ~ to home directory", func() {
-				pluginDir := filepath.Join(homeDir, ".klaudiush", "plugins")
-				err := os.MkdirAll(pluginDir, 0o755)
+				homeDir = filepath.Join(tempDir, "home")
+				err := os.MkdirAll(homeDir, 0o755)
 				Expect(err).NotTo(HaveOccurred())
 
-				defer os.RemoveAll(filepath.Join(homeDir, ".klaudiush"))
+				originalHome, lookupSet := os.LookupEnv("HOME")
+
+				Expect(os.Setenv("HOME", homeDir)).To(Succeed())
+				DeferCleanup(func() {
+					if lookupSet {
+						Expect(os.Setenv("HOME", originalHome)).To(Succeed())
+					} else {
+						Expect(os.Unsetenv("HOME")).To(Succeed())
+					}
+				})
+
+				pluginDir := filepath.Join(homeDir, ".klaudiush", "plugins")
+				err = os.MkdirAll(pluginDir, 0o755)
+				Expect(err).NotTo(HaveOccurred())
 
 				pluginPath := filepath.Join(pluginDir, "test.so")
 				err = os.WriteFile(pluginPath, []byte("test"), 0o755)

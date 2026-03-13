@@ -174,6 +174,8 @@ func (a *execPluginAdapter) Validate(
 		req.Config = a.config
 	}
 
+	req.PopulateNormalizedFields()
+
 	// Marshal request to JSON
 	reqJSON, err := json.Marshal(req)
 	if err != nil {

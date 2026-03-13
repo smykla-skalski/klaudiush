@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -108,27 +109,49 @@ type PatternStore interface {
 // FilePatternStore implements PatternStore with file-based persistence.
 // It uses dual storage: project-local for seeds/shared and global for learned.
 type FilePatternStore struct {
-	projectPath string
-	globalPath  string
-	projectData *PatternData
-	globalData  *PatternData
+	projectPath        string
+	globalPath         string
+	legacyFallbackPath string
+	useLegacyFallback  bool
+	projectData        *PatternData
+	globalData         *PatternData
 }
 
 // NewFilePatternStore creates a store with dual storage paths.
+// projectDir should be the resolved project root, not an arbitrary subdirectory.
 // projectPath holds seed/shared patterns, globalPath holds learned patterns.
 func NewFilePatternStore(cfg *config.PatternsConfig, projectDir string) *FilePatternStore {
+	if cfg == nil {
+		cfg = &config.PatternsConfig{}
+	}
+
 	projectFile := filepath.Join(projectDir, cfg.GetProjectDataFile())
 
 	// Global path uses a hash of the project directory for isolation
 	globalDir := xdg.ExpandPathSilent(cfg.GetGlobalDataDir())
 	hash := hashProjectPath(projectDir)
 	globalFile := filepath.Join(globalDir, hash+".json")
+	useLegacyFallback := cfg.GlobalDataDir == ""
+	legacyFallbackPath := ""
+
+	if useLegacyFallback {
+		legacyDir := xdg.ExpandPathSilent(config.LegacyPatternsGlobalDataDir)
+
+		legacyFile := filepath.Join(legacyDir, hash+".json")
+		if legacyFile != globalFile {
+			legacyFallbackPath = legacyFile
+		} else {
+			useLegacyFallback = false
+		}
+	}
 
 	return &FilePatternStore{
-		projectPath: projectFile,
-		globalPath:  globalFile,
-		projectData: newPatternData(),
-		globalData:  newPatternData(),
+		projectPath:        projectFile,
+		globalPath:         globalFile,
+		legacyFallbackPath: legacyFallbackPath,
+		useLegacyFallback:  useLegacyFallback,
+		projectData:        newPatternData(),
+		globalData:         newPatternData(),
 	}
 }
 
@@ -140,6 +163,12 @@ func (s *FilePatternStore) Load() error {
 
 	if data, err := loadPatternFile(s.globalPath); err == nil {
 		s.globalData = data
+	}
+
+	if s.useLegacyFallback && s.legacyFallbackPath != "" {
+		if legacyData, err := loadPatternFile(s.legacyFallbackPath); err == nil {
+			mergePatternData(s.globalData, legacyData)
+		}
 	}
 
 	return nil
@@ -275,6 +304,69 @@ func (s *FilePatternStore) CleanupSessions(maxAge time.Duration) int {
 	return removed
 }
 
+// TrimPatterns removes the least recently seen learned patterns until the count
+// is at or below maxCount. Seed patterns (in project data) are not affected.
+// Returns the number of patterns removed.
+//
+//nolint:dupl // TrimSessions has the same structure but operates on a different map type.
+func (s *FilePatternStore) TrimPatterns(maxCount int) int {
+	if maxCount <= 0 || len(s.globalData.Patterns) <= maxCount {
+		return 0
+	}
+
+	type entry struct {
+		key      string
+		lastSeen time.Time
+	}
+
+	entries := make([]entry, 0, len(s.globalData.Patterns))
+	for key, p := range s.globalData.Patterns {
+		entries = append(entries, entry{key: key, lastSeen: p.LastSeen})
+	}
+
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].lastSeen.Before(entries[j].lastSeen)
+	})
+
+	toRemove := len(s.globalData.Patterns) - maxCount
+	for i := range toRemove {
+		delete(s.globalData.Patterns, entries[i].key)
+	}
+
+	return toRemove
+}
+
+// TrimSessions removes the least recently seen sessions until the count is at or
+// below maxCount. Returns the number of sessions removed.
+//
+//nolint:dupl // TrimPatterns has the same structure but operates on a different map type.
+func (s *FilePatternStore) TrimSessions(maxCount int) int {
+	if maxCount <= 0 || len(s.globalData.Sessions) <= maxCount {
+		return 0
+	}
+
+	type entry struct {
+		id       string
+		lastSeen time.Time
+	}
+
+	entries := make([]entry, 0, len(s.globalData.Sessions))
+	for id, sess := range s.globalData.Sessions {
+		entries = append(entries, entry{id: id, lastSeen: sess.LastSeen})
+	}
+
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].lastSeen.Before(entries[j].lastSeen)
+	})
+
+	toRemove := len(s.globalData.Sessions) - maxCount
+	for i := range toRemove {
+		delete(s.globalData.Sessions, entries[i].id)
+	}
+
+	return toRemove
+}
+
 // GetActiveSessions returns the number of active sessions in global storage.
 func (s *FilePatternStore) GetActiveSessions() int {
 	return len(s.globalData.Sessions)
@@ -350,6 +442,92 @@ func (s *FilePatternStore) mergePatterns() map[string]*FailurePattern {
 	}
 
 	return merged
+}
+
+func mergePatternData(dest, src *PatternData) {
+	if dest == nil || src == nil {
+		return
+	}
+
+	ensurePatternDataMaps(dest, src)
+	mergeFailurePatterns(dest.Patterns, src.Patterns)
+	mergeSessions(dest.Sessions, src.Sessions)
+	mergePatternMetadata(dest, src)
+}
+
+func ensurePatternDataMaps(dest, src *PatternData) {
+	if dest.Patterns == nil {
+		dest.Patterns = make(map[string]*FailurePattern)
+	}
+
+	if dest.Sessions == nil && len(src.Sessions) > 0 {
+		dest.Sessions = make(map[string]*SessionEntry, len(src.Sessions))
+	}
+}
+
+func mergeFailurePatterns(dest, src map[string]*FailurePattern) {
+	for key, pattern := range src {
+		existing, ok := dest[key]
+		if !ok {
+			dest[key] = cloneFailurePattern(pattern)
+			continue
+		}
+
+		existing.Count += pattern.Count
+
+		if pattern.FirstSeen.Before(existing.FirstSeen) || existing.FirstSeen.IsZero() {
+			existing.FirstSeen = pattern.FirstSeen
+		}
+
+		if pattern.LastSeen.After(existing.LastSeen) {
+			existing.LastSeen = pattern.LastSeen
+		}
+
+		existing.Seed = existing.Seed || pattern.Seed
+	}
+}
+
+func cloneFailurePattern(pattern *FailurePattern) *FailurePattern {
+	return &FailurePattern{
+		SourceCode: pattern.SourceCode,
+		TargetCode: pattern.TargetCode,
+		Count:      pattern.Count,
+		FirstSeen:  pattern.FirstSeen,
+		LastSeen:   pattern.LastSeen,
+		Seed:       pattern.Seed,
+	}
+}
+
+func mergeSessions(dest, src map[string]*SessionEntry) {
+	for id, session := range src {
+		existing, ok := dest[id]
+		if !ok {
+			dest[id] = cloneSessionEntry(session)
+			continue
+		}
+
+		if session.LastSeen.After(existing.LastSeen) {
+			existing.Codes = append([]string(nil), session.Codes...)
+			existing.LastSeen = session.LastSeen
+		}
+	}
+}
+
+func cloneSessionEntry(session *SessionEntry) *SessionEntry {
+	return &SessionEntry{
+		Codes:    append([]string(nil), session.Codes...),
+		LastSeen: session.LastSeen,
+	}
+}
+
+func mergePatternMetadata(dest, src *PatternData) {
+	if src.LastUpdated.After(dest.LastUpdated) {
+		dest.LastUpdated = src.LastUpdated
+	}
+
+	if src.Version > dest.Version {
+		dest.Version = src.Version
+	}
 }
 
 func newPatternData() *PatternData {

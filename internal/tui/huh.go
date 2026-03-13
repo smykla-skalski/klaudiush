@@ -1,7 +1,7 @@
 package tui
 
 import (
-	"github.com/charmbracelet/huh"
+	"charm.land/huh/v2"
 
 	pkgConfig "github.com/smykla-skalski/klaudiush/pkg/config"
 )
@@ -60,9 +60,21 @@ func buildInitForm(opts InitFormOptions, result *InitFormResult) *huh.Form {
 		Negative("No").
 		Value(&result.BellEnabled)
 
+	codexHooksInput := huh.NewInput().
+		Title("Codex hooks.json path").
+		Description("Optional. Configure experimental Codex SessionStart/AfterToolUse/Stop hook installation.\nLeave empty to skip Codex support.").
+		Placeholder("~/.codex/hooks.json").
+		Value(&result.CodexHooksPath)
+
+	geminiSettingsInput := huh.NewInput().
+		Title("Gemini settings.json path").
+		Description("Optional. Configure Gemini BeforeTool/AfterTool/SessionStart/SessionEnd/Notification/PreCompress hook installation.\nLeave empty to skip Gemini support.").
+		Placeholder("~/.gemini/settings.json").
+		Value(&result.GeminiSettingsPath)
+
 	// Build groups
 	groups := []*huh.Group{
-		huh.NewGroup(signoffInput, bellConfirm),
+		huh.NewGroup(signoffInput, bellConfirm, codexHooksInput, geminiSettingsInput),
 	}
 
 	// Add git exclude option if applicable
@@ -80,7 +92,7 @@ func buildInitForm(opts InitFormOptions, result *InitFormResult) *huh.Form {
 	}
 
 	return huh.NewForm(groups...).
-		WithTheme(huh.ThemeCharm()).
+		WithTheme(huh.ThemeFunc(huh.ThemeCharm)).
 		WithShowHelp(true).
 		WithKeyMap(huh.NewDefaultKeyMap())
 }
@@ -110,6 +122,30 @@ func buildConfigFromResult(result *InitFormResult) *pkgConfig.Config {
 				Enabled: &result.BellEnabled,
 			},
 		},
+	}
+
+	if result.CodexHooksPath != "" {
+		codexEnabled := true
+		codexExperimental := true
+		cfg.GetProviders().Codex = &pkgConfig.CodexProviderConfig{
+			Enabled:         &codexEnabled,
+			Experimental:    &codexExperimental,
+			HooksConfigPath: result.CodexHooksPath,
+		}
+	}
+
+	if result.GeminiSettingsPath != "" {
+		geminiEnabled := true
+		cfg.GetProviders().Gemini = &pkgConfig.GeminiProviderConfig{
+			Enabled:      &geminiEnabled,
+			SettingsPath: result.GeminiSettingsPath,
+		}
+	}
+
+	if cfg.Providers != nil &&
+		cfg.GetProviders().Codex == nil &&
+		cfg.GetProviders().Gemini == nil {
+		cfg.Providers = nil
 	}
 
 	return cfg

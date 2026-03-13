@@ -1,6 +1,6 @@
 # Plugin development guide
 
-Guide for developing klaudiush exec plugins.
+Guide for developing klaudiush exec plugins for Claude and Codex hook flows.
 
 ## Table of contents
 
@@ -18,9 +18,7 @@ Guide for developing klaudiush exec plugins.
 klaudiush plugins add custom validation logic. You can enforce org-specific
 rules, call external services, or block specific patterns.
 
-Plugins are standalone executables that communicate with klaudiush via JSON over
-stdin/stdout. Any language that can read stdin and write JSON to stdout works:
-shell scripts, Python, Ruby, Node.js, compiled binaries, etc.
+Plugins are standalone executables that communicate with klaudiush via JSON over stdin/stdout. Any language that can read stdin and write JSON to stdout works: shell scripts, Python, Ruby, Node.js, compiled binaries, etc.
 
 ### How it works
 
@@ -48,11 +46,11 @@ fi
 
 # Read validation request from stdin
 read -r request
-tool_name=$(echo "$request" | jq -r '.tool_name')
+tool_family=$(echo "$request" | jq -r '.tool_family // .tool_name')
 command=$(echo "$request" | jq -r '.command // empty')
 
 # Validation logic
-if [[ "$tool_name" == "Bash" ]] && [[ "$command" == *"sudo"* ]]; then
+if [[ "$tool_family" == "shell" ]] && [[ "$command" == *"sudo"* ]]; then
   cat <<EOF
 {"passed":false,"should_block":true,"message":"sudo commands are not allowed","error_code":"NO_SUDO","fix_hint":"Run without sudo or request elevated permissions"}
 EOF
@@ -84,16 +82,17 @@ type = "exec"
 path = "~/.klaudiush/plugins/my-plugin.sh"
 
 [plugins.plugins.predicate]
-event_types = ["PreToolUse"]
-tool_types = ["Bash"]
+providers = ["claude"]
+event_types = ["before_tool"]
+tool_types = ["shell"]
 ```
 
 ### 4. Test
 
 ```bash
 ./my-plugin.sh --info
-echo '{"tool_name":"Bash","command":"sudo rm -rf /"}' | ./my-plugin.sh
-echo '{"tool_name":"Bash","command":"ls"}' | ./my-plugin.sh
+echo '{"tool_family":"shell","command":"sudo rm -rf /"}' | ./my-plugin.sh
+echo '{"tool_family":"shell","command":"ls"}' | ./my-plugin.sh
 ```
 
 ## Protocol reference
@@ -118,17 +117,31 @@ Fields `name` and `version` are required. Optional: `description`, `author`, `ur
 
 klaudiush writes a JSON object to stdin. Fields present depend on the tool:
 
-| Field        | Type           | Present When    | Description                           |
-|:-------------|:---------------|:----------------|:--------------------------------------|
-| `event_type` | string         | Always          | `"PreToolUse"`, `"PostToolUse"`, etc. |
-| `tool_name`  | string         | Always          | `"Bash"`, `"Write"`, `"Edit"`, etc.   |
-| `command`    | string         | Bash tool       | Shell command being executed          |
-| `file_path`  | string         | Write/Edit/Read | Path to the file being operated on    |
-| `content`    | string         | Write tool      | Content being written                 |
-| `old_string` | string         | Edit tool       | String being replaced                 |
-| `new_string` | string         | Edit tool       | Replacement string                    |
-| `pattern`    | string         | Grep/Glob tools | Search pattern                        |
-| `config`     | map[string]any | If configured   | Plugin-specific config from TOML      |
+| Field | Type | Present When | Description |
+|:------|:-----|:-------------|:------------|
+| `provider` | string | When known | `"claude"` or `"codex"` |
+| `event_name` | string | Always | Canonical event name such as `"before_tool"`, `"after_tool"`, `"session_start"`, or `"turn_stop"` |
+| `raw_event_name` | string | Usually | Provider-native event name such as `"PreToolUse"` or `"AfterToolUse"` |
+| `event_type` | string | Compatibility | Legacy alias for older Claude-style plugins |
+| `tool_family` | string | When a tool is present | Canonical tool family such as `"shell"`, `"write"`, `"edit"`, or `"multiedit"` |
+| `raw_tool_name` | string | Usually | Provider-native tool name such as `"Bash"` or `"Write"` |
+| `tool_name` | string | Compatibility | Legacy alias for older plugins |
+| `command` | string | Bash/shell tool | Shell command being executed |
+| `file_path` | string | Write/Edit/Read | Path to the file being operated on |
+| `content` | string | Write tool | Content being written |
+| `old_string` | string | Edit tool | String being replaced |
+| `new_string` | string | Edit tool | Replacement string |
+| `pattern` | string | Grep/Glob tools | Search pattern |
+| `working_dir` | string | When known | Provider-reported current working directory |
+| `session_id` | string | When known | Provider session identifier |
+| `turn_id` | string | Codex lifecycle hooks | Provider turn identifier |
+| `tool_executed` | bool | Codex `after_tool` | Whether the provider executed the tool |
+| `tool_succeeded` | bool | Codex `after_tool` | Whether the provider considered the tool successful |
+| `tool_mutating` | bool | Codex `after_tool` | Whether the provider considered the tool mutating |
+| `affected_paths` | []string | When known | Provider-derived changed or touched paths |
+| `config` | map[string]any | If configured | Plugin-specific config from TOML |
+
+Prefer `provider`, `event_name`, and `tool_family` in new plugins. `event_type` and `tool_name` remain available as compatibility aliases.
 
 ### Validate response
 
@@ -177,8 +190,9 @@ path = "~/.klaudiush/plugins/example.sh"
 timeout = "10s"
 
 [plugins.plugins.predicate]
-event_types = ["PreToolUse"]
-tool_types = ["Bash"]
+providers = ["claude", "codex"]
+event_types = ["before_tool", "after_tool"]
+tool_types = ["shell"]
 command_patterns = ["^git"]
 
 [plugins.plugins.config]
@@ -198,7 +212,8 @@ type = "exec"
 path = "./scripts/validate.sh"
 
 [plugins.plugins.predicate]
-event_types = ["PreToolUse"]
+providers = ["claude", "codex"]
+event_types = ["before_tool", "after_tool"]
 file_patterns = ["*.go", "**/*.ts"]
 ```
 
@@ -228,23 +243,32 @@ file_patterns = ["*.go", "**/*.ts"]
 Predicates control when plugins are invoked. All conditions must match (AND
 logic). Omitting a predicate means "match all" for that dimension.
 
+### Providers
+
+```toml
+[plugins.plugins.predicate]
+providers = ["claude", "codex"]
+```
+
+Available: `claude`, `codex`. Empty matches all.
+
 ### Event types
 
 ```toml
 [plugins.plugins.predicate]
-event_types = ["PreToolUse"]  # Most common
+event_types = ["before_tool"]  # Most common blocking flow
 ```
 
-Available: `PreToolUse`, `PostToolUse`, `Notification`. Empty matches all.
+Recommended canonical values: `before_tool`, `after_tool`, `session_start`, `turn_stop`, `notification`. Legacy aliases such as `PreToolUse`, `PostToolUse`, `SessionStart`, `AfterToolUse`, and `Stop` are still accepted. Empty matches all.
 
 ### Tool types
 
 ```toml
 [plugins.plugins.predicate]
-tool_types = ["Bash", "Write", "Edit"]
+tool_types = ["shell", "write", "edit"]
 ```
 
-Available: `Bash`, `Write`, `Edit`, `Read`, `Grep`, `Glob`, `WebFetch`, `WebSearch`. Empty matches all.
+Recommended canonical values: `shell`, `write`, `edit`, `multiedit`, `read`, `grep`, `glob`. Legacy aliases such as `Bash`, `Write`, `Edit`, `MultiEdit`, `Read`, `Grep`, and `Glob` are still accepted. Empty matches all.
 
 ### File patterns
 
@@ -269,14 +293,16 @@ Regex syntax. Only applies to Bash tool. Empty matches all.
 ```toml
 # Git commits only
 [plugins.plugins.predicate]
-event_types = ["PreToolUse"]
-tool_types = ["Bash"]
+providers = ["claude"]
+event_types = ["before_tool"]
+tool_types = ["shell"]
 command_patterns = ["^git commit"]
 
 # Go file writes
 [plugins.plugins.predicate]
-event_types = ["PreToolUse"]
-tool_types = ["Write", "Edit"]
+providers = ["claude", "codex"]
+event_types = ["before_tool", "after_tool"]
+tool_types = ["write", "edit"]
 file_patterns = ["**/*.go"]
 
 # Catch-all (matches everything)
@@ -299,11 +325,11 @@ if [[ "${1:-}" == "--info" ]]; then
 fi
 
 read -r request
-tool_name=$(echo "$request" | jq -r '.tool_name')
+tool_family=$(echo "$request" | jq -r '.tool_family // .tool_name')
 command=$(echo "$request" | jq -r '.command // empty')
 patterns=$(echo "$request" | jq -r '.config.blocked_patterns // [] | .[]')
 
-if [[ "$tool_name" == "Bash" ]]; then
+if [[ "$tool_family" == "shell" ]]; then
   for pattern in $patterns; do
     if echo "$command" | grep -qE "$pattern"; then
       cat <<EOF
@@ -324,8 +350,9 @@ type = "exec"
 path = "~/.klaudiush/plugins/pattern-blocker.sh"
 
 [plugins.plugins.predicate]
-event_types = ["PreToolUse"]
-tool_types = ["Bash"]
+providers = ["claude", "codex"]
+event_types = ["before_tool", "after_tool"]
+tool_types = ["shell"]
 
 [plugins.plugins.config]
 blocked_patterns = ["rm -rf", "dd if=", "mkfs"]
@@ -344,10 +371,10 @@ def main():
         return
 
     request = json.load(sys.stdin)
-    tool_name = request.get("tool_name", "")
+    tool_family = request.get("tool_family") or request.get("tool_name", "")
     file_path = request.get("file_path", "")
 
-    if tool_name in ("Write", "Edit") and file_path.endswith(".exe"):
+    if tool_family in ("write", "edit") and file_path.endswith(".exe"):
         print(json.dumps({"passed": False, "should_block": True,
                           "message": "Binary files (.exe) are not allowed",
                           "error_code": "NO_BINARIES",
@@ -411,7 +438,7 @@ A working example lives in `examples/plugins/exec-shell/`:
 ./my-plugin.sh --info | jq .
 
 # Test validation (readable output)
-echo '{"tool_name":"Bash","command":"sudo rm -rf /"}' | ./my-plugin.sh | jq .
+echo '{"tool_family":"shell","command":"sudo rm -rf /"}' | ./my-plugin.sh | jq .
 
 # Test with klaudiush debug logging
 klaudiush --debug
@@ -433,7 +460,7 @@ Test edge cases: empty fields, missing config keys, large inputs, special JSON c
 
 1. Increase timeout: `timeout = "30s"` in the plugin config.
 2. Optimize the plugin (cache operations, return early).
-3. Test directly: `echo '{"tool_name":"Bash"}' | timeout 5s ./my-plugin.sh`
+3. Test directly: `echo '{"tool_family":"shell"}' | timeout 5s ./my-plugin.sh`
 
 ### Wrong validation result
 

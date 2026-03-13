@@ -147,8 +147,11 @@ func (d *Dispatcher) Dispatch(ctx context.Context, hookCtx *hook.Context) []*Val
 	// Run validators on the main context
 	validationErrors := d.runValidators(ctx, hookCtx)
 
-	// If this is a Bash PreToolUse, also validate synthetic Write contexts for file writes
-	if hookCtx.EventType == hook.EventTypePreToolUse && hookCtx.ToolName == hook.ToolTypeBash {
+	// Validate synthetic Write contexts for Bash file writes on pre-tool and Codex post-tool flows.
+	if hookCtx.ToolName == hook.ToolTypeBash && (hookCtx.Event == hook.CanonicalEventBeforeTool ||
+		hookCtx.Event == hook.CanonicalEventAfterTool ||
+		hookCtx.EventType == hook.EventTypePreToolUse ||
+		hookCtx.EventType == hook.EventTypePostToolUse) {
 		syntheticErrors := d.validateBashFileWrites(ctx, hookCtx)
 		validationErrors = append(validationErrors, syntheticErrors...)
 	}
@@ -236,6 +239,13 @@ func (d *Dispatcher) applyExceptionChecking(
 		return errors
 	}
 
+	if hookCtx == nil ||
+		(hookCtx.Event != hook.CanonicalEventBeforeTool &&
+			hookCtx.EventType != hook.EventTypePreToolUse &&
+			!hookCtx.MatchesEventName(string(hook.CanonicalEventBeforeTool))) {
+		return errors
+	}
+
 	result := make([]*ValidationError, 0, len(errors))
 
 	for _, verr := range errors {
@@ -289,8 +299,15 @@ func (d *Dispatcher) validateBashFileWrites(
 	// Create synthetic Write context for each file write
 	for _, fw := range result.FileWrites {
 		syntheticCtx := &hook.Context{
-			EventType: hook.EventTypePreToolUse,
-			ToolName:  hook.ToolTypeWrite,
+			Provider:     bashCtx.Provider,
+			Event:        bashCtx.Event,
+			RawEventName: bashCtx.EventName(),
+			EventType:    bashCtx.EventType,
+			RawToolName:  hook.ToolTypeWrite.String(),
+			ToolFamily:   hook.ToolFamilyWrite,
+			ToolName:     hook.ToolTypeWrite,
+			WorkingDir:   bashCtx.WorkingDir,
+			SessionID:    bashCtx.SessionID,
 			ToolInput: hook.ToolInput{
 				FilePath: fw.Path,
 				Content:  fw.Content,

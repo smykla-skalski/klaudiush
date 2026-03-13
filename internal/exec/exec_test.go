@@ -1,4 +1,4 @@
-package exec_test
+package exec
 
 import (
 	"context"
@@ -9,8 +9,6 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-
-	"github.com/smykla-skalski/klaudiush/internal/exec"
 )
 
 func TestExec(t *testing.T) {
@@ -19,10 +17,10 @@ func TestExec(t *testing.T) {
 }
 
 var _ = Describe("CommandRunner", func() {
-	var runner exec.CommandRunner
+	var runner CommandRunner
 
 	BeforeEach(func() {
-		runner = exec.NewCommandRunner(5 * time.Second)
+		runner = NewCommandRunner(5 * time.Second)
 	})
 
 	Describe("Run", func() {
@@ -91,10 +89,10 @@ var _ = Describe("CommandRunner", func() {
 })
 
 var _ = Describe("ToolChecker", func() {
-	var checker exec.ToolChecker
+	var checker ToolChecker
 
 	BeforeEach(func() {
-		checker = exec.NewToolChecker()
+		checker = NewToolChecker()
 	})
 
 	Describe("IsAvailable", func() {
@@ -140,10 +138,10 @@ var _ = Describe("ToolChecker", func() {
 })
 
 var _ = Describe("TempFileManager", func() {
-	var manager exec.TempFileManager
+	var manager TempFileManager
 
 	BeforeEach(func() {
-		manager = exec.NewTempFileManager()
+		manager = NewTempFileManager()
 	})
 
 	Describe("Create", func() {

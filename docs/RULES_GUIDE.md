@@ -277,15 +277,20 @@ command_pattern = "rm\\s+-rf\\s+/"
 Match against the hook context:
 
 ```toml
+# Match Codex lifecycle hooks only
+provider = "codex"
+
 # Match bash commands
-tool_type = "Bash"
+tool_type = "shell"
 
 # Match file writes
-tool_type = "Write"
+tool_type = "write"
 
-# Match pre-execution hook
-event_type = "PreToolUse"
+# Match blocking Claude/legacy before-tool flow
+event_type = "before_tool"
 ```
+
+Prefer canonical values such as `before_tool`, `after_tool`, `session_start`, `turn_stop`, `shell`, and `write`. Legacy aliases such as `PreToolUse` and `Write` are still accepted.
 
 ## Actions
 

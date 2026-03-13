@@ -7,11 +7,23 @@ var (
 	// ValidActionTypes are the valid action types for rules.
 	ValidActionTypes = []string{"allow", "block", "warn"}
 
+	// ValidProviders are the valid provider filters for rules.
+	ValidProviders = []string{"claude", "codex", "gemini"}
+
 	// ValidEventTypes are the valid event types for rules (case-insensitive matching supported).
-	ValidEventTypes = []string{"PreToolUse", "PostToolUse", "Notification"}
+	ValidEventTypes = []string{
+		"before_tool", "after_tool", "session_start", "turn_stop", "notification",
+		"pre_compress",
+		"PreToolUse", "PostToolUse", "Notification", "SessionStart", "Stop", "AfterToolUse",
+		"BeforeTool", "AfterTool", "SessionEnd", "PreCompress",
+	}
 
 	// ValidToolTypes are the valid tool types for rules (case-insensitive matching supported).
-	ValidToolTypes = []string{"Bash", "Write", "Edit", "MultiEdit", "Grep", "Read", "Glob"}
+	ValidToolTypes = []string{
+		"shell", "write", "edit", "multiedit", "grep", "read", "glob",
+		"Bash", "Write", "Edit", "MultiEdit", "Grep", "Read", "Glob",
+		"run_shell_command", "write_file", "replace", "read_file", "ls",
+	}
 )
 
 // RulesConfig contains the dynamic rule configuration.
@@ -58,6 +70,10 @@ type RuleMatchConfig struct {
 	// Examples: "git.push", "git.*", "*"
 	ValidatorType string `json:"validator_type,omitempty" koanf:"validator_type" toml:"validator_type,omitempty"`
 
+	// Provider filters by hook provider.
+	// Examples: "claude", "codex", "gemini"
+	Provider string `json:"provider,omitempty" jsonschema:"enum=claude,enum=codex,enum=gemini" koanf:"provider" toml:"provider,omitempty"`
+
 	// RepoPattern matches against the repository root path.
 	// Supports glob patterns (e.g., "**/myorg/**"), regex, and negation (! prefix).
 	RepoPattern string `json:"repo_pattern,omitempty" koanf:"repo_pattern" toml:"repo_pattern,omitempty"`
@@ -97,12 +113,12 @@ type RuleMatchConfig struct {
 	CommandPatterns []string `json:"command_patterns,omitempty" koanf:"command_patterns" toml:"command_patterns,omitempty"`
 
 	// ToolType matches against the hook tool type.
-	// Examples: "Bash", "Write", "Edit"
-	ToolType string `json:"tool_type,omitempty" jsonschema:"enum=Bash,enum=Write,enum=Edit,enum=MultiEdit,enum=Grep,enum=Read,enum=Glob" koanf:"tool_type" toml:"tool_type,omitempty"`
+	// Examples: "shell", "Bash", "Edit"
+	ToolType string `json:"tool_type,omitempty" jsonschema:"enum=shell,enum=write,enum=edit,enum=multiedit,enum=grep,enum=read,enum=glob,enum=Bash,enum=Write,enum=Edit,enum=MultiEdit,enum=Grep,enum=Read,enum=Glob" koanf:"tool_type" toml:"tool_type,omitempty"`
 
 	// EventType matches against the hook event type.
-	// Examples: "PreToolUse", "PostToolUse"
-	EventType string `json:"event_type,omitempty" jsonschema:"enum=PreToolUse,enum=PostToolUse,enum=Notification" koanf:"event_type" toml:"event_type,omitempty"`
+	// Examples: "before_tool", "PreToolUse", "SessionStart"
+	EventType string `json:"event_type,omitempty" jsonschema:"enum=before_tool,enum=after_tool,enum=session_start,enum=turn_stop,enum=notification,enum=pre_compress,enum=PreToolUse,enum=PostToolUse,enum=Notification,enum=SessionStart,enum=Stop,enum=AfterToolUse,enum=BeforeTool,enum=AfterTool,enum=SessionEnd,enum=PreCompress" koanf:"event_type" toml:"event_type,omitempty"`
 
 	// CaseInsensitive enables case-insensitive pattern matching for all patterns.
 	// Default: false
@@ -140,6 +156,7 @@ func (m *RuleMatchConfig) HasMatchConditions() bool {
 	}
 
 	return m.ValidatorType != "" ||
+		m.Provider != "" ||
 		m.RepoPattern != "" ||
 		len(m.RepoPatterns) > 0 ||
 		m.Remote != "" ||

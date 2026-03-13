@@ -119,6 +119,37 @@ var _ = Describe("SeedDataChecker", func() {
 	})
 })
 
+var _ = Describe("DefaultPathProvider", func() {
+	It("resolves the project data file to the walked-up project root", func() {
+		tempDir := GinkgoT().TempDir()
+		projectRoot := filepath.Join(tempDir, "repo")
+		workDir := filepath.Join(projectRoot, "sub", "dir")
+		Expect(os.MkdirAll(workDir, 0o755)).To(Succeed())
+		GinkgoT().Setenv("HOME", filepath.Join(tempDir, "home"))
+		GinkgoT().Setenv("XDG_CONFIG_HOME", filepath.Join(tempDir, "xdg-config"))
+		GinkgoT().Setenv("XDG_DATA_HOME", filepath.Join(tempDir, "xdg-data"))
+		GinkgoT().Setenv("XDG_STATE_HOME", filepath.Join(tempDir, "xdg-state"))
+		GinkgoT().Setenv("XDG_CACHE_HOME", filepath.Join(tempDir, "xdg-cache"))
+
+		configDir := filepath.Join(projectRoot, ".klaudiush")
+		Expect(os.MkdirAll(configDir, 0o755)).To(Succeed())
+		Expect(os.WriteFile(
+			filepath.Join(configDir, "config.toml"),
+			[]byte("version = 1\n"),
+			0o644,
+		)).To(Succeed())
+
+		provider := patternschecker.NewDefaultPathProviderWithConfig(
+			&config.PatternsConfig{},
+			workDir,
+		)
+
+		Expect(provider.ProjectDataFile()).To(Equal(
+			filepath.Join(projectRoot, config.DefaultPatternsProjectDataFile),
+		))
+	})
+})
+
 var _ = Describe("DataFileChecker", func() {
 	var (
 		ctx      context.Context

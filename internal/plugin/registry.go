@@ -36,6 +36,7 @@ type PluginEntry struct {
 
 // PredicateMatcher evaluates whether a plugin should be invoked for a given context.
 type PredicateMatcher struct {
+	providers       map[string]bool
 	eventTypes      map[string]bool
 	toolTypes       map[string]bool
 	filePatterns    []string
@@ -172,6 +173,7 @@ func (r *Registry) Close() error {
 // NewPredicateMatcher creates a predicate matcher from configuration.
 func NewPredicateMatcher(cfg *config.PluginPredicate) (*PredicateMatcher, error) {
 	matcher := &PredicateMatcher{
+		providers:  make(map[string]bool),
 		eventTypes: make(map[string]bool),
 		toolTypes:  make(map[string]bool),
 	}
@@ -180,6 +182,7 @@ func NewPredicateMatcher(cfg *config.PluginPredicate) (*PredicateMatcher, error)
 		return matcher, nil
 	}
 
+	matcher.buildProviderMap(cfg.Providers)
 	matcher.buildEventTypeMap(cfg.EventTypes)
 	matcher.buildToolTypeMap(cfg.ToolTypes)
 
@@ -192,6 +195,13 @@ func NewPredicateMatcher(cfg *config.PluginPredicate) (*PredicateMatcher, error)
 	}
 
 	return matcher, nil
+}
+
+// buildProviderMap populates the provider lookup map.
+func (p *PredicateMatcher) buildProviderMap(providers []string) {
+	for _, provider := range providers {
+		p.providers[provider] = true
+	}
 }
 
 // buildEventTypeMap populates the event type lookup map.
@@ -243,6 +253,10 @@ func (p *PredicateMatcher) compileCommandPatterns(patterns []string) error {
 
 // Matches returns whether this predicate matches the given hook context.
 func (p *PredicateMatcher) Matches(hookCtx *hook.Context) bool {
+	if !p.matchesProvider(hookCtx) {
+		return false
+	}
+
 	if !p.matchesEventType(hookCtx) {
 		return false
 	}
@@ -262,15 +276,34 @@ func (p *PredicateMatcher) Matches(hookCtx *hook.Context) bool {
 	return true
 }
 
+// matchesProvider returns whether the provider matches.
+func (p *PredicateMatcher) matchesProvider(hookCtx *hook.Context) bool {
+	if len(p.providers) == 0 {
+		return true
+	}
+
+	for provider := range p.providers {
+		if hookCtx.MatchesProvider(provider) {
+			return true
+		}
+	}
+
+	return false
+}
+
 // matchesEventType returns whether the event type matches.
 func (p *PredicateMatcher) matchesEventType(hookCtx *hook.Context) bool {
 	if len(p.eventTypes) == 0 {
 		return true
 	}
 
-	eventTypeStr := hookCtx.EventType.String()
+	for eventType := range p.eventTypes {
+		if hookCtx.MatchesEventName(eventType) {
+			return true
+		}
+	}
 
-	return p.eventTypes[eventTypeStr]
+	return false
 }
 
 // matchesToolType returns whether the tool type matches.
@@ -279,9 +312,13 @@ func (p *PredicateMatcher) matchesToolType(hookCtx *hook.Context) bool {
 		return true
 	}
 
-	toolTypeStr := hookCtx.ToolName.String()
+	for toolType := range p.toolTypes {
+		if hookCtx.MatchesToolName(toolType) {
+			return true
+		}
+	}
 
-	return p.toolTypes[toolTypeStr]
+	return false
 }
 
 // matchesFilePatterns returns whether the file patterns match.

@@ -1,6 +1,6 @@
 # Exception workflow guide
 
-Allow Claude to bypass validation denials with explicit acknowledgment and audit trail.
+Allow blocking command validations to be bypassed with explicit acknowledgment and an audit trail.
 
 ## Table of contents
 
@@ -17,19 +17,21 @@ Allow Claude to bypass validation denials with explicit acknowledgment and audit
 
 ## Overview
 
-The exception workflow lets Claude Code bypass specific validation denials when:
+The exception workflow lets blocking `before_tool` command flows bypass specific validation denials when:
 
 1. An exception policy exists for the error code
-2. Claude includes an acknowledgment token in the command
+2. The agent includes an acknowledgment token in the command
 3. The token includes a valid justification (if required)
 4. Rate limits have not been exceeded
 
 Exceptions use token-based acknowledgment embedded in commands, with per-error-code policies, hourly/daily rate limits, JSONL audit logging, and configurable justification requirements.
 
+Exceptions currently apply only to blocking `before_tool` command flows. They are not used for Codex `session_start`, `after_tool`, or `turn_stop` lifecycle hooks.
+
 ### How it works
 
 ```text
-1. Claude runs: git push origin main  # EXC:GIT019:Emergency+hotfix
+1. The agent runs: git push origin main  # EXC:GIT019:Emergency+hotfix
 2. klaudiush detects validation failure (GIT019)
 3. klaudiush finds exception token in command
 4. Policy check: Is GIT019 exception allowed?
@@ -59,7 +61,7 @@ description = "Exception for pushing to protected branches"
 
 ### 2. Bypass a denial
 
-When Claude encounters a deny response, it can include an exception token:
+When the agent encounters a deny response, it can include an exception token:
 
 ```bash
 # Shell comment format
