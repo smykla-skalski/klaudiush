@@ -5,7 +5,7 @@ import (
 	"io"
 	"os"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -174,9 +174,9 @@ var _ = Describe("doctorModel", func() {
 
 			// View should show running phase
 			view := model.View()
-			Expect(view).To(ContainSubstring("Checking klaudiush health..."))
-			Expect(view).To(ContainSubstring("check-1"))
-			Expect(view).To(ContainSubstring("check-2"))
+			Expect(view.Content).To(ContainSubstring("Checking klaudiush health..."))
+			Expect(view.Content).To(ContainSubstring("check-1"))
+			Expect(view.Content).To(ContainSubstring("check-2"))
 		})
 	})
 
@@ -223,7 +223,7 @@ var _ = Describe("doctorModel", func() {
 
 			// After all checks done, view should be empty (phaseTable)
 			view := model.View()
-			Expect(view).To(BeEmpty())
+			Expect(view.Content).To(BeEmpty())
 		})
 	})
 
@@ -269,10 +269,10 @@ var _ = Describe("doctorModel", func() {
 			model := reporters.NewModelForTest(checkers, false, theme)
 
 			view := model.View()
-			Expect(view).To(ContainSubstring("Binary"))
-			Expect(view).To(ContainSubstring("Hook Registration"))
-			Expect(view).To(ContainSubstring("binary-check"))
-			Expect(view).To(ContainSubstring("hook-check"))
+			Expect(view.Content).To(ContainSubstring("Binary"))
+			Expect(view.Content).To(ContainSubstring("Hook Registration"))
+			Expect(view.Content).To(ContainSubstring("binary-check"))
+			Expect(view.Content).To(ContainSubstring("hook-check"))
 		})
 	})
 
