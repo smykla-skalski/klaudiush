@@ -1,7 +1,7 @@
 package tui
 
 import (
-	"github.com/charmbracelet/huh"
+	"charm.land/huh/v2"
 
 	pkgConfig "github.com/smykla-skalski/klaudiush/pkg/config"
 )
@@ -92,7 +92,7 @@ func buildInitForm(opts InitFormOptions, result *InitFormResult) *huh.Form {
 	}
 
 	return huh.NewForm(groups...).
-		WithTheme(huh.ThemeCharm()).
+		WithTheme(huh.ThemeFunc(huh.ThemeCharm)).
 		WithShowHelp(true).
 		WithKeyMap(huh.NewDefaultKeyMap())
 }
