@@ -5,6 +5,16 @@ All notable changes to klaudiush will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.29.4](https://github.com/smykla-skalski/klaudiush/compare/v1.29.3...v1.29.4) (2026-03-13)
+
+### Bug Fixes
+
+* **deps:** update module charm.land/lipgloss/v2 to v2.0.2 ([#389](https://github.com/smykla-skalski/klaudiush/issues/389)) ([8402a9c](https://github.com/smykla-skalski/klaudiush/commit/8402a9c55d70d4d5cb4c76b24eb8f71083f03e37))
+* **deps:** update module github.com/charmbracelet/bubbles to v2 ([#347](https://github.com/smykla-skalski/klaudiush/issues/347)) ([eed8d67](https://github.com/smykla-skalski/klaudiush/commit/eed8d67cebe1f88f07f5c0735b49a2c295e72a36))
+* **deps:** update module github.com/charmbracelet/huh to v2 ([#381](https://github.com/smykla-skalski/klaudiush/issues/381)) ([cdde130](https://github.com/smykla-skalski/klaudiush/commit/cdde130d47fc9052c217078675a8679acd005d28))
+* **deps:** update module github.com/go-git/go-git/v6 to v6.0.0-20260312103649-3b3581068cee ([#363](https://github.com/smykla-skalski/klaudiush/issues/363)) ([7ab0444](https://github.com/smykla-skalski/klaudiush/commit/7ab04442d17a799d14118e26201f7505c7270715))
+* **hooks:** restore Claude hook coverage ([8297f2d](https://github.com/smykla-skalski/klaudiush/commit/8297f2df0575cebb1cceba683c4a756c48f6d4c6))
+
 ## [1.29.3](https://github.com/smykla-skalski/klaudiush/compare/v1.29.2...v1.29.3) (2026-03-13)
 
 ### Bug Fixes
