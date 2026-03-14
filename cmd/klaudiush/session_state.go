@@ -25,7 +25,10 @@ func applyHookSessionLifecycle(
 	case hook.CanonicalEventUnknown,
 		hook.CanonicalEventBeforeTool,
 		hook.CanonicalEventNotification,
-		hook.CanonicalEventPreCompress:
+		hook.CanonicalEventPreCompress,
+		hook.CanonicalEventElicitation,
+		hook.CanonicalEventElicitationResult,
+		hook.CanonicalEventPostCompact:
 		return errs, cleanup
 	case hook.CanonicalEventSessionStart:
 		if err := store.Start(hookCtx.Provider, hookCtx.SessionID); err != nil {

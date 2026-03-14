@@ -51,3 +51,10 @@ type GeminiHookSpecificOutput struct {
 	AdditionalContext string         `json:"additionalContext,omitempty"`
 	ToolInput         map[string]any `json:"tool_input,omitempty"`
 }
+
+// ElicitationHookResponse is the response for Elicitation/ElicitationResult events.
+type ElicitationHookResponse struct {
+	Action        string         `json:"action,omitempty"`
+	Content       map[string]any `json:"content,omitempty"`
+	SystemMessage string         `json:"systemMessage,omitempty"`
+}

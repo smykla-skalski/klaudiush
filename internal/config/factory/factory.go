@@ -40,6 +40,9 @@ type ValidatorFactory interface {
 	// CreatePluginValidators creates all plugin validators from config.
 	CreatePluginValidators(cfg *config.Config) []ValidatorWithPredicate
 
+	// CreateElicitationValidators creates all elicitation validators from config.
+	CreateElicitationValidators(cfg *config.Config) []ValidatorWithPredicate
+
 	// CreateLifecycleValidators creates lifecycle rule validators from config.
 	CreateLifecycleValidators(cfg *config.Config) []ValidatorWithPredicate
 
@@ -56,6 +59,7 @@ type DefaultValidatorFactory struct {
 	secretsFactory      *SecretsValidatorFactory
 	shellFactory        *ShellValidatorFactory
 	pluginFactory       *PluginValidatorFactory
+	elicitationFactory  *ElicitationValidatorFactory
 	lifecycleFactory    *LifecycleValidatorFactory
 }
 
@@ -69,6 +73,7 @@ func NewValidatorFactory(log logger.Logger) *DefaultValidatorFactory {
 		secretsFactory:      NewSecretsValidatorFactory(log),
 		shellFactory:        NewShellValidatorFactory(log),
 		pluginFactory:       NewPluginValidatorFactory(log),
+		elicitationFactory:  NewElicitationValidatorFactory(log),
 		lifecycleFactory:    NewLifecycleValidatorFactory(log),
 	}
 }
@@ -81,6 +86,7 @@ func (f *DefaultValidatorFactory) SetRuleEngine(engine *rules.RuleEngine) {
 	f.notificationFactory.SetRuleEngine(engine)
 	f.secretsFactory.SetRuleEngine(engine)
 	f.shellFactory.SetRuleEngine(engine)
+	f.elicitationFactory.SetRuleEngine(engine)
 	f.lifecycleFactory.SetRuleEngine(engine)
 }
 
@@ -124,6 +130,13 @@ func (f *DefaultValidatorFactory) CreateShellValidators(
 	return f.shellFactory.CreateValidators(cfg)
 }
 
+// CreateElicitationValidators creates all elicitation validators from config.
+func (f *DefaultValidatorFactory) CreateElicitationValidators(
+	cfg *config.Config,
+) []ValidatorWithPredicate {
+	return f.elicitationFactory.CreateValidators(cfg)
+}
+
 // CreatePluginValidators creates all plugin validators from config.
 func (f *DefaultValidatorFactory) CreatePluginValidators(
 	cfg *config.Config,
@@ -151,6 +164,7 @@ func (f *DefaultValidatorFactory) CreateAll(cfg *config.Config) []ValidatorWithP
 	all = append(all, f.CreateSecretsValidators(cfg)...)
 	all = append(all, f.CreateShellValidators(cfg)...)
 	all = append(all, f.CreatePluginValidators(cfg)...)
+	all = append(all, f.CreateElicitationValidators(cfg)...)
 	all = append(all, f.CreateLifecycleValidators(cfg)...)
 
 	return all

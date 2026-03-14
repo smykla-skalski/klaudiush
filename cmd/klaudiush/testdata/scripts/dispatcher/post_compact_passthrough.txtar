@@ -1,0 +1,13 @@
+# Test: PostCompact events pass through silently
+# This tests that PostCompact lifecycle events produce no output
+
+stdin input.json
+exec klaudiush --event PostCompact
+! stdout .
+
+-- input.json --
+{
+  "hook_event_name": "PostCompact",
+  "compact_summary": "Removed 15 tool calls from context",
+  "trigger": "auto"
+}

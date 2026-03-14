@@ -241,6 +241,8 @@ func (d *Dispatcher) applyExceptionChecking(
 
 	if hookCtx == nil ||
 		(hookCtx.Event != hook.CanonicalEventBeforeTool &&
+			hookCtx.Event != hook.CanonicalEventElicitation &&
+			hookCtx.Event != hook.CanonicalEventElicitationResult &&
 			hookCtx.EventType != hook.EventTypePreToolUse &&
 			!hookCtx.MatchesEventName(string(hook.CanonicalEventBeforeTool))) {
 		return errors

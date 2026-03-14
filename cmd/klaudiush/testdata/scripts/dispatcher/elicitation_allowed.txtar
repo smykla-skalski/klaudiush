@@ -1,0 +1,20 @@
+# Test: Elicitation from allowed MCP server passes
+# This tests that a server on the allow list is not blocked
+
+stdin input.json
+exec klaudiush --event Elicitation
+! stdout .
+
+-- .klaudiush/config.toml --
+[validators.elicitation.server]
+enabled = true
+allowed_servers = ["good-server"]
+
+-- input.json --
+{
+  "hook_event_name": "Elicitation",
+  "mcp_server_name": "good-server",
+  "mode": "form",
+  "elicitation_id": "elic-002",
+  "message": "Provide preferences"
+}

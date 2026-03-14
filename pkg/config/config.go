@@ -59,6 +59,9 @@ type ValidatorsConfig struct {
 
 	// Shell validator configurations.
 	Shell *ShellConfig `json:"shell,omitempty" koanf:"shell" toml:"shell,omitempty"`
+
+	// Elicitation validator configurations.
+	Elicitation *ElicitationConfig `json:"elicitation,omitempty" koanf:"elicitation" toml:"elicitation,omitempty"`
 }
 
 // GlobalConfig contains global settings that apply to all validators.
@@ -168,6 +171,15 @@ func (v *ValidatorsConfig) GetSecrets() *SecretsConfig {
 	}
 
 	return v.Secrets
+}
+
+// GetElicitation returns the elicitation validators config, creating it if it doesn't exist.
+func (v *ValidatorsConfig) GetElicitation() *ElicitationConfig {
+	if v.Elicitation == nil {
+		v.Elicitation = &ElicitationConfig{}
+	}
+
+	return v.Elicitation
 }
 
 // GetPlugins returns the plugins config, creating it if it doesn't exist.

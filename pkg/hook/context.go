@@ -84,6 +84,33 @@ type ToolInput struct {
 	Additional map[string]json.RawMessage `json:"-"`
 }
 
+// ElicitationInput contains MCP elicitation event data.
+type ElicitationInput struct {
+	// MCPServerName is the MCP server requesting elicitation.
+	MCPServerName string `json:"mcp_server_name,omitempty"`
+
+	// Message is the elicitation prompt message.
+	Message string `json:"message,omitempty"`
+
+	// Mode is the elicitation mode ("form" or "url").
+	Mode string `json:"mode,omitempty"`
+
+	// URL is the target URL for URL-mode elicitations.
+	URL string `json:"url,omitempty"`
+
+	// ElicitationID uniquely identifies this elicitation request.
+	ElicitationID string `json:"elicitation_id,omitempty"`
+
+	// RequestedSchema is the JSON schema for form-mode elicitations.
+	RequestedSchema json.RawMessage `json:"requested_schema,omitempty"`
+
+	// Action is the user's action on the elicitation (for ElicitationResult).
+	Action string `json:"action,omitempty"`
+
+	// Content is the user's response content (for ElicitationResult).
+	Content json.RawMessage `json:"content,omitempty"`
+}
+
 // Context represents the complete hook invocation context.
 type Context struct {
 	// Provider identifies the source hook system (Claude, Codex).
@@ -157,6 +184,15 @@ type Context struct {
 
 	// AffectedPaths contains provider-derived file paths affected by the tool.
 	AffectedPaths []string
+
+	// Elicitation contains MCP elicitation event data (nil for non-elicitation events).
+	Elicitation *ElicitationInput
+
+	// CompactSummary is the summary produced by context compaction (PostCompact only).
+	CompactSummary string
+
+	// CompactTrigger is what triggered the compaction (PostCompact only).
+	CompactTrigger string
 }
 
 // GetCommand returns the command from ToolInput.
@@ -195,6 +231,20 @@ func (c *Context) IsFileTool() bool {
 		c.ToolFamily == ToolFamilyWrite ||
 		c.ToolFamily == ToolFamilyEdit ||
 		c.ToolFamily == ToolFamilyMultiEdit
+}
+
+// IsElicitationEvent returns true if this is an Elicitation or ElicitationResult event.
+func (c *Context) IsElicitationEvent() bool {
+	return c.Event == CanonicalEventElicitation || c.Event == CanonicalEventElicitationResult
+}
+
+// GetMCPServerName returns the MCP server name from elicitation data.
+func (c *Context) GetMCPServerName() string {
+	if c.Elicitation != nil {
+		return c.Elicitation.MCPServerName
+	}
+
+	return ""
 }
 
 // HasSessionID returns true if a session ID is present.
@@ -243,6 +293,13 @@ func (c *Context) EventNames() []string {
 		names = appendUniqueFold(names, "Notification")
 	case CanonicalEventPreCompress:
 		names = appendUniqueFold(names, "PreCompress")
+	case CanonicalEventElicitation:
+		names = appendUniqueFold(names, "Elicitation")
+	case CanonicalEventElicitationResult:
+		names = appendUniqueFold(names, "ElicitationResult")
+	case CanonicalEventPostCompact:
+		names = appendUniqueFold(names, "PostCompact")
+		names = appendUniqueFold(names, "PostCompress")
 	}
 
 	return names

@@ -47,6 +47,15 @@ const (
 
 	// CanonicalEventPreCompress is a pre-compress lifecycle event.
 	CanonicalEventPreCompress CanonicalEvent = "pre_compress"
+
+	// CanonicalEventElicitation is an MCP elicitation request event.
+	CanonicalEventElicitation CanonicalEvent = "elicitation"
+
+	// CanonicalEventElicitationResult is an MCP elicitation result event.
+	CanonicalEventElicitationResult CanonicalEvent = "elicitation_result"
+
+	// CanonicalEventPostCompact is a post-compaction lifecycle event.
+	CanonicalEventPostCompact CanonicalEvent = "post_compact"
 )
 
 // ToolFamily represents the normalized cross-provider tool family.
@@ -78,6 +87,12 @@ const (
 	ToolFamilyGlob ToolFamily = "glob"
 )
 
+// Display name constants for event names used across multiple providers.
+const (
+	displayElicitation       = "Elicitation"
+	displayElicitationResult = "ElicitationResult"
+)
+
 // ParseProvider parses a provider string.
 func ParseProvider(s string) (Provider, error) {
 	switch strings.ToLower(strings.TrimSpace(s)) {
@@ -107,6 +122,12 @@ func NormalizeEventName(name string) CanonicalEvent {
 		return CanonicalEventNotification
 	case "precompress":
 		return CanonicalEventPreCompress
+	case "elicitation":
+		return CanonicalEventElicitation
+	case "elicitationresult":
+		return CanonicalEventElicitationResult
+	case "postcompact", "postcompress":
+		return CanonicalEventPostCompact
 	default:
 		return CanonicalEventUnknown
 	}
@@ -122,7 +143,8 @@ func ResolveLegacyEventType(
 
 	switch canonical {
 	case CanonicalEventUnknown, CanonicalEventSessionStart, CanonicalEventTurnStop,
-		CanonicalEventPreCompress:
+		CanonicalEventPreCompress, CanonicalEventElicitation, CanonicalEventElicitationResult,
+		CanonicalEventPostCompact:
 	case CanonicalEventBeforeTool:
 		return EventTypePreToolUse
 	case CanonicalEventAfterTool:
@@ -158,50 +180,20 @@ func DefaultEventName(provider Provider) string {
 
 // DisplayEventName returns the provider-specific event name to emit back.
 func DisplayEventName(provider Provider, canonical CanonicalEvent, fallback EventType) string {
+	var name string
+
 	switch provider {
 	case ProviderUnknown:
 	case ProviderCodex:
-		switch canonical {
-		case CanonicalEventUnknown:
-		case CanonicalEventPreCompress:
-		case CanonicalEventSessionStart:
-			return "SessionStart"
-		case CanonicalEventTurnStop:
-			return "Stop"
-		case CanonicalEventAfterTool:
-			return "AfterToolUse"
-		case CanonicalEventNotification:
-			return "Notification"
-		case CanonicalEventBeforeTool:
-			return "BeforeToolUse"
-		}
+		name = displayCodexEvent(canonical)
 	case ProviderGemini:
-		switch canonical {
-		case CanonicalEventUnknown:
-		case CanonicalEventBeforeTool:
-			return "BeforeTool"
-		case CanonicalEventAfterTool:
-			return "AfterTool"
-		case CanonicalEventSessionStart:
-			return "SessionStart"
-		case CanonicalEventTurnStop:
-			return "SessionEnd"
-		case CanonicalEventNotification:
-			return "Notification"
-		case CanonicalEventPreCompress:
-			return "PreCompress"
-		}
+		name = displayGeminiEvent(canonical)
 	case ProviderClaude:
-		switch canonical {
-		case CanonicalEventUnknown, CanonicalEventSessionStart, CanonicalEventTurnStop,
-			CanonicalEventPreCompress:
-		case CanonicalEventBeforeTool:
-			return EventTypePreToolUse.String()
-		case CanonicalEventAfterTool:
-			return EventTypePostToolUse.String()
-		case CanonicalEventNotification:
-			return EventTypeNotification.String()
-		}
+		name = displayClaudeEvent(canonical)
+	}
+
+	if name != "" {
+		return name
 	}
 
 	if fallback != EventTypeUnknown {
@@ -209,6 +201,69 @@ func DisplayEventName(provider Provider, canonical CanonicalEvent, fallback Even
 	}
 
 	return ""
+}
+
+func displayCodexEvent(canonical CanonicalEvent) string {
+	switch canonical {
+	case CanonicalEventElicitation:
+		return displayElicitation
+	case CanonicalEventElicitationResult:
+		return displayElicitationResult
+	case CanonicalEventSessionStart:
+		return "SessionStart"
+	case CanonicalEventTurnStop:
+		return "Stop"
+	case CanonicalEventAfterTool:
+		return "AfterToolUse"
+	case CanonicalEventNotification:
+		return "Notification"
+	case CanonicalEventBeforeTool:
+		return "BeforeToolUse"
+	default:
+		return ""
+	}
+}
+
+func displayGeminiEvent(canonical CanonicalEvent) string {
+	switch canonical {
+	case CanonicalEventElicitation:
+		return displayElicitation
+	case CanonicalEventElicitationResult:
+		return displayElicitationResult
+	case CanonicalEventPostCompact:
+		return "PostCompact"
+	case CanonicalEventBeforeTool:
+		return "BeforeTool"
+	case CanonicalEventAfterTool:
+		return "AfterTool"
+	case CanonicalEventSessionStart:
+		return "SessionStart"
+	case CanonicalEventTurnStop:
+		return "SessionEnd"
+	case CanonicalEventNotification:
+		return "Notification"
+	case CanonicalEventPreCompress:
+		return "PreCompress"
+	default:
+		return ""
+	}
+}
+
+func displayClaudeEvent(canonical CanonicalEvent) string {
+	switch canonical {
+	case CanonicalEventElicitation:
+		return displayElicitation
+	case CanonicalEventElicitationResult:
+		return displayElicitationResult
+	case CanonicalEventBeforeTool:
+		return EventTypePreToolUse.String()
+	case CanonicalEventAfterTool:
+		return EventTypePostToolUse.String()
+	case CanonicalEventNotification:
+		return EventTypeNotification.String()
+	default:
+		return ""
+	}
 }
 
 // ResolveToolMetadata maps a raw tool name onto the legacy enum and canonical family.

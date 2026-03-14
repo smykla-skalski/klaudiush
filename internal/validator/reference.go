@@ -150,6 +150,18 @@ const (
 	RefGHIssueValidation Reference = ReferenceBaseURL + "/GH001"
 )
 
+// MCP Elicitation references (MCP001-MCP005).
+const (
+	// RefMCPServerBlocked indicates MCP server is on the deny list.
+	RefMCPServerBlocked Reference = ReferenceBaseURL + "/MCP001"
+
+	// RefMCPServerNotAllowed indicates MCP server is not on the allow list.
+	RefMCPServerNotAllowed Reference = ReferenceBaseURL + "/MCP002"
+
+	// RefMCPURLModeBlocked indicates URL mode is blocked for MCP elicitation.
+	RefMCPURLModeBlocked Reference = ReferenceBaseURL + "/MCP003"
+)
+
 // Plugin-related references (PLUG001-PLUG005).
 const (
 	// RefPluginPathTraversal indicates path traversal detected in plugin path.

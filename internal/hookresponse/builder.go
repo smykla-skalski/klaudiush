@@ -77,6 +77,10 @@ func BuildForContext(
 		return BuildGemini(hookCtx, errs, patternWarnings)
 	}
 
+	if hookCtx != nil && hookCtx.IsElicitationEvent() {
+		return BuildElicitation(hookCtx, errs, patternWarnings)
+	}
+
 	if hookCtx != nil &&
 		hookCtx.Provider == hook.ProviderClaude &&
 		hookCtx.Event == hook.CanonicalEventAfterTool {
@@ -227,7 +231,7 @@ func BuildGemini(
 			}
 		}
 	case hook.CanonicalEventTurnStop, hook.CanonicalEventNotification,
-		hook.CanonicalEventPreCompress:
+		hook.CanonicalEventPreCompress, hook.CanonicalEventPostCompact:
 	default:
 		if len(blocking) > 0 {
 			resp.Decision = "deny"
@@ -245,6 +249,28 @@ func BuildGemini(
 	}
 
 	return resp
+}
+
+// BuildElicitation constructs an ElicitationHookResponse.
+// Returns nil when there are no blocking errors (warnings are allowed through).
+func BuildElicitation(
+	_ *hook.Context,
+	errs []*dispatcher.ValidationError,
+	_ []string,
+) *ElicitationHookResponse {
+	if len(errs) == 0 {
+		return nil
+	}
+
+	blocking, _, _ := categorize(errs)
+	if len(blocking) == 0 {
+		return nil
+	}
+
+	return &ElicitationHookResponse{
+		Action:        "decline",
+		SystemMessage: FormatSystemMessage(errs),
+	}
 }
 
 // categorize splits errors into blocking, warnings, and bypassed.

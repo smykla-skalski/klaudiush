@@ -1,0 +1,20 @@
+# Test: Elicitation from denied MCP server is blocked
+# This tests that a server on the deny list gets declined
+
+stdin input.json
+exec klaudiush --event Elicitation
+stdout '"action":"decline"'
+
+-- .klaudiush/config.toml --
+[validators.elicitation.server]
+enabled = true
+denied_servers = ["evil-server"]
+
+-- input.json --
+{
+  "hook_event_name": "Elicitation",
+  "mcp_server_name": "evil-server",
+  "mode": "form",
+  "elicitation_id": "elic-001",
+  "message": "Provide credentials"
+}

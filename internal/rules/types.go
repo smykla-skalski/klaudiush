@@ -54,6 +54,8 @@ const (
 	ValidatorSecrets          ValidatorType = "secrets.secrets"
 	ValidatorShellBacktick    ValidatorType = "shell.backtick"
 	ValidatorNotification     ValidatorType = "notification.bell"
+	ValidatorMCPServer        ValidatorType = "mcp.server"
+	ValidatorMCPAll           ValidatorType = "mcp.*"
 	ValidatorAll              ValidatorType = "*"
 )
 

@@ -334,6 +334,139 @@ var _ = Describe("JSONParser", func() {
 	})
 })
 
+var _ = Describe("Parse with Elicitation input", func() {
+	It("parses Elicitation event with all fields", func() {
+		input := `{
+			"hook_event_name": "Elicitation",
+			"mcp_server_name": "my-mcp-server",
+			"mode": "form",
+			"url": "https://example.com/auth",
+			"elicitation_id": "elic-abc-123",
+			"requested_schema": {"type": "object", "properties": {"token": {"type": "string"}}},
+			"message": "Please provide your credentials"
+		}`
+
+		p := parser.NewJSONParser(bytes.NewReader([]byte(input)))
+		ctx, err := p.ParseWithOptions(parser.ParseOptions{
+			Provider:  hook.ProviderClaude,
+			EventName: "Elicitation",
+		})
+
+		Expect(err).NotTo(HaveOccurred())
+		Expect(ctx).NotTo(BeNil())
+		Expect(ctx.Event).To(Equal(hook.CanonicalEventElicitation))
+		Expect(ctx.IsElicitationEvent()).To(BeTrue())
+		Expect(ctx.Elicitation).NotTo(BeNil())
+		Expect(ctx.Elicitation.MCPServerName).To(Equal("my-mcp-server"))
+		Expect(ctx.Elicitation.Mode).To(Equal("form"))
+		Expect(ctx.Elicitation.URL).To(Equal("https://example.com/auth"))
+		Expect(ctx.Elicitation.ElicitationID).To(Equal("elic-abc-123"))
+		Expect(ctx.Elicitation.Message).To(Equal("Please provide your credentials"))
+		Expect(ctx.Elicitation.RequestedSchema).NotTo(BeEmpty())
+		Expect(ctx.GetMCPServerName()).To(Equal("my-mcp-server"))
+	})
+
+	It("parses ElicitationResult event with action and content", func() {
+		input := `{
+			"hook_event_name": "ElicitationResult",
+			"mcp_server_name": "my-mcp-server",
+			"action": "approve",
+			"content": {"token": "abc123"}
+		}`
+
+		p := parser.NewJSONParser(bytes.NewReader([]byte(input)))
+		ctx, err := p.ParseWithOptions(parser.ParseOptions{
+			Provider:  hook.ProviderClaude,
+			EventName: "ElicitationResult",
+		})
+
+		Expect(err).NotTo(HaveOccurred())
+		Expect(ctx).NotTo(BeNil())
+		Expect(ctx.Event).To(Equal(hook.CanonicalEventElicitationResult))
+		Expect(ctx.IsElicitationEvent()).To(BeTrue())
+		Expect(ctx.Elicitation).NotTo(BeNil())
+		Expect(ctx.Elicitation.MCPServerName).To(Equal("my-mcp-server"))
+		Expect(ctx.Elicitation.Action).To(Equal("approve"))
+		Expect(ctx.Elicitation.Content).NotTo(BeEmpty())
+	})
+
+	It("does not populate Elicitation field for non-elicitation events", func() {
+		input := `{
+			"hook_event_name": "PreToolUse",
+			"tool_name": "Bash",
+			"tool_input": {"command": "echo test"}
+		}`
+
+		p := parser.NewJSONParser(bytes.NewReader([]byte(input)))
+		ctx, err := p.ParseWithOptions(parser.ParseOptions{
+			Provider:  hook.ProviderClaude,
+			EventName: "PreToolUse",
+		})
+
+		Expect(err).NotTo(HaveOccurred())
+		Expect(ctx.Elicitation).To(BeNil())
+		Expect(ctx.IsElicitationEvent()).To(BeFalse())
+	})
+})
+
+var _ = Describe("Parse with PostCompact input", func() {
+	It("parses PostCompact event with summary and trigger", func() {
+		input := `{
+			"hook_event_name": "PostCompact",
+			"compact_summary": "Removed 15 tool calls from context",
+			"trigger": "auto"
+		}`
+
+		p := parser.NewJSONParser(bytes.NewReader([]byte(input)))
+		ctx, err := p.ParseWithOptions(parser.ParseOptions{
+			Provider:  hook.ProviderClaude,
+			EventName: "PostCompact",
+		})
+
+		Expect(err).NotTo(HaveOccurred())
+		Expect(ctx).NotTo(BeNil())
+		Expect(ctx.Event).To(Equal(hook.CanonicalEventPostCompact))
+		Expect(ctx.CompactSummary).To(Equal("Removed 15 tool calls from context"))
+		Expect(ctx.CompactTrigger).To(Equal("auto"))
+	})
+
+	It("handles PostCompact with missing optional fields", func() {
+		input := `{
+			"hook_event_name": "PostCompact"
+		}`
+
+		p := parser.NewJSONParser(bytes.NewReader([]byte(input)))
+		ctx, err := p.ParseWithOptions(parser.ParseOptions{
+			Provider:  hook.ProviderClaude,
+			EventName: "PostCompact",
+		})
+
+		Expect(err).NotTo(HaveOccurred())
+		Expect(ctx).NotTo(BeNil())
+		Expect(ctx.Event).To(Equal(hook.CanonicalEventPostCompact))
+		Expect(ctx.CompactSummary).To(BeEmpty())
+		Expect(ctx.CompactTrigger).To(BeEmpty())
+	})
+
+	It("does not populate compact fields for non-PostCompact events", func() {
+		input := `{
+			"hook_event_name": "PreToolUse",
+			"tool_name": "Bash",
+			"tool_input": {"command": "echo test"}
+		}`
+
+		p := parser.NewJSONParser(bytes.NewReader([]byte(input)))
+		ctx, err := p.ParseWithOptions(parser.ParseOptions{
+			Provider:  hook.ProviderClaude,
+			EventName: "PreToolUse",
+		})
+
+		Expect(err).NotTo(HaveOccurred())
+		Expect(ctx.CompactSummary).To(BeEmpty())
+		Expect(ctx.CompactTrigger).To(BeEmpty())
+	})
+})
+
 var _ = Describe("Context session helpers", func() {
 	Describe("HasSessionID", func() {
 		It("returns true when session ID is present", func() {

@@ -56,6 +56,11 @@ var DefaultSuggestions = map[Reference]string{
 
 	// GitHub CLI suggestions
 	RefGHIssueValidation: "Fix markdown formatting in issue body (empty lines around headings, proper list spacing)",
+
+	// MCP Elicitation suggestions
+	RefMCPServerBlocked:    "Remove MCP server from deny list or use a different server",
+	RefMCPServerNotAllowed: "Add MCP server to allow list in config",
+	RefMCPURLModeBlocked:   "Use form mode instead of URL mode for MCP elicitation",
 }
 
 // GetSuggestion returns the fix suggestion for a reference.

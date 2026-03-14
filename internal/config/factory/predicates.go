@@ -22,10 +22,18 @@ func beforeToolOrCodexAfterToolPredicate() validator.Predicate {
 	)
 }
 
+func elicitationEventPredicate() validator.Predicate {
+	return validator.Or(
+		validator.EventIs(hook.CanonicalEventElicitation),
+		validator.EventIs(hook.CanonicalEventElicitationResult),
+	)
+}
+
 func lifecycleEventPredicate() validator.Predicate {
 	return validator.Or(
 		validator.EventIs(hook.CanonicalEventSessionStart),
 		validator.EventIs(hook.CanonicalEventTurnStop),
 		validator.EventIs(hook.CanonicalEventPreCompress),
+		validator.EventIs(hook.CanonicalEventPostCompact),
 	)
 }

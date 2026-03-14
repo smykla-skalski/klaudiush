@@ -56,6 +56,15 @@ type JSONInput struct {
 	LastAssistant    *string         `json:"last_assistant_message,omitempty"`
 	StopHookActive   bool            `json:"stop_hook_active,omitempty"`
 	HookEvent        json.RawMessage `json:"hook_event,omitempty"`
+	MCPServerName    string          `json:"mcp_server_name,omitempty"`
+	Mode             string          `json:"mode,omitempty"`
+	URL              string          `json:"url,omitempty"`
+	ElicitationID    string          `json:"elicitation_id,omitempty"`
+	RequestedSchema  json.RawMessage `json:"requested_schema,omitempty"`
+	Action           string          `json:"action,omitempty"`
+	Content          json.RawMessage `json:"content,omitempty"`
+	CompactSummary   string          `json:"compact_summary,omitempty"`
+	Trigger          string          `json:"trigger,omitempty"`
 }
 
 // CodexAfterToolEvent represents the nested Codex AfterToolUse payload.
@@ -125,6 +134,9 @@ func (p *JSONParser) ParseWithOptions(opts ParseOptions) (*hook.Context, error) 
 		TranscriptPath:   input.TranscriptPath,
 		AffectedPaths:    deriveAffectedPaths(toolName, toolInput),
 	}
+
+	populateElicitationFields(ctx, input, canonicalEvent)
+	populateCompactFields(ctx, input, canonicalEvent)
 
 	if input.LastAssistant != nil {
 		ctx.LastAssistantMessage = *input.LastAssistant
@@ -430,4 +442,39 @@ func normalizeToolName(rawToolName string) string {
 	rawToolName = strings.ReplaceAll(rawToolName, "-", "")
 
 	return rawToolName
+}
+
+func populateElicitationFields(
+	ctx *hook.Context,
+	input JSONInput,
+	canonical hook.CanonicalEvent,
+) {
+	if canonical != hook.CanonicalEventElicitation &&
+		canonical != hook.CanonicalEventElicitationResult {
+		return
+	}
+
+	ctx.Elicitation = &hook.ElicitationInput{
+		MCPServerName:   input.MCPServerName,
+		Message:         input.Message,
+		Mode:            input.Mode,
+		URL:             input.URL,
+		ElicitationID:   input.ElicitationID,
+		RequestedSchema: input.RequestedSchema,
+		Action:          input.Action,
+		Content:         input.Content,
+	}
+}
+
+func populateCompactFields(
+	ctx *hook.Context,
+	input JSONInput,
+	canonical hook.CanonicalEvent,
+) {
+	if canonical != hook.CanonicalEventPostCompact {
+		return
+	}
+
+	ctx.CompactSummary = input.CompactSummary
+	ctx.CompactTrigger = input.Trigger
 }
