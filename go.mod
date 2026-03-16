@@ -12,7 +12,7 @@ require (
 	github.com/cockroachdb/errors v1.12.0
 	github.com/dmarkham/enumer v1.6.3
 	github.com/dustin/go-humanize v1.0.1
-	github.com/go-git/go-git/v6 v6.0.0-20260312103649-3b3581068cee
+	github.com/go-git/go-git/v6 v6.0.0-20260313081548-799bb393a8ed
 	github.com/go-viper/mapstructure/v2 v2.5.0
 	github.com/google/go-github/v84 v84.0.0
 	github.com/hako/durafmt v0.0.0-20210608085754-5c1018a4e16b
