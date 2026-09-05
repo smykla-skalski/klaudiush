@@ -1,6 +1,5 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "automergeStrategy": "squash",
   "extends": [
     "config:best-practices",
     ":semanticCommits",
@@ -19,13 +18,14 @@
     "group:linters",
     "customManagers:githubActionsVersions"
   ],
-  "gitIgnoredAuthors": ["205507218+smyklot[bot]@users.noreply.github.com"],
   "ignorePaths": [
     "**/tmp/**",
     ".github/workflows/smyklot-pr-commands.yml",
     ".github/workflows/smyklot-poll.yml"
   ],
   "osvVulnerabilityAlerts": true,
+  "gitIgnoredAuthors": ["205507218+smyklot[bot]@users.noreply.github.com"],
+  "automergeStrategy": "squash",
   "packageRules": [
     {
       "addLabels": ["area/ci"],
@@ -46,10 +46,8 @@
         " Group dependency bumps from selected GitHub sources into a single PR across managers",
         " (e.g., mise and gomod) to avoid separate PRs per manager"
       ],
-      "groupName": "{{{replace 'https://github\\.com/[a-z-]+/' '' sourceUrl}}}",
-      "matchSourceUrls": [
-        "https://github.com/{onsi/ginkgo,golangci/golangci-lint}"
-      ]
+      "matchSourceUrls": ["https://github.com/{onsi/ginkgo,golangci/golangci-lint}"],
+      "groupName": "{{{replace 'https://github\\.com/[a-z-]+/' '' sourceUrl}}}"
     },
     {
       "description": "Group Go version updates from gomod and mise into a single PR",
@@ -64,25 +62,9 @@
       "matchManagers": ["github-actions"],
       "matchPackageNames": ["smykla-skalski/smyklot"]
     },
-    {
-      "description": "Group golang.org/x Go modules",
-      "groupName": "golang.org/x modules",
-      "matchDepTypes": ["require"],
-      "matchManagers": ["gomod"],
-      "matchPackageNames": ["/^golang\\.org\\/x\\//"]
-    },
-    {
-      "description": "Group Charm Go modules",
-      "groupName": "Charm modules",
-      "matchManagers": ["gomod"],
-      "matchPackageNames": ["/^charm\\.land\\//"]
-    },
-    {
-      "description": "Update go-git only on Monday mornings (using pinned commit SHAs as v6 is not yet GA)",
-      "extends": ["schedule:earlyMondays"],
-      "matchManagers": ["gomod"],
-      "matchPackageNames": ["github.com/go-git/go-git/v6"]
-    }
+    {"description":"Group golang.org/x Go modules","groupName":"golang.org/x modules","matchDepTypes":["require"],"matchManagers":["gomod"],"matchPackageNames":["/^golang\\.org\\/x\\//"]},
+    {"description":"Group Charm Go modules","groupName":"Charm modules","matchManagers":["gomod"],"matchPackageNames":["/^charm\\.land\\//"]},
+    {"description":"Update go-git only on Monday mornings (using pinned commit SHAs as v6 is not yet GA)","extends":["schedule:earlyMondays"],"matchManagers":["gomod"],"matchPackageNames":["github.com/go-git/go-git/v6"]}
   ],
   "vulnerabilityAlerts": {
     "automerge": true
