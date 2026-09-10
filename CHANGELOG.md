@@ -5,6 +5,14 @@ All notable changes to klaudiush will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.39.3](https://github.com/smykla-skalski/klaudiush/compare/v1.39.2...v1.39.3) (2026-09-10)
+
+### Bug Fixes
+
+* **deps:** update ginkgo to v2.32.2 ([#626](https://github.com/smykla-skalski/klaudiush/issues/626)) ([b11eae8](https://github.com/smykla-skalski/klaudiush/commit/b11eae877bddc54084494503084ffd4c3b59c008))
+* **deps:** update module golang.org/x/sync to v0.23.0 ([#621](https://github.com/smykla-skalski/klaudiush/issues/621)) ([6002959](https://github.com/smykla-skalski/klaudiush/commit/6002959965fe7a7ed1da8afb585f64b8242f3a57))
+* **deps:** update module mvdan.cc/sh/v3 to v3.14.1 ([#619](https://github.com/smykla-skalski/klaudiush/issues/619)) ([655ac9a](https://github.com/smykla-skalski/klaudiush/commit/655ac9a5b45caa133f6a520c652f064806f4af03))
+
 ## [1.39.2](https://github.com/smykla-skalski/klaudiush/compare/v1.39.1...v1.39.2) (2026-09-09)
 
 ### Bug Fixes
