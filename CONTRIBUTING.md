@@ -61,7 +61,6 @@ Valid branch types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`,
    ```
 
 2. **Make your changes**:
-
    - Follow project-specific coding standards
    - Keep changes focused and minimal
    - Add comments where logic isn't self-evident
