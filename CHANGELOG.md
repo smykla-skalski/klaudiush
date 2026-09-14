@@ -5,6 +5,12 @@ All notable changes to klaudiush will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.39.4](https://github.com/smykla-skalski/klaudiush/compare/v1.39.3...v1.39.4) (2026-09-14)
+
+### Bug Fixes
+
+* **deps:** update module github.com/mattn/go-runewidth to v0.0.30 ([#631](https://github.com/smykla-skalski/klaudiush/issues/631)) ([352a59b](https://github.com/smykla-skalski/klaudiush/commit/352a59b243cdce948dc2a51710814502ac690d98))
+
 ## [1.39.3](https://github.com/smykla-skalski/klaudiush/compare/v1.39.2...v1.39.3) (2026-09-10)
 
 ### Bug Fixes
