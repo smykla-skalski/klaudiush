@@ -64,7 +64,7 @@ jobs:
           git config user.email "205507218+smyklot[bot]@users.noreply.github.com"
 
       - name: Run Claude Code
-        uses: anthropics/claude-code-action@9cdae7f0d995e3ba7c33f226087fdf82a59cd520 # v1.0.223
+        uses: anthropics/claude-code-action@bf38e86e58df9ebf3420326d019f955bb3be64dd # v1.0.225
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           use_commit_signing: true
