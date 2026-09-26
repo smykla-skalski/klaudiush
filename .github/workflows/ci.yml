@@ -19,7 +19,7 @@ env:
 jobs:
   ci-scope:
     name: CI Scope
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     outputs:
       run_heavy: ${{ steps.detect.outputs.run_heavy }}
 
@@ -79,7 +79,7 @@ jobs:
 
   test:
     name: Test
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: ci-scope
 
     steps:
@@ -146,7 +146,7 @@ jobs:
 
   lint:
     name: Lint
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: ci-scope
 
     steps:
@@ -181,7 +181,7 @@ jobs:
 
   build:
     name: Build
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: [ci-scope, test, lint]
 
     strategy:
