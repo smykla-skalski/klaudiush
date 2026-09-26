@@ -66,9 +66,7 @@ func (v *CommitValidator) Validate(ctx context.Context, hookCtx *hook.Context) *
 	}
 
 	// Parse the command
-	bashParser := parser.NewBashParser()
-
-	result, err := bashParser.Parse(hookCtx.GetCommand())
+	result, err := hookCtx.ParsedCommand()
 	if err != nil {
 		log.Error("Failed to parse command", "error", err)
 		return validator.Warn(fmt.Sprintf("Failed to parse command: %v", err))

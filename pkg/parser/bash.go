@@ -22,6 +22,9 @@ type ParseResult struct {
 	FileWrites    []FileWrite       // All file write operations
 	GitOperations []Command         // Git commands only
 	Assignments   map[string]string // Literal NAME=value assignments
+	// Truncated reports that the command launches something nested deeper than
+	// the parser follows, so what it finally runs is unknown.
+	Truncated bool
 }
 
 // BashParser parses Bash commands using mvdan.cc/sh.
@@ -39,6 +42,10 @@ func NewBashParser() *BashParser {
 // NewBashParserWithResolver creates a BashParser that asks resolver what the
 // command text alone cannot tell.
 func NewBashParserWithResolver(resolver Resolver) *BashParser {
+	if resolver == nil {
+		resolver = OSResolver{}
+	}
+
 	return &BashParser{
 		parser:   syntax.NewParser(),
 		resolver: resolver,
@@ -77,6 +84,7 @@ func (p *BashParser) Parse(command string) (*ParseResult, error) {
 		FileWrites:    walker.fileWrites,
 		GitOperations: gitOps,
 		Assignments:   walker.assignments,
+		Truncated:     walker.truncated,
 	}, nil
 }
 
@@ -85,31 +93,32 @@ func (p *BashParser) Parse(command string) (*ParseResult, error) {
 const maxExpandPasses = 5
 
 // varRefPattern matches a canonical ${NAME} reference, the form wordToString
-// produces for both $NAME and ${NAME}.
-var varRefPattern = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
+// produces for both $NAME and ${NAME}, and ${NAME[@]} or ${NAME[*]}, which
+// expand to every element of an array.
+var varRefPattern = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)(?:\[[@*]\])?\}`)
 
 // ExpandVars substitutes assignments captured from the same command line into
 // s. References with no known assignment are left as they are, so callers can
 // tell a resolved value from one they still cannot see.
 func (r *ParseResult) ExpandVars(s string) string {
-	return expandVars(s, r.Assignments)
+	return expandVars(s, func(name string) (string, bool) {
+		value, ok := r.Assignments[name]
+
+		return value, ok
+	})
 }
 
-// expandVars substitutes known assignments into s, leaving unknown references
-// as they are.
-func expandVars(s string, assignments map[string]string) string {
-	if len(assignments) == 0 {
-		return s
-	}
-
+// expandVars substitutes the values lookup knows into s, leaving unknown
+// references as they are.
+func expandVars(s string, lookup func(name string) (string, bool)) string {
 	for range maxExpandPasses {
 		if !strings.Contains(s, "${") {
 			break
 		}
 
 		expanded := varRefPattern.ReplaceAllStringFunc(s, func(ref string) string {
-			// ref is exactly "${NAME}", so the name is what the braces enclose.
-			if value, ok := assignments[ref[2:len(ref)-1]]; ok {
+			// ref is "${NAME}", or "${NAME[@]}" for every element of an array.
+			if value, ok := lookup(varRefPattern.FindStringSubmatch(ref)[1]); ok {
 				return value
 			}
 
@@ -195,15 +204,19 @@ func (r *ParseResult) GetFirstGitWorkingDir() string {
 // inline (e.g. "cat > f <<EOF ... EOF; git commit -F f"), since f does not
 // exist on disk yet when the PreToolUse hook runs.
 func (r *ParseResult) InlineFileContent(path, workDir string, before Location) (string, bool) {
-	target := resolvePath(workDir, path)
+	return lastCapturedWrite(r.FileWrites, resolvePath(workDir, path), &before)
+}
 
+// lastCapturedWrite returns what the writes leave in target, when the last of
+// them captured it exactly. A nil before considers every write.
+func lastCapturedWrite(writes []FileWrite, target string, before *Location) (string, bool) {
 	var (
 		content string
 		ok      bool
 	)
 
-	for _, fw := range r.FileWrites {
-		if !locationBefore(fw.Location, before) {
+	for _, fw := range writes {
+		if before != nil && !locationBefore(fw.Location, *before) {
 			continue
 		}
 

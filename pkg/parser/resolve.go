@@ -6,16 +6,22 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
+	"mvdan.cc/sh/v3/expand"
 	"mvdan.cc/sh/v3/syntax"
-
-	"github.com/smykla-skalski/klaudiush/internal/xdg"
 )
 
 const (
 	// maxAliasDepth bounds how many git aliases are expanded in a chain.
 	maxAliasDepth = 5
+	// maxTypoDistance is how far a mistyped subcommand may be from the one
+	// git's autocorrect runs.
+	maxTypoDistance = 2
+	// maxBraceWords caps how many words a brace expansion in a program word
+	// yields.
+	maxBraceWords = 64
 	// unresolvedProgram stands for a command substitution whose output cannot
 	// be known. No program has this name, so it resolves as missing.
 	unresolvedProgram = "$(...)"
@@ -30,6 +36,8 @@ var (
 	gitAliasName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 	// positionalParam matches the positional parameters a function body uses.
 	positionalParam = regexp.MustCompile(`"?\$(?:\{([@*1-9])\}|([@*1-9]))"?`)
+	// configParameter matches one 'key'='value' pair in GIT_CONFIG_PARAMETERS.
+	configParameter = regexp.MustCompile(`'([^'=]+)'?=?'([^']*)'`)
 	// lookupCommands print the program named by their last operand.
 	lookupCommands = nameSet("command echo printf readlink realpath type which whereis")
 )
@@ -37,13 +45,15 @@ var (
 // newAstWalker returns a walker ready to record commands.
 func newAstWalker(resolver Resolver) *astWalker {
 	return &astWalker{
-		commands:    make([]Command, 0),
-		fileWrites:  make([]FileWrite, 0),
-		assignments: make(map[string]string),
-		resolver:    resolver,
-		aliases:     make(map[string]string),
-		funcs:       make(map[string]string),
-		scriptFiles: make(map[string]string),
+		commands:        make([]Command, 0),
+		fileWrites:      make([]FileWrite, 0),
+		stdinByCall:     make(map[*syntax.CallExpr]string),
+		stdinFileByCall: make(map[*syntax.CallExpr]string),
+		assignments:     make(map[string]string),
+		resolver:        resolver,
+		aliases:         make(map[string]string),
+		funcs:           make(map[string]string),
+		scriptFiles:     make(map[string]string),
 	}
 }
 
@@ -53,72 +63,78 @@ func (w *astWalker) child(dir string, depth int) *astWalker {
 	child := newAstWalker(w.resolver)
 	child.currentDir = dir
 	child.depth = depth
+	child.scriptFiles = w.scriptFiles
 
 	maps.Copy(child.assignments, w.assignments)
 	maps.Copy(child.aliases, w.aliases)
 	maps.Copy(child.funcs, w.funcs)
 
-	if w.scriptFiles != nil {
-		child.scriptFiles = w.scriptFiles
-	}
-
 	return child
-}
-
-// res returns the walker's resolver, or one that knows nothing.
-func (w *astWalker) res() Resolver {
-	if w.resolver == nil {
-		return nopResolver{}
-	}
-
-	return w.resolver
 }
 
 // expandName substitutes the variables in a command word: first those
 // assigned earlier on the line, then the environment.
 func (w *astWalker) expandName(word string) string {
-	word = expandVars(word, w.assignments)
-	if !HasUnresolvedVars(word) {
-		return word
-	}
-
-	return varRefPattern.ReplaceAllStringFunc(word, func(ref string) string {
-		if value, ok := w.res().LookupEnv(ref[2 : len(ref)-1]); ok {
-			return value
+	return expandVars(word, func(name string) (string, bool) {
+		if value, ok := w.assignments[name]; ok {
+			return value, true
 		}
 
-		return ref
+		return w.resolver.LookupEnv(name)
 	})
 }
 
 // commandWord renders a command word, resolving a command substitution to
 // the program it prints, as in $(which git) or "$(command -v git)".
 func commandWord(word *syntax.Word) string {
+	return commandWordParts(word.Parts)
+}
+
+// commandWordParts renders the parts of a command word, looking inside
+// double quotes for substitutions too.
+func commandWordParts(parts []syntax.WordPart) string {
 	var b strings.Builder
 
-	for _, part := range word.Parts {
-		b.WriteString(commandWordPart(part))
+	for _, part := range parts {
+		switch p := part.(type) {
+		case *syntax.CmdSubst:
+			b.WriteString(substitutedProgram(p))
+		case *syntax.DblQuoted:
+			b.WriteString(commandWordParts(p.Parts))
+		default:
+			b.WriteString(argWord(&syntax.Word{Parts: []syntax.WordPart{part}}))
+		}
 	}
 
 	return b.String()
 }
 
-// commandWordPart renders one part of a command word.
-func commandWordPart(part syntax.WordPart) string {
-	switch p := part.(type) {
-	case *syntax.CmdSubst:
-		return substitutedProgram(p)
-	case *syntax.DblQuoted:
-		var b strings.Builder
+// braceWords returns the words a brace expansion in word produces, or nil
+// when it has none. It works on a copy: splitting braces rewrites the word,
+// and the walker still has to visit the original.
+func braceWords(word *syntax.Word) []string {
+	if !strings.Contains(wordToString(word), "{") {
+		return nil
+	}
 
-		for _, inner := range p.Parts {
-			b.WriteString(commandWordPart(inner))
+	clone := &syntax.Word{Parts: slices.Clone(word.Parts)}
+	if !syntax.SplitBraces(clone) {
+		return nil
+	}
+
+	// Only the program and its leading arguments matter, so a huge sequence
+	// such as {1..99999999} stops early instead of allocating it all.
+	var words []string
+
+	for expanded, err := range expand.BracesSeq(nil, clone) {
+		if err != nil || len(words) == maxBraceWords {
+			break
 		}
 
-		return b.String()
-	default:
-		return wordToString(&syntax.Word{Parts: []syntax.WordPart{part}})
+		words = append(words, argWord(expanded))
 	}
+
+	return words
 }
 
 // substitutedProgram returns the program a command substitution prints.
@@ -128,7 +144,7 @@ func substitutedProgram(sub *syntax.CmdSubst) string {
 	}
 
 	call := callExprOf(sub.Stmts[0])
-	if call == nil || len(call.Args) < lookupWords {
+	if call == nil {
 		return unresolvedProgram
 	}
 
@@ -198,7 +214,7 @@ func (w *astWalker) programBehind(cmd Command) string {
 	// A name still holding a variable or substitution names nothing yet.
 	program := ProgramMissing
 	if !HasUnresolvedVars(cmd.Invoked) && !strings.Contains(cmd.Invoked, unresolvedProgram) {
-		program = w.res().Program(cmd.Invoked, cmd.WorkingDirectory)
+		program = w.resolver.Program(cmd.Invoked, cmd.WorkingDirectory)
 	}
 
 	if program == want || program == ProgramMissing {
@@ -218,16 +234,29 @@ func (w *astWalker) expandGitAlias(cmd Command) (Command, []string) {
 			return cmd, nil
 		}
 
-		value, ok := inlineGitAlias(cmd.Args[:idx], cmd.Args[idx])
+		name, rest := cmd.Args[idx], cmd.Args[idx+1:]
+
+		value, ok := inlineGitAlias(cmd.Args[:idx], name)
 		if !ok {
-			value, ok = w.res().GitAlias(gitDir(cmd, idx), cmd.Args[idx])
+			value, ok = w.lineGitAlias(name)
 		}
 
 		if !ok {
+			value, ok = w.envGitAlias(cmd.Args[:idx], name)
+		}
+
+		if !ok {
+			value, ok = w.resolver.GitAlias(gitDir(cmd, idx), name)
+		}
+
+		if !ok {
+			// With help.autocorrect a typo runs the command it resembles.
+			if corrected, found := w.autocorrect(name); found {
+				cmd.Args = slices.Concat(cmd.Args[:idx], []string{corrected}, rest)
+			}
+
 			return cmd, nil
 		}
-
-		rest := cmd.Args[idx+1:]
 
 		if line, shell := strings.CutPrefix(value, "!"); shell {
 			return cmd, []string{line + " " + quoteArgs(rest)}
@@ -237,6 +266,135 @@ func (w *astWalker) expandGitAlias(cmd Command) (Command, []string) {
 	}
 
 	return cmd, nil
+}
+
+// lineGitAlias returns an alias set with git config earlier on the line,
+// which is in place by the time the later command runs.
+func (w *astWalker) lineGitAlias(name string) (string, bool) {
+	for _, cmd := range slices.Backward(w.commands) {
+		if cmd.Name != gitProgram {
+			continue
+		}
+
+		gitCmd, err := ParseGitCommand(cmd)
+		if err != nil || gitCmd.Subcommand != "config" {
+			continue
+		}
+
+		args := gitCmd.Args
+		if len(args) > 0 && args[0] == "set" {
+			args = args[1:] // git config set <key> <value>
+		}
+
+		if len(args) >= 2 && strings.EqualFold(args[0], "alias."+name) {
+			return args[1], true
+		}
+	}
+
+	return "", false
+}
+
+// envGitAlias returns an alias set through the environment: GIT_CONFIG_COUNT
+// with GIT_CONFIG_KEY_n and GIT_CONFIG_VALUE_n, GIT_CONFIG_PARAMETERS, or a
+// --config-env option naming a variable.
+func (w *astWalker) envGitAlias(globals []string, name string) (string, bool) {
+	key := "alias." + name
+
+	if count, err := strconv.Atoi(w.lookupVar("GIT_CONFIG_COUNT")); err == nil {
+		for i := range count {
+			if strings.EqualFold(w.lookupVar(fmt.Sprintf("GIT_CONFIG_KEY_%d", i)), key) {
+				return w.lookupVar(fmt.Sprintf("GIT_CONFIG_VALUE_%d", i)), true
+			}
+		}
+	}
+
+	for _, m := range configParameter.FindAllStringSubmatch(w.lookupVar("GIT_CONFIG_PARAMETERS"), -1) {
+		if strings.EqualFold(m[1], key) {
+			return m[2], true
+		}
+	}
+
+	for i, arg := range globals {
+		setting, found := strings.CutPrefix(arg, "--config-env=")
+		if !found && arg == "--config-env" && i+1 < len(globals) {
+			setting, found = globals[i+1], true
+		}
+
+		if k, variable, ok := strings.Cut(setting, "="); found && ok && strings.EqualFold(k, key) {
+			return w.lookupVar(variable), true
+		}
+	}
+
+	return "", false
+}
+
+// lookupVar returns a variable assigned on the line, or else from the
+// environment.
+func (w *astWalker) lookupVar(name string) string {
+	if value, ok := w.assignments[name]; ok {
+		return value
+	}
+
+	value, _ := w.resolver.LookupEnv(name)
+
+	return value
+}
+
+// autocorrect returns the validated subcommand git's help.autocorrect would
+// run for a mistyped name: the one builtin closest to it, within git's
+// distance, when no git-<name> command exists.
+func (w *astWalker) autocorrect(name string) (string, bool) {
+	if w.resolver.Program("git-"+name, "") != ProgramMissing {
+		return "", false
+	}
+
+	best, bestDistance, unique := "", maxTypoDistance+1, false
+
+	for builtin := range gitBuiltins {
+		switch distance := editDistance(name, builtin); {
+		case distance < bestDistance:
+			best, bestDistance, unique = builtin, distance, true
+		case distance == bestDistance:
+			unique = false
+		}
+	}
+
+	if !unique || !validatedGitSubcommands[best] {
+		return "", false
+	}
+
+	return best, true
+}
+
+// editDistance counts the insertions, deletions, substitutions and adjacent
+// swaps that turn a into b.
+func editDistance(a, b string) int {
+	prev2, prev, curr := make([]int, len(b)+1), make([]int, len(b)+1), make([]int, len(b)+1)
+
+	for j := range prev {
+		prev[j] = j
+	}
+
+	for i := 1; i <= len(a); i++ {
+		curr[0] = i
+
+		for j := 1; j <= len(b); j++ {
+			cost := 1
+			if a[i-1] == b[j-1] {
+				cost = 0
+			}
+
+			curr[j] = min(prev[j]+1, curr[j-1]+1, prev[j-1]+cost)
+
+			if i > 1 && j > 1 && a[i-1] == b[j-2] && a[i-2] == b[j-1] {
+				curr[j] = min(curr[j], prev2[j-2]+1)
+			}
+		}
+
+		prev2, prev, curr = prev, curr, prev2
+	}
+
+	return prev[len(b)]
 }
 
 // inlineGitAlias returns an alias set with -c alias.<name>=value, the last
@@ -343,8 +501,7 @@ func (w *astWalker) definitionScripts(cmd Command) []string {
 // parameters a function body uses.
 func substitutePositional(body string, args []string) string {
 	return positionalParam.ReplaceAllStringFunc(body, func(ref string) string {
-		match := positionalParam.FindStringSubmatch(ref)
-		param := match[1] + match[2]
+		param := strings.Trim(ref, `"${}`)
 
 		if param == "@" || param == "*" {
 			return quoteArgs(args)
@@ -411,30 +568,12 @@ func (w *astWalker) scriptSource(path string, cmd Command) (string, bool) {
 		return text, true
 	}
 
-	for _, fw := range slices.Backward(w.fileWrites) {
-		if filepath.Clean(fw.Path) == filepath.Clean(path) {
-			return writtenContent(fw)
-		}
+	target := resolvePath(cmd.WorkingDirectory, path)
+	if text, ok := lastCapturedWrite(w.fileWrites, target, nil); ok {
+		return text, true
 	}
 
-	if !filepath.IsAbs(xdg.ExpandPathSilent(path)) && cmd.WorkingDirectory != "" {
-		path = filepath.Join(cmd.WorkingDirectory, path)
-	}
-
-	return w.res().ReadScript(path)
-}
-
-// writtenContent returns the bytes a same-line write puts in a file, when
-// they are known exactly.
-func writtenContent(fw FileWrite) (string, bool) {
-	switch {
-	case fw.ContentCaptured:
-		return fw.Content, true
-	case fw.RedirectContentCaptured:
-		return fw.RedirectContent, true
-	default:
-		return "", false
-	}
+	return w.resolver.ReadScript(target)
 }
 
 // walkScript records the commands of a script that parent runs. A cd inside
@@ -455,6 +594,7 @@ func (w *astWalker) walkScript(script string, parent Command, depth int) {
 	}
 
 	w.fileWrites = append(w.fileWrites, child.fileWrites...)
+	w.truncated = w.truncated || child.truncated
 }
 
 // argStrings converts argument words to strings. A process substitution fed
@@ -464,7 +604,7 @@ func (w *astWalker) argStrings(words []*syntax.Word) []string {
 	args := make([]string, 0, len(words))
 
 	for _, word := range words {
-		if text, ok := procSubstOutput(word); ok && w.scriptFiles != nil {
+		if text, ok := procSubstOutput(word); ok {
 			path := fmt.Sprintf("%s%d", procSubstPrefix, len(w.scriptFiles))
 			w.scriptFiles[path] = text
 			args = append(args, path)
@@ -472,7 +612,7 @@ func (w *astWalker) argStrings(words []*syntax.Word) []string {
 			continue
 		}
 
-		if s := wordToString(word); s != "" {
+		if s := argWord(word); s != "" {
 			args = append(args, s)
 		}
 	}

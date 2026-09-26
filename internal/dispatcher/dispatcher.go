@@ -12,7 +12,6 @@ import (
 	"github.com/smykla-skalski/klaudiush/pkg/config"
 	"github.com/smykla-skalski/klaudiush/pkg/hook"
 	"github.com/smykla-skalski/klaudiush/pkg/logger"
-	"github.com/smykla-skalski/klaudiush/pkg/parser"
 )
 
 var (
@@ -302,9 +301,7 @@ func (d *Dispatcher) validateBashFileWrites(
 	bashCtx *hook.Context,
 ) []*ValidationError {
 	// Parse the bash command
-	bashParser := parser.NewBashParser()
-
-	result, err := bashParser.Parse(bashCtx.GetCommand())
+	result, err := bashCtx.ParsedCommand()
 	if err != nil {
 		d.logger.Debug("failed to parse bash command for file writes",
 			"error", err,

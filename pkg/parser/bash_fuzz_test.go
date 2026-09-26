@@ -28,6 +28,21 @@ func FuzzBashParse(f *testing.F) {
 	f.Add("for i in 1 2 3; do echo $i; done")
 	f.Add("if [ -f file ]; then cat file; fi")
 	f.Add("git commit -m \"$(date)\"")
+	// Forms the parser resolves or follows
+	f.Add("{git,commit,-m,x}")
+	f.Add("a{b,c}d{e,f} {x,y}")
+	f.Add(`cmd=(git commit -m x); "${cmd[@]}"`)
+	f.Add(`x="git commit"; $x -m y`)
+	f.Add(`bash <(echo "git commit -m x")`)
+	f.Add(`bash <<< "git commit -m x"`)
+	f.Add("cat <<'EOF' | bash\ngit commit -m x\nEOF")
+	f.Add(`env -S'git commit' sudo -u root nice timeout 5 git push`)
+	f.Add(`python3 -Sc 'import os; os.system("git commit")'`)
+	f.Add(`perl -e 'system("git", "commit")'`)
+	f.Add(`f() { git "$@"; }; alias g=git; f commit; g push`)
+	f.Add(`git -c alias.ci=commit ci; git config alias.x '!sh -c "git push"'; git x`)
+	f.Add(`bash -c git\ commit\ -m\ x`)
+	f.Add("find . -exec git commit -m x \\; | xargs -I{} git add {}")
 
 	f.Fuzz(func(_ *testing.T, command string) {
 		p := parser.NewBashParser()

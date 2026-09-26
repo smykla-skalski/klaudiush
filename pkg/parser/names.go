@@ -5,11 +5,6 @@ import "strings"
 // gitProgram is the program other invocations of git resolve to.
 const gitProgram = "git"
 
-// flags splits a space-separated list of flags or names.
-func flags(list string) []string {
-	return strings.Fields(list)
-}
-
 // nameSet builds a set from a space-separated list of names.
 func nameSet(list string) map[string]bool {
 	set := make(map[string]bool)

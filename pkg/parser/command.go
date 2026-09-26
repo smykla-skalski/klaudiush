@@ -80,7 +80,22 @@ func (c *Command) FullCommand() []string {
 }
 
 // wordToString converts syntax.Word to string, handling quotes and expansions.
+// Backslashes are kept as written, which heredoc bodies and other literal
+// text need. argWord gives the value the shell passes to a program.
 func wordToString(word *syntax.Word) string {
+	return renderWord(word, false)
+}
+
+// argWord returns the value the shell passes to a program for word, after
+// quote removal: git\ commit is one argument "git commit", and --no-veri\fy
+// is --no-verify.
+func argWord(word *syntax.Word) string {
+	return renderWord(word, true)
+}
+
+// renderWord renders word, removing backslash escapes as the shell does when
+// unescape is set.
+func renderWord(word *syntax.Word, unescape bool) string {
 	if word == nil {
 		return ""
 	}
@@ -90,7 +105,7 @@ func wordToString(word *syntax.Word) string {
 	for _, part := range word.Parts {
 		switch p := part.(type) {
 		case *syntax.Lit:
-			result.WriteString(p.Value)
+			result.WriteString(renderLit(p.Value, unescape, allEscapable))
 		case *syntax.SglQuoted:
 			result.WriteString(p.Value)
 		case *syntax.ParamExp:
@@ -102,28 +117,84 @@ func wordToString(word *syntax.Word) string {
 			// real expansion distinct from a single-quoted literal like '$MSG'.
 			result.WriteString(paramExpToString(p))
 		case *syntax.DblQuoted:
-			for _, dqPart := range p.Parts {
-				switch dqp := dqPart.(type) {
-				case *syntax.Lit:
-					result.WriteString(dqp.Value)
-				case *syntax.ParamExp:
-					result.WriteString(paramExpToString(dqp))
-				case *syntax.CmdSubst:
-					// Handle command substitution (e.g., "$(cat <<'EOF' ... EOF)")
-					if heredoc := extractHeredocFromCmdSubst(dqp); heredoc != "" {
-						result.WriteString(heredoc)
-					}
-				}
-			}
+			result.WriteString(renderDoubleQuoted(p, unescape))
 		case *syntax.CmdSubst:
 			// Handle unquoted command substitution
-			if heredoc := extractHeredocFromCmdSubst(p); heredoc != "" {
-				result.WriteString(heredoc)
-			}
+			result.WriteString(extractHeredocFromCmdSubst(p))
 		}
 	}
 
 	return result.String()
+}
+
+// renderDoubleQuoted renders the parts of a double-quoted string.
+func renderDoubleQuoted(quoted *syntax.DblQuoted, unescape bool) string {
+	var result strings.Builder
+
+	for _, part := range quoted.Parts {
+		switch p := part.(type) {
+		case *syntax.Lit:
+			result.WriteString(renderLit(p.Value, unescape, doubleQuoteEscapable))
+		case *syntax.ParamExp:
+			result.WriteString(paramExpToString(p))
+		case *syntax.CmdSubst:
+			// Handle command substitution (e.g., "$(cat <<'EOF' ... EOF)")
+			result.WriteString(extractHeredocFromCmdSubst(p))
+		}
+	}
+
+	return result.String()
+}
+
+// renderLit returns a literal as written, or with its escapes removed.
+func renderLit(value string, unescape bool, escapable string) string {
+	if !unescape {
+		return value
+	}
+
+	return removeEscapes(value, escapable)
+}
+
+const (
+	// allEscapable means a backslash escapes any character, as it does
+	// outside quotes.
+	allEscapable = ""
+	// doubleQuoteEscapable lists what a backslash escapes inside double quotes.
+	doubleQuoteEscapable = "$`\"\\\n"
+)
+
+// removeEscapes drops the backslashes that escape a character, keeping the
+// character. A backslash before a newline joins the lines. Inside double
+// quotes only the characters in escapable are escaped; allEscapable means any.
+func removeEscapes(s, escapable string) string {
+	if !strings.Contains(s, `\`) {
+		return s
+	}
+
+	var b strings.Builder
+
+	for i := 0; i < len(s); i++ {
+		if s[i] != '\\' || i+1 >= len(s) {
+			b.WriteByte(s[i])
+
+			continue
+		}
+
+		next := s[i+1]
+		if escapable != allEscapable && !strings.ContainsRune(escapable, rune(next)) {
+			b.WriteByte(s[i])
+
+			continue
+		}
+
+		if next != '\n' {
+			b.WriteByte(next)
+		}
+
+		i++
+	}
+
+	return b.String()
 }
 
 // paramExpToString renders a parameter expansion as a stable token. A simple

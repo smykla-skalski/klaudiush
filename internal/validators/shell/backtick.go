@@ -205,18 +205,14 @@ func (v *BacktickValidator) isCommandRelevant(cmd parser.Command, argIndex int) 
 
 // isGitCommandRelevant checks if this is a relevant git command.
 func (v *BacktickValidator) isGitCommandRelevant(cmd parser.Command, argIndex int) bool {
-	if len(cmd.Args) == 0 {
+	// The parsed subcommand skips global options, so git -C dir commit counts.
+	gitCmd, err := parser.ParseGitCommand(cmd)
+	if err != nil || gitCmd.Subcommand != "commit" {
 		return false
 	}
 
-	subcommand := cmd.Args[0]
-
 	// git commit with -m or --message
-	if subcommand == "commit" {
-		return v.isMessageArgument(cmd.Args, argIndex)
-	}
-
-	return false
+	return v.isMessageArgument(cmd.Args, argIndex)
 }
 
 // isGhCommandRelevant checks if this is a relevant gh command.

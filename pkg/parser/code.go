@@ -11,8 +11,9 @@ var (
 	quotedLiteral = regexp.MustCompile(
 		`"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'|` + "`((?:[^`\\\\]|\\\\.)*)`",
 	)
-	// listLiteral matches a list of quoted strings, such as an argv array.
-	listLiteral = regexp.MustCompile(`\[((?:\s*(?:"[^"]*"|'[^']*')\s*,?)+)\]`)
+	// listLiteral matches quoted strings in brackets or parentheses: an argv
+	// array or tuple, or the separate arguments of system("git", "commit").
+	listLiteral = regexp.MustCompile(`[\[(]((?:\s*(?:"[^"]*"|'[^']*')\s*,?)+)[\])]`)
 	// listItem matches one quoted string inside a list literal.
 	listItem = regexp.MustCompile(`"([^"]*)"|'([^']*)'`)
 	// programThenList matches a program name followed by its argument list,
@@ -63,14 +64,14 @@ func commandLines(code string) []string {
 
 // joinListItems turns the quoted items of a list literal into a command line.
 func joinListItems(list string) string {
-	items := listItem.FindAllStringSubmatch(list, -1)
-	words := make([]string, 0, len(items))
+	matches := listItem.FindAllStringSubmatch(list, -1)
+	items := make([]string, 0, len(matches))
 
-	for _, item := range items {
-		words = append(words, shellQuote(item[1]+item[2]))
+	for _, match := range matches {
+		items = append(items, match[1]+match[2])
 	}
 
-	return strings.Join(words, " ")
+	return quoteArgs(items)
 }
 
 // interpreterShebang reports whether a script's shebang names a language

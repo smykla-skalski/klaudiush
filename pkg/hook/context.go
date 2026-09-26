@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"slices"
 	"strings"
+	"sync"
+
+	"github.com/smykla-skalski/klaudiush/pkg/parser"
 )
 
 //go:generate go run github.com/dmarkham/enumer -type=EventType -trimprefix=EventType -json -text -yaml -sql
@@ -195,6 +198,23 @@ type Context struct {
 
 	// CompactTrigger is what triggered the compaction (PostCompact only).
 	CompactTrigger string
+
+	// The Bash command is parsed once per hook and shared by every predicate
+	// and validator, since resolving it can read files and run git config.
+	parseOnce sync.Once
+	parsed    *parser.ParseResult
+	parseErr  error
+}
+
+// ParsedCommand returns the parsed Bash command, parsing it on first use. The
+// result is shared across validators, which may run in parallel, so callers
+// must treat it as read-only.
+func (c *Context) ParsedCommand() (*parser.ParseResult, error) {
+	c.parseOnce.Do(func() {
+		c.parsed, c.parseErr = parser.NewBashParser().Parse(c.GetCommand())
+	})
+
+	return c.parsed, c.parseErr
 }
 
 // Permission mode values that turn off interactive approval prompts.

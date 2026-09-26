@@ -69,9 +69,7 @@ func (v *AddValidator) Validate(ctx context.Context, hookCtx *hook.Context) *val
 	log.Debug("Git root found", "path", gitRoot)
 
 	// Parse the command
-	bashParser := parser.NewBashParser()
-
-	result, err := bashParser.Parse(hookCtx.GetCommand())
+	result, err := hookCtx.ParsedCommand()
 	if err != nil {
 		log.Error("Failed to parse command", "error", err)
 		return validator.Warn(fmt.Sprintf("Failed to parse command: %v", err))
@@ -82,7 +80,7 @@ func (v *AddValidator) Validate(ctx context.Context, hookCtx *hook.Context) *val
 	log.Debug("Using blocked patterns", "patterns", blockedPatterns)
 
 	// Find all git add commands and check for blocked files
-	blockedFiles := v.findBlockedFiles(result.Commands, blockedPatterns)
+	blockedFiles := v.findBlockedFiles(result.GitOperations, blockedPatterns)
 
 	// Report errors if blocked files found
 	if len(blockedFiles) > 0 {

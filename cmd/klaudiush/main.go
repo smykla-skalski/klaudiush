@@ -28,7 +28,6 @@ import (
 	"github.com/smykla-skalski/klaudiush/pkg/config"
 	"github.com/smykla-skalski/klaudiush/pkg/hook"
 	"github.com/smykla-skalski/klaudiush/pkg/logger"
-	bashparser "github.com/smykla-skalski/klaudiush/pkg/parser"
 )
 
 const (
@@ -545,14 +544,11 @@ func extractEffectiveWorkDir(ctx *hook.Context, log logger.Logger) string {
 		return ""
 	}
 
-	command := ctx.GetCommand()
-	if command == "" {
+	if ctx.GetCommand() == "" {
 		return ""
 	}
 
-	bp := bashparser.NewBashParser()
-
-	result, err := bp.Parse(command)
+	result, err := ctx.ParsedCommand()
 	if err != nil {
 		return ""
 	}

@@ -76,6 +76,24 @@ stdin uppercase.json
 exec klaudiush --hook-type PreToolUse
 stdout '"permissionDecision":"deny"'
 
+stdin split-variable.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+
+stdin escaped-script.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+
+stdin cat-pipe.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+
+# Nesting past the limit fails closed
+stdin too-deep.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+
 # Commands that only mention git run nothing and pass
 stdin lookup.json
 exec klaudiush --hook-type PreToolUse
@@ -141,6 +159,18 @@ git commit -S -m 'feat(api): add user endpoint'
 
 -- uppercase.json --
 {"tool_name": "Bash", "tool_input": {"command": "GIT commit -S -m 'feat(api): add user endpoint'"}}
+
+-- split-variable.json --
+{"tool_name": "Bash", "tool_input": {"command": "x=\"git commit -S -m y\"; $x"}}
+
+-- escaped-script.json --
+{"tool_name": "Bash", "tool_input": {"command": "bash -c git\\ commit\\ -S\\ -m\\ y"}}
+
+-- cat-pipe.json --
+{"tool_name": "Bash", "tool_input": {"command": "cat deploy.sh | bash"}}
+
+-- too-deep.json --
+{"tool_name": "Bash", "tool_input": {"command": "env env env env env env env env env env env env git status"}}
 
 -- lookup.json --
 {"tool_name": "Bash", "tool_input": {"command": "command -v git"}}

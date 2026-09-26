@@ -47,6 +47,23 @@ var _ = Describe("BacktickValidator", func() {
 				Expect(result.Reference).To(Equal(validator.RefShellBackticks))
 			})
 
+			DescribeTable("blocks backticks however git is invoked",
+				func(command string) {
+					hookCtx := &hook.Context{
+						EventType: hook.EventTypePreToolUse,
+						ToolName:  hook.ToolTypeBash,
+						ToolInput: hook.ToolInput{Command: command},
+					}
+
+					result := v.Validate(ctx, hookCtx)
+
+					Expect(result.Passed).To(BeFalse())
+					Expect(result.Reference).To(Equal(validator.RefShellBackticks))
+				},
+				Entry("global option before commit", "git -C . commit -m \"Fix `parser` module\""),
+				Entry("absolute path", "/usr/bin/git commit -m \"Fix `parser` module\""),
+			)
+
 			It("blocks backticks in --message flag", func() {
 				hookCtx := &hook.Context{
 					EventType: hook.EventTypePreToolUse,

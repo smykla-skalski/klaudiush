@@ -10,8 +10,9 @@ import (
 const (
 	// maxLaunchDepth bounds how many launchers, scripts and aliases are
 	// followed from one command, so pathological nesting cannot recurse
-	// without limit.
-	maxLaunchDepth = 5
+	// without limit. Anything deeper marks the parse truncated, which fails
+	// closed.
+	maxLaunchDepth = 8
 	// endOfOptions ends a command's options; what follows is an operand.
 	endOfOptions = "--"
 )
@@ -22,6 +23,11 @@ type launch struct {
 	scripts  []string     // shell command lines (bash -c, eval, su -c)
 	files    []scriptFile // files run as scripts (bash x.sh, ./x.sh, source x)
 	code     []string     // interpreter source scanned for commands (python -c)
+}
+
+// empty reports whether the command launches nothing to follow.
+func (l launch) empty() bool {
+	return len(l.commands) == 0 && len(l.scripts) == 0 && len(l.files) == 0 && len(l.code) == 0
 }
 
 // scriptFile is a file a command runs.
@@ -40,53 +46,57 @@ type launcher struct {
 	assignments bool     // NAME=value operands before the command (env)
 	noCommand   bool     // runs only what a script flag hands it (su)
 	joined      bool     // also runs its operands as one command line (watch)
+	stdinArgs   bool     // appends or substitutes stdin into the command (xargs)
 }
 
 // launchers are the commands that run another command named in their
 // arguments. Each would otherwise hide what it runs from every validator.
 var launchers = map[string]launcher{
 	"busybox":    {},
-	"caffeinate": {valueFlags: flags("-t -w")},
+	"caffeinate": {valueFlags: strings.Fields("-t -w")},
 	"chronic":    {},
-	"command":    {stopFlags: flags("-v -V")},
-	"doas":       {valueFlags: flags("-u -C"), stopFlags: flags("-L")},
+	"command":    {stopFlags: strings.Fields("-v -V")},
+	"doas":       {valueFlags: strings.Fields("-u -C"), stopFlags: strings.Fields("-L")},
 	"env": {
-		valueFlags:  flags("-u -C --unset --chdir"),
-		scriptFlags: flags("-S --split-string"),
+		valueFlags:  strings.Fields("-u -C --unset --chdir"),
+		scriptFlags: strings.Fields("-S --split-string"),
 		assignments: true,
 	},
-	"exec": {valueFlags: flags("-a")},
+	"exec": {valueFlags: strings.Fields("-a")},
 	"flock": {
-		valueFlags:  flags("-w -E --timeout --conflict-exit-code"),
-		scriptFlags: flags("-c --command"),
+		valueFlags:  strings.Fields("-w -E --timeout --conflict-exit-code"),
+		scriptFlags: strings.Fields("-c --command"),
 		operands:    1,
 	},
 	"ionice": {
-		valueFlags: flags("-c -n --class --classdata"),
-		stopFlags:  flags("-p -P -u --pid --pgid --uid"),
+		valueFlags: strings.Fields("-c -n --class --classdata"),
+		stopFlags:  strings.Fields("-p -P -u --pid --pgid --uid"),
 	},
-	"nice":   {valueFlags: flags("-n --adjustment")},
+	"nice":   {valueFlags: strings.Fields("-n --adjustment")},
 	"nohup":  {},
 	"setsid": {},
-	"stdbuf": {valueFlags: flags("-i -o -e --input --output --error")},
+	"stdbuf": {valueFlags: strings.Fields("-i -o -e --input --output --error")},
 	"su": {
-		valueFlags:  flags("-s -g -G --shell --group --supp-group"),
-		scriptFlags: flags("-c --command --session-command"),
+		valueFlags:  strings.Fields("-s -g -G --shell --group --supp-group"),
+		scriptFlags: strings.Fields("-c --command --session-command"),
 		noCommand:   true,
 	},
 	"sudo": {
-		valueFlags: flags(`-u -g -C -D -h -p -r -t -T -U -R --user --group
+		valueFlags: strings.Fields(`-u -g -C -D -h -p -r -t -T -U -R --user --group
 			--close-from --chdir --host --prompt --role --type --command-timeout
 			--other-user --chroot`),
-		stopFlags: flags("-e -l -v -V -K --edit --list --validate --version --remove-timestamp"),
+		stopFlags: strings.Fields(
+			"-e -l -v -V -K --edit --list --validate --version --remove-timestamp",
+		),
 	},
-	"time":     {valueFlags: flags("-o -f --output --format")},
-	"timeout":  {valueFlags: flags("-s -k --signal --kill-after"), operands: 1},
+	"time":     {valueFlags: strings.Fields("-o -f --output --format")},
+	"timeout":  {valueFlags: strings.Fields("-s -k --signal --kill-after"), operands: 1},
 	"unbuffer": {},
-	"watch":    {valueFlags: flags("-n --interval"), joined: true},
+	"watch":    {valueFlags: strings.Fields("-n --interval"), joined: true},
 	"xargs": {
-		valueFlags: flags(`-n -I -L -P -d -E -s -a --max-args --replace --max-lines
+		valueFlags: strings.Fields(`-n -I -L -P -d -E -s -a --max-args --replace --max-lines
 			--max-procs --delimiter --eof --max-chars --arg-file`),
+		stdinArgs: true,
 	},
 }
 
@@ -94,43 +104,48 @@ var launchers = map[string]launcher{
 var shells = nameSet("ash bash dash ksh mksh sh zsh")
 
 // shellValueFlags are shell options that take the next argument as their value.
-var shellValueFlags = flags("-o +o -O +O --rcfile --init-file")
+var shellValueFlags = strings.Fields("-o +o -O +O --rcfile --init-file")
 
 // interpreter describes how a language interpreter takes inline code.
 type interpreter struct {
 	codeFlags  []string // take the program source as their value (python -c)
 	valueFlags []string // take the next argument as their value
+	stopFlags  []string // run something other than a script file (python -m)
 	shellLike  bool     // the source is itself a command line (pwsh)
 }
 
 var (
-	pythonInterpreter = interpreter{codeFlags: flags("-c"), valueFlags: flags("-W -X -m")}
-	nodeInterpreter   = interpreter{
-		codeFlags:  flags("-e -p --eval --print"),
-		valueFlags: flags("-r --require --import --loader"),
+	pythonInterpreter = interpreter{
+		codeFlags:  strings.Fields("-c"),
+		valueFlags: strings.Fields("-W -X"),
+		stopFlags:  strings.Fields("-m"),
 	}
-	pwshInterpreter = interpreter{codeFlags: flags("-c -command"), shellLike: true}
+	nodeInterpreter = interpreter{
+		codeFlags:  strings.Fields("-e -p --eval --print"),
+		valueFlags: strings.Fields("-r --require --import --loader"),
+	}
+	pwshInterpreter = interpreter{codeFlags: strings.Fields("-c -command"), shellLike: true}
 )
 
 // interpreters run program source that can start a git command itself.
 var interpreters = map[string]interpreter{
-	"bun":        {codeFlags: flags("-e --eval -p --print")},
-	"deno":       {codeFlags: flags("eval")},
-	"lua":        {codeFlags: flags("-e")},
+	"bun":        {codeFlags: strings.Fields("-e --eval -p --print")},
+	"deno":       {codeFlags: strings.Fields("eval")},
+	"lua":        {codeFlags: strings.Fields("-e")},
 	"node":       nodeInterpreter,
 	"nodejs":     nodeInterpreter,
-	"osascript":  {codeFlags: flags("-e")},
-	"perl":       {codeFlags: flags("-e -E"), valueFlags: flags("-M -I")},
-	"php":        {codeFlags: flags("-r")},
+	"osascript":  {codeFlags: strings.Fields("-e")},
+	"perl":       {codeFlags: strings.Fields("-e -E"), valueFlags: strings.Fields("-M -I")},
+	"php":        {codeFlags: strings.Fields("-r")},
 	"powershell": pwshInterpreter,
 	"pwsh":       pwshInterpreter,
 	"python":     pythonInterpreter,
 	"python2":    pythonInterpreter,
 	"python3":    pythonInterpreter,
-	"rscript":    {codeFlags: flags("-e")},
-	"ruby":       {codeFlags: flags("-e"), valueFlags: flags("-r -I")},
-	"ts-node":    {codeFlags: flags("-e --eval")},
-	"tsx":        {codeFlags: flags("-e --eval")},
+	"rscript":    {codeFlags: strings.Fields("-e")},
+	"ruby":       {codeFlags: strings.Fields("-e"), valueFlags: strings.Fields("-r -I")},
+	"ts-node":    {codeFlags: strings.Fields("-e --eval")},
+	"tsx":        {codeFlags: strings.Fields("-e --eval")},
 }
 
 // assignmentPattern matches a NAME=value operand.
@@ -235,7 +250,7 @@ func launcherLaunch(cmd Command, spec launcher) launch {
 	}
 
 	child := childCommand(cmd, cmd.Args[idx], cmd.Args[idx+1:])
-	if cmd.Name == "xargs" && cmd.Stdin != "" {
+	if spec.stdinArgs && cmd.Stdin != "" {
 		l.commands = xargsCommands(child, cmd.Stdin, xargsReplace(cmd.Args[:idx]))
 	} else {
 		l.commands = []Command{child}
@@ -277,19 +292,81 @@ func scriptFlagValues(spec launcher, args []string) []string {
 	var scripts []string
 
 	for i, arg := range args {
-		for _, flag := range spec.scriptFlags {
-			if arg == flag && i+1 < len(args) {
-				scripts = append(scripts, args[i+1])
-			}
+		value, attached, ok := flagValue(arg, spec.scriptFlags)
 
-			value, found := strings.CutPrefix(arg, flag+"=")
-			if found && strings.HasPrefix(flag, "--") {
-				scripts = append(scripts, value)
-			}
+		switch {
+		case ok && attached:
+			scripts = append(scripts, value)
+		case ok && i+1 < len(args):
+			scripts = append(scripts, args[i+1])
 		}
 	}
 
 	return scripts
+}
+
+// flagValue matches arg against flags that take a value, in every form a
+// program accepts: separate ("-c" "code"), long attached ("--command=code"),
+// short attached ("-ccode") and clustered with other flags ("-lc" "code",
+// "-pe" "code"). A match with attached false means the value is the next
+// argument.
+func flagValue(arg string, flags []string) (value string, attached, ok bool) {
+	if slices.Contains(flags, arg) || slices.Contains(flags, strings.ToLower(arg)) {
+		return "", false, true
+	}
+
+	var letters strings.Builder
+
+	for _, flag := range flags {
+		if long, isLong := strings.CutPrefix(flag, "--"); isLong {
+			if v, found := strings.CutPrefix(arg, "--"+long+"="); found {
+				return v, true, true
+			}
+
+			continue
+		}
+
+		if len(flag) == len("-c") && flag[0] == '-' {
+			letters.WriteByte(flag[1])
+		}
+	}
+
+	if letters.Len() == 0 || len(arg) < len("-cx") || arg[0] != '-' || arg[1] == '-' {
+		return "", false, false
+	}
+
+	cluster := arg[1:]
+
+	for i := range len(cluster) {
+		if !strings.ContainsRune(letters.String(), rune(cluster[i])) {
+			continue
+		}
+
+		rest := cluster[i+1:]
+
+		switch {
+		case rest == "":
+			return "", false, true
+		case strings.Trim(rest, letters.String()) == "":
+			// More value flags follow in the cluster; the last one takes it.
+		default:
+			return rest, true, true
+		}
+	}
+
+	return "", false, false
+}
+
+// hasAttachedValue reports whether arg is a short value flag carrying its
+// value, such as perl's -Mstrict, so it is not read as a cluster.
+func hasAttachedValue(arg string, flags []string) bool {
+	for _, flag := range flags {
+		if len(flag) == len("-c") && len(arg) > len(flag) && strings.HasPrefix(arg, flag) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // xargsReplace returns the replace string xargs substitutes stdin into.
@@ -338,13 +415,13 @@ func xargsCommands(child Command, stdin, replace string) []Command {
 // shellLaunch returns what a shell runs: the command line after -c, a script
 // file, or its stdin.
 func shellLaunch(cmd Command) launch {
-	script, file, ok := shellOperand(cmd.Args)
+	operand, isScript, ok := shellOperand(cmd.Args)
 
 	switch {
-	case ok && file == "":
-		return launch{scripts: []string{script}}
+	case ok && isScript:
+		return launch{scripts: []string{operand}}
 	case ok:
-		return launch{files: []scriptFile{{path: file}}}
+		return launch{files: []scriptFile{{path: operand}}}
 	case cmd.Stdin != "":
 		return launch{scripts: []string{cmd.Stdin}}
 	case cmd.StdinFile != "":
@@ -354,10 +431,10 @@ func shellLaunch(cmd Command) launch {
 	}
 }
 
-// shellOperand returns the command line a shell runs after a flag cluster
-// carrying -c, or else the script file it is given. -s makes the operands
-// positional parameters, leaving stdin as the script.
-func shellOperand(args []string) (script, file string, ok bool) {
+// shellOperand returns a shell's first operand: the command line it runs when
+// a flag cluster carries -c, otherwise the script file it is given. -s makes
+// the operands positional parameters, leaving stdin as the script.
+func shellOperand(args []string) (operand string, isScript, ok bool) {
 	sawC := false
 
 	for i := 0; i < len(args); i++ {
@@ -368,34 +445,24 @@ func shellOperand(args []string) (script, file string, ok bool) {
 			i++
 		case arg == endOfOptions:
 			if i+1 < len(args) {
-				return shellOperandAt(args[i+1], sawC)
+				return args[i+1], sawC, true
 			}
 
-			return "", "", false
-		case strings.HasPrefix(arg, "--"):
+			return "", false, false
+		case strings.HasPrefix(arg, "--"), strings.HasPrefix(arg, "+"):
 		case strings.HasPrefix(arg, "-"):
 			switch cluster := arg[1:]; {
 			case strings.Contains(cluster, "c"):
 				sawC = true
 			case strings.Contains(cluster, "s"):
-				return "", "", false
+				return "", false, false
 			}
-		case strings.HasPrefix(arg, "+"):
 		default:
-			return shellOperandAt(arg, sawC)
+			return arg, sawC, true
 		}
 	}
 
-	return "", "", false
-}
-
-// shellOperandAt returns a shell's first operand as a script or a file.
-func shellOperandAt(operand string, sawC bool) (script, file string, ok bool) {
-	if sawC {
-		return operand, "", true
-	}
-
-	return "", operand, true
+	return "", false, false
 }
 
 // sourceLaunch returns the file source or . reads.
@@ -412,41 +479,53 @@ func sourceLaunch(cmd Command) launch {
 func interpreterLaunch(cmd Command, spec interpreter) launch {
 	var l launch
 
+args:
 	for i := 0; i < len(cmd.Args); i++ {
 		arg := cmd.Args[i]
 
 		switch {
-		case slices.Contains(spec.codeFlags, strings.ToLower(arg)) && i+1 < len(cmd.Args):
-			l.code = append(l.code, cmd.Args[i+1])
-			i++
+		case slices.Contains(spec.stopFlags, arg):
+			// python -m runs a module; what follows are its arguments.
+			break args
 		case slices.Contains(spec.valueFlags, arg):
 			i++
+		case hasAttachedValue(arg, spec.valueFlags):
 		case strings.HasPrefix(arg, "-"):
+			value, attached, ok := flagValue(arg, spec.codeFlags)
+
+			switch {
+			case ok && attached:
+				l.code = append(l.code, value)
+			case ok && i+1 < len(cmd.Args):
+				l.code = append(l.code, cmd.Args[i+1])
+				i++
+			}
+		case slices.Contains(spec.codeFlags, arg) && i+1 < len(cmd.Args):
+			// A code "flag" without a dash, like deno's eval.
+			l.code = append(l.code, cmd.Args[i+1])
+			i++
 		default:
+			// The first operand is the script, unless code came inline.
 			if len(l.code) == 0 {
 				l.files = append(l.files, scriptFile{path: arg, interpreter: !spec.shellLike})
 			}
 
-			return shellLikeCode(l, spec)
+			break args
 		}
 	}
 
-	if len(l.code) == 0 && cmd.Stdin != "" {
-		l.code = append(l.code, cmd.Stdin)
+	if len(l.code) == 0 && len(l.files) == 0 {
+		switch {
+		case cmd.Stdin != "":
+			l.code = []string{cmd.Stdin}
+		case cmd.StdinFile != "":
+			l.files = []scriptFile{{path: cmd.StdinFile, interpreter: !spec.shellLike}}
+		}
 	}
 
-	if len(l.code) == 0 && cmd.StdinFile != "" {
-		l.files = append(l.files, scriptFile{path: cmd.StdinFile, interpreter: !spec.shellLike})
-	}
-
-	return shellLikeCode(l, spec)
-}
-
-// shellLikeCode also runs an interpreter's source as a command line when the
-// language is itself a shell.
-func shellLikeCode(l launch, spec interpreter) launch {
+	// A shell-like language runs its source as a command line too.
 	if spec.shellLike {
-		l.scripts = append(l.scripts, l.code...)
+		l.scripts = l.code
 	}
 
 	return l
@@ -489,7 +568,7 @@ func scanLaunch(cmd Command) launch {
 			rest = rest[1:]
 		}
 
-		if launchesTracked(commandName(arg), rest) {
+		if launchesTracked(arg, rest) {
 			return launch{commands: []Command{childCommand(cmd, arg, rest)}}
 		}
 	}
@@ -497,9 +576,14 @@ func scanLaunch(cmd Command) launch {
 	return launch{}
 }
 
-// launchesTracked reports whether name followed by rest runs something the
-// validators check: a validated git or gh command, or a shell's -c line.
-func launchesTracked(name string, rest []string) bool {
+// launchesTracked reports whether arg followed by rest runs something worth
+// following: a validated git or gh command, a shell given a script, an
+// interpreter, a launcher, eval or source, or a shell script given by path.
+func launchesTracked(arg string, rest []string) bool {
+	name := commandName(arg)
+	_, isInterpreter := interpreters[name]
+	_, isLauncher := launchers[name]
+
 	switch {
 	case name == gitProgram || name == "hub":
 		idx := gitSubcommandIndex(rest)
@@ -510,29 +594,30 @@ func launchesTracked(name string, rest []string) bool {
 	case name == ghCLI:
 		return len(rest) > 0 && validatedGHCommands[rest[0]]
 	case shells[name]:
-		script, file, ok := shellOperand(rest)
+		_, _, ok := shellOperand(rest)
 
-		return ok && file == "" && script != ""
+		return ok
+	case isInterpreter, isLauncher, name == "eval", name == "source":
+		return true
 	default:
-		return false
+		// Only shell scripts: a test runner given code files that merely
+		// mention git must not be read as running it.
+		return strings.Contains(arg, "/") && shellScriptExtensions[path.Ext(name)]
 	}
 }
+
+// shellScriptExtensions mark files a runner executes as shell scripts.
+var shellScriptExtensions = nameSet(".sh .bash .zsh")
 
 // gitSubcommandIndex returns the position of git's subcommand, after any
 // global options, or -1 when there is none.
 func gitSubcommandIndex(args []string) int {
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-		if !strings.HasPrefix(arg, "-") {
-			return i
-		}
-
-		if globalOptionsWithValue[arg] {
-			i++
-		}
+	idx := parseGlobalOptions(args, &GitCommand{GlobalOptions: make(map[string]string)})
+	if idx >= len(args) {
+		return -1
 	}
 
-	return -1
+	return idx
 }
 
 // childCommand builds a command launched by parent, keeping its context.

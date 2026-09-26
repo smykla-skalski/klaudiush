@@ -224,9 +224,7 @@ func BashWritesFileWithExtension(exts ...string) Predicate {
 		}
 
 		// Parse the bash command
-		bashParser := parser.NewBashParser()
-
-		result, err := bashParser.Parse(ctx.GetCommand())
+		result, err := ctx.ParsedCommand()
 		if err != nil {
 			return false
 		}
@@ -421,24 +419,44 @@ func GitSubcommandWithoutAnyFlag(subcommand string, flags ...string) Predicate {
 	}
 }
 
-// parseAllGitFromContext parses all git commands from a hook context.
-// Returns all git commands found in command chains like "git add && git commit".
-// Returns empty slice if no git commands are found or parsing fails.
-func parseAllGitFromContext(ctx *hook.Context) []*parser.GitCommand {
+// GHCommandIs returns a predicate that matches when the command runs gh with
+// the given leading arguments (for example "pr", "create"), however gh is
+// invoked: by path, in upper case, through $(which gh), a launcher or a script.
+func GHCommandIs(args ...string) Predicate {
+	return func(ctx *hook.Context) bool {
+		for _, cmd := range parseCommandsFromContext(ctx) {
+			if cmd.Name == "gh" && len(cmd.Args) >= len(args) &&
+				slices.Equal(cmd.Args[:len(args)], args) {
+				return true
+			}
+		}
+
+		return false
+	}
+}
+
+// parseCommandsFromContext returns every command a Bash hook runs, as the
+// parser resolves them, or nil for other tools and unparseable commands.
+func parseCommandsFromContext(ctx *hook.Context) []parser.Command {
 	if ctx.ToolName != hook.ToolTypeBash {
 		return nil
 	}
 
-	bashParser := parser.NewBashParser()
-
-	result, err := bashParser.Parse(ctx.GetCommand())
+	result, err := ctx.ParsedCommand()
 	if err != nil {
 		return nil
 	}
 
+	return result.Commands
+}
+
+// parseAllGitFromContext parses all git commands from a hook context.
+// Returns all git commands found in command chains like "git add && git commit".
+// Returns empty slice if no git commands are found or parsing fails.
+func parseAllGitFromContext(ctx *hook.Context) []*parser.GitCommand {
 	var gitCmds []*parser.GitCommand
 
-	for _, cmd := range result.Commands {
+	for _, cmd := range parseCommandsFromContext(ctx) {
 		if cmd.Name == "git" {
 			gitCmd, err := parser.ParseGitCommand(cmd)
 			if err != nil {

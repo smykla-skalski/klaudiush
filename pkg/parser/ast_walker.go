@@ -33,6 +33,8 @@ type astWalker struct {
 	funcs   map[string]string
 	// scriptFiles holds the content of process substitutions by stand-in path.
 	scriptFiles map[string]string
+	// truncated records that something past maxLaunchDepth was not followed.
+	truncated bool
 }
 
 // visit is called for each node in the AST.
@@ -60,10 +62,6 @@ func (w *astWalker) visit(node syntax.Node) bool {
 // recordStdin associates stdin content with a CallExpr so it can be attached
 // to the Command when that CallExpr is later extracted.
 func (w *astWalker) recordStdin(call *syntax.CallExpr, content string) {
-	if w.stdinByCall == nil {
-		w.stdinByCall = make(map[*syntax.CallExpr]string)
-	}
-
 	w.stdinByCall[call] = content
 }
 
@@ -82,12 +80,35 @@ func (w *astWalker) extractPipedStdin(bin *syntax.BinaryCmd) {
 		return
 	}
 
-	content, ok := literalCommandOutput(producer)
-	if !ok {
+	if content, ok := literalCommandOutput(producer); ok {
+		w.recordStdin(consumer, content)
+
 		return
 	}
 
-	w.recordStdin(consumer, content)
+	// cat passes on a heredoc or a file unchanged, so "cat <<EOF | bash" and
+	// "cat x.sh | bash" hand bash that script.
+	if !isCommand(producer, "cat") {
+		return
+	}
+
+	info := collectRedirs(bin.X)
+
+	switch {
+	case info.hasHeredoc && copiesStdinVerbatim(producer):
+		w.recordStdin(consumer, info.heredocContent)
+	case info.inputPath != "" && copiesStdinVerbatim(producer):
+		w.stdinFileByCall[consumer] = info.inputPath
+	case len(producer.Args) == 2 && isLiteralWord(producer.Args[1]):
+		if file := wordToString(producer.Args[1]); file != "-" && !strings.HasPrefix(file, "-") {
+			w.stdinFileByCall[consumer] = file
+		}
+	}
+}
+
+// isCommand reports whether call runs the named program.
+func isCommand(call *syntax.CallExpr, name string) bool {
+	return call != nil && len(call.Args) > 0 && commandName(wordToString(call.Args[0])) == name
 }
 
 // callExprOf returns the CallExpr a statement runs, or nil if the statement is
@@ -358,13 +379,20 @@ func (w *astWalker) extractCommand(call *syntax.CallExpr) {
 
 	// First word is the command name
 	name := commandWord(call.Args[0])
+	args := w.argStrings(call.Args[1:])
+
+	// The shell expands {git,commit,-m,x} into words before running anything.
+	if words := braceWords(call.Args[0]); len(words) > 0 {
+		name, args = words[0], slices.Concat(words[1:], args)
+	}
+
 	if name == "" {
 		return
 	}
 
 	w.recordCommand(Command{
 		Name:             name,
-		Args:             w.argStrings(call.Args[1:]),
+		Args:             args,
 		Location:         Location{Line: call.Pos().Line(), Column: call.Pos().Col()},
 		Type:             CmdTypeSimple,
 		WorkingDirectory: w.currentDir,
@@ -380,6 +408,14 @@ func (w *astWalker) extractCommand(call *syntax.CallExpr) {
 // or an alias would each hide a git command from every validator.
 func (w *astWalker) recordCommand(cmd Command, depth int) {
 	cmd.Invoked = w.expandName(cmd.Name)
+
+	// An expansion splits into words, so x="git commit"; $x runs git.
+	if strings.Contains(cmd.Name, "${") {
+		if fields := strings.Fields(cmd.Invoked); len(fields) > 1 {
+			cmd.Invoked, cmd.Args = fields[0], slices.Concat(fields[1:], cmd.Args)
+		}
+	}
+
 	cmd.Name = commandName(cmd.Invoked)
 
 	cmd, aliasScripts := w.resolveProgram(cmd)
@@ -393,12 +429,20 @@ func (w *astWalker) recordCommand(cmd Command, depth int) {
 
 	w.extractFileWriteCommand(cmd)
 
-	if depth >= maxLaunchDepth {
+	l := launched(cmd)
+	l.scripts = slices.Concat(l.scripts, aliasScripts, w.definitionScripts(cmd))
+
+	if l.empty() {
 		return
 	}
 
-	l := launched(cmd)
-	l.scripts = slices.Concat(l.scripts, aliasScripts, w.definitionScripts(cmd))
+	// Past the cap nothing more is followed, and the command fails closed:
+	// what it launches cannot be shown to be safe.
+	if depth >= maxLaunchDepth {
+		w.truncated = true
+
+		return
+	}
 
 	w.follow(cmd, l, depth+1)
 }
@@ -436,17 +480,16 @@ func collectRedirs(stmt *syntax.Stmt) redirInfo {
 
 			info.outputLoc = Location{Line: redir.Pos().Line(), Column: redir.Pos().Col()}
 			info.hasOutput = true
-		case syntax.Hdoc, syntax.DashHdoc:
-			// Extract heredoc content from Hdoc field (may be empty).
-			if redir.Hdoc != nil {
+		case syntax.Hdoc, syntax.DashHdoc, syntax.WordHdoc:
+			switch {
+			case redir.Op == syntax.WordHdoc:
+				// A here-string feeds its word, plus a newline, to stdin.
+				info.heredocContent = wordToString(redir.Word) + "\n"
+			case redir.Hdoc != nil:
+				// Extract heredoc content from Hdoc field (may be empty).
 				info.heredocContent = wordToString(redir.Hdoc)
 			}
 			// Mark as heredoc even if content is empty.
-			info.heredocLoc = Location{Line: redir.Pos().Line(), Column: redir.Pos().Col()}
-			info.hasHeredoc = true
-		case syntax.WordHdoc:
-			// A here-string feeds its word, plus a newline, to stdin.
-			info.heredocContent = wordToString(redir.Word) + "\n"
 			info.heredocLoc = Location{Line: redir.Pos().Line(), Column: redir.Pos().Col()}
 			info.hasHeredoc = true
 		case syntax.RdrIn:
@@ -478,10 +521,6 @@ func (w *astWalker) extractRedirect(stmt *syntax.Stmt) {
 
 	if info.inputPath != "" {
 		if call := callExprOf(stmt); call != nil {
-			if w.stdinFileByCall == nil {
-				w.stdinFileByCall = make(map[*syntax.CallExpr]string)
-			}
-
 			w.stdinFileByCall[call] = info.inputPath
 		}
 	}
@@ -557,11 +596,23 @@ func copiesStdinVerbatim(call *syntax.CallExpr) bool {
 // skipped rather than recorded with a partial one.
 func (w *astWalker) extractAssigns(call *syntax.CallExpr) {
 	for _, assign := range call.Assigns {
-		if assign.Name == nil || assign.Value == nil || assign.Append || assign.Naked {
+		if assign.Name == nil || assign.Append || assign.Naked {
 			continue
 		}
 
-		w.assignments[assign.Name.Value] = wordToString(assign.Value)
+		switch {
+		case assign.Value != nil:
+			w.assignments[assign.Name.Value] = wordToString(assign.Value)
+		case assign.Array != nil:
+			// An array is kept as its elements joined by spaces, which is what
+			// "${NAME[@]}" expands to as separate words.
+			elems := make([]string, 0, len(assign.Array.Elems))
+			for _, elem := range assign.Array.Elems {
+				elems = append(elems, wordToString(elem.Value))
+			}
+
+			w.assignments[assign.Name.Value] = strings.Join(elems, " ")
+		}
 	}
 }
 

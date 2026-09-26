@@ -105,9 +105,7 @@ func (v *IssueValidator) Validate(ctx context.Context, hookCtx *hook.Context) *v
 	}
 
 	// Parse the command.
-	bashParser := parser.NewBashParser()
-
-	result, err := bashParser.Parse(hookCtx.GetCommand())
+	result, err := hookCtx.ParsedCommand()
 	if err != nil {
 		log.Error("Failed to parse command", "error", err)
 

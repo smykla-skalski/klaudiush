@@ -91,7 +91,10 @@ func (f *GitHubValidatorFactory) createAPIValidator(
 		Predicate: validator.And(
 			beforeToolOrProviderAfterToolPredicate(),
 			validator.ToolTypeIs(hook.ToolTypeBash),
-			validator.CommandMatches(ghAPICommandPattern),
+			validator.Or(
+				validator.CommandMatches(ghAPICommandPattern),
+				validator.GHCommandIs("api"),
+			),
 		),
 	}
 }
@@ -121,7 +124,10 @@ func (f *GitHubValidatorFactory) createIssueValidator(
 		Predicate: validator.And(
 			beforeToolOrProviderAfterToolPredicate(),
 			validator.ToolTypeIs(hook.ToolTypeBash),
-			validator.CommandContains("gh issue create"),
+			validator.Or(
+				validator.CommandContains("gh issue create"),
+				validator.GHCommandIs("issue", "create"),
+			),
 		),
 	}
 }

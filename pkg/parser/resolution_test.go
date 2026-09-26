@@ -49,7 +49,9 @@ var _ = Describe("Command resolution beyond the command text", func() {
 			"./deploy.sh":     "git commit -S -m x\n",
 			"/repo/deploy.sh": "git commit -S -m x\n",
 			"tool.py":         "import os\nos.system('git commit -S -m x')\n",
-			"./tool":          "#!/usr/bin/env python3\nimport os\nos.system('git commit -S -m x')\n",
+			"tool":            "#!/usr/bin/env python3\nimport os\nos.system('git commit -S -m x')\n",
+			"tests/test_git.py": "import subprocess\n" +
+				"def test_commit():\n    subprocess.run(['git', 'commit', '-m', 'x'])\n",
 		},
 		programs: map[string]parser.Program{
 			"./g":     parser.ProgramGit,
@@ -59,6 +61,9 @@ var _ = Describe("Command resolution beyond the command text", func() {
 			"make":    parser.ProgramOther,
 			"svn":     parser.ProgramOther,
 			"unknown": parser.ProgramMissing,
+			// No git-<name> command, so git's autocorrect would apply.
+			"git-comit": parser.ProgramMissing,
+			"git-pul":   parser.ProgramMissing,
 		},
 		aliases: map[string]string{
 			"ci":   "commit",
@@ -113,6 +118,10 @@ var _ = Describe("Command resolution beyond the command text", func() {
 			"a script written with a heredoc",
 			"cat > x.sh <<'EOF'\ngit commit -S -m x\nEOF\nbash x.sh",
 		),
+		Entry(
+			"a script whose same-name write went to another directory",
+			"cd /elsewhere && printf 'echo hi\\n' > deploy.sh; cd /repo && bash deploy.sh",
+		),
 		Entry("a here-string", `bash <<< "git commit -S -m x"`),
 		Entry("a process substitution", `bash <(echo "git commit -S -m x")`),
 		Entry("a sourced process substitution", `source <(printf 'git commit -S -m x')`),
@@ -150,6 +159,48 @@ var _ = Describe("Command resolution beyond the command text", func() {
 		Entry("a name nothing on disk runs", "mygit commit -S -m x"),
 		Entry("an unresolvable variable", "$NOPE commit -S -m x"),
 		Entry("an unresolvable substitution", "$(pick-git) commit -S -m x"),
+		Entry("a variable that splits into words", `x="git commit -S -m y"; $x`),
+		Entry("an array", `cmd=(git commit -S -m y); "${cmd[@]}"`),
+		Entry("brace expansion", "{git,commit,-S,-m,y}"),
+		Entry("escaped spaces in a shell script", `bash -c git\ commit\ -S\ -m\ y`),
+		Entry("env -S with attached script", `env -S'git commit -S -m y'`),
+		Entry(
+			"python -c with attached code",
+			`python3 -c'import os; os.system("git commit -S -m y")'`,
+		),
+		Entry("python flag cluster", `python3 -Sc 'import os; os.system("git commit -S -m y")'`),
+		Entry("perl flag cluster", `perl -we 'system("git commit -S -m y")'`),
+		Entry(
+			"node flag cluster",
+			`node -pe 'require("child_process").execSync("git commit -S -m y")'`,
+		),
+		Entry(
+			"perl system with separate arguments",
+			`perl -e 'system("git", "commit", "-S", "-m", "y")'`,
+		),
+		Entry(
+			"python argv tuple",
+			`python3 -c 'import subprocess; subprocess.run(("git", "commit", "-S"))'`,
+		),
+		Entry("a cat heredoc piped to a shell", "cat <<'EOF' | bash\ngit commit -S -m y\nEOF"),
+		Entry("a cat file piped to a shell", "cat deploy.sh | bash"),
+		Entry("a git alias set earlier on the line", "git config alias.cm commit; git cm -S -m y"),
+		Entry(
+			"a git alias in GIT_CONFIG_COUNT",
+			"GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=alias.cm GIT_CONFIG_VALUE_0=commit git cm -S -m y",
+		),
+		Entry("a git alias in GIT_CONFIG_PARAMETERS",
+			`GIT_CONFIG_PARAMETERS="'alias.cm'='commit'" git cm -S -m y`),
+		Entry("a git alias from --config-env", "CM=commit git --config-env=alias.cm=CM cm -S -m y"),
+		Entry("a typo git autocorrects", "git comit -S -m y"),
+		Entry(
+			"an interpreter behind uv run",
+			`uv run python3 -c 'import os; os.system("git commit -S -m y")'`,
+		),
+		Entry(
+			"an interpreter behind bundle exec",
+			`bundle exec ruby -e 'system("git commit -S -m y")'`,
+		),
 	)
 
 	DescribeTable("leaves other programs alone",
@@ -165,7 +216,16 @@ var _ = Describe("Command resolution beyond the command text", func() {
 		Entry("python printing", `python3 -c "print('hello')"`),
 		Entry("a binary run by path", "./bin/tool --flag"),
 		Entry("an unknown program with other operands", "unknown build"),
+		Entry("a test runner given a file that mentions git", "pytest tests/test_git.py"),
+		Entry("python running a module", "python3 -m pytest tests/test_git.py"),
 	)
+
+	It("never autocorrects a typo to a validated command that is not the closest", func() {
+		// "pul" is closest to pull, so git would never run push for it.
+		gitCmd, err := parser.ParseGitCommand(parse("git pul").GitOperations[0])
+		Expect(err).NotTo(HaveOccurred())
+		Expect(gitCmd.Subcommand).NotTo(Equal("push"))
+	})
 
 	It("resolves gh under another name", func() {
 		Expect(parse("./h pr create --title x").Commands[0].Name).To(Equal("gh"))

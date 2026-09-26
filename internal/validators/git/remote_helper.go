@@ -96,9 +96,7 @@ func ValidateGitSubcommand(
 		return validator.Pass()
 	}
 
-	bashParser := parser.NewBashParser()
-
-	parseResult, err := bashParser.Parse(command)
+	parseResult, err := hookCtx.ParsedCommand()
 	if err != nil {
 		log.Debug("failed to parse command", "error", err)
 

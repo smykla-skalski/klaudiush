@@ -134,18 +134,44 @@ var _ = Describe("Command resolution", func() {
 		Expect(result.FileWrites).To(ContainElement(HaveField("Path", "/etc/hosts")))
 	})
 
-	It("stops following deeply nested shells", func() {
-		// Quoting grows about fourfold per level, so keep the nesting small.
+	It("follows nesting up to the limit", func() {
 		command := "git commit -S -m x"
-		for range 8 {
+		for range 6 {
 			command = "bash -c " + shellQuote(command)
 		}
 
 		result, err := p.Parse(command)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(result.GitOperations).To(BeEmpty())
+		Expect(result.Truncated).To(BeFalse())
+		Expect(gitCommitArgs(command)).NotTo(BeEmpty())
+	})
+
+	DescribeTable("marks the parse truncated past the limit, so it fails closed",
+		func(command string) {
+			result, err := p.Parse(command)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.Truncated).To(BeTrue())
+		},
+		Entry("nested shells", nestedShells("git commit -S -m x", 9)),
+		Entry("chained launchers", strings.Repeat("env ", 12)+"git commit -m x"),
+	)
+
+	It("does not mark a flat command truncated", func() {
+		result, err := p.Parse("env nice git status")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(result.Truncated).To(BeFalse())
 	})
 })
+
+// nestedShells wraps command in the given number of bash -c layers. Quoting
+// grows about fourfold per layer, so keep the count small.
+func nestedShells(command string, layers int) string {
+	for range layers {
+		command = "bash -c " + shellQuote(command)
+	}
+
+	return command
+}
 
 // shellQuote wraps s in single quotes, escaping any single quote inside.
 func shellQuote(s string) string {

@@ -103,6 +103,7 @@ var CodeToValidator = map[string]string{
 
 	// Shell codes
 	"SHELL001": "shell.backtick",
+	"SHELL002": "shell.nesting",
 
 	// GitHub CLI codes
 	"GH001": "github.issue",

@@ -22,7 +22,8 @@ var _ = Describe("OSResolver", func() {
 		dir = GinkgoT().TempDir()
 
 		// Git hooks export GIT_DIR and friends, which would point git at the
-		// repository running the tests instead of the temporary one.
+		// repository running the tests instead of the temporary one. Setenv
+		// restores each original value when the spec ends.
 		for _, entry := range os.Environ() {
 			if name, _, _ := strings.Cut(entry, "="); strings.HasPrefix(name, "GIT_") {
 				GinkgoT().Setenv(name, "")
@@ -66,6 +67,15 @@ var _ = Describe("OSResolver", func() {
 			Expect(os.WriteFile(copyPath, data, 0o755)).To(Succeed())
 
 			Expect(resolver.Program(copyPath, "")).To(Equal(parser.ProgramGit))
+		})
+
+		It("never takes a tool sharing a launcher file with git for git", func() {
+			// On stock macOS, git, make and python3 are one xcrun launcher file.
+			GinkgoT().Setenv("PATH", "/usr/bin:/bin:/usr/sbin:/sbin")
+
+			for _, tool := range []string{"make", "python3", "cc"} {
+				Expect(resolver.Program(tool, "")).NotTo(Equal(parser.ProgramGit), tool)
+			}
 		})
 
 		It("reports another program as other", func() {

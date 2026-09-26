@@ -69,6 +69,10 @@ var _ = Describe("NoVerifyValidator", func() {
 					Expect(result.ShouldBlock).To(BeTrue())
 				},
 				Entry("global option before commit", "git -C . commit --no-verify -m 'test'"),
+				Entry("-P before commit", "git -P commit --no-verify -m 'test'"),
+				Entry("--no-advice before commit", "/usr/bin/git --no-advice commit -n -m 'test'"),
+				Entry("unlisted global option", "git --future-flag commit --no-verify -m 'test'"),
+				Entry("escaped flag", `git commit --no-veri\fy -m 'test'`),
 				Entry("absolute path", "/usr/bin/git commit --no-verify -m 'test'"),
 				Entry("backslash escape", `\git commit -n -m 'test'`),
 				Entry("launcher", "env FOO=1 git commit --no-verify -m 'test'"),
