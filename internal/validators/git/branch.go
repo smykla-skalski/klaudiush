@@ -124,9 +124,7 @@ func (v *BranchValidator) Validate(ctx context.Context, hookCtx *hook.Context) *
 		return result
 	}
 
-	bashParser := parser.NewBashParser()
-
-	parseResult, err := bashParser.Parse(hookCtx.ToolInput.Command)
+	parseResult, err := hookCtx.ParsedCommand()
 	if err != nil {
 		log.Error("failed to parse command", "error", err)
 		return validator.Warn(fmt.Sprintf("Failed to parse command: %v", err))

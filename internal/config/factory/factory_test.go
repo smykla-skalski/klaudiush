@@ -590,11 +590,13 @@ var _ = Describe("DefaultValidatorFactory", func() {
 				},
 			}
 
+			// Only the nesting guard, which runs without config.
 			validators := validatorFactory.CreateShellValidators(cfg)
-			Expect(validators).To(BeEmpty())
+			Expect(validators).To(HaveLen(1))
+			Expect(validators[0].Validator.Name()).To(Equal("validate-nesting"))
 		})
 
-		It("should return empty when shell config is nil", func() {
+		It("should keep only the nesting guard when shell config is nil", func() {
 			cfg := &config.Config{
 				Validators: &config.ValidatorsConfig{
 					Shell: nil,
@@ -602,7 +604,21 @@ var _ = Describe("DefaultValidatorFactory", func() {
 			}
 
 			validators := validatorFactory.CreateShellValidators(cfg)
-			Expect(validators).To(BeEmpty())
+			Expect(validators).To(HaveLen(1))
+			Expect(validators[0].Validator.Name()).To(Equal("validate-nesting"))
+		})
+
+		It("should drop the nesting guard when SHELL002 is disabled", func() {
+			cfg := &config.Config{
+				Validators: &config.ValidatorsConfig{},
+				Overrides: &config.OverridesConfig{
+					Entries: map[string]*config.OverrideEntry{
+						"shell.nesting": {Disabled: new(true)},
+					},
+				},
+			}
+
+			Expect(validatorFactory.CreateShellValidators(cfg)).To(BeEmpty())
 		})
 	})
 
@@ -698,11 +714,12 @@ var _ = Describe("DefaultValidatorFactory", func() {
 				},
 			}
 
+			// Five configured plus the always-on nesting guard.
 			validators := validatorFactory.CreateAll(cfg)
-			Expect(len(validators)).To(Equal(5))
+			Expect(len(validators)).To(Equal(6))
 		})
 
-		It("should return empty for minimal config", func() {
+		It("should keep only the nesting guard for minimal config", func() {
 			cfg := &config.Config{
 				Validators: &config.ValidatorsConfig{
 					Git:          &config.GitConfig{},
@@ -714,7 +731,8 @@ var _ = Describe("DefaultValidatorFactory", func() {
 			}
 
 			validators := validatorFactory.CreateAll(cfg)
-			Expect(validators).To(BeEmpty())
+			Expect(validators).To(HaveLen(1))
+			Expect(validators[0].Validator.Name()).To(Equal("validate-nesting"))
 		})
 	})
 })
@@ -1286,8 +1304,9 @@ var _ = Describe("DefaultValidatorFactory GitHub Integration", func() {
 				},
 			}
 
+			// The issue validator plus the always-on nesting guard.
 			validators := validatorFactory.CreateAll(cfg)
-			Expect(len(validators)).To(Equal(1))
+			Expect(len(validators)).To(Equal(2))
 		})
 	})
 })

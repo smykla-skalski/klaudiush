@@ -32,6 +32,17 @@ func (f *ShellValidatorFactory) CreateValidators(cfg *config.Config) []Validator
 
 	var validators []ValidatorWithPredicate
 
+	// Nesting guards every other validator, so it needs no config to run.
+	if !isValidatorOverridden(cfg.Overrides, "shell.nesting") {
+		validators = append(validators, ValidatorWithPredicate{
+			Validator: shellvalidators.NewNestingValidator(f.log),
+			Predicate: validator.And(
+				beforeToolOrProviderAfterToolPredicate(),
+				validator.ToolTypeIs(hook.ToolTypeBash),
+			),
+		})
+	}
+
 	// Check if Shell config exists
 	if cfg.Validators.Shell == nil {
 		return validators
@@ -72,6 +83,10 @@ func (f *ShellValidatorFactory) createBacktickValidator(
 				validator.CommandContains("gh pr create"),
 				// gh issue create
 				validator.CommandContains("gh issue create"),
+				// the same commands reached any other way
+				validator.GitSubcommandIs("commit"),
+				validator.GHCommandIs("pr", "create"),
+				validator.GHCommandIs("issue", "create"),
 			),
 		),
 	}

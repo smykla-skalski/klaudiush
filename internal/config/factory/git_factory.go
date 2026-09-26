@@ -235,6 +235,10 @@ func (f *GitValidatorFactory) createPRValidator(
 					validator.ToolTypeIs(hook.ToolTypeBash),
 					validator.CommandMatches(gitvalidators.PRWritePattern),
 				),
+				// gh reached any other way (GH, $(which gh), a launcher).
+				validator.GHCommandIs("pr", "create"),
+				validator.GHCommandIs("pr", "edit"),
+				validator.GHCommandIs("pr", "merge"),
 				// MCP servers create and update pull requests without a shell.
 				validator.ToolNameMatches(gitvalidators.MCPPullRequestToolPattern),
 			),
@@ -299,7 +303,10 @@ func (f *GitValidatorFactory) createMergeValidator(
 		Predicate: validator.And(
 			beforeToolOrProviderAfterToolPredicate(),
 			validator.ToolTypeIs(hook.ToolTypeBash),
-			validator.CommandContains("gh pr merge"),
+			validator.Or(
+				validator.CommandContains("gh pr merge"),
+				validator.GHCommandIs("pr", "merge"),
+			),
 		),
 	}
 }

@@ -40,6 +40,25 @@ var _ = Describe("GitAddValidator", func() {
 
 	Describe("Validate", func() {
 		Context("when adding tmp/ files", func() {
+			DescribeTable("should block however git is invoked",
+				func(command string) {
+					ctx := &hook.Context{
+						EventType: hook.EventTypePreToolUse,
+						ToolName:  hook.ToolTypeBash,
+						ToolInput: hook.ToolInput{Command: command},
+					}
+
+					result := val.Validate(context.Background(), ctx)
+
+					Expect(result.Passed).To(BeFalse())
+					Expect(result.Details["help"]).To(ContainSubstring("tmp/test.txt"))
+				},
+				Entry("global option before add", "git -C . add tmp/test.txt"),
+				Entry("absolute path", "/usr/bin/git add tmp/test.txt"),
+				Entry("launcher", "env git add tmp/test.txt"),
+				Entry("shell script", `bash -c "git add tmp/test.txt"`),
+			)
+
 			It("should block adding a single tmp/ file", func() {
 				ctx := &hook.Context{
 					EventType: hook.EventTypePreToolUse,

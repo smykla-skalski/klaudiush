@@ -41,22 +41,16 @@ func (v *NoVerifyValidator) Validate(ctx context.Context, hookCtx *hook.Context)
 		return result
 	}
 
-	bashParser := parser.NewBashParser()
-
-	result, err := bashParser.Parse(hookCtx.GetCommand())
+	result, err := hookCtx.ParsedCommand()
 	if err != nil {
 		log.Error("Failed to parse command", "error", err)
 		return validator.Warn("Failed to parse command")
 	}
 
-	for _, cmd := range result.Commands {
-		if cmd.Name != gitCommand || len(cmd.Args) == 0 || cmd.Args[0] != commitSubcommand {
-			continue
-		}
-
+	for _, cmd := range result.GitOperations {
+		// The parsed subcommand skips global options, so git -C dir commit counts.
 		gitCmd, err := parser.ParseGitCommand(cmd)
-		if err != nil {
-			log.Error("Failed to parse git command", "error", err)
+		if err != nil || gitCmd.Subcommand != commitSubcommand {
 			continue
 		}
 

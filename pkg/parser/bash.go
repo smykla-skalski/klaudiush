@@ -22,17 +22,33 @@ type ParseResult struct {
 	FileWrites    []FileWrite       // All file write operations
 	GitOperations []Command         // Git commands only
 	Assignments   map[string]string // Literal NAME=value assignments
+	// Truncated reports that the command launches something nested deeper than
+	// the parser follows, so what it finally runs is unknown.
+	Truncated bool
 }
 
 // BashParser parses Bash commands using mvdan.cc/sh.
 type BashParser struct {
-	parser *syntax.Parser
+	parser   *syntax.Parser
+	resolver Resolver
 }
 
-// NewBashParser creates a new BashParser instance.
+// NewBashParser creates a BashParser that resolves programs, scripts,
+// environment variables and git aliases against the running system.
 func NewBashParser() *BashParser {
+	return NewBashParserWithResolver(&OSResolver{})
+}
+
+// NewBashParserWithResolver creates a BashParser that asks resolver what the
+// command text alone cannot tell.
+func NewBashParserWithResolver(resolver Resolver) *BashParser {
+	if resolver == nil {
+		resolver = &OSResolver{}
+	}
+
 	return &BashParser{
-		parser: syntax.NewParser(),
+		parser:   syntax.NewParser(),
+		resolver: resolver,
 	}
 }
 
@@ -50,11 +66,7 @@ func (p *BashParser) Parse(command string) (*ParseResult, error) {
 	}
 
 	// Walk the AST to extract commands and file operations
-	walker := &astWalker{
-		commands:    make([]Command, 0),
-		fileWrites:  make([]FileWrite, 0),
-		assignments: make(map[string]string),
-	}
+	walker := newAstWalker(p.resolver)
 
 	syntax.Walk(file, walker.visit)
 
@@ -62,7 +74,7 @@ func (p *BashParser) Parse(command string) (*ParseResult, error) {
 	gitOps := make([]Command, 0)
 
 	for _, cmd := range walker.commands {
-		if cmd.Name == "git" {
+		if cmd.Name == gitProgram {
 			gitOps = append(gitOps, cmd)
 		}
 	}
@@ -72,6 +84,7 @@ func (p *BashParser) Parse(command string) (*ParseResult, error) {
 		FileWrites:    walker.fileWrites,
 		GitOperations: gitOps,
 		Assignments:   walker.assignments,
+		Truncated:     walker.state.truncated,
 	}, nil
 }
 
@@ -80,25 +93,32 @@ func (p *BashParser) Parse(command string) (*ParseResult, error) {
 const maxExpandPasses = 5
 
 // varRefPattern matches a canonical ${NAME} reference, the form wordToString
-// produces for both $NAME and ${NAME}.
-var varRefPattern = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
+// produces for both $NAME and ${NAME}, and ${NAME[@]} or ${NAME[*]}, which
+// expand to every element of an array.
+var varRefPattern = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)(?:\[[@*]\])?\}`)
 
 // ExpandVars substitutes assignments captured from the same command line into
 // s. References with no known assignment are left as they are, so callers can
 // tell a resolved value from one they still cannot see.
 func (r *ParseResult) ExpandVars(s string) string {
-	if len(r.Assignments) == 0 {
-		return s
-	}
+	return expandVars(s, func(name string) (string, bool) {
+		value, ok := r.Assignments[name]
 
+		return value, ok
+	})
+}
+
+// expandVars substitutes the values lookup knows into s, leaving unknown
+// references as they are.
+func expandVars(s string, lookup func(name string) (string, bool)) string {
 	for range maxExpandPasses {
 		if !strings.Contains(s, "${") {
 			break
 		}
 
 		expanded := varRefPattern.ReplaceAllStringFunc(s, func(ref string) string {
-			// ref is exactly "${NAME}", so the name is what the braces enclose.
-			if value, ok := r.Assignments[ref[2:len(ref)-1]]; ok {
+			// ref is "${NAME}", or "${NAME[@]}" for every element of an array.
+			if value, ok := lookup(varRefPattern.FindStringSubmatch(ref)[1]); ok {
 				return value
 			}
 
@@ -184,15 +204,26 @@ func (r *ParseResult) GetFirstGitWorkingDir() string {
 // inline (e.g. "cat > f <<EOF ... EOF; git commit -F f"), since f does not
 // exist on disk yet when the PreToolUse hook runs.
 func (r *ParseResult) InlineFileContent(path, workDir string, before Location) (string, bool) {
-	target := resolvePath(workDir, path)
+	return lastCapturedWrite(r.FileWrites, resolvePath(workDir, path), &before)
+}
 
-	var (
-		content string
-		ok      bool
-	)
+// lastCapturedWrite returns what the writes leave in target, when the last of
+// them captured it exactly. A nil before considers every write.
+func lastCapturedWrite(writes []FileWrite, target string, before *Location) (string, bool) {
+	content, _, captured := lastWrite(writes, target, before)
 
-	for _, fw := range r.FileWrites {
-		if !locationBefore(fw.Location, before) {
+	return content, captured
+}
+
+// lastWrite reports whether any of the writes changes target, and what it
+// then holds when the last of them captured it exactly.
+func lastWrite(
+	writes []FileWrite,
+	target string,
+	before *Location,
+) (content string, found, captured bool) {
+	for _, fw := range writes {
+		if before != nil && !locationBefore(fw.Location, *before) {
 			continue
 		}
 
@@ -200,22 +231,24 @@ func (r *ParseResult) InlineFileContent(path, workDir string, before Location) (
 			continue
 		}
 
+		found = true
+
 		switch fw.Operation {
 		case WriteOpRedirect, WriteOpHeredoc:
 			// Overwrite: the last write wins, discarding earlier content. Only
 			// captured content (an exact reconstruction) counts - a heredoc body
-			// fed to cat, or literal echo/printf output - otherwise ok stays
-			// false so callers fall back to reading the file from disk.
-			content, ok = fw.CapturedOverwrite()
+			// fed to cat, or literal echo/printf output - otherwise captured
+			// stays false so callers fall back to reading the file from disk.
+			content, captured = fw.CapturedOverwrite()
 		default:
 			// Append, tee, cp, mv: the resulting bytes can't be reconstructed
 			// from the command alone (prior content or trailing newlines are
 			// unknown), so the capture is no longer exact.
-			content, ok = "", false
+			content, captured = "", false
 		}
 	}
 
-	return content, ok
+	return content, found, captured
 }
 
 // resolvePath cleans path, joining it onto workDir when path is relative and a
@@ -233,6 +266,11 @@ func resolvePath(workDir, path string) string {
 
 // locationBefore reports whether a occurs strictly before b in source order.
 func locationBefore(a, b Location) bool {
+	// Execution order holds across nested scripts, where lines restart.
+	if a.Seq != 0 && b.Seq != 0 {
+		return a.Seq < b.Seq
+	}
+
 	if a.Line != b.Line {
 		return a.Line < b.Line
 	}

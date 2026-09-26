@@ -8,6 +8,40 @@ import (
 	"github.com/smykla-skalski/klaudiush/pkg/hook"
 )
 
+var _ = Describe("GHCommandIs", func() {
+	bash := func(command string) *hook.Context {
+		return &hook.Context{
+			ToolName:  hook.ToolTypeBash,
+			ToolInput: hook.ToolInput{Command: command},
+		}
+	}
+
+	DescribeTable("matches gh however it is invoked",
+		func(command string) {
+			Expect(validator.GHCommandIs("pr", "create")(bash(command))).To(BeTrue())
+		},
+		Entry("plain", "gh pr create --title x"),
+		Entry("upper case", "GH pr create --title x"),
+		Entry("which substitution", "$(which gh) pr create --title x"),
+		Entry("path", "/opt/homebrew/bin/gh pr create --title x"),
+		Entry("launcher", "env GH_TOKEN=x gh pr create --title x"),
+		Entry("shell script", `bash -c "gh pr create --title x"`),
+	)
+
+	DescribeTable("does not match other commands",
+		func(ctx *hook.Context) {
+			Expect(validator.GHCommandIs("pr", "create")(ctx)).To(BeFalse())
+		},
+		Entry("another gh command", bash("gh pr view 1")),
+		Entry("echo", bash("echo gh pr create")),
+		Entry("too few arguments", bash("gh pr")),
+		Entry("another tool", &hook.Context{
+			ToolName:  hook.ToolTypeWrite,
+			ToolInput: hook.ToolInput{Command: "gh pr create"},
+		}),
+	)
+})
+
 var _ = Describe("Git Predicates", func() {
 	Describe("GitSubcommandIs", func() {
 		It("matches git checkout command", func() {

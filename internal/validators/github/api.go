@@ -237,9 +237,7 @@ func (v *APIValidator) Validate(ctx context.Context, hookCtx *hook.Context) *val
 		return result
 	}
 
-	bashParser := parser.NewBashParser()
-
-	parsed, err := bashParser.Parse(hookCtx.GetCommand())
+	parsed, err := hookCtx.ParsedCommand()
 	if err != nil {
 		log.Error("Failed to parse command", "error", err)
 

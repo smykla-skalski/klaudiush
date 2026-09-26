@@ -55,6 +55,7 @@ var DefaultSuggestions = map[Reference]string{
 
 	// Shell suggestions
 	RefShellBackticks: "Use HEREDOC syntax or file-based input (git commit -F file.txt)",
+	RefShellNesting:   "Fix the shell syntax, or run the inner command directly instead of through nested launchers, scripts or aliases",
 
 	// GitHub CLI suggestions
 	RefGHIssueValidation: "Fix markdown formatting in issue body (empty lines around headings, proper list spacing)",

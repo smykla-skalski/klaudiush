@@ -47,31 +47,10 @@ type GitCommand struct {
 	Location         Location          // Position of the command in source
 }
 
-// Global git options that take a value.
-var globalOptionsWithValue = map[string]bool{
-	flagUpperC:             true,
-	"--git-dir":            true,
-	"--work-tree":          true,
-	flagLowerC:             true,
-	"--namespace":          true,
-	"--super-prefix":       true,
-	"--config-env":         true,
-	"--exec-path":          true,
-	"--html-path":          false,
-	"--man-path":           false,
-	"--info-path":          false,
-	"--paginate":           false,
-	"-p":                   false,
-	"--no-pager":           false,
-	"--bare":               false,
-	"--no-replace-objects": false,
-	"--literal-pathspecs":  false,
-	"--glob-pathspecs":     false,
-	"--noglob-pathspecs":   false,
-	"--icase-pathspecs":    false,
-	"--no-optional-locks":  false,
-	"--list-cmds":          true,
-}
+// globalValueOptions are the global git options that take the next argument
+// as their value. Every other option before the subcommand stands alone.
+var globalValueOptions = nameSet(flagUpperC + " " + flagLowerC + ` --git-dir --work-tree
+	--namespace --super-prefix --config-env --exec-path --attr-source --list-cmds`)
 
 // Flags that take a value regardless of subcommand. Context-dependent flags
 // (-c/-C, and branch's -m) are handled per subcommand in flagTakesValue instead.
@@ -144,7 +123,7 @@ func flagTakesValue(flag, subcommand string) bool {
 
 // ParseGitCommand parses a Command into a GitCommand.
 func ParseGitCommand(cmd Command) (*GitCommand, error) {
-	if cmd.Name != "git" {
+	if cmd.Name != gitProgram {
 		return nil, ErrNotGitCommand
 	}
 
@@ -223,28 +202,16 @@ func parseGlobalOptions(args []string, gitCmd *GitCommand) int {
 		// Handle --option=value format
 		if strings.HasPrefix(arg, "--") && strings.Contains(arg, "=") {
 			parts := strings.SplitN(arg, "=", splitKeyValue)
-			optName := parts[0]
+			gitCmd.GlobalOptions[parts[0]] = parts[1]
+			i++
 
-			if _, isGlobal := globalOptionsWithValue[optName]; isGlobal {
-				gitCmd.GlobalOptions[optName] = parts[1]
-				i++
-
-				continue
-			}
-
-			// Not a global option, must be subcommand flags (shouldn't happen before subcommand)
-			return i
+			continue
 		}
 
-		// Check if it's a known global option
-		takesValue, isGlobal := globalOptionsWithValue[arg]
-		if !isGlobal {
-			// Not a global option - this must be the start of subcommand or unknown
-			// Could be combined flags or subcommand-specific flag before subcommand (unusual)
-			return i
-		}
-
-		if takesValue && i+1 < len(args) {
+		// Every option before the subcommand is a global option. One missing
+		// from the table is skipped rather than taken for the subcommand, so
+		// "git -P commit" still reads as commit. Git rejects a truly unknown one.
+		if globalValueOptions[arg] && i+1 < len(args) {
 			gitCmd.GlobalOptions[arg] = args[i+1]
 			i += 2
 		} else {

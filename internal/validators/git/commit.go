@@ -66,54 +66,62 @@ func (v *CommitValidator) Validate(ctx context.Context, hookCtx *hook.Context) *
 	}
 
 	// Parse the command
-	bashParser := parser.NewBashParser()
-
-	result, err := bashParser.Parse(hookCtx.GetCommand())
+	result, err := hookCtx.ParsedCommand()
 	if err != nil {
 		log.Error("Failed to parse command", "error", err)
 		return validator.Warn(fmt.Sprintf("Failed to parse command: %v", err))
 	}
 
-	// Check if there's a git add in the same command chain
+	return v.validateCommits(ctx, hookCtx, result)
+}
+
+// validateCommits checks every commit on the line, so a clean first one
+// cannot let a later one through. A block wins over a warning.
+func (v *CommitValidator) validateCommits(
+	ctx context.Context,
+	hookCtx *hook.Context,
+	result *parser.ParseResult,
+) *validator.Result {
 	hasGitAdd := v.hasGitAddInChain(result.Commands)
 
-	// Find and validate git commit commands
-	for _, cmd := range result.Commands {
-		if cmd.Name != gitCommand {
-			continue
-		}
+	var warning *validator.Result
 
+	for _, cmd := range result.GitOperations {
 		// Parse git command to get the subcommand (handles global options like -C)
 		gitCmd, err := parser.ParseGitCommand(cmd)
 		if err != nil {
-			log.Debug("Failed to parse git command", "error", err)
+			v.Logger().Debug("Failed to parse git command", "error", err)
 			continue
 		}
 
-		// Check if this is a commit command
-		if gitCmd.Subcommand != commitSubcommand {
-			if !slices.Contains(otherMessageSubcommands, gitCmd.Subcommand) {
-				continue
-			}
-
-			// merge, revert, cherry-pick and tag write a message too, but none
-			// of the commit contract applies to them - only attribution does.
-			if result := v.checkCommandAIAttribution(hookCtx.GetCommand()); result != nil {
-				return result
-			}
-
-			return validator.Pass()
+		isCommit := gitCmd.Subcommand == commitSubcommand
+		if !isCommit && !slices.Contains(otherMessageSubcommands, gitCmd.Subcommand) {
+			continue
 		}
 
-		if result := v.checkCommandAIAttribution(hookCtx.GetCommand()); result != nil {
-			return result
+		// merge, revert, cherry-pick and tag write a message too, but none of
+		// the commit contract applies to them - only attribution does.
+		if res := v.checkCommandAIAttribution(hookCtx.GetCommand()); res != nil {
+			return res
 		}
 
-		// Validate the git commit command
-		return v.validateGitCommit(ctx, gitCmd, hasGitAdd, result)
+		if !isCommit {
+			continue
+		}
+
+		res := v.validateGitCommit(ctx, gitCmd, hasGitAdd, result)
+
+		switch {
+		case res.ShouldBlock:
+			return res
+		case !res.Passed && warning == nil:
+			warning = res
+		}
 	}
 
-	log.Debug("No git commit commands found")
+	if warning != nil {
+		return warning
+	}
 
 	return validator.Pass()
 }
