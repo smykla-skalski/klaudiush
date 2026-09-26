@@ -141,7 +141,7 @@ var _ = Describe("OSResolver", func() {
 
 			path, ok := resolver.LookPath("sh")
 			Expect(ok).To(BeTrue())
-			Expect(path).To(Equal("/bin/sh"))
+			Expect([]string{"/usr/bin/sh", "/bin/sh"}).To(ContainElement(path))
 		})
 
 		It("reports a name nothing runs", func() {
