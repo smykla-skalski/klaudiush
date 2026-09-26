@@ -5,6 +5,12 @@ All notable changes to klaudiush will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.40.1](https://github.com/smykla-skalski/klaudiush/compare/v1.40.0...v1.40.1) (2026-09-26)
+
+### Bug Fixes
+
+* **parser:** close git and gh validation bypasses ([#655](https://github.com/smykla-skalski/klaudiush/issues/655)) ([ea043a5](https://github.com/smykla-skalski/klaudiush/commit/ea043a5cfc70c344187421b23344b99e1c835689))
+
 ## [1.40.0](https://github.com/smykla-skalski/klaudiush/compare/v1.39.4...v1.40.0) (2026-09-26)
 
 ### Features
