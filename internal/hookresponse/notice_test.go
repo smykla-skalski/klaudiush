@@ -82,6 +82,99 @@ var _ = Describe("Notice", func() {
 		})
 	})
 
+	Describe("ClearSystemMessage", func() {
+		It("clears HookResponse and keeps the decision", func() {
+			resp := &hookresponse.HookResponse{
+				SystemMessage: "details",
+				HookSpecificOutput: &hookresponse.HookSpecificOutput{
+					PermissionDecision: "deny",
+					AdditionalContext:  "context",
+				},
+			}
+			hookresponse.ClearSystemMessage(resp)
+			Expect(resp.SystemMessage).To(BeEmpty())
+			Expect(resp.HookSpecificOutput.PermissionDecision).To(Equal("deny"))
+			Expect(resp.HookSpecificOutput.AdditionalContext).To(Equal("context"))
+		})
+
+		It("clears every provider response type", func() {
+			codex := &hookresponse.CodexCommandResponse{SystemMessage: "x", Continue: true}
+			gemini := &hookresponse.GeminiCommandResponse{SystemMessage: "x", Decision: "deny"}
+			opencode := &hookresponse.OpenCodeCommandResponse{SystemMessage: "x"}
+			elicitation := &hookresponse.ElicitationHookResponse{
+				SystemMessage: "x",
+				Action:        "decline",
+			}
+
+			for _, resp := range []any{codex, gemini, opencode, elicitation} {
+				hookresponse.ClearSystemMessage(resp)
+			}
+
+			Expect(codex.SystemMessage).To(BeEmpty())
+			Expect(codex.Continue).To(BeTrue())
+			Expect(gemini.SystemMessage).To(BeEmpty())
+			Expect(gemini.Decision).To(Equal("deny"))
+			Expect(opencode.SystemMessage).To(BeEmpty())
+			Expect(elicitation.SystemMessage).To(BeEmpty())
+			Expect(elicitation.Action).To(Equal("decline"))
+		})
+
+		It("ignores a nil response", func() {
+			Expect(func() { hookresponse.ClearSystemMessage(nil) }).NotTo(Panic())
+		})
+	})
+
+	Describe("AppendAgentSummary", func() {
+		instruction := "plain-language sentence what klaudiush blocked"
+
+		It("appends to a deny", func() {
+			resp := &hookresponse.HookResponse{
+				HookSpecificOutput: &hookresponse.HookSpecificOutput{
+					PermissionDecision: "deny",
+					AdditionalContext:  "Fix ALL errors.",
+				},
+			}
+			hookresponse.AppendAgentSummary(resp)
+			ctx := resp.HookSpecificOutput.AdditionalContext
+			Expect(ctx).To(HavePrefix("Fix ALL errors. In your next message"))
+			Expect(ctx).To(ContainSubstring(instruction))
+		})
+
+		It("skips an allow with warnings", func() {
+			resp := &hookresponse.HookResponse{
+				HookSpecificOutput: &hookresponse.HookSpecificOutput{
+					PermissionDecision: "allow",
+					AdditionalContext:  "warning",
+				},
+			}
+			hookresponse.AppendAgentSummary(resp)
+			Expect(resp.HookSpecificOutput.AdditionalContext).To(Equal("warning"))
+		})
+
+		It("skips a PostToolUse block, where the tool already ran", func() {
+			resp := &hookresponse.HookResponse{
+				Decision:           "block",
+				HookSpecificOutput: &hookresponse.HookSpecificOutput{AdditionalContext: "ctx"},
+			}
+			hookresponse.AppendAgentSummary(resp)
+			Expect(resp.HookSpecificOutput.AdditionalContext).To(Equal("ctx"))
+		})
+
+		It("skips advisory provider responses", func() {
+			resp := &hookresponse.GeminiCommandResponse{
+				HookSpecificOutput: &hookresponse.GeminiHookSpecificOutput{
+					AdditionalContext: "ctx",
+				},
+			}
+			hookresponse.AppendAgentSummary(resp)
+			Expect(resp.HookSpecificOutput.AdditionalContext).To(Equal("ctx"))
+		})
+
+		It("ignores a nil response", func() {
+			Expect(func() { hookresponse.AppendAgentSummary(nil) }).NotTo(Panic())
+		})
+	})
+
 	Describe("IsEmpty", func() {
 		It("reports an untyped nil as empty", func() {
 			Expect(hookresponse.IsEmpty(nil)).To(BeTrue())

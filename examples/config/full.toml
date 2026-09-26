@@ -209,3 +209,13 @@ blocked_client_calls = [
 [validators.notification.bell]
 enabled = true
 # custom_command = "osascript -e 'beep'"  # macOS notification sound
+
+# Output: what klaudiush shows you and asks of the agent
+[output]
+# Master switch for everything shown to the user directly (validation details,
+# bypass reminder, update notices)
+user_messages = true
+# Block and warning details (error code, fix hint, reference, disable hint)
+validation_messages = true
+# Ask the agent to tell you in one short, plain sentence what was blocked
+agent_summary = true
