@@ -12,7 +12,7 @@ require (
 	github.com/charmbracelet/x/ansi v0.11.8
 	github.com/cockroachdb/errors v1.14.0
 	github.com/dmarkham/enumer v1.6.3
-	github.com/dustin/go-humanize v1.0.1
+	github.com/dustin/go-humanize v1.1.0
 	github.com/go-git/go-git/v6 v6.0.0-alpha.5
 	github.com/go-viper/mapstructure/v2 v2.5.0
 	github.com/google/go-github/v91 v91.0.0
