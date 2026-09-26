@@ -2,7 +2,7 @@
 
 ## Error
 
-Klaudiush cannot see what the command finally runs. Either the command does not parse as shell, or it runs another command through more layers of launchers, scripts, aliases or functions than klaudiush follows.
+Klaudiush cannot see what the command finally runs. The command does not parse as shell, runs another command through more layers of launchers, scripts, aliases or functions than klaudiush follows, runs a script klaudiush cannot read, or runs a git subcommand that is neither built in, installed, nor an alias klaudiush can see.
 
 ## Why this matters
 

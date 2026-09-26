@@ -66,6 +66,12 @@ func (f fakeResolver) GitAlias(_, name string) (string, bool) {
 	return value, ok
 }
 
+func (f fakeResolver) GitCommand(name string) bool {
+	program, ok := f.programs["git-"+name]
+
+	return ok && program != parser.ProgramMissing
+}
+
 var _ = Describe("Command resolution beyond the command text", func() {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -274,6 +280,24 @@ var _ = Describe("Command resolution beyond the command text", func() {
 		Entry("a script under home found on PATH", "release"),
 		Entry("a gh shell alias", "gh shipit"),
 		Entry("a same-line gh shell alias", `gh alias set --shell go 'git commit -S -m y'; gh go`),
+		Entry("a runner executing a script path", "pnpm exec ./deploy.sh"),
+		Entry(
+			"osascript after an option with a value",
+			`osascript -l AppleScript -e 'do shell script "git commit -S -m y"'`,
+		),
+		Entry("php after an option with a value", `php -d x=1 -r 'system("git commit -S -m y");'`),
+		Entry(
+			"pwsh after word options",
+			`pwsh -NoLogo -ExecutionPolicy Bypass -Command "git commit -S -m y"`,
+		),
+		Entry(
+			"a script written earlier, run through eval",
+			"cat > e.sh <<'EOF'\ngit commit -S -m y\nEOF\neval 'bash e.sh'",
+		),
+		Entry(
+			"a git alias set earlier, used in a shell",
+			`git config alias.cm commit; bash -c 'git cm -S -m y'`,
+		),
 		Entry(
 			"a script written by a nested shell",
 			`bash -c "printf 'git commit -S -m y\n' > n.sh" && bash n.sh`,
@@ -292,6 +316,14 @@ var _ = Describe("Command resolution beyond the command text", func() {
 			`f() { git "${@:1}"; }; f commit`,
 		),
 		Entry("an unknown git command under a moved config", "HOME=/tmp/h git zz"),
+		Entry(
+			"a git alias from configuration it cannot read",
+			`printf '[alias]\n\tcm = commit\n' >> .git/config && git cm -S -m y`,
+		),
+		Entry(
+			"a git alias written to a named config file",
+			"git config -f f alias.cm commit; git cm -S -m y",
+		),
 	)
 
 	It("expands a gh alias to the command it stands for", func() {
@@ -326,6 +358,8 @@ var _ = Describe("Command resolution beyond the command text", func() {
 		Entry("a test runner given a file that mentions git", "pytest tests/test_git.py"),
 		Entry("python running a module", "python3 -m pytest tests/test_git.py"),
 		Entry("prose in interpreter code", `node -e 'console.log("run git commit -S to sign")'`),
+		Entry("a linter given a script path", "shellcheck ./deploy.sh"),
+		Entry("diff given script paths", "diff ./deploy.sh ./deploy.sh"),
 		Entry("a system script on PATH", "brew update"),
 	)
 

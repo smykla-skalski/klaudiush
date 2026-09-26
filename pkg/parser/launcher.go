@@ -124,6 +124,17 @@ type interpreter struct {
 	fileFlags  []string // take a script file as their value (awk -f)
 	shellLike  bool     // the source is itself a command line (pwsh)
 	codeFirst  bool     // the first operand is source, not a file (awk)
+	wordFlags  bool     // options are whole words (-Command), never letter clusters
+}
+
+// codeFlag reports whether arg takes the program source, and the source
+// when it is attached to the flag.
+func (spec interpreter) codeFlag(arg string) (value string, attached, ok bool) {
+	if spec.wordFlags {
+		return "", false, slices.Contains(spec.codeFlags, strings.ToLower(arg))
+	}
+
+	return flagValue(arg, spec.codeFlags)
 }
 
 // awkInterpreter runs its first operand as a program, or the file given to
@@ -144,7 +155,11 @@ var (
 		codeFlags:  strings.Fields("-e -p --eval --print"),
 		valueFlags: strings.Fields("-r --require --import --loader"),
 	}
-	pwshInterpreter = interpreter{codeFlags: strings.Fields("-c -command"), shellLike: true}
+	pwshInterpreter = interpreter{
+		codeFlags: strings.Fields("-c -command"),
+		shellLike: true,
+		wordFlags: true,
+	}
 )
 
 // interpreters run program source that can start a git command itself.
@@ -158,9 +173,9 @@ var interpreters = map[string]interpreter{
 	"lua":        {codeFlags: strings.Fields("-e")},
 	"node":       nodeInterpreter,
 	"nodejs":     nodeInterpreter,
-	"osascript":  {codeFlags: strings.Fields("-e")},
+	"osascript":  {codeFlags: strings.Fields("-e"), valueFlags: strings.Fields("-l -s")},
 	"perl":       {codeFlags: strings.Fields("-e -E"), valueFlags: strings.Fields("-M -I")},
-	"php":        {codeFlags: strings.Fields("-r")},
+	"php":        {codeFlags: strings.Fields("-r"), valueFlags: strings.Fields("-c -d -z")},
 	"powershell": pwshInterpreter,
 	"pwsh":       pwshInterpreter,
 	"python":     pythonInterpreter,
@@ -680,6 +695,10 @@ func sourceLaunch(cmd Command) launch {
 func interpreterLaunch(cmd Command, spec interpreter) launch {
 	var l launch
 
+	// An option klaudiush does not know may take a value, which then looks
+	// like the script file, so later arguments are still read for code.
+	operand := false
+
 args:
 	for i := 0; i < len(cmd.Args); i++ {
 		arg := cmd.Args[i]
@@ -699,7 +718,7 @@ args:
 
 			break args
 		case strings.HasPrefix(arg, "-"):
-			value, attached, ok := flagValue(arg, spec.codeFlags)
+			value, attached, ok := spec.codeFlag(arg)
 
 			switch {
 			case ok && attached:
@@ -712,13 +731,10 @@ args:
 			// A code "flag" without a dash, like deno's eval.
 			l.code = append(l.code, cmd.Args[i+1])
 			i++
-		default:
+		case !operand && len(l.code) == 0:
 			// The first operand is the script, unless code came inline.
-			if len(l.code) == 0 {
-				l.files = append(l.files, scriptFile{path: arg, interpreter: !spec.shellLike, explicit: true})
-			}
-
-			break args
+			l.files = append(l.files, scriptFile{path: arg, interpreter: !spec.shellLike, explicit: true})
+			operand = true
 		}
 	}
 
@@ -788,7 +804,7 @@ func scanLaunch(cmd Command) launch {
 			rest = rest[1:]
 		}
 
-		if launchesTracked(arg, rest) {
+		if launchesTracked(arg, rest) || (i > 0 && runsScriptPath(cmd.Args[i-1], arg)) {
 			return launch{commands: []Command{childCommand(cmd, arg, rest)}}
 		}
 
@@ -826,17 +842,24 @@ func launchesTracked(arg string, rest []string) bool {
 		_, _, ok := shellOperand(rest)
 
 		return ok
-	case isInterpreter, isLauncher, name == "eval", name == "source":
-		return true
 	default:
-		// Only shell scripts: a test runner given code files that merely
-		// mention git must not be read as running it.
-		return strings.Contains(arg, "/") && shellScriptExtensions[path.Ext(name)]
+		return isInterpreter || isLauncher || name == "eval" || name == "source"
 	}
 }
 
-// shellScriptExtensions mark files a runner executes as shell scripts.
-var shellScriptExtensions = nameSet(".sh .bash .zsh")
+// runsScriptPath reports whether arg is a shell script path that an unknown
+// runner executes, as in "pnpm exec ./x.sh". A linter or editor given the
+// same path only reads it, so the path counts only after an exec marker.
+func runsScriptPath(prev, arg string) bool {
+	return execMarkers[prev] && strings.Contains(arg, "/") && shellScriptExtensions[path.Ext(arg)]
+}
+
+var (
+	// execMarkers precede the command a runner executes.
+	execMarkers = nameSet("-- exec run x")
+	// shellScriptExtensions mark files a runner executes as shell scripts.
+	shellScriptExtensions = nameSet(".sh .bash .zsh")
+)
 
 // gitSubcommandIndex returns the position of git's subcommand, after any
 // global options, or -1 when there is none.

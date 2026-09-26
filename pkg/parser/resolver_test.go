@@ -190,6 +190,15 @@ var _ = Describe("OSResolver", func() {
 		})
 	})
 
+	Describe("GitCommand", func() {
+		It("finds a command git runs from its exec path", func() {
+			requireGit()
+
+			Expect(resolver.GitCommand("mergetool")).To(BeTrue())
+			Expect(resolver.GitCommand("klaudiush-no-such-command")).To(BeFalse())
+		})
+	})
+
 	Describe("LookupEnv", func() {
 		It("reads the environment", func() {
 			GinkgoT().Setenv("KLAUDIUSH_RESOLVER_TEST", "/usr/bin/git")

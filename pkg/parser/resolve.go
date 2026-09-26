@@ -2,6 +2,7 @@ package parser
 
 import (
 	"fmt"
+	"iter"
 	"maps"
 	"path/filepath"
 	"regexp"
@@ -74,6 +75,7 @@ func (w *astWalker) child(dir string, depth int) *astWalker {
 	child.depth = depth
 	child.scriptFiles = w.scriptFiles
 	child.state = w.state
+	child.parent = w
 
 	maps.Copy(child.assignments, w.assignments)
 	maps.Copy(child.aliases, w.aliases)
@@ -81,6 +83,32 @@ func (w *astWalker) child(dir string, depth int) *astWalker {
 	maps.Copy(child.expanding, w.expanding)
 
 	return child
+}
+
+// earlierCommands yields the commands recorded so far on the line, latest
+// first, including those of the scripts that run this one.
+func (w *astWalker) earlierCommands() iter.Seq[Command] {
+	return func(yield func(Command) bool) {
+		for p := w; p != nil; p = p.parent {
+			for _, cmd := range slices.Backward(p.commands) {
+				if !yield(cmd) {
+					return
+				}
+			}
+		}
+	}
+}
+
+// lastLineWrite is lastWrite over every write recorded so far on the line,
+// including those of the scripts that run this one.
+func (w *astWalker) lastLineWrite(target string) (content string, found, captured bool) {
+	for p := w; p != nil; p = p.parent {
+		if content, found, captured = lastWrite(p.fileWrites, target, nil); found {
+			return content, found, captured
+		}
+	}
+
+	return "", false, false
 }
 
 // expandName substitutes the variables in a command word: first those
@@ -268,7 +296,7 @@ func (w *astWalker) expandGHAlias(cmd Command) (Command, []nestedScript) {
 // lineGHAlias returns an alias set with gh alias set earlier on the line.
 // A --shell alias comes back with gh's own "!" prefix.
 func (w *astWalker) lineGHAlias(name string) (string, bool) {
-	for _, cmd := range slices.Backward(w.commands) {
+	for cmd := range w.earlierCommands() {
 		if cmd.Name != ghCLI || len(cmd.Args) < 2 || cmd.Args[0] != "alias" ||
 			cmd.Args[1] != "set" {
 			continue
@@ -392,15 +420,11 @@ func (w *astWalker) expandGitAlias(cmd Command) (Command, []nestedScript) {
 	return cmd, nil
 }
 
-// gitConfigVars move where git reads its configuration from, so an alias
-// lookup made outside the command no longer sees what git will.
-var gitConfigVars = strings.Fields(`HOME XDG_CONFIG_HOME GIT_DIR GIT_CONFIG GIT_CONFIG_GLOBAL
-	GIT_CONFIG_SYSTEM GIT_CONFIG_NOSYSTEM`)
-
 // unknownGitCommand handles a git subcommand that is neither a builtin nor
 // a known alias. A typo git would autocorrect becomes the command it runs.
-// When the command points git at other configuration, the alias could be
-// defined there, so the parse fails closed.
+// Anything else either fails in git or runs an alias from configuration
+// klaudiush cannot see (written earlier on the line, moved by HOME or
+// GIT_DIR, included from another file), so the parse fails closed.
 func (w *astWalker) unknownGitCommand(cmd Command, idx int) Command {
 	name, globals := cmd.Args[idx], cmd.Args[:idx]
 
@@ -410,15 +434,7 @@ func (w *astWalker) unknownGitCommand(cmd Command, idx int) Command {
 		return cmd
 	}
 
-	movesConfig := slices.ContainsFunc(gitConfigVars, func(name string) bool {
-		_, set := w.assignments[name]
-
-		return set
-	}) || slices.ContainsFunc(globals, func(arg string) bool {
-		return arg == "--git-dir" || strings.HasPrefix(arg, "--git-dir=")
-	})
-
-	if movesConfig && w.resolver.Program("git-"+name, "") == ProgramMissing {
+	if !w.resolver.GitCommand(name) {
 		w.state.truncated = true
 	}
 
@@ -428,7 +444,7 @@ func (w *astWalker) unknownGitCommand(cmd Command, idx int) Command {
 // lineGitAlias returns an alias set with git config earlier on the line,
 // which is in place by the time the later command runs.
 func (w *astWalker) lineGitAlias(name string) (string, bool) {
-	for _, cmd := range slices.Backward(w.commands) {
+	for cmd := range w.earlierCommands() {
 		if cmd.Name != gitProgram {
 			continue
 		}
@@ -501,7 +517,7 @@ func (w *astWalker) lookupVar(name string) string {
 // run for a mistyped name: the one builtin closest to it, within git's
 // distance, when no git-<name> command exists.
 func (w *astWalker) autocorrect(name string) (string, bool) {
-	if w.resolver.Program("git-"+name, "") != ProgramMissing {
+	if w.resolver.GitCommand(name) {
 		return "", false
 	}
 
@@ -761,7 +777,7 @@ func (w *astWalker) scriptSource(path string, cmd Command) (string, ScriptStatus
 	}
 
 	target := resolvePath(cmd.WorkingDirectory, path)
-	if text, found, captured := lastWrite(w.fileWrites, target, nil); found {
+	if text, found, captured := w.lastLineWrite(target); found {
 		if !captured {
 			return "", ScriptOpaque
 		}

@@ -14,6 +14,9 @@ import (
 type astWalker struct {
 	commands   []Command
 	fileWrites []FileWrite
+	// parent is the walker of the script that runs this one. What it recorded
+	// earlier on the line (writes, git config) is in place when this runs.
+	parent     *astWalker
 	currentDir string // Tracks the effective working directory from cd commands
 	// stdinByCall maps a CallExpr to the content fed to its stdin (heredoc or
 	// piped echo/printf). Populated when a Stmt or pipeline is visited, then

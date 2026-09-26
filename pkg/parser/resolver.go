@@ -74,6 +74,7 @@ type Resolver interface {
 	LookPath(name string) (string, bool)
 	// GitAlias returns the value of a git alias as seen from dir.
 	GitAlias(dir, name string) (string, bool)
+	GitCommand(name string) bool
 	// GHAlias returns the expansion of a gh alias.
 	GHAlias(name string) (string, bool)
 }
@@ -223,7 +224,7 @@ func lookPath(name string) string {
 // one found on PATH or in git's exec path rules the alias out. All aliases
 // of a directory are read with one git config call and remembered.
 func (r *OSResolver) GitAlias(dir, name string) (string, bool) {
-	if r.externalGitCommand(name) {
+	if r.GitCommand(name) {
 		return "", false
 	}
 
@@ -254,9 +255,9 @@ func (r *OSResolver) GHAlias(name string) (string, bool) {
 	return value, ok
 }
 
-// externalGitCommand reports whether git would run an external command for
-// name instead of an alias.
-func (r *OSResolver) externalGitCommand(name string) bool {
+// GitCommand reports whether git runs an external git-<name> command for
+// name, from PATH or git's exec path, instead of looking for an alias.
+func (r *OSResolver) GitCommand(name string) bool {
 	if _, ok := r.LookPath("git-" + name); ok {
 		return true
 	}
