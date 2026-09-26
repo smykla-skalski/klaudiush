@@ -18,7 +18,6 @@ import (
 
 const (
 	gitCommandTimeout = 5 * time.Second
-	gitCmd            = "git"
 	addCmd            = "add"
 )
 
@@ -159,12 +158,13 @@ func (v *AddValidator) findBlockedFiles(
 	var blockedFiles []string
 
 	for _, cmd := range commands {
-		if !v.isGitAddCommand(cmd) {
+		// The parsed subcommand skips global options, so git -C dir add counts.
+		gitCmd, err := parser.ParseGitCommand(cmd)
+		if err != nil || gitCmd.Subcommand != addCmd {
 			continue
 		}
 
-		// Extract file paths from git add command
-		files := v.extractFilePaths(cmd.Args[1:])
+		files := v.extractFilePaths(gitCmd.Args)
 		log.Debug("Extracted files from git add", "count", len(files), "files", files)
 
 		// Check each file against blocked patterns
@@ -173,11 +173,6 @@ func (v *AddValidator) findBlockedFiles(
 	}
 
 	return blockedFiles
-}
-
-// isGitAddCommand checks if a command is a git add command
-func (*AddValidator) isGitAddCommand(cmd parser.Command) bool {
-	return cmd.Name == gitCmd && len(cmd.Args) > 0 && cmd.Args[0] == addCmd
 }
 
 // checkFilesAgainstPatterns checks files against blocked patterns

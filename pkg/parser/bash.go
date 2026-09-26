@@ -26,13 +26,22 @@ type ParseResult struct {
 
 // BashParser parses Bash commands using mvdan.cc/sh.
 type BashParser struct {
-	parser *syntax.Parser
+	parser   *syntax.Parser
+	resolver Resolver
 }
 
-// NewBashParser creates a new BashParser instance.
+// NewBashParser creates a BashParser that resolves programs, scripts,
+// environment variables and git aliases against the running system.
 func NewBashParser() *BashParser {
+	return NewBashParserWithResolver(OSResolver{})
+}
+
+// NewBashParserWithResolver creates a BashParser that asks resolver what the
+// command text alone cannot tell.
+func NewBashParserWithResolver(resolver Resolver) *BashParser {
 	return &BashParser{
-		parser: syntax.NewParser(),
+		parser:   syntax.NewParser(),
+		resolver: resolver,
 	}
 }
 
@@ -50,11 +59,7 @@ func (p *BashParser) Parse(command string) (*ParseResult, error) {
 	}
 
 	// Walk the AST to extract commands and file operations
-	walker := &astWalker{
-		commands:    make([]Command, 0),
-		fileWrites:  make([]FileWrite, 0),
-		assignments: make(map[string]string),
-	}
+	walker := newAstWalker(p.resolver)
 
 	syntax.Walk(file, walker.visit)
 
@@ -62,7 +67,7 @@ func (p *BashParser) Parse(command string) (*ParseResult, error) {
 	gitOps := make([]Command, 0)
 
 	for _, cmd := range walker.commands {
-		if cmd.Name == "git" {
+		if cmd.Name == gitProgram {
 			gitOps = append(gitOps, cmd)
 		}
 	}
@@ -87,7 +92,13 @@ var varRefPattern = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
 // s. References with no known assignment are left as they are, so callers can
 // tell a resolved value from one they still cannot see.
 func (r *ParseResult) ExpandVars(s string) string {
-	if len(r.Assignments) == 0 {
+	return expandVars(s, r.Assignments)
+}
+
+// expandVars substitutes known assignments into s, leaving unknown references
+// as they are.
+func expandVars(s string, assignments map[string]string) string {
+	if len(assignments) == 0 {
 		return s
 	}
 
@@ -98,7 +109,7 @@ func (r *ParseResult) ExpandVars(s string) string {
 
 		expanded := varRefPattern.ReplaceAllStringFunc(s, func(ref string) string {
 			// ref is exactly "${NAME}", so the name is what the braces enclose.
-			if value, ok := r.Assignments[ref[2:len(ref)-1]]; ok {
+			if value, ok := assignments[ref[2:len(ref)-1]]; ok {
 				return value
 			}
 

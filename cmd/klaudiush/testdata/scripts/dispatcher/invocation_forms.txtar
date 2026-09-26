@@ -1,0 +1,149 @@
+# Test: git is validated however it is invoked, not only as a bare "git" word
+# Regression: /usr/bin/git, env git, bash -c "git ..." and friends skipped every validator
+
+exec git init --initial-branch=main
+exec git config user.email "test@test.com"
+exec git config user.name "Test User"
+
+cp file.go staged.go
+exec git add staged.go
+
+stdin abs-path.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'GIT010'
+
+stdin backslash.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+
+stdin variable.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+
+stdin env.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+
+stdin sudo.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+
+stdin bash-c.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+
+stdin eval.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+
+stdin find-exec.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+
+stdin no-verify-global-option.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'GIT021'
+
+stdin script-file.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+
+exec git config alias.ci commit
+stdin git-alias.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+
+env KLAUDIUSH_TEST_GIT=git
+stdin env-var.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+
+stdin which.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+
+stdin python.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+
+stdin function.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+
+stdin uppercase.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+
+# Commands that only mention git run nothing and pass
+stdin lookup.json
+exec klaudiush --hook-type PreToolUse
+! stdout .
+
+stdin echo.json
+exec klaudiush --hook-type PreToolUse
+! stdout .
+
+-- file.go --
+package main
+
+func main() {}
+
+-- abs-path.json --
+{"tool_name": "Bash", "tool_input": {"command": "/usr/bin/git commit -S -m 'feat(api): add user endpoint'"}}
+
+-- backslash.json --
+{"tool_name": "Bash", "tool_input": {"command": "\\git commit -S -m 'feat(api): add user endpoint'"}}
+
+-- variable.json --
+{"tool_name": "Bash", "tool_input": {"command": "G=/usr/bin/git; $G commit -S -m 'feat(api): add user endpoint'"}}
+
+-- env.json --
+{"tool_name": "Bash", "tool_input": {"command": "env FOO=1 git commit -S -m 'feat(api): add user endpoint'"}}
+
+-- sudo.json --
+{"tool_name": "Bash", "tool_input": {"command": "sudo -u root git commit -S -m 'feat(api): add user endpoint'"}}
+
+-- bash-c.json --
+{"tool_name": "Bash", "tool_input": {"command": "bash -c \"git commit -S -m 'feat(api): add user endpoint'\""}}
+
+-- eval.json --
+{"tool_name": "Bash", "tool_input": {"command": "eval \"git commit -S -m 'feat(api): add user endpoint'\""}}
+
+-- find-exec.json --
+{"tool_name": "Bash", "tool_input": {"command": "find . -maxdepth 0 -exec git commit -S -m 'feat(api): add user endpoint' \\;"}}
+
+-- no-verify-global-option.json --
+{"tool_name": "Bash", "tool_input": {"command": "git -C . commit --no-verify -sS -m 'feat(api): add user endpoint'"}}
+
+-- deploy.sh --
+echo deploying
+git commit -S -m 'feat(api): add user endpoint'
+
+-- script-file.json --
+{"tool_name": "Bash", "tool_input": {"command": "bash deploy.sh"}}
+
+-- git-alias.json --
+{"tool_name": "Bash", "tool_input": {"command": "git ci -S -m 'feat(api): add user endpoint'"}}
+
+-- env-var.json --
+{"tool_name": "Bash", "tool_input": {"command": "$KLAUDIUSH_TEST_GIT commit -S -m 'feat(api): add user endpoint'"}}
+
+-- which.json --
+{"tool_name": "Bash", "tool_input": {"command": "$(which git) commit -S -m 'feat(api): add user endpoint'"}}
+
+-- python.json --
+{"tool_name": "Bash", "tool_input": {"command": "python3 -c \"import os; os.system('git commit -S -m x')\""}}
+
+-- function.json --
+{"tool_name": "Bash", "tool_input": {"command": "f() { git \"$@\"; }; f commit -S -m 'feat(api): add user endpoint'"}}
+
+-- uppercase.json --
+{"tool_name": "Bash", "tool_input": {"command": "GIT commit -S -m 'feat(api): add user endpoint'"}}
+
+-- lookup.json --
+{"tool_name": "Bash", "tool_input": {"command": "command -v git"}}
+
+-- echo.json --
+{"tool_name": "Bash", "tool_input": {"command": "echo git commit -S -m x"}}

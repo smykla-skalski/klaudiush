@@ -119,7 +119,7 @@ Dynamic validation configuration without modifying code. Rules allow users to de
 
 ### Parsers
 
-**Bash** (`pkg/parser/bash.go`): AST parsing via `mvdan.cc/sh/v3/syntax`, extracts commands/file writes/git ops
+**Bash** (`pkg/parser/bash.go`): AST parsing via `mvdan.cc/sh/v3/syntax`, extracts commands/file writes/git ops. `Command.Name` is the program that really runs, never the literal first word: paths, `\git`, `GIT`, variables (line then environment), `$(which git)`, `git-commit`, `hub`, symlinks and copies of git resolve to `git`, and an unknown name invoked with a validated git subcommand is checked as git (fail closed). Commands run through launchers (`env`, `sudo`, `xargs`, `find -exec`, `mise exec`, `docker run`, ...), scripts (`bash -c`, script files, `source`, stdin, `<<<`, `<(...)`, `eval`), interpreter code (`python -c`, `node -e`, ...), same-line aliases and functions, and git aliases are recorded too. Resolution that needs the system (env, files, program identity, git config) goes through the injectable `Resolver` (`pkg/parser/resolver.go`)
 
 **Git** (`pkg/parser/git.go`): Parses to `GitCommand`, handles combined flags (`-sS` → `["-s", "-S"]`), `HasFlag()` checks both forms
 

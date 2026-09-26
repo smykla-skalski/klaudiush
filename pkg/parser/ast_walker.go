@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"slices"
 	"strings"
 
 	"mvdan.cc/sh/v3/syntax"
@@ -15,10 +16,23 @@ type astWalker struct {
 	// piped echo/printf). Populated when a Stmt or pipeline is visited, then
 	// consumed when the corresponding CallExpr is extracted into a Command.
 	stdinByCall map[*syntax.CallExpr]string
+	// stdinFileByCall maps a CallExpr to the file redirected to its stdin (<).
+	stdinFileByCall map[*syntax.CallExpr]string
 	// assignments records literal NAME=value assignments, both standalone and
 	// as a prefix on a command, so consumers can resolve a variable used later
 	// in the same command line.
 	assignments map[string]string
+	// depth counts the launchers, scripts and aliases that led here.
+	depth int
+	// resolver answers what the command text cannot: environment, script
+	// files, program identity and git aliases.
+	resolver Resolver
+	// aliases and funcs hold the aliases and functions defined earlier on the
+	// line, so a later call is followed into what it runs.
+	aliases map[string]string
+	funcs   map[string]string
+	// scriptFiles holds the content of process substitutions by stand-in path.
+	scriptFiles map[string]string
 }
 
 // visit is called for each node in the AST.
@@ -28,6 +42,8 @@ func (w *astWalker) visit(node syntax.Node) bool {
 		w.extractPipedStdin(n)
 	case *syntax.CallExpr:
 		w.extractCommand(n)
+	case *syntax.FuncDecl:
+		w.defineFunc(n)
 	case *syntax.Stmt:
 		w.extractRedirect(n)
 	case *syntax.Subshell:
@@ -341,41 +357,50 @@ func (w *astWalker) extractCommand(call *syntax.CallExpr) {
 	}
 
 	// First word is the command name
-	name := wordToString(call.Args[0])
+	name := commandWord(call.Args[0])
 	if name == "" {
 		return
 	}
 
-	// Remaining words are arguments
-	args := wordsToStrings(call.Args[1:])
-
-	// Determine location
-	loc := Location{
-		Line:   call.Pos().Line(),
-		Column: call.Pos().Col(),
-	}
-
-	// Determine command type (simple for now, enhanced later)
-	cmdType := CmdTypeSimple
-
-	cmd := Command{
+	w.recordCommand(Command{
 		Name:             name,
-		Args:             args,
-		Location:         loc,
-		Type:             cmdType,
+		Args:             w.argStrings(call.Args[1:]),
+		Location:         Location{Line: call.Pos().Line(), Column: call.Pos().Col()},
+		Type:             CmdTypeSimple,
 		WorkingDirectory: w.currentDir,
 		Stdin:            w.stdinByCall[call],
-	}
+		StdinFile:        w.stdinFileByCall[call],
+	}, w.depth)
+}
 
+// recordCommand stores cmd under the program it really runs, then follows
+// what it launches: the command behind a launcher, a script handed to a shell,
+// eval or an interpreter, a script file, a same-line alias or function, or a
+// git alias. Without this, /usr/bin/git, env git, bash -c "git ...", ./x.sh
+// or an alias would each hide a git command from every validator.
+func (w *astWalker) recordCommand(cmd Command, depth int) {
+	cmd.Invoked = w.expandName(cmd.Name)
+	cmd.Name = commandName(cmd.Invoked)
+
+	cmd, aliasScripts := w.resolveProgram(cmd)
+
+	w.defineAliases(cmd)
 	w.commands = append(w.commands, cmd)
 
-	// Check if this is a cd command and update current directory
-	if name == "cd" && len(args) > 0 {
-		w.currentDir = args[0]
+	if cmd.Name == "cd" && len(cmd.Args) > 0 {
+		w.currentDir = cmd.Args[0]
 	}
 
-	// Check if this is a file write command
 	w.extractFileWriteCommand(cmd)
+
+	if depth >= maxLaunchDepth {
+		return
+	}
+
+	l := launched(cmd)
+	l.scripts = slices.Concat(l.scripts, aliasScripts, w.definitionScripts(cmd))
+
+	w.follow(cmd, l, depth+1)
 }
 
 // redirInfo holds the output redirection and heredoc found on a statement.
@@ -385,6 +410,7 @@ type redirInfo struct {
 	outputLoc      Location
 	heredocContent string
 	heredocLoc     Location
+	inputPath      string // file redirected to stdin (<)
 	hasOutput      bool
 	hasHeredoc     bool
 }
@@ -418,6 +444,13 @@ func collectRedirs(stmt *syntax.Stmt) redirInfo {
 			// Mark as heredoc even if content is empty.
 			info.heredocLoc = Location{Line: redir.Pos().Line(), Column: redir.Pos().Col()}
 			info.hasHeredoc = true
+		case syntax.WordHdoc:
+			// A here-string feeds its word, plus a newline, to stdin.
+			info.heredocContent = wordToString(redir.Word) + "\n"
+			info.heredocLoc = Location{Line: redir.Pos().Line(), Column: redir.Pos().Col()}
+			info.hasHeredoc = true
+		case syntax.RdrIn:
+			info.inputPath = wordToString(redir.Word)
 		default:
 			// Other redirection operators are not relevant here.
 		}
@@ -440,6 +473,16 @@ func (w *astWalker) extractRedirect(stmt *syntax.Stmt) {
 	if info.hasHeredoc {
 		if call := callExprOf(stmt); call != nil {
 			w.recordStdin(call, info.heredocContent)
+		}
+	}
+
+	if info.inputPath != "" {
+		if call := callExprOf(stmt); call != nil {
+			if w.stdinFileByCall == nil {
+				w.stdinFileByCall = make(map[*syntax.CallExpr]string)
+			}
+
+			w.stdinFileByCall[call] = info.inputPath
 		}
 	}
 

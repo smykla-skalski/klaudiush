@@ -57,6 +57,8 @@ type Command struct {
 	Raw              string   // Raw command string
 	WorkingDirectory string   // Effective working directory from preceding cd commands
 	Stdin            string   // Content fed to stdin via heredoc or a piped echo/printf
+	StdinFile        string   // File redirected to stdin (<)
+	Invoked          string   // Program word as written, before resolving it to Name
 }
 
 // String returns a string representation of the command.
