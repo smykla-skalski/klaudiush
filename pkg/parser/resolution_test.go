@@ -1,6 +1,9 @@
 package parser_test
 
 import (
+	"os"
+	"path/filepath"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -9,10 +12,13 @@ import (
 
 // fakeResolver answers from fixed tables instead of the running system.
 type fakeResolver struct {
-	env      map[string]string
-	files    map[string]string
-	programs map[string]parser.Program
-	aliases  map[string]string
+	env       map[string]string
+	files     map[string]string
+	opaque    map[string]bool
+	programs  map[string]parser.Program
+	aliases   map[string]string
+	paths     map[string]string
+	ghAliases map[string]string
 }
 
 func (f fakeResolver) LookupEnv(name string) (string, bool) {
@@ -21,10 +27,29 @@ func (f fakeResolver) LookupEnv(name string) (string, bool) {
 	return value, ok
 }
 
-func (f fakeResolver) ReadScript(path string) (string, bool) {
-	text, ok := f.files[path]
+func (f fakeResolver) ReadScript(path string) (string, parser.ScriptStatus) {
+	if f.opaque[path] {
+		return "", parser.ScriptOpaque
+	}
 
-	return text, ok
+	text, ok := f.files[path]
+	if !ok {
+		return "", parser.ScriptMissing
+	}
+
+	return text, parser.ScriptText
+}
+
+func (f fakeResolver) LookPath(name string) (string, bool) {
+	path, ok := f.paths[name]
+
+	return path, ok
+}
+
+func (f fakeResolver) GHAlias(name string) (string, bool) {
+	value, ok := f.ghAliases[name]
+
+	return value, ok
 }
 
 func (f fakeResolver) Program(word, _ string) parser.Program {
@@ -42,6 +67,13 @@ func (f fakeResolver) GitAlias(_, name string) (string, bool) {
 }
 
 var _ = Describe("Command resolution beyond the command text", func() {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		home = "/home/user"
+	}
+
+	homeScript := filepath.Join(home, "bin", "release")
+
 	resolver := fakeResolver{
 		env: map[string]string{"GIT": "/usr/bin/git"},
 		files: map[string]string{
@@ -52,6 +84,17 @@ var _ = Describe("Command resolution beyond the command text", func() {
 			"tool":            "#!/usr/bin/env python3\nimport os\nos.system('git commit -S -m x')\n",
 			"tests/test_git.py": "import subprocess\n" +
 				"def test_commit():\n    subprocess.run(['git', 'commit', '-m', 'x'])\n",
+			homeScript:            "#!/bin/sh\ngit commit -S -m x\n",
+			"/usr/local/bin/brew": "#!/bin/bash\ngit commit -S -m x\n",
+		},
+		opaque: map[string]bool{"huge.sh": true},
+		paths: map[string]string{
+			"release": homeScript,
+			"brew":    "/usr/local/bin/brew",
+		},
+		ghAliases: map[string]string{
+			"mk":     "pr create",
+			"shipit": "!git commit -S -m x",
 		},
 		programs: map[string]parser.Program{
 			"./g":     parser.ProgramGit,
@@ -64,6 +107,7 @@ var _ = Describe("Command resolution beyond the command text", func() {
 			// No git-<name> command, so git's autocorrect would apply.
 			"git-comit": parser.ProgramMissing,
 			"git-pul":   parser.ProgramMissing,
+			"git-zz":    parser.ProgramMissing,
 		},
 		aliases: map[string]string{
 			"ci":   "commit",
@@ -201,7 +245,70 @@ var _ = Describe("Command resolution beyond the command text", func() {
 			"an interpreter behind bundle exec",
 			`bundle exec ruby -e 'system("git commit -S -m y")'`,
 		),
+		Entry("trap", `trap 'git commit -S -m y' EXIT`),
+		Entry("builtin eval", `builtin eval 'git commit -S -m y'`),
+		Entry("a one-argument command line", `tmux new-session -d 'git commit -S -m y'`),
+		Entry("fish", `fish -c 'git commit -S -m y'`),
+		Entry("tcsh", `tcsh -c 'git commit -S -m y'`),
+		Entry("nushell", `nu -c 'git commit -S -m y'`),
+		Entry("awk system", `awk 'BEGIN { system("git commit -S -m y") }'`),
+		Entry("vim running a shell command", `vim -es -c '!git commit -S -m y' -c q`),
+		Entry("a makefile on stdin", "make -f - <<'EOF'\nall:\n\tgit commit -S -m y\nEOF"),
+		Entry("git rebase --exec", `git rebase -x 'git commit -S -m y' HEAD~1`),
+		Entry("git submodule foreach", `git submodule foreach 'git commit -S -m y'`),
+		Entry("git bisect run", `git bisect run git commit -S -m y`),
+		Entry("a shell-valued git setting", `git -c core.pager='git commit -S -m y' log`),
+		Entry(
+			"GIT_SEQUENCE_EDITOR",
+			`GIT_SEQUENCE_EDITOR='git commit -S -m y' git rebase -i HEAD~2`,
+		),
+		Entry(
+			"a script in a directory reached by relative cd",
+			"cd / && cd repo && bash deploy.sh",
+		),
+		Entry("a script after pushd and popd", "cd /repo && pushd /tmp && popd && bash deploy.sh"),
+		Entry(
+			"a program run after PATH changes",
+			"export PATH=/tmp/evil:$PATH; svn commit -S -m y",
+		),
+		Entry("a script under home found on PATH", "release"),
+		Entry("a gh shell alias", "gh shipit"),
+		Entry("a same-line gh shell alias", `gh alias set --shell go 'git commit -S -m y'; gh go`),
+		Entry(
+			"a script written by a nested shell",
+			`bash -c "printf 'git commit -S -m y\n' > n.sh" && bash n.sh`,
+		),
 	)
+
+	DescribeTable(
+		"marks what it cannot see truncated, so it fails closed",
+		func(command string) {
+			Expect(parse(command).Truncated).To(BeTrue(), "not truncated: %q", command)
+		},
+		Entry("a script too large to read", "./huge.sh"),
+		Entry("a script written with unknown content", `echo "$BODY" > s.sh && bash s.sh`),
+		Entry(
+			"a function using positional forms it cannot follow",
+			`f() { git "${@:1}"; }; f commit`,
+		),
+		Entry("an unknown git command under a moved config", "HOME=/tmp/h git zz"),
+	)
+
+	It("expands a gh alias to the command it stands for", func() {
+		cmd := parse("gh mk --title x").Commands[0]
+		Expect(cmd.Name).To(Equal("gh"))
+		Expect(cmd.Args).To(Equal([]string{"pr", "create", "--title", "x"}))
+	})
+
+	It("expands a gh alias set earlier on the line", func() {
+		cmds := parse("gh alias set pc 'pr create'; gh pc --title x").Commands
+		Expect(cmds[len(cmds)-1].Args).To(Equal([]string{"pr", "create", "--title", "x"}))
+	})
+
+	It("puts gh options given before the command after it", func() {
+		cmd := parse("gh -R o/r pr create --title x").Commands[0]
+		Expect(cmd.Args).To(Equal([]string{"pr", "create", "-R", "o/r", "--title", "x"}))
+	})
 
 	DescribeTable("leaves other programs alone",
 		func(command string) {
@@ -218,7 +325,13 @@ var _ = Describe("Command resolution beyond the command text", func() {
 		Entry("an unknown program with other operands", "unknown build"),
 		Entry("a test runner given a file that mentions git", "pytest tests/test_git.py"),
 		Entry("python running a module", "python3 -m pytest tests/test_git.py"),
+		Entry("prose in interpreter code", `node -e 'console.log("run git commit -S to sign")'`),
+		Entry("a system script on PATH", "brew update"),
 	)
+
+	It("ignores an alias named after a git builtin, as git does", func() {
+		Expect(signedCommits(`git -c alias.status='!git commit -S -m y' status`)).To(BeZero())
+	})
 
 	It("never autocorrects a typo to a validated command that is not the closest", func() {
 		// "pul" is closest to pull, so git would never run push for it.

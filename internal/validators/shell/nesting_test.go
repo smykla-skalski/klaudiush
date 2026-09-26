@@ -39,9 +39,20 @@ var _ = Describe("NestingValidator", func() {
 		Expect(result.Reference).To(Equal(validator.RefShellNesting))
 	})
 
+	It("blocks a command that does not parse", func() {
+		result := v.Validate(context.Background(), bash(`git commit -m "x" && (`))
+
+		Expect(result.ShouldBlock).To(BeTrue())
+		Expect(result.Reference).To(Equal(validator.RefShellNesting))
+	})
+
 	It("passes ordinary nesting", func() {
 		result := v.Validate(context.Background(), bash(`sudo env FOO=1 bash -c "git status"`))
 
 		Expect(result.Passed).To(BeTrue())
+	})
+
+	It("passes an empty command", func() {
+		Expect(v.Validate(context.Background(), bash("")).Passed).To(BeTrue())
 	})
 })

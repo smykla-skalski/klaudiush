@@ -13,8 +13,13 @@ const (
 	// without limit. Anything deeper marks the parse truncated, which fails
 	// closed.
 	maxLaunchDepth = 8
+	// maxParseWork caps the commands and scripts one parse follows, so fan-out
+	// cannot push the hook past its timeout. Anything past it fails closed.
+	maxParseWork = 2000
 	// endOfOptions ends a command's options; what follows is an operand.
 	endOfOptions = "--"
+	// pathVar is the variable that decides what a bare program name runs.
+	pathVar = "PATH"
 )
 
 // launch lists what a command runs besides itself.
@@ -34,6 +39,9 @@ func (l launch) empty() bool {
 type scriptFile struct {
 	path        string
 	interpreter bool // run by a language interpreter rather than a shell
+	// explicit marks a file the command itself names to run. One that cannot
+	// be read then fails closed; a script only found on PATH does not.
+	explicit bool
 }
 
 // launcher describes how a command that runs another command lays out its
@@ -52,6 +60,7 @@ type launcher struct {
 // launchers are the commands that run another command named in their
 // arguments. Each would otherwise hide what it runs from every validator.
 var launchers = map[string]launcher{
+	"builtin":    {},
 	"busybox":    {},
 	"caffeinate": {valueFlags: strings.Fields("-t -w")},
 	"chronic":    {},
@@ -101,7 +110,8 @@ var launchers = map[string]launcher{
 }
 
 // shells run a command line handed to them after -c, a script file, or stdin.
-var shells = nameSet("ash bash dash ksh mksh sh zsh")
+var shells = nameSet(`ash bash dash ksh mksh sh zsh csh tcsh fish rbash yash posh
+	oksh loksh nu elvish xonsh`)
 
 // shellValueFlags are shell options that take the next argument as their value.
 var shellValueFlags = strings.Fields("-o +o -O +O --rcfile --init-file")
@@ -111,7 +121,17 @@ type interpreter struct {
 	codeFlags  []string // take the program source as their value (python -c)
 	valueFlags []string // take the next argument as their value
 	stopFlags  []string // run something other than a script file (python -m)
+	fileFlags  []string // take a script file as their value (awk -f)
 	shellLike  bool     // the source is itself a command line (pwsh)
+	codeFirst  bool     // the first operand is source, not a file (awk)
+}
+
+// awkInterpreter runs its first operand as a program, or the file given to
+// -f. system(), print | "cmd" and getline from a command all run commands.
+var awkInterpreter = interpreter{
+	valueFlags: strings.Fields("-F -v"),
+	fileFlags:  strings.Fields("-f"),
+	codeFirst:  true,
 }
 
 var (
@@ -129,7 +149,11 @@ var (
 
 // interpreters run program source that can start a git command itself.
 var interpreters = map[string]interpreter{
+	"awk":        awkInterpreter,
 	"bun":        {codeFlags: strings.Fields("-e --eval -p --print")},
+	"gawk":       awkInterpreter,
+	"mawk":       awkInterpreter,
+	"nawk":       awkInterpreter,
 	"deno":       {codeFlags: strings.Fields("eval")},
 	"lua":        {codeFlags: strings.Fields("-e")},
 	"node":       nodeInterpreter,
@@ -196,17 +220,8 @@ func unescape(s string) string {
 
 // launched returns what cmd runs besides itself.
 func launched(cmd Command) launch {
-	switch {
-	case cmd.Name == gitProgram || cmd.Name == ghCLI:
-		return launch{}
-	case shells[cmd.Name]:
-		return shellLaunch(cmd)
-	case cmd.Name == "eval":
-		return launch{scripts: []string{strings.Join(cmd.Args, " ")}}
-	case cmd.Name == "source" || cmd.Name == ".":
-		return sourceLaunch(cmd)
-	case cmd.Name == "find":
-		return launch{commands: findExecCommands(cmd)}
+	if l, ok := launchedBy(cmd); ok {
+		return l
 	}
 
 	if spec, ok := launchers[cmd.Name]; ok {
@@ -226,10 +241,196 @@ func launched(cmd Command) launch {
 	// A program given by path may be a script whose commands would otherwise
 	// run unseen.
 	if strings.Contains(cmd.Invoked, "/") {
-		l.files = append(l.files, scriptFile{path: cmd.Invoked})
+		l.files = append(l.files, scriptFile{path: cmd.Invoked, explicit: true})
 	}
 
 	return l
+}
+
+// launchedBy handles the programs with their own way of running commands.
+func launchedBy(cmd Command) (launch, bool) {
+	switch {
+	case cmd.Name == gitProgram:
+		return gitLaunch(cmd), true
+	case cmd.Name == ghCLI:
+		return launch{}, true
+	case shells[cmd.Name]:
+		return shellLaunch(cmd), true
+	case cmd.Name == "eval":
+		return launch{scripts: []string{strings.Join(cmd.Args, " ")}}, true
+	case cmd.Name == "source" || cmd.Name == ".":
+		return sourceLaunch(cmd), true
+	case cmd.Name == "find":
+		return launch{commands: findExecCommands(cmd)}, true
+	case cmd.Name == "trap":
+		// trap 'command line' SIGNAL... runs the line when the signal comes.
+		if operand := firstOperand(cmd.Args); operand != "" && operand != "-" {
+			return launch{scripts: []string{operand}}, true
+		}
+
+		return launch{}, true
+	case editors[cmd.Name]:
+		return launch{scripts: editorShellCommands(cmd.Args)}, true
+	case makers[cmd.Name]:
+		return launch{scripts: stdinRecipes(cmd)}, true
+	default:
+		return launch{}, false
+	}
+}
+
+// editors run a shell command given as "-c '!cmd'" or "+!cmd".
+var editors = nameSet("vim vi nvim ex view gvim mvim")
+
+// editorShellCommands returns the command lines an editor's -c, --cmd and
+// + arguments run through ! (vim -es -c '!git commit').
+func editorShellCommands(args []string) []string {
+	var scripts []string
+
+	for i, arg := range args {
+		var command string
+
+		switch {
+		case (arg == "-c" || arg == "--cmd") && i+1 < len(args):
+			command = args[i+1]
+		case strings.HasPrefix(arg, "+"):
+			command = arg[1:]
+		default:
+			continue
+		}
+
+		if line, ok := strings.CutPrefix(strings.TrimLeft(command, ": "), "!"); ok {
+			scripts = append(scripts, line)
+		}
+	}
+
+	return scripts
+}
+
+var (
+	// makers run recipe lines as shell commands.
+	makers = nameSet("make gmake")
+	// makefileFlags name the makefile to read.
+	makefileFlags = nameSet("-f --file --makefile")
+)
+
+// stdinRecipes returns the recipe lines of a makefile read from stdin
+// (make -f -), which run as shell commands.
+func stdinRecipes(cmd Command) []string {
+	fromStdin := false
+
+	for i, arg := range cmd.Args {
+		switch {
+		case makefileFlags[arg] && i+1 < len(cmd.Args):
+			fromStdin = fromStdin || cmd.Args[i+1] == "-" || cmd.Args[i+1] == "/dev/stdin"
+		case arg == "-f-" || arg == "--file=-":
+			fromStdin = true
+		}
+	}
+
+	if !fromStdin {
+		return nil
+	}
+
+	var recipes []string
+
+	for line := range strings.Lines(cmd.Stdin) {
+		if recipe, ok := strings.CutPrefix(line, "\t"); ok {
+			recipes = append(recipes, strings.TrimLeft(recipe, "@-+"))
+		}
+	}
+
+	return recipes
+}
+
+// gitShellConfigKeys are git settings whose value git runs as a command.
+var gitShellConfigKeys = nameSet(`core.editor core.pager core.sshcommand
+	core.fsmonitor sequence.editor diff.external gpg.program credential.helper
+	core.askpass`)
+
+// gitLaunch returns the command lines git itself runs: shell-valued -c
+// settings, rebase --exec, submodule foreach, bisect run and difftool
+// --extcmd.
+func gitLaunch(cmd Command) launch {
+	var l launch
+
+	idx := gitSubcommandIndex(cmd.Args)
+	globals := cmd.Args
+
+	if idx >= 0 {
+		globals = cmd.Args[:idx]
+	}
+
+	for i, arg := range globals {
+		setting, found := strings.CutPrefix(arg, flagLowerC)
+		if arg == flagLowerC && i+1 < len(globals) {
+			setting, found = globals[i+1], true
+		}
+
+		key, value, ok := strings.Cut(setting, "=")
+		if found && ok && isGitShellSetting(strings.ToLower(key)) {
+			l.scripts = append(l.scripts, strings.TrimPrefix(value, "!"))
+		}
+	}
+
+	if idx < 0 {
+		return l
+	}
+
+	sub, rest := cmd.Args[idx], cmd.Args[idx+1:]
+
+	switch sub {
+	case "rebase":
+		l.scripts = append(l.scripts, optionValues(rest, "-x", "--exec")...)
+	case "difftool", "mergetool":
+		l.scripts = append(l.scripts, optionValues(rest, "-x", "--extcmd")...)
+	case "submodule":
+		if i := slices.Index(rest, "foreach"); i >= 0 {
+			l.scripts = append(l.scripts, strings.Join(skipOptions(rest[i+1:]), " "))
+		}
+	case "bisect":
+		if len(rest) > 1 && rest[0] == "run" {
+			l.commands = append(l.commands, childCommand(cmd, rest[1], rest[2:]))
+		}
+	}
+
+	return l
+}
+
+// isGitShellSetting reports whether a git setting's value runs as a command.
+func isGitShellSetting(key string) bool {
+	return gitShellConfigKeys[key] || strings.HasSuffix(key, ".textconv") ||
+		(strings.HasPrefix(key, "filter.") && !strings.HasSuffix(key, ".required")) ||
+		(strings.HasPrefix(key, "merge.") && strings.HasSuffix(key, ".driver"))
+}
+
+// optionValues returns the values of an option given as "-x v", "--exec v",
+// "-xv" or "--exec=v".
+func optionValues(args []string, short, long string) []string {
+	var values []string
+
+	for i, arg := range args {
+		switch {
+		case (arg == short || arg == long) && i+1 < len(args):
+			values = append(values, args[i+1])
+		case strings.HasPrefix(arg, long+"="):
+			values = append(values, strings.TrimPrefix(arg, long+"="))
+		case strings.HasPrefix(arg, short) && len(arg) > len(short):
+			values = append(values, arg[len(short):])
+		}
+	}
+
+	return values
+}
+
+// skipOptions drops the leading options of an argument list.
+func skipOptions(args []string) []string {
+	for i, arg := range args {
+		if !strings.HasPrefix(arg, "-") {
+			return args[i:]
+		}
+	}
+
+	return nil
 }
 
 // launcherLaunch returns what a known launcher runs.
@@ -421,11 +622,11 @@ func shellLaunch(cmd Command) launch {
 	case ok && isScript:
 		return launch{scripts: []string{operand}}
 	case ok:
-		return launch{files: []scriptFile{{path: operand}}}
+		return launch{files: []scriptFile{{path: operand, explicit: true}}}
 	case cmd.Stdin != "":
 		return launch{scripts: []string{cmd.Stdin}}
 	case cmd.StdinFile != "":
-		return launch{files: []scriptFile{{path: cmd.StdinFile}}}
+		return launch{files: []scriptFile{{path: cmd.StdinFile, explicit: true}}}
 	default:
 		return launch{}
 	}
@@ -471,7 +672,7 @@ func sourceLaunch(cmd Command) launch {
 		return launch{}
 	}
 
-	return launch{files: []scriptFile{{path: cmd.Args[0]}}}
+	return launch{files: []scriptFile{{path: cmd.Args[0], explicit: true}}}
 }
 
 // interpreterLaunch returns the source a language interpreter runs: inline
@@ -487,9 +688,16 @@ args:
 		case slices.Contains(spec.stopFlags, arg):
 			// python -m runs a module; what follows are its arguments.
 			break args
+		case slices.Contains(spec.fileFlags, arg) && i+1 < len(cmd.Args):
+			l.files = append(l.files, scriptFile{path: cmd.Args[i+1], interpreter: true, explicit: true})
+			i++
 		case slices.Contains(spec.valueFlags, arg):
 			i++
 		case hasAttachedValue(arg, spec.valueFlags):
+		case spec.codeFirst && !strings.HasPrefix(arg, "-") && len(l.code) == 0 && len(l.files) == 0:
+			l.code = append(l.code, arg)
+
+			break args
 		case strings.HasPrefix(arg, "-"):
 			value, attached, ok := flagValue(arg, spec.codeFlags)
 
@@ -507,7 +715,7 @@ args:
 		default:
 			// The first operand is the script, unless code came inline.
 			if len(l.code) == 0 {
-				l.files = append(l.files, scriptFile{path: arg, interpreter: !spec.shellLike})
+				l.files = append(l.files, scriptFile{path: arg, interpreter: !spec.shellLike, explicit: true})
 			}
 
 			break args
@@ -515,12 +723,7 @@ args:
 	}
 
 	if len(l.code) == 0 && len(l.files) == 0 {
-		switch {
-		case cmd.Stdin != "":
-			l.code = []string{cmd.Stdin}
-		case cmd.StdinFile != "":
-			l.files = []scriptFile{{path: cmd.StdinFile, interpreter: !spec.shellLike}}
-		}
+		l = stdinSource(cmd, spec)
 	}
 
 	// A shell-like language runs its source as a command line too.
@@ -529,6 +732,23 @@ args:
 	}
 
 	return l
+}
+
+// stdinSource returns what an interpreter given no code or script reads
+// from stdin.
+func stdinSource(cmd Command, spec interpreter) launch {
+	switch {
+	case cmd.Stdin != "":
+		return launch{code: []string{cmd.Stdin}}
+	case cmd.StdinFile != "":
+		return launch{
+			files: []scriptFile{
+				{path: cmd.StdinFile, interpreter: !spec.shellLike, explicit: true},
+			},
+		}
+	default:
+		return launch{}
+	}
 }
 
 // findExecCommands returns the commands find runs through -exec, -execdir,
@@ -571,6 +791,15 @@ func scanLaunch(cmd Command) launch {
 		if launchesTracked(arg, rest) {
 			return launch{commands: []Command{childCommand(cmd, arg, rest)}}
 		}
+
+		// One argument holding a whole command line, as tmux, parallel and
+		// script -c take it.
+		if fields := strings.Fields(
+			arg,
+		); len(fields) > 1 &&
+			launchesTracked(fields[0], fields[1:]) {
+			return launch{scripts: []string{arg}}
+		}
 	}
 
 	return launch{}
@@ -585,7 +814,7 @@ func launchesTracked(arg string, rest []string) bool {
 	_, isLauncher := launchers[name]
 
 	switch {
-	case name == gitProgram || name == "hub":
+	case name == gitProgram || name == hubCLI:
 		idx := gitSubcommandIndex(rest)
 
 		return idx >= 0 && validatedGitSubcommands[rest[idx]]

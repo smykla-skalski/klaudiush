@@ -149,7 +149,8 @@ const (
 	// RefShellBackticks indicates unescaped backticks in double-quoted strings.
 	RefShellBackticks Reference = ReferenceBaseURL + "/SHELL001"
 
-	// RefShellNesting indicates a command nested too deeply to inspect.
+	// RefShellNesting indicates a command that cannot be parsed or is nested
+	// too deeply to inspect.
 	RefShellNesting Reference = ReferenceBaseURL + "/SHELL002"
 )
 

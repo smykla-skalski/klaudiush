@@ -36,14 +36,14 @@ type BashParser struct {
 // NewBashParser creates a BashParser that resolves programs, scripts,
 // environment variables and git aliases against the running system.
 func NewBashParser() *BashParser {
-	return NewBashParserWithResolver(OSResolver{})
+	return NewBashParserWithResolver(&OSResolver{})
 }
 
 // NewBashParserWithResolver creates a BashParser that asks resolver what the
 // command text alone cannot tell.
 func NewBashParserWithResolver(resolver Resolver) *BashParser {
 	if resolver == nil {
-		resolver = OSResolver{}
+		resolver = &OSResolver{}
 	}
 
 	return &BashParser{
@@ -84,7 +84,7 @@ func (p *BashParser) Parse(command string) (*ParseResult, error) {
 		FileWrites:    walker.fileWrites,
 		GitOperations: gitOps,
 		Assignments:   walker.assignments,
-		Truncated:     walker.truncated,
+		Truncated:     walker.state.truncated,
 	}, nil
 }
 
@@ -210,11 +210,18 @@ func (r *ParseResult) InlineFileContent(path, workDir string, before Location) (
 // lastCapturedWrite returns what the writes leave in target, when the last of
 // them captured it exactly. A nil before considers every write.
 func lastCapturedWrite(writes []FileWrite, target string, before *Location) (string, bool) {
-	var (
-		content string
-		ok      bool
-	)
+	content, _, captured := lastWrite(writes, target, before)
 
+	return content, captured
+}
+
+// lastWrite reports whether any of the writes changes target, and what it
+// then holds when the last of them captured it exactly.
+func lastWrite(
+	writes []FileWrite,
+	target string,
+	before *Location,
+) (content string, found, captured bool) {
 	for _, fw := range writes {
 		if before != nil && !locationBefore(fw.Location, *before) {
 			continue
@@ -224,22 +231,24 @@ func lastCapturedWrite(writes []FileWrite, target string, before *Location) (str
 			continue
 		}
 
+		found = true
+
 		switch fw.Operation {
 		case WriteOpRedirect, WriteOpHeredoc:
 			// Overwrite: the last write wins, discarding earlier content. Only
 			// captured content (an exact reconstruction) counts - a heredoc body
-			// fed to cat, or literal echo/printf output - otherwise ok stays
-			// false so callers fall back to reading the file from disk.
-			content, ok = fw.CapturedOverwrite()
+			// fed to cat, or literal echo/printf output - otherwise captured
+			// stays false so callers fall back to reading the file from disk.
+			content, captured = fw.CapturedOverwrite()
 		default:
 			// Append, tee, cp, mv: the resulting bytes can't be reconstructed
 			// from the command alone (prior content or trailing newlines are
 			// unknown), so the capture is no longer exact.
-			content, ok = "", false
+			content, captured = "", false
 		}
 	}
 
-	return content, ok
+	return content, found, captured
 }
 
 // resolvePath cleans path, joining it onto workDir when path is relative and a
@@ -257,6 +266,11 @@ func resolvePath(workDir, path string) string {
 
 // locationBefore reports whether a occurs strictly before b in source order.
 func locationBefore(a, b Location) bool {
+	// Execution order holds across nested scripts, where lines restart.
+	if a.Seq != 0 && b.Seq != 0 {
+		return a.Seq < b.Seq
+	}
+
 	if a.Line != b.Line {
 		return a.Line < b.Line
 	}

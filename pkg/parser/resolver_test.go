@@ -14,11 +14,12 @@ import (
 
 var _ = Describe("OSResolver", func() {
 	var (
-		resolver parser.OSResolver
+		resolver *parser.OSResolver
 		dir      string
 	)
 
 	BeforeEach(func() {
+		resolver = &parser.OSResolver{}
 		dir = GinkgoT().TempDir()
 
 		// Git hooks export GIT_DIR and friends, which would point git at the
@@ -98,29 +99,73 @@ var _ = Describe("OSResolver", func() {
 			path := filepath.Join(dir, "x.sh")
 			Expect(os.WriteFile(path, []byte("git status\n"), 0o600)).To(Succeed())
 
-			text, ok := resolver.ReadScript(path)
-			Expect(ok).To(BeTrue())
+			text, status := resolver.ReadScript(path)
+			Expect(status).To(Equal(parser.ScriptText))
 			Expect(text).To(Equal("git status\n"))
 		})
 
-		It("refuses a binary file", func() {
+		It("reads a script with a NUL past its first line, as bash does", func() {
+			path := filepath.Join(dir, "x.sh")
+			Expect(os.WriteFile(path, []byte("git status\n\x00git push\n"), 0o600)).To(Succeed())
+
+			text, status := resolver.ReadScript(path)
+			Expect(status).To(Equal(parser.ScriptText))
+			Expect(text).To(Equal("git status\ngit push\n"))
+		})
+
+		It("reports a compiled program as binary", func() {
 			path := filepath.Join(dir, "bin")
 			Expect(os.WriteFile(path, []byte("ELF\x00\x01"), 0o600)).To(Succeed())
 
-			_, ok := resolver.ReadScript(path)
-			Expect(ok).To(BeFalse())
+			_, status := resolver.ReadScript(path)
+			Expect(status).To(Equal(parser.ScriptBinary))
 		})
 
-		It("refuses an oversized file", func() {
+		It("reports an oversized script as opaque", func() {
 			path := filepath.Join(dir, "big.sh")
 			Expect(os.WriteFile(path, []byte(strings.Repeat("#", 300<<10)), 0o600)).To(Succeed())
 
-			_, ok := resolver.ReadScript(path)
-			Expect(ok).To(BeFalse())
+			_, status := resolver.ReadScript(path)
+			Expect(status).To(Equal(parser.ScriptOpaque))
 		})
 
-		It("refuses a directory", func() {
-			_, ok := resolver.ReadScript(dir)
+		It("reports a directory as missing", func() {
+			_, status := resolver.ReadScript(dir)
+			Expect(status).To(Equal(parser.ScriptMissing))
+		})
+	})
+
+	Describe("LookPath", func() {
+		It("finds a program in the usual install directories beyond PATH", func() {
+			GinkgoT().Setenv("PATH", dir)
+
+			path, ok := resolver.LookPath("sh")
+			Expect(ok).To(BeTrue())
+			Expect(path).To(Equal("/bin/sh"))
+		})
+
+		It("reports a name nothing runs", func() {
+			_, ok := resolver.LookPath("klaudiush-no-such-program")
+			Expect(ok).To(BeFalse())
+		})
+	})
+
+	Describe("GHAlias", func() {
+		It("reads an alias from gh's configuration", func() {
+			GinkgoT().Setenv("GH_CONFIG_DIR", dir)
+			Expect(os.WriteFile(filepath.Join(dir, "config.yml"), []byte(
+				"git_protocol: ssh\naliases:\n    co: pr checkout\n    mk: '!gh pr create --fill'\neditor: vim\n",
+			), 0o600)).To(Succeed())
+
+			value, ok := resolver.GHAlias("co")
+			Expect(ok).To(BeTrue())
+			Expect(value).To(Equal("pr checkout"))
+
+			value, ok = resolver.GHAlias("mk")
+			Expect(ok).To(BeTrue())
+			Expect(value).To(Equal("!gh pr create --fill"))
+
+			_, ok = resolver.GHAlias("editor")
 			Expect(ok).To(BeFalse())
 		})
 	})

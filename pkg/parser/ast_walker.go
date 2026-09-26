@@ -1,10 +1,13 @@
 package parser
 
 import (
+	"path/filepath"
 	"slices"
 	"strings"
 
 	"mvdan.cc/sh/v3/syntax"
+
+	"github.com/smykla-skalski/klaudiush/internal/xdg"
 )
 
 // astWalker walks the AST and extracts commands and file operations.
@@ -33,8 +36,48 @@ type astWalker struct {
 	funcs   map[string]string
 	// scriptFiles holds the content of process substitutions by stand-in path.
 	scriptFiles map[string]string
-	// truncated records that something past maxLaunchDepth was not followed.
+	// state is shared by every walker of one parse.
+	state *parseState
+	// expanding holds the aliases, functions and git aliases being expanded
+	// on the way here, so a definition is never expanded inside itself.
+	expanding map[string]bool
+	// literal marks a walker over a string found in interpreter code: its
+	// top-level commands count only when they name something tracked.
+	literal bool
+	// dirUnknown records that a cd went somewhere that cannot be resolved.
+	dirUnknown bool
+	// dirStack holds the directories pushd saved.
+	dirStack []string
+}
+
+// parseState is shared by a walker and all the child walkers of one parse.
+type parseState struct {
+	// work is how many more commands and scripts may be followed. Fan-out
+	// through functions, aliases or scripts would otherwise grow without
+	// bound and push the hook past its timeout, which lets the command run.
+	work int
+	// truncated records that something could not be inspected, so the parse
+	// fails closed.
 	truncated bool
+	// seq orders commands and file writes across nested scripts.
+	seq int
+	// pathChanged records that the line changes PATH or the shell's command
+	// table, so a bare name may no longer run what it runs outside it.
+	pathChanged bool
+}
+
+// spend takes one unit of work, reporting false once the budget is gone.
+func (s *parseState) spend() bool {
+	s.work--
+
+	return s.work >= 0
+}
+
+// nextSeq returns the next position in execution order.
+func (s *parseState) nextSeq() int {
+	s.seq++
+
+	return s.seq
 }
 
 // visit is called for each node in the AST.
@@ -45,7 +88,13 @@ func (w *astWalker) visit(node syntax.Node) bool {
 	case *syntax.CallExpr:
 		w.extractCommand(n)
 	case *syntax.FuncDecl:
+		// The body runs only when the function is called, and each call is
+		// followed with its arguments, so it is not walked here.
 		w.defineFunc(n)
+
+		return false
+	case *syntax.DeclClause:
+		w.extractDecl(n)
 	case *syntax.Stmt:
 		w.extractRedirect(n)
 	case *syntax.Subshell:
@@ -391,9 +440,13 @@ func (w *astWalker) extractCommand(call *syntax.CallExpr) {
 	}
 
 	w.recordCommand(Command{
-		Name:             name,
-		Args:             args,
-		Location:         Location{Line: call.Pos().Line(), Column: call.Pos().Col()},
+		Name: name,
+		Args: args,
+		Location: Location{
+			Line:   call.Pos().Line(),
+			Column: call.Pos().Col(),
+			Seq:    w.state.nextSeq(),
+		},
 		Type:             CmdTypeSimple,
 		WorkingDirectory: w.currentDir,
 		Stdin:            w.stdinByCall[call],
@@ -407,6 +460,12 @@ func (w *astWalker) extractCommand(call *syntax.CallExpr) {
 // git alias. Without this, /usr/bin/git, env git, bash -c "git ...", ./x.sh
 // or an alias would each hide a git command from every validator.
 func (w *astWalker) recordCommand(cmd Command, depth int) {
+	if !w.state.spend() {
+		w.state.truncated = true
+
+		return
+	}
+
 	cmd.Invoked = w.expandName(cmd.Name)
 
 	// An expansion splits into words, so x="git commit"; $x runs git.
@@ -418,33 +477,164 @@ func (w *astWalker) recordCommand(cmd Command, depth int) {
 
 	cmd.Name = commandName(cmd.Invoked)
 
-	cmd, aliasScripts := w.resolveProgram(cmd)
+	// Prose in interpreter code ("hint: run git commit") runs nothing.
+	if w.literal && depth == w.depth && !literalCommand(cmd.Name) {
+		return
+	}
+
+	cmd, nested := w.resolveProgram(cmd)
 
 	w.defineAliases(cmd)
 	w.commands = append(w.commands, cmd)
-
-	if cmd.Name == "cd" && len(cmd.Args) > 0 {
-		w.currentDir = cmd.Args[0]
-	}
-
+	w.trackShellState(cmd)
 	w.extractFileWriteCommand(cmd)
 
 	l := launched(cmd)
-	l.scripts = slices.Concat(l.scripts, aliasScripts, w.definitionScripts(cmd))
+	l.scripts = append(l.scripts, w.gitEnvScripts(cmd)...)
+	l.files = append(l.files, w.pathScripts(cmd, l)...)
+	nested = append(nested, w.definitionScripts(cmd)...)
 
-	if l.empty() {
+	if l.empty() && len(nested) == 0 {
 		return
 	}
 
 	// Past the cap nothing more is followed, and the command fails closed:
 	// what it launches cannot be shown to be safe.
 	if depth >= maxLaunchDepth {
-		w.truncated = true
+		w.state.truncated = true
 
 		return
 	}
 
 	w.follow(cmd, l, depth+1)
+
+	for _, script := range nested {
+		w.walkScript(script.text, cmd, depth+1, scriptWalk{name: script.name})
+	}
+}
+
+// pathScripts returns the script a bare program name runs when PATH finds it
+// under the home directory, where a script written by one command can be run
+// by name in the next. System directories are left alone: their scripts
+// (brew, for one) run git as part of their own work.
+func (w *astWalker) pathScripts(cmd Command, l launch) []scriptFile {
+	_, isInterpreter := interpreters[cmd.Name]
+	_, isLauncher := launchers[cmd.Name]
+
+	if !l.empty() || strings.Contains(cmd.Invoked, "/") || cmd.Name == gitProgram ||
+		cmd.Name == ghCLI || shellBuiltins[cmd.Name] || dataCommands[cmd.Name] ||
+		isInterpreter || isLauncher || w.defined(cmd.Invoked) {
+		return nil
+	}
+
+	path, ok := w.resolver.LookPath(cmd.Invoked)
+	if !ok || !strings.HasPrefix(path, xdg.ExpandPathSilent("~")+string(filepath.Separator)) {
+		return nil
+	}
+
+	return []scriptFile{{path: path}}
+}
+
+// literalCommand reports whether a name found in interpreter code runs
+// something the parser tracks, rather than being a word of prose.
+func literalCommand(name string) bool {
+	_, isInterpreter := interpreters[name]
+	_, isLauncher := launchers[name]
+
+	return name == gitProgram || name == ghCLI || name == hubCLI ||
+		strings.HasPrefix(name, "git-") || shells[name] || isInterpreter ||
+		isLauncher || shellBuiltins[name]
+}
+
+// trackShellState follows how a command changes the shell: its directory
+// (cd, pushd, popd) and the programs bare names run (hash -p, enable).
+func (w *astWalker) trackShellState(cmd Command) {
+	switch cmd.Name {
+	case "cd":
+		w.changeDir(firstOperand(cmd.Args))
+	case "pushd":
+		w.dirStack = append(w.dirStack, w.currentDir)
+		w.changeDir(firstOperand(cmd.Args))
+	case "popd":
+		if n := len(w.dirStack); n > 0 {
+			w.currentDir, w.dirStack = w.dirStack[n-1], w.dirStack[:n-1]
+		} else {
+			w.dirUnknown = true
+		}
+	case "hash":
+		if slices.Contains(cmd.Args, "-p") {
+			w.state.pathChanged = true
+		}
+	case "enable":
+		w.state.pathChanged = true
+	}
+}
+
+// changeDir moves the walker's directory, joining a relative target onto
+// the current one. A target that cannot be resolved leaves it unknown.
+func (w *astWalker) changeDir(target string) {
+	target = w.expandName(target)
+
+	switch {
+	case target == "":
+		w.currentDir, w.dirUnknown = "~", false
+	case target == "-" || HasUnresolvedVars(target):
+		w.dirUnknown = true
+	default:
+		w.currentDir, w.dirUnknown = resolvePath(w.currentDir, target), false
+	}
+}
+
+// firstOperand returns the first argument that is not an option.
+func firstOperand(args []string) string {
+	for _, arg := range args {
+		if arg == "-" || !strings.HasPrefix(arg, "-") {
+			return arg
+		}
+	}
+
+	return ""
+}
+
+// gitCommandVars are environment variables whose value git runs as a
+// command line.
+var gitCommandVars = strings.Fields(`GIT_EDITOR GIT_SEQUENCE_EDITOR GIT_SSH_COMMAND
+	GIT_PAGER GIT_EXTERNAL_DIFF GIT_ASKPASS GIT_SSH GIT_PROXY_COMMAND`)
+
+// gitEnvScripts returns the command lines a git command runs through
+// variables assigned on the line, such as GIT_SEQUENCE_EDITOR.
+func (w *astWalker) gitEnvScripts(cmd Command) []string {
+	if cmd.Name != gitProgram {
+		return nil
+	}
+
+	var scripts []string
+
+	for _, name := range gitCommandVars {
+		if value := w.assignments[name]; value != "" {
+			scripts = append(scripts, value)
+		}
+	}
+
+	return scripts
+}
+
+// extractDecl records assignments made by export, declare, local and
+// readonly, and notes a changed PATH.
+func (w *astWalker) extractDecl(decl *syntax.DeclClause) {
+	for _, assign := range decl.Args {
+		if assign.Name == nil {
+			continue
+		}
+
+		if assign.Name.Value == pathVar {
+			w.state.pathChanged = true
+		}
+
+		if assign.Value != nil && !assign.Append {
+			w.assignments[assign.Name.Value] = wordToString(assign.Value)
+		}
+	}
 }
 
 // redirInfo holds the output redirection and heredoc found on a statement.
@@ -509,6 +699,10 @@ func (w *astWalker) extractRedirect(stmt *syntax.Stmt) {
 	}
 
 	info := collectRedirs(stmt)
+
+	// A redirect happens as its command starts, before any later command.
+	seq := w.state.nextSeq()
+	info.outputLoc.Seq, info.heredocLoc.Seq = seq, seq
 
 	// A heredoc always feeds the command's stdin, regardless of any output
 	// redirection on the same statement. Record it so validators can inspect
@@ -598,6 +792,10 @@ func (w *astWalker) extractAssigns(call *syntax.CallExpr) {
 	for _, assign := range call.Assigns {
 		if assign.Name == nil || assign.Append || assign.Naked {
 			continue
+		}
+
+		if assign.Name.Value == pathVar {
+			w.state.pathChanged = true
 		}
 
 		switch {

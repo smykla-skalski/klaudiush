@@ -36,6 +36,11 @@ var (
 	gitAliasName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 	// positionalParam matches the positional parameters a function body uses.
 	positionalParam = regexp.MustCompile(`"?\$(?:\{([@*1-9])\}|([@*1-9]))"?`)
+	// unsupportedPositional matches positional forms substitutePositional
+	// does not handle: slices, defaults, two-digit indexes and shift.
+	unsupportedPositional = regexp.MustCompile(
+		`\$\{(?:[@*][^}]|[0-9]+[^0-9}]|[0-9]{2,}\})|\bshift\b`,
+	)
 	// configParameter matches one 'key'='value' pair in GIT_CONFIG_PARAMETERS.
 	configParameter = regexp.MustCompile(`'([^'=]+)'?=?'([^']*)'`)
 	// lookupCommands print the program named by their last operand.
@@ -54,20 +59,26 @@ func newAstWalker(resolver Resolver) *astWalker {
 		aliases:         make(map[string]string),
 		funcs:           make(map[string]string),
 		scriptFiles:     make(map[string]string),
+		state:           &parseState{work: maxParseWork},
+		expanding:       make(map[string]bool),
 	}
 }
 
 // child returns a walker for a script run by a command at depth. It sees the
-// variables, aliases and functions defined so far without leaking its own.
+// variables, aliases and functions defined so far without leaking its own,
+// and shares the parse's work budget and outcome.
 func (w *astWalker) child(dir string, depth int) *astWalker {
 	child := newAstWalker(w.resolver)
 	child.currentDir = dir
+	child.dirUnknown = w.dirUnknown
 	child.depth = depth
 	child.scriptFiles = w.scriptFiles
+	child.state = w.state
 
 	maps.Copy(child.assignments, w.assignments)
 	maps.Copy(child.aliases, w.aliases)
 	maps.Copy(child.funcs, w.funcs)
+	maps.Copy(child.expanding, w.expanding)
 
 	return child
 }
@@ -169,12 +180,12 @@ func substitutedProgram(sub *syntax.CmdSubst) string {
 // binary, through hub, under another file name, or behind a name nothing on
 // disk explains. It then expands git aliases, returning the command line of a
 // shell alias for the walker to follow.
-func (w *astWalker) resolveProgram(cmd Command) (Command, []string) {
+func (w *astWalker) resolveProgram(cmd Command) (Command, []nestedScript) {
 	if sub, ok := strings.CutPrefix(cmd.Name, "git-"); ok && sub != "" {
 		cmd.Name, cmd.Args = gitProgram, slices.Concat([]string{sub}, cmd.Args)
 	}
 
-	if cmd.Name == "hub" {
+	if cmd.Name == hubCLI {
 		cmd.Name = gitProgram
 	}
 
@@ -183,11 +194,120 @@ func (w *astWalker) resolveProgram(cmd Command) (Command, []string) {
 		cmd.Name = w.programBehind(cmd)
 	}
 
-	if cmd.Name != gitProgram {
+	switch cmd.Name {
+	case gitProgram:
+		return w.expandGitAlias(cmd)
+	case ghCLI:
+		return w.expandGHAlias(ghCommandFirst(cmd))
+	default:
 		return cmd, nil
 	}
+}
 
-	return w.expandGitAlias(cmd)
+// ghCommandFirst moves gh options given before the command (gh -R o/r pr
+// create) after it, so every check finds the command in the same place.
+func ghCommandFirst(cmd Command) Command {
+	i := 0
+
+	for i < len(cmd.Args) && strings.HasPrefix(cmd.Args[i], "-") {
+		if ghGlobalValueFlags[cmd.Args[i]] {
+			i++
+		}
+
+		i++
+	}
+
+	if i == 0 || i >= len(cmd.Args) {
+		return cmd
+	}
+
+	end := i + 1
+	if end < len(cmd.Args) && !strings.HasPrefix(cmd.Args[end], "-") {
+		end++ // the action, as in "pr create"
+	}
+
+	cmd.Args = slices.Concat(cmd.Args[i:end], cmd.Args[:i], cmd.Args[end:])
+
+	return cmd
+}
+
+// expandGHAlias replaces a gh alias with what it stands for, from gh alias
+// set earlier on the line or from gh's configuration. A shell alias ("!...")
+// is returned as a command line to follow.
+func (w *astWalker) expandGHAlias(cmd Command) (Command, []nestedScript) {
+	for range maxAliasDepth {
+		if len(cmd.Args) == 0 || strings.HasPrefix(cmd.Args[0], "-") || ghBuiltins[cmd.Args[0]] {
+			return cmd, nil
+		}
+
+		name, rest := cmd.Args[0], cmd.Args[1:]
+		if w.expanding["gh:"+name] {
+			return cmd, nil
+		}
+
+		value, ok := w.lineGHAlias(name)
+		if !ok {
+			value, ok = w.resolver.GHAlias(name)
+		}
+
+		if !ok {
+			return cmd, nil
+		}
+
+		if line, shell := strings.CutPrefix(value, "!"); shell {
+			return cmd, []nestedScript{{name: "gh:" + name, text: line + " " + quoteArgs(rest)}}
+		}
+
+		cmd.Args = slices.Concat(strings.Fields(value), rest)
+		cmd = ghCommandFirst(cmd)
+	}
+
+	return cmd, nil
+}
+
+// lineGHAlias returns an alias set with gh alias set earlier on the line.
+// A --shell alias comes back with gh's own "!" prefix.
+func (w *astWalker) lineGHAlias(name string) (string, bool) {
+	for _, cmd := range slices.Backward(w.commands) {
+		if cmd.Name != ghCLI || len(cmd.Args) < 2 || cmd.Args[0] != "alias" ||
+			cmd.Args[1] != "set" {
+			continue
+		}
+
+		shell := false
+
+		var operands []string
+
+		for _, arg := range cmd.Args[2:] {
+			switch {
+			case arg == "--shell" || arg == "-s":
+				shell = true
+			case strings.HasPrefix(arg, "-"):
+			default:
+				operands = append(operands, arg)
+			}
+		}
+
+		if len(operands) < 2 || operands[0] != name {
+			continue
+		}
+
+		if shell && !strings.HasPrefix(operands[1], "!") {
+			return "!" + operands[1], true
+		}
+
+		return operands[1], true
+	}
+
+	return "", false
+}
+
+// nestedScript is a command line run through a definition: a same-line
+// alias or function, or a git or gh shell alias. The name keeps the
+// definition from being expanded inside itself.
+type nestedScript struct {
+	name string
+	text string
 }
 
 // programBehind returns git or gh for a program invoked with one of their
@@ -212,8 +332,12 @@ func (w *astWalker) programBehind(cmd Command) string {
 	}
 
 	// A name still holding a variable or substitution names nothing yet.
+	// A PATH or hash change on the line can point a bare name anywhere.
+	bareAfterPathChange := w.state.pathChanged && !strings.Contains(cmd.Invoked, "/")
+
 	program := ProgramMissing
-	if !HasUnresolvedVars(cmd.Invoked) && !strings.Contains(cmd.Invoked, unresolvedProgram) {
+	if !HasUnresolvedVars(cmd.Invoked) && !strings.Contains(cmd.Invoked, unresolvedProgram) &&
+		!bareAfterPathChange {
 		program = w.resolver.Program(cmd.Invoked, cmd.WorkingDirectory)
 	}
 
@@ -227,7 +351,7 @@ func (w *astWalker) programBehind(cmd Command) string {
 // expandGitAlias replaces a git alias with what it stands for, from -c
 // options on the command or from git config. A shell alias ("!...") is
 // returned as a command line to follow.
-func (w *astWalker) expandGitAlias(cmd Command) (Command, []string) {
+func (w *astWalker) expandGitAlias(cmd Command) (Command, []nestedScript) {
 	for range maxAliasDepth {
 		idx := gitSubcommandIndex(cmd.Args)
 		if idx < 0 || gitBuiltins[cmd.Args[idx]] || !gitAliasName.MatchString(cmd.Args[idx]) {
@@ -235,6 +359,11 @@ func (w *astWalker) expandGitAlias(cmd Command) (Command, []string) {
 		}
 
 		name, rest := cmd.Args[idx], cmd.Args[idx+1:]
+
+		// An alias that runs itself was already followed once.
+		if w.expanding["git:"+name] {
+			return cmd, nil
+		}
 
 		value, ok := inlineGitAlias(cmd.Args[:idx], name)
 		if !ok {
@@ -250,22 +379,50 @@ func (w *astWalker) expandGitAlias(cmd Command) (Command, []string) {
 		}
 
 		if !ok {
-			// With help.autocorrect a typo runs the command it resembles.
-			if corrected, found := w.autocorrect(name); found {
-				cmd.Args = slices.Concat(cmd.Args[:idx], []string{corrected}, rest)
-			}
-
-			return cmd, nil
+			return w.unknownGitCommand(cmd, idx), nil
 		}
 
 		if line, shell := strings.CutPrefix(value, "!"); shell {
-			return cmd, []string{line + " " + quoteArgs(rest)}
+			return cmd, []nestedScript{{name: "git:" + name, text: line + " " + quoteArgs(rest)}}
 		}
 
 		cmd.Args = slices.Concat(cmd.Args[:idx], strings.Fields(value), rest)
 	}
 
 	return cmd, nil
+}
+
+// gitConfigVars move where git reads its configuration from, so an alias
+// lookup made outside the command no longer sees what git will.
+var gitConfigVars = strings.Fields(`HOME XDG_CONFIG_HOME GIT_DIR GIT_CONFIG GIT_CONFIG_GLOBAL
+	GIT_CONFIG_SYSTEM GIT_CONFIG_NOSYSTEM`)
+
+// unknownGitCommand handles a git subcommand that is neither a builtin nor
+// a known alias. A typo git would autocorrect becomes the command it runs.
+// When the command points git at other configuration, the alias could be
+// defined there, so the parse fails closed.
+func (w *astWalker) unknownGitCommand(cmd Command, idx int) Command {
+	name, globals := cmd.Args[idx], cmd.Args[:idx]
+
+	if corrected, found := w.autocorrect(name); found {
+		cmd.Args = slices.Concat(globals, []string{corrected}, cmd.Args[idx+1:])
+
+		return cmd
+	}
+
+	movesConfig := slices.ContainsFunc(gitConfigVars, func(name string) bool {
+		_, set := w.assignments[name]
+
+		return set
+	}) || slices.ContainsFunc(globals, func(arg string) bool {
+		return arg == "--git-dir" || strings.HasPrefix(arg, "--git-dir=")
+	})
+
+	if movesConfig && w.resolver.Program("git-"+name, "") == ProgramMissing {
+		w.state.truncated = true
+	}
+
+	return cmd
 }
 
 // lineGitAlias returns an alias set with git config earlier on the line,
@@ -483,15 +640,33 @@ func (w *astWalker) defineFunc(fn *syntax.FuncDecl) {
 }
 
 // definitionScripts returns what calling a same-line alias or function runs.
-func (w *astWalker) definitionScripts(cmd Command) []string {
-	var scripts []string
+func (w *astWalker) definitionScripts(cmd Command) []nestedScript {
+	// A definition that calls itself was already followed once.
+	if w.expanding[cmd.Invoked] {
+		return nil
+	}
+
+	var scripts []nestedScript
 
 	if value, ok := w.aliases[cmd.Invoked]; ok {
-		scripts = append(scripts, value+" "+quoteArgs(cmd.Args))
+		scripts = append(
+			scripts,
+			nestedScript{name: cmd.Invoked, text: value + " " + quoteArgs(cmd.Args)},
+		)
 	}
 
 	if body, ok := w.funcs[cmd.Invoked]; ok {
-		scripts = append(scripts, substitutePositional(body, cmd.Args))
+		// Positional forms that are not substituted leave the call unknown.
+		if unsupportedPositional.MatchString(body) {
+			w.state.truncated = true
+
+			return scripts
+		}
+
+		scripts = append(
+			scripts,
+			nestedScript{name: cmd.Invoked, text: substitutePositional(body, cmd.Args)},
+		)
 	}
 
 	return scripts
@@ -522,7 +697,7 @@ func (w *astWalker) follow(cmd Command, l launch, depth int) {
 	}
 
 	for _, script := range l.scripts {
-		w.walkScript(script, cmd, depth)
+		w.walkScript(script, cmd, depth, scriptWalk{})
 	}
 
 	for _, file := range l.files {
@@ -534,67 +709,114 @@ func (w *astWalker) follow(cmd Command, l launch, depth int) {
 	}
 }
 
-// followFile records the commands of a script file a command runs.
+// followFile records the commands of a script file a command runs. A file
+// handed to a shell that cannot be read (too large, written on the line but
+// not captured, under an unknown directory) fails closed; a compiled program
+// is an accepted limit.
 func (w *astWalker) followFile(cmd Command, file scriptFile, depth int) {
-	text, ok := w.scriptSource(file.path, cmd)
-	if !ok {
-		return
+	text, status := w.scriptSource(file.path, cmd)
+
+	switch status {
+	case ScriptText:
+		if file.interpreter || interpreterShebang(text) {
+			w.followCode(cmd, text, depth)
+		} else {
+			w.walkScript(text, cmd, depth, scriptWalk{})
+		}
+	case ScriptOpaque:
+		if file.explicit {
+			w.state.truncated = true
+		}
+	case ScriptMissing, ScriptBinary:
 	}
-
-	if file.interpreter || interpreterShebang(text) {
-		w.followCode(cmd, text, depth)
-
-		return
-	}
-
-	w.walkScript(text, cmd, depth)
 }
 
 // followCode records the command lines found in program source.
 func (w *astWalker) followCode(cmd Command, code string, depth int) {
 	for _, line := range commandLines(code) {
-		w.walkScript(line, cmd, depth)
+		w.walkScript(line, cmd, depth, scriptWalk{literal: true})
 	}
 }
 
 // scriptSource returns the text of a script a command runs: stdin, a process
 // substitution, a file written earlier on the same line, or the file on disk.
-func (w *astWalker) scriptSource(path string, cmd Command) (string, bool) {
+func (w *astWalker) scriptSource(path string, cmd Command) (string, ScriptStatus) {
 	if path == "-" || path == "/dev/stdin" {
-		return cmd.Stdin, cmd.Stdin != ""
+		if cmd.Stdin == "" {
+			return "", ScriptMissing
+		}
+
+		return cmd.Stdin, ScriptText
 	}
 
 	if text, ok := w.scriptFiles[path]; ok {
-		return text, true
+		return text, ScriptText
+	}
+
+	path = w.expandName(path)
+
+	relative := !filepath.IsAbs(path) && !strings.HasPrefix(path, "~")
+	if HasUnresolvedVars(path) || (relative && w.dirUnknown) {
+		return "", ScriptOpaque
 	}
 
 	target := resolvePath(cmd.WorkingDirectory, path)
-	if text, ok := lastCapturedWrite(w.fileWrites, target, nil); ok {
-		return text, true
+	if text, found, captured := lastWrite(w.fileWrites, target, nil); found {
+		if !captured {
+			return "", ScriptOpaque
+		}
+
+		return text, ScriptText
 	}
 
 	return w.resolver.ReadScript(target)
 }
 
+// scriptWalk says how walkScript treats a script.
+type scriptWalk struct {
+	// name is the definition being expanded, kept from expanding in itself.
+	name string
+	// literal marks a string from interpreter code, where prose is expected.
+	literal bool
+}
+
 // walkScript records the commands of a script that parent runs. A cd inside
-// the script moves only the script, and its definitions stay inside it.
-func (w *astWalker) walkScript(script string, parent Command, depth int) {
-	file, err := syntax.NewParser().Parse(strings.NewReader(script), "")
-	if err != nil {
+// the script moves only the script, and its definitions stay inside it. A
+// shell runs the commands before a syntax error and what follows is unknown,
+// so a script that fails to parse fails closed; interpreter strings, which
+// are mostly prose, do not.
+func (w *astWalker) walkScript(script string, parent Command, depth int, sw scriptWalk) {
+	if !w.state.spend() {
+		w.state.truncated = true
+
 		return
 	}
 
 	child := w.child(parent.WorkingDirectory, depth)
+	child.literal = sw.literal
 
-	syntax.Walk(file, child.visit)
+	if sw.name != "" {
+		child.expanding[sw.name] = true
+	}
 
+	for stmt, err := range syntax.NewParser().StmtsSeq(strings.NewReader(script)) {
+		if err != nil {
+			w.state.truncated = w.state.truncated || !sw.literal
+
+			break
+		}
+
+		syntax.Walk(stmt, child.visit)
+	}
+
+	// Commands report the line of the command that ran the script, keeping
+	// their own place in execution order.
 	for _, cmd := range child.commands {
-		cmd.Location = parent.Location
+		cmd.Location.Line, cmd.Location.Column = parent.Location.Line, parent.Location.Column
 		w.commands = append(w.commands, cmd)
 	}
 
 	w.fileWrites = append(w.fileWrites, child.fileWrites...)
-	w.truncated = w.truncated || child.truncated
 }
 
 // argStrings converts argument words to strings. A process substitution fed

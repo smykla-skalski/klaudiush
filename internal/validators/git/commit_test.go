@@ -1933,6 +1933,22 @@ Signed-off-by: Test User <test@klaudiu.sh>`
 			result := validator.Validate(context.Background(), ctx)
 			Expect(result.Passed).To(BeFalse())
 		})
+
+		DescribeTable("checks every commit on the line",
+			func(command string) {
+				ctx := &hook.Context{
+					EventType: hook.EventTypePreToolUse,
+					ToolName:  hook.ToolTypeBash,
+					ToolInput: hook.ToolInput{Command: command},
+				}
+
+				result := validator.Validate(context.Background(), ctx)
+				Expect(result.ShouldBlock).To(BeTrue())
+			},
+			Entry("after a valid commit",
+				`git commit -sS -a -m "feat(file): add file" && git commit -a -m "Add file"`),
+			Entry("after a merge", `git merge --no-ff feat/x && git commit -sS -a -m "Add file"`),
+		)
 	})
 
 	Describe("Chained commands with git add", func() {

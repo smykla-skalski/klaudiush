@@ -839,7 +839,7 @@ EOF`
 				Expect(result.Commands[2].WorkingDirectory).To(Equal("/tmp"))
 			})
 
-			It("ignores cd without arguments", func() {
+			It("takes cd without arguments to the home directory", func() {
 				result, err := p.Parse("cd && git status")
 				Expect(err).NotTo(HaveOccurred())
 				Expect(result.Commands).To(HaveLen(2))
@@ -848,7 +848,7 @@ EOF`
 				Expect(result.Commands[0].WorkingDirectory).To(BeEmpty())
 
 				Expect(result.Commands[1].Name).To(Equal("git"))
-				Expect(result.Commands[1].WorkingDirectory).To(BeEmpty())
+				Expect(result.Commands[1].WorkingDirectory).To(Equal("~"))
 			})
 		})
 	})

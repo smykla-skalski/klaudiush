@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"io"
@@ -8,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -30,6 +32,20 @@ const (
 	ProgramMissing
 )
 
+// ScriptStatus says what reading a script file found.
+type ScriptStatus int
+
+const (
+	// ScriptMissing means there is no such file.
+	ScriptMissing ScriptStatus = iota
+	// ScriptText means the file was read in full.
+	ScriptText
+	// ScriptBinary means the file is a compiled program, not a script.
+	ScriptBinary
+	// ScriptOpaque means the file is a script that could not be read in full.
+	ScriptOpaque
+)
+
 const (
 	// maxScriptBytes caps how much of a script file is read.
 	maxScriptBytes = 256 << 10
@@ -37,48 +53,64 @@ const (
 	maxCompareBytes = 128 << 20
 	// compareBlockBytes is how much of each program is compared at a time.
 	compareBlockBytes = 64 << 10
-	// binarySniffBytes is how much of a script is checked for binary content
-	// before the rest is read.
+	// binarySniffBytes is how much of a script is read before the rest.
 	binarySniffBytes = 8 << 10
-	// lookupTimeout bounds one git config or xcrun lookup.
+	// lookupTimeout bounds one git or xcrun lookup.
 	lookupTimeout = 2 * time.Second
+	// maxAliasDirs caps how many repositories have their git aliases read.
+	maxAliasDirs = 8
 )
 
 // Resolver answers what the command text alone cannot: the environment, the
-// scripts a command runs, what a program name really is, and git aliases.
+// scripts a command runs, what a program name really is, and aliases.
 type Resolver interface {
 	// LookupEnv returns the value of an environment variable.
 	LookupEnv(name string) (string, bool)
-	// ReadScript returns the text of a script file, refusing binaries.
-	ReadScript(path string) (string, bool)
+	// ReadScript returns the text of a script file and what reading found.
+	ReadScript(path string) (string, ScriptStatus)
 	// Program identifies what word runs, with relative paths taken from dir.
 	Program(word, dir string) Program
+	// LookPath returns the file a bare program name runs.
+	LookPath(name string) (string, bool)
 	// GitAlias returns the value of a git alias as seen from dir.
 	GitAlias(dir, name string) (string, bool)
+	// GHAlias returns the expansion of a gh alias.
+	GHAlias(name string) (string, bool)
 }
 
-// OSResolver answers from the running system.
-type OSResolver struct{}
+// OSResolver answers from the running system. It remembers what it learns,
+// so each lookup runs at most once for the parse it serves.
+type OSResolver struct {
+	mu        sync.Mutex
+	aliases   map[string]map[string]string // git aliases by config directory
+	programs  map[string]Program           // identities by word and directory
+	targets   map[string]string            // real program files by name
+	execPath  *string                      // git --exec-path
+	ghAliases map[string]string            // gh aliases
+	paths     map[string]string            // LookPath results, "" when not found
+}
 
 // LookupEnv returns the value of an environment variable.
-func (OSResolver) LookupEnv(name string) (string, bool) {
+func (*OSResolver) LookupEnv(name string) (string, bool) {
 	return os.LookupEnv(name)
 }
 
-// ReadScript returns the text of a regular file of bounded size, refusing
-// anything that looks binary. The stat keeps a FIFO from blocking the read,
-// and only the first block is read before a binary is turned away.
-func (OSResolver) ReadScript(path string) (string, bool) {
+// ReadScript reads a script file. A NUL in the first line of a file without
+// a shebang marks a compiled program, as bash sees it; NULs later on are
+// dropped. A script larger than maxScriptBytes, or one that cannot be read,
+// is opaque.
+func (*OSResolver) ReadScript(path string) (string, ScriptStatus) {
 	path = xdg.ExpandPathSilent(path)
 
+	// The stat keeps a FIFO or device from blocking the read.
 	info, err := os.Stat(path)
-	if err != nil || !info.Mode().IsRegular() || info.Size() > maxScriptBytes {
-		return "", false
+	if err != nil || !info.Mode().IsRegular() {
+		return "", ScriptMissing
 	}
 
 	file, err := os.Open(path) //nolint:gosec // reads a script the command itself runs
 	if err != nil {
-		return "", false
+		return "", ScriptOpaque
 	}
 	defer file.Close() //nolint:errcheck // read-only file
 
@@ -86,39 +118,112 @@ func (OSResolver) ReadScript(path string) (string, bool) {
 
 	n, err := io.ReadFull(file, head)
 	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) && !errors.Is(err, io.EOF) {
-		return "", false
+		return "", ScriptOpaque
 	}
 
-	if bytes.IndexByte(head[:n], 0) >= 0 {
-		return "", false
+	head = head[:n]
+
+	firstLine, _, _ := bytes.Cut(head, []byte("\n"))
+	if !bytes.HasPrefix(head, []byte("#!")) && bytes.IndexByte(firstLine, 0) >= 0 {
+		return "", ScriptBinary
 	}
 
-	rest, err := io.ReadAll(io.LimitReader(file, maxScriptBytes-int64(n)))
+	if info.Size() > maxScriptBytes {
+		return "", ScriptOpaque
+	}
+
+	rest, err := io.ReadAll(io.LimitReader(file, maxScriptBytes))
 	if err != nil {
-		return "", false
+		return "", ScriptOpaque
 	}
 
-	return string(head[:n]) + string(rest), true
+	return strings.ReplaceAll(string(head)+string(rest), "\x00", ""), ScriptText
 }
 
 // Program identifies what word runs: git or gh under any name, some other
 // program, or nothing on disk at all.
-func (OSResolver) Program(word, dir string) Program {
-	path, ok := programPath(word, dir)
-	if !ok {
-		return ProgramMissing
+func (r *OSResolver) Program(word, dir string) Program {
+	key := word + "\x00" + dir
+
+	r.mu.Lock()
+	program, cached := r.programs[key]
+	r.mu.Unlock()
+
+	if cached {
+		return program
 	}
 
-	return identifyProgram(path)
+	program = ProgramMissing
+	if path, ok := r.programPath(word, dir); ok {
+		program = r.identifyProgram(path)
+	}
+
+	r.mu.Lock()
+	if r.programs == nil {
+		r.programs = make(map[string]Program)
+	}
+
+	r.programs[key] = program
+	r.mu.Unlock()
+
+	return program
+}
+
+// fallbackBinDirs are where tools usually live when a hook runs with a
+// shorter PATH than the shell, as a GUI-launched host does. A name found
+// here is a real program, not a missing one.
+var fallbackBinDirs = strings.Fields(`/opt/homebrew/bin /usr/local/bin /usr/bin /bin
+	/usr/sbin /sbin /run/current-system/sw/bin /nix/var/nix/profiles/default/bin
+	~/.nix-profile/bin ~/.local/bin ~/bin ~/.cargo/bin ~/go/bin
+	~/.local/share/mise/shims ~/.asdf/shims ~/.volta/bin`)
+
+// LookPath returns the file a bare program name runs, looking beyond PATH in
+// the usual install directories.
+func (r *OSResolver) LookPath(name string) (string, bool) {
+	r.mu.Lock()
+	path, cached := r.paths[name]
+	r.mu.Unlock()
+
+	if !cached {
+		path = lookPath(name)
+
+		r.mu.Lock()
+		if r.paths == nil {
+			r.paths = make(map[string]string)
+		}
+
+		r.paths[name] = path
+		r.mu.Unlock()
+	}
+
+	return path, path != ""
+}
+
+// lookPath searches PATH, then fallbackBinDirs.
+func lookPath(name string) string {
+	if path, err := exec.LookPath(name); err == nil {
+		return path
+	}
+
+	for _, dir := range fallbackBinDirs {
+		path := filepath.Join(xdg.ExpandPathSilent(dir), name)
+		if info, err := os.Stat(
+			path,
+		); err == nil && info.Mode().IsRegular() &&
+			info.Mode()&0o111 != 0 {
+			return path
+		}
+	}
+
+	return ""
 }
 
 // GitAlias returns the value of alias.<name> as git would see it from dir.
-// Git runs an external git-<name> command before it considers aliases, so one
-// found on PATH (git lfs, git flow) rules the alias out without running git
-// config. A dir that is not a directory falls back to the global config; git
-// reads system and global config from any directory, so one lookup suffices.
-func (OSResolver) GitAlias(dir, name string) (string, bool) {
-	if _, err := exec.LookPath("git-" + name); err == nil {
+// Git runs an external git-<name> command before it considers aliases, so
+// one found on PATH or in git's exec path rules the alias out. All aliases
+// of a directory are read with one git config call and remembered.
+func (r *OSResolver) GitAlias(dir, name string) (string, bool) {
+	if r.externalGitCommand(name) {
 		return "", false
 	}
 
@@ -130,41 +235,153 @@ func (OSResolver) GitAlias(dir, name string) (string, bool) {
 		}
 	}
 
-	return gitConfigAlias(dir, name)
+	value, ok := r.gitAliases(dir)[strings.ToLower(name)]
+
+	return value, ok
 }
 
-// gitConfigAlias runs git config to read one alias.
-func gitConfigAlias(dir, name string) (string, bool) {
-	args := []string{"config", "--get", "alias." + name}
+// GHAlias returns the expansion of a gh alias from gh's configuration.
+func (r *OSResolver) GHAlias(name string) (string, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.ghAliases == nil {
+		r.ghAliases = readGHAliases(ghConfigFile())
+	}
+
+	value, ok := r.ghAliases[name]
+
+	return value, ok
+}
+
+// externalGitCommand reports whether git would run an external command for
+// name instead of an alias.
+func (r *OSResolver) externalGitCommand(name string) bool {
+	if _, ok := r.LookPath("git-" + name); ok {
+		return true
+	}
+
+	r.mu.Lock()
+	if r.execPath == nil {
+		path := commandOutput(gitProgram, "--exec-path")
+		r.execPath = &path
+	}
+
+	execPath := *r.execPath
+	r.mu.Unlock()
+
+	if execPath == "" {
+		return false
+	}
+
+	_, err := os.Stat(filepath.Join(execPath, "git-"+name))
+
+	return err == nil
+}
+
+// gitAliases returns every alias git sees from dir. Past maxAliasDirs
+// directories only the global configuration is read, so a command naming
+// many repositories cannot make klaudiush run git config for each.
+func (r *OSResolver) gitAliases(dir string) map[string]string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if aliases, ok := r.aliases[dir]; ok {
+		return aliases
+	}
+
+	if r.aliases == nil {
+		r.aliases = make(map[string]map[string]string)
+	}
+
+	if len(r.aliases) >= maxAliasDirs {
+		dir = ""
+
+		if aliases, ok := r.aliases[dir]; ok {
+			return aliases
+		}
+	}
+
+	args := []string{"config", "--get-regexp", `^alias\.`}
 	if dir != "" {
 		args = append([]string{"-C", dir}, args...)
 	}
 
-	return commandOutput(gitProgram, args...)
+	output := commandOutput(gitProgram, args...)
+	aliases := make(map[string]string)
+
+	for line := range strings.Lines(output) {
+		key, value, _ := strings.Cut(strings.TrimRight(line, "\n"), " ")
+		if name, ok := strings.CutPrefix(key, "alias."); ok {
+			aliases[name] = value
+		}
+	}
+
+	r.aliases[dir] = aliases
+
+	return aliases
+}
+
+// ghConfigFile returns the file gh keeps its aliases in.
+func ghConfigFile() string {
+	if dir := os.Getenv("GH_CONFIG_DIR"); dir != "" {
+		return filepath.Join(dir, "config.yml")
+	}
+
+	return filepath.Join(xdg.ConfigHome(), "gh", "config.yml")
+}
+
+// readGHAliases reads the aliases section of gh's config.yml, a flat map of
+// name to expansion.
+func readGHAliases(path string) map[string]string {
+	aliases := make(map[string]string)
+
+	file, err := os.Open(path) //nolint:gosec // gh's own configuration
+	if err != nil {
+		return aliases
+	}
+	defer file.Close() //nolint:errcheck // read-only file
+
+	inAliases := false
+	scanner := bufio.NewScanner(file)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		switch {
+		case strings.HasPrefix(line, "aliases:"):
+			inAliases = true
+		case inAliases && (line == "" || line[0] == ' ' || line[0] == '\t'):
+			name, value, ok := strings.Cut(strings.TrimSpace(line), ":")
+			if ok && name != "" {
+				aliases[strings.TrimSpace(name)] = strings.Trim(strings.TrimSpace(value), `"'`)
+			}
+		default:
+			inAliases = false
+		}
+	}
+
+	return aliases
 }
 
 // commandOutput runs a program without a shell and returns its trimmed
-// output, or false when it fails or prints nothing.
-func commandOutput(name string, args ...string) (string, bool) {
+// output, or "" when it fails.
+func commandOutput(name string, args ...string) string {
 	ctx, cancel := context.WithTimeout(context.Background(), lookupTimeout)
 	defer cancel()
 
 	out, err := exec.CommandContext(ctx, name, args...).Output() //nolint:gosec // no shell
 	if err != nil {
-		return "", false
+		return ""
 	}
 
-	value := strings.TrimSpace(string(out))
-
-	return value, value != ""
+	return strings.TrimSpace(string(out))
 }
 
 // programPath finds the file a command word runs.
-func programPath(word, dir string) (string, bool) {
+func (r *OSResolver) programPath(word, dir string) (string, bool) {
 	if !strings.Contains(word, "/") {
-		path, err := exec.LookPath(word)
-
-		return path, err == nil
+		return r.LookPath(word)
 	}
 
 	path := xdg.ExpandPathSilent(word)
@@ -179,7 +396,7 @@ func programPath(word, dir string) (string, bool) {
 
 // identifyProgram tells whether path is git or gh: by the name its symlinks
 // lead to, or by being the same file or an identical copy.
-func identifyProgram(path string) Program {
+func (r *OSResolver) identifyProgram(path string) Program {
 	resolved, err := filepath.EvalSymlinks(path)
 	if err != nil {
 		resolved = path
@@ -188,9 +405,9 @@ func identifyProgram(path string) Program {
 	base := strings.ToLower(filepath.Base(resolved))
 
 	switch {
-	case base == gitProgram || sameProgram(resolved, gitProgram):
+	case base == gitProgram || r.sameProgram(resolved, gitProgram):
 		return ProgramGit
-	case base == ghCLI || sameProgram(resolved, ghCLI):
+	case base == ghCLI || r.sameProgram(resolved, ghCLI):
 		return ProgramGH
 	default:
 		return ProgramOther
@@ -199,9 +416,9 @@ func identifyProgram(path string) Program {
 
 // sameProgram reports whether path is the named program under another name:
 // the same file as the real program, or an identical copy of it.
-func sameProgram(path, name string) bool {
-	target, ok := realProgram(name)
-	if !ok {
+func (r *OSResolver) sameProgram(path, name string) bool {
+	target := r.realProgram(name)
+	if target == "" {
 		return false
 	}
 
@@ -223,29 +440,53 @@ func sameProgram(path, name string) bool {
 		sameContent(path, target)
 }
 
-// realProgram returns the file that really runs for name. A version manager
-// shim is not a program of its own, so it yields nothing. The macOS /usr/bin
-// launcher, one file shared by git, make, python3 and dozens more, is looked
-// through with xcrun, since comparing against it would make every tool git.
-func realProgram(name string) (string, bool) {
+// realProgram returns the file that really runs for name, or "" when there
+// is none. A version manager shim is not a program of its own. The macOS
+// /usr/bin launcher, one file shared by git, make, python3 and dozens more,
+// is looked through with xcrun, since comparing against it would make every
+// tool git.
+func (r *OSResolver) realProgram(name string) string {
+	r.mu.Lock()
+	target, cached := r.targets[name]
+	r.mu.Unlock()
+
+	if cached {
+		return target
+	}
+
+	target = findRealProgram(name)
+
+	r.mu.Lock()
+	if r.targets == nil {
+		r.targets = make(map[string]string)
+	}
+
+	r.targets[name] = target
+	r.mu.Unlock()
+
+	return target
+}
+
+// findRealProgram does the lookup realProgram remembers.
+func findRealProgram(name string) string {
 	target, err := exec.LookPath(name)
 	if err != nil {
-		return "", false
+		return ""
 	}
 
 	if target, err = filepath.EvalSymlinks(target); err != nil {
-		return "", false
+		return ""
 	}
 
 	if strings.ToLower(filepath.Base(target)) != name {
-		return "", false
+		return ""
 	}
 
 	if isLauncherStub(target) {
-		return commandOutput("xcrun", "--find", name)
+		target = commandOutput("xcrun", "--find", name)
 	}
 
-	return target, true
+	return target
 }
 
 // launcherSiblings are tools that share one file with the macOS launcher.
@@ -273,9 +514,9 @@ func isLauncherStub(path string) bool {
 	return false
 }
 
-// sameContent reports whether two files hold identical bytes.
-// The files are read in step, one block at a time, stopping at the first
-// difference, so a large program is never held in memory.
+// sameContent reports whether two files hold identical bytes. The files are
+// read in step, one block at a time, stopping at the first difference, so a
+// large program is never held in memory.
 func sameContent(a, b string) bool {
 	fileA, err := os.Open(a) //nolint:gosec // compares a program the command runs
 	if err != nil {

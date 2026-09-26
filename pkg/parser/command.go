@@ -46,6 +46,9 @@ func (t CmdType) String() string {
 type Location struct {
 	Line   uint
 	Column uint
+	// Seq is the position in execution order across nested scripts, where
+	// line and column restart; 0 when unknown.
+	Seq int
 }
 
 // Command represents a parsed command with metadata.
