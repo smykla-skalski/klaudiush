@@ -44,6 +44,9 @@ type Config struct {
 
 	// BypassPermissions controls behavior when the session skips approval prompts.
 	BypassPermissions *BypassPermissionsConfig `json:"bypass_permissions,omitempty" koanf:"bypass_permissions" toml:"bypass_permissions,omitempty"`
+
+	// Output controls user-facing messages and the agent block summary.
+	Output *OutputConfig `json:"output,omitempty" koanf:"output" toml:"output,omitempty"`
 }
 
 // ValidatorsConfig groups all validator configurations by category.

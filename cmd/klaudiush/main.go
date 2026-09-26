@@ -287,7 +287,7 @@ func run(cmd *cobra.Command, _ []string) error {
 	notices := collectNotices(bypassPolicy, cfg, ctx, log)
 
 	// Build and write response
-	writeErr := writeResponse(ctx, errs, patternWarnings, notices, log)
+	writeErr := writeResponse(ctx, errs, patternWarnings, notices, cfg.Output, log)
 
 	sessionCleanup()
 
@@ -373,6 +373,10 @@ func collectNotices(
 	hookCtx *hook.Context,
 	log logger.Logger,
 ) []string {
+	if !cfg.Output.IsUserMessagesEnabled() {
+		return nil
+	}
+
 	var notices []string
 
 	if msg := bypassNotice(policy, hookCtx, log); msg != "" {
@@ -417,11 +421,21 @@ func writeResponse(
 	errs []*dispatcher.ValidationError,
 	patternWarnings []string,
 	notices []string,
+	output *config.OutputConfig,
 	log logger.Logger,
 ) error {
 	response := hookresponse.BuildForContext(hookCtx, errs, patternWarnings)
 	if hookresponse.IsEmpty(response) {
 		response = nil
+	}
+
+	// Claude ignores permissionDecision outside PreToolUse, so only there does a deny stop anything
+	if output.IsAgentSummaryEnabled() && hookCtx.Event == hook.CanonicalEventBeforeTool {
+		hookresponse.AppendAgentSummary(response)
+	}
+
+	if !output.IsValidationMessagesEnabled() {
+		hookresponse.ClearSystemMessage(response)
 	}
 
 	// Inject user-only notices into the response

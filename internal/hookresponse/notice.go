@@ -37,17 +37,54 @@ func BuildNotice(hookCtx *hook.Context, msg string) any {
 // AppendNotice appends a user-visible message to an existing response's
 // systemMessage field, separated by a blank line.
 func AppendNotice(resp any, msg string) {
+	if p := systemMessage(resp); p != nil {
+		*p = joinNotice(*p, msg)
+	}
+}
+
+// ClearSystemMessage removes the user-visible message from a built response,
+// leaving the decision and model-facing context untouched.
+func ClearSystemMessage(resp any) {
+	if p := systemMessage(resp); p != nil {
+		*p = ""
+	}
+}
+
+// agentSummaryInstruction asks the agent to explain a denial to the user in plain words.
+const agentSummaryInstruction = "In your next message, tell the user in one short, " +
+	"plain-language sentence what klaudiush blocked and why. Skip error codes and details."
+
+// AppendAgentSummary asks the agent to explain a denied action to the user.
+// Only denials get it: advisory results (after-tool events) let the action
+// through, so telling the user it was blocked would be wrong.
+func AppendAgentSummary(resp any) {
+	r, ok := resp.(*HookResponse)
+	if !ok || r.HookSpecificOutput == nil ||
+		r.HookSpecificOutput.PermissionDecision != decisionDeny {
+		return
+	}
+
+	r.HookSpecificOutput.AdditionalContext = strings.TrimSpace(
+		r.HookSpecificOutput.AdditionalContext + " " + agentSummaryInstruction,
+	)
+}
+
+// systemMessage returns a pointer to the response's systemMessage field, or
+// nil for unknown types.
+func systemMessage(resp any) *string {
 	switch r := resp.(type) {
 	case *HookResponse:
-		r.SystemMessage = joinNotice(r.SystemMessage, msg)
+		return &r.SystemMessage
 	case *CodexCommandResponse:
-		r.SystemMessage = joinNotice(r.SystemMessage, msg)
+		return &r.SystemMessage
 	case *GeminiCommandResponse:
-		r.SystemMessage = joinNotice(r.SystemMessage, msg)
+		return &r.SystemMessage
 	case *OpenCodeCommandResponse:
-		r.SystemMessage = joinNotice(r.SystemMessage, msg)
+		return &r.SystemMessage
 	case *ElicitationHookResponse:
-		r.SystemMessage = joinNotice(r.SystemMessage, msg)
+		return &r.SystemMessage
+	default:
+		return nil
 	}
 }
 

@@ -1,0 +1,116 @@
+# Test: [output] toggles hide user-facing messages and control the agent summary
+
+exec git init --initial-branch=main
+exec git config user.email "test@test.com"
+exec git config user.name "Test User"
+
+cp file.go staged.go
+exec git add staged.go
+mkdir .klaudiush
+
+# Defaults: validation details, bypass reminder, and summary instruction
+stdin session-a.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'Wrong for your workflow'
+stdout 'klaudiush still validates with approval prompts off'
+stdout 'plain-language sentence what klaudiush blocked'
+
+# validation_messages off: details gone, reminder stays
+cp validation-off.toml .klaudiush/config.toml
+stdin session-b.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+! stdout 'Wrong for your workflow'
+stdout 'klaudiush still validates with approval prompts off'
+stdout 'plain-language sentence what klaudiush blocked'
+
+# user_messages off: nothing for the user, agent still gets the instruction
+cp user-off.toml .klaudiush/config.toml
+stdin session-c.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+! stdout 'systemMessage'
+stdout 'plain-language sentence what klaudiush blocked'
+
+# agent_summary off: no instruction
+cp summary-off.toml .klaudiush/config.toml
+stdin session-a.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+! stdout 'plain-language sentence what klaudiush blocked'
+
+# Lifecycle deny does not stop anything in Claude, so no summary instruction
+cp session-rule.toml .klaudiush/config.toml
+stdin session-start.json
+exec klaudiush --hook-type SessionStart
+stdout 'no sessions today'
+! stdout 'plain-language sentence what klaudiush blocked'
+
+-- file.go --
+package main
+
+func main() {}
+
+-- validation-off.toml --
+[output]
+validation_messages = false
+
+-- user-off.toml --
+[output]
+user_messages = false
+
+-- summary-off.toml --
+[output]
+agent_summary = false
+
+-- session-rule.toml --
+[rules]
+enabled = true
+
+[[rules.rules]]
+name = "session-block"
+
+[rules.rules.match]
+event_type = "SessionStart"
+
+[rules.rules.action]
+type = "block"
+message = "no sessions today"
+
+-- session-start.json --
+{
+  "session_id": "sess-output-e",
+  "hook_event_name": "SessionStart",
+  "source": "startup"
+}
+
+-- session-a.json --
+{
+  "session_id": "sess-output-a",
+  "permission_mode": "bypassPermissions",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "git commit -S -m 'feat(api): add user endpoint'"
+  }
+}
+
+-- session-b.json --
+{
+  "session_id": "sess-output-b",
+  "permission_mode": "bypassPermissions",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "git commit -S -m 'feat(api): add user endpoint'"
+  }
+}
+
+-- session-c.json --
+{
+  "session_id": "sess-output-c",
+  "permission_mode": "bypassPermissions",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "git commit -S -m 'feat(api): add user endpoint'"
+  }
+}

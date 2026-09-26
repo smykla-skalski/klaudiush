@@ -979,6 +979,21 @@
       "additionalProperties": false,
       "type": "object"
     },
+    "OutputConfig": {
+      "properties": {
+        "user_messages": {
+          "type": "boolean"
+        },
+        "validation_messages": {
+          "type": "boolean"
+        },
+        "agent_summary": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
     "OverrideEntry": {
       "properties": {
         "disabled": {
@@ -1801,6 +1816,9 @@
     },
     "bypass_permissions": {
       "$ref": "#/$defs/BypassPermissionsConfig"
+    },
+    "output": {
+      "$ref": "#/$defs/OutputConfig"
     }
   },
   "additionalProperties": false,

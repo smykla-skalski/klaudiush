@@ -296,6 +296,8 @@ klaudiush always exits 0. Validation results are JSON on stdout:
 
 JSON fields: `hookSpecificOutput.permissionDecision` (`"allow"` or `"deny"`), `permissionDecisionReason` (shown to Claude), `additionalContext` (behavioral framing), `systemMessage` (human-readable).
 
+`[output]` config toggles these: `user_messages = false` hides every `systemMessage` (master), `validation_messages = false` hides only validation details, `agent_summary` (default on) makes `hookresponse.AppendAgentSummary` add a one-sentence-explanation instruction to `additionalContext` on Claude denials only (advisory after-tool results let the action through, other providers drop `additionalContext` on deny).
+
 ## GitHub Push Protection
 
 When pushing code with intentional test secrets (e.g., in fuzz tests or detector tests), GitHub may block the push. To allow test secrets:
