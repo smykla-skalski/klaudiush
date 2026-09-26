@@ -5,6 +5,12 @@ All notable changes to klaudiush will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.40.0](https://github.com/smykla-skalski/klaudiush/compare/v1.39.4...v1.40.0) (2026-09-26)
+
+### Features
+
+* **output:** add toggles for user-facing output ([#653](https://github.com/smykla-skalski/klaudiush/issues/653)) ([2085951](https://github.com/smykla-skalski/klaudiush/commit/20859519407ec2a6313cbe2e58663be9f4163703))
+
 ## [1.39.4](https://github.com/smykla-skalski/klaudiush/compare/v1.39.3...v1.39.4) (2026-09-14)
 
 ### Bug Fixes
