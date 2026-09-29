@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Exits with golt's cold-run status so the job fails like a regular lint job;
-# golangci-lint results are only reported for comparison.
+# golt tracks newer upstream linters than the pinned golangci-lint, so issue
+# differences are reported, not failed on; only golt errors (exit >= 2) fail.
 set -euo pipefail
 
 out="${RUNNER_TEMP:-/tmp}/golt-compare"
@@ -39,6 +39,9 @@ issue_lines() {
   jq -r '.Issues[]? | "\(.FromLinter) \(.Pos.Filename):\(.Pos.Line): \(.Text)"' "$1" | sort
 }
 
+# Compile dependencies once so neither binary pays for the Go build cache.
+go list -export -deps ./... >/dev/null
+
 {
   echo "## golt vs golangci-lint"
   echo
@@ -76,5 +79,15 @@ if [[ -s "${out}/golt-cold.json" && -s "${out}/golangci-lint-cold.json" ]]; then
   } >>"${summary}"
 fi
 
-sed 's/^/golt: /' "${out}/golt-cold.log" >&2
-exit "$(cat "${out}/golt-cold.status")"
+if [[ -s "${out}/golt.issues" ]]; then
+  comm -13 "${out}/golangci-lint.issues" "${out}/golt.issues" | while IFS= read -r issue; do
+    echo "::warning title=golt-only issue::${issue}"
+  done
+fi
+
+status=$(cat "${out}/golt-cold.status")
+if ((status >= 2)); then
+  sed 's/^/golt: /' "${out}/golt-cold.log" >&2
+  echo "::error::golt failed with exit code ${status}"
+  exit "${status}"
+fi
