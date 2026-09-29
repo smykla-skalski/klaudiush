@@ -179,6 +179,71 @@ jobs:
           version: v${{ env.GOLANGCI_LINT_VERSION }}
           skip-cache: true
 
+  # Dogfoods golt (smykla-skalski/golt main) next to the pinned golangci-lint.
+  # Not a dependency of other jobs, so it never blocks builds or releases.
+  lint-golt:
+    name: Lint (golt)
+    runs-on: ubuntu-24.04
+    needs: ci-scope
+    if: needs.ci-scope.outputs.run_heavy == 'true'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Resolve golt main
+        id: golt
+        run: echo "sha=$(git ls-remote https://github.com/smykla-skalski/golt.git refs/heads/main | cut -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache golt binary
+        id: golt-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/golt-bin
+          key: golt-${{ runner.os }}-${{ steps.golt.outputs.sha }}
+
+      - name: Checkout golt
+        if: steps.golt-cache.outputs.cache-hit != 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: smykla-skalski/golt
+          ref: ${{ steps.golt.outputs.sha }}
+          path: .golt-src
+          persist-credentials: false
+
+      - name: Build golt
+        if: steps.golt-cache.outputs.cache-hit != 'true'
+        working-directory: .golt-src
+        run: go build -trimpath -o "$HOME/golt-bin/golt" ./cmd/golangci-lint
+
+      - name: Remove golt sources
+        if: steps.golt-cache.outputs.cache-hit != 'true'
+        run: rm -rf .golt-src
+
+      - name: Install golangci-lint
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v${{ env.GOLANGCI_LINT_VERSION }}
+          install-only: true
+
+      - name: Compare golt with golangci-lint
+        env:
+          MERGE_BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          export GOLT_BIN="$HOME/golt-bin/golt"
+          GOLANGCI_BIN="$(command -v golangci-lint)"
+          export GOLANGCI_BIN
+          .github/scripts/golt-compare.sh
+
   build:
     name: Build
     runs-on: ubuntu-24.04
