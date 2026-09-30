@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
-	"github.com/google/go-github/v91/github"
+	"github.com/google/go-github/v92/github"
 
 	execpkg "github.com/smykla-skalski/klaudiush/internal/exec"
 )
