@@ -236,6 +236,7 @@ jobs:
         with:
           path: ~/.cache/golangci-lint
           key: golt-lint-${{ runner.os }}-${{ hashFiles('**/*.go', '.golangci.yml', 'go.mod', 'go.sum') }}
+          restore-keys: golt-lint-${{ runner.os }}-
 
       - name: Run golt
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
