@@ -14,7 +14,7 @@ permissions: {}
 jobs:
   update-vendor-hash:
     name: Update vendorHash
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: write
       pull-requests: write
