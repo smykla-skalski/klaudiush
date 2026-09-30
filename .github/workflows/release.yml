@@ -15,7 +15,7 @@ jobs:
   # Run tests first
   test:
     name: Test
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
 
@@ -57,7 +57,7 @@ jobs:
   # Determine if a release should be created
   release:
     name: Semantic Release
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: test
     permissions:
       contents: write
@@ -108,7 +108,7 @@ jobs:
   # Build and release binaries with GoReleaser
   goreleaser:
     name: GoReleaser
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: release
     if: needs.release.outputs.new_release_published == 'true'
     permissions:
@@ -165,7 +165,7 @@ jobs:
   # Update Nix package hashes after release artifacts are uploaded
   update-nix-hashes:
     name: Update Nix Hashes
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: [release, goreleaser]
     if: needs.release.outputs.new_release_published == 'true'
     permissions:
