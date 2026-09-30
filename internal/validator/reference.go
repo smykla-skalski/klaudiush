@@ -210,8 +210,8 @@ func (r Reference) String() string {
 // Example: "GIT001" from "https://klaudiu.sh/e/GIT001".
 func (r Reference) Code() string {
 	s := string(r)
-	if idx := strings.LastIndex(s, "/"); idx != -1 {
-		return s[idx+1:]
+	if _, code, found := strings.CutLast(s, "/"); found {
+		return code
 	}
 
 	return s

@@ -27,26 +27,34 @@ func main() {
 }
 
 // run executes the enumerfix logic with the given arguments.
-func run(args []string) error {
+func run(args []string) (err error) {
 	if len(args) < minArgs {
 		return ErrUsage
 	}
 
 	filename := filepath.Clean(args[1])
 
-	content, err := os.ReadFile(filename)
+	root, err := os.OpenRoot(filepath.Dir(filename))
+	if err != nil {
+		return errors.Wrap(err, "opening directory")
+	}
+
+	defer func() {
+		if closeErr := root.Close(); closeErr != nil && err == nil {
+			err = errors.Wrap(closeErr, "closing directory")
+		}
+	}()
+
+	name := filepath.Base(filename)
+
+	content, err := root.ReadFile(name)
 	if err != nil {
 		return errors.Wrap(err, "reading file")
 	}
 
 	fixed := fixEnumerFile(content)
 
-	// #nosec G703 -- filename is resolved CLI argument for a local codegen tool
-	if err := os.WriteFile(
-		filename,
-		fixed,
-		filePermissions,
-	); err != nil {
+	if err := root.WriteFile(name, fixed, filePermissions); err != nil {
 		return errors.Wrap(err, "writing file")
 	}
 
