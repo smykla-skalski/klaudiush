@@ -15,7 +15,7 @@ markdownlint-cli2 = "0.23.2"
 
 # Ginkgo BDD test framework CLI
 # https://onsi.github.io/ginkgo/
-ginkgo = "2.32.2"
+ginkgo = "2.33.0"
 
 # Mock generator for Go interfaces
 # https://github.com/uber-go/mock
