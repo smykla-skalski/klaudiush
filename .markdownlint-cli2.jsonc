@@ -1,5 +1,19 @@
 {
+  // Catches one failure: a fence that never closes and swallows the prose after it.
+  // Prose is one line per paragraph, so the length limit only bites inside code blocks.
   "config": {
-    "MD013": false
-  }
+    "default": false,
+    "MD013": {
+      "line_length": 10000,
+      "code_block_line_length": 200,
+      "code_blocks": true,
+      "headings": false,
+      "tables": false
+    },
+    "MD022": true,
+    "MD031": true
+  },
+  "globs": ["**/*.md"],
+  "ignores": ["CHANGELOG.md"],
+  "gitignore": true
 }
