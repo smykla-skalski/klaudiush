@@ -5,6 +5,20 @@ All notable changes to klaudiush will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.40.2](https://github.com/smykla-skalski/klaudiush/compare/v1.40.1...v1.40.2) (2026-10-01)
+
+### Bug Fixes
+
+* **deps:** migrate go-github imports to v92 ([#663](https://github.com/smykla-skalski/klaudiush/issues/663)) ([aeab274](https://github.com/smykla-skalski/klaudiush/commit/aeab2742f095c3b68cb0116670b7cecaa5347c8a))
+* **deps:** update ginkgo to v2.33.0 ([#644](https://github.com/smykla-skalski/klaudiush/issues/644)) ([b8028a9](https://github.com/smykla-skalski/klaudiush/commit/b8028a944ebe6a723d335bc58672d681c2fa3350))
+* **deps:** update module charm.land/bubbletea/v2 to v2.0.10 ([#650](https://github.com/smykla-skalski/klaudiush/issues/650)) ([23c245a](https://github.com/smykla-skalski/klaudiush/commit/23c245ae266bd39136a87f21d4d069e6938051d1))
+* **deps:** update module github.com/bmatcuk/doublestar/v4 to v4.10.2 ([#648](https://github.com/smykla-skalski/klaudiush/issues/648)) ([1f30f7c](https://github.com/smykla-skalski/klaudiush/commit/1f30f7c029c86b873776827fe14cc59f3cb72b02))
+* **deps:** update module github.com/dustin/go-humanize to v1.1.0 ([#645](https://github.com/smykla-skalski/klaudiush/issues/645)) ([2248765](https://github.com/smykla-skalski/klaudiush/commit/2248765a1904c71e3cd614c4601fd61f6aa28399))
+* **deps:** update module github.com/google/go-github/v91 to v92 ([#635](https://github.com/smykla-skalski/klaudiush/issues/635)) ([c88d1e3](https://github.com/smykla-skalski/klaudiush/commit/c88d1e3e2ab9a8bad2ce501394fbe9853980639b))
+* **deps:** update module github.com/knadh/koanf/v2 to v2.3.7 ([#651](https://github.com/smykla-skalski/klaudiush/issues/651)) ([f242649](https://github.com/smykla-skalski/klaudiush/commit/f2426494fb8095804e450862e0e236c668f2fbee))
+* **deps:** update module github.com/olekukonko/tablewriter to v1.1.5 ([#639](https://github.com/smykla-skalski/klaudiush/issues/639)) ([10f9120](https://github.com/smykla-skalski/klaudiush/commit/10f91204d864beb8d3349d0c5c7a6502b0e10259))
+* **deps:** update module github.com/onsi/gomega to v1.43.1 ([#643](https://github.com/smykla-skalski/klaudiush/issues/643)) ([6f1c193](https://github.com/smykla-skalski/klaudiush/commit/6f1c193d0489d62e22769e1263a27eecb8a0b01b))
+
 ## [1.40.1](https://github.com/smykla-skalski/klaudiush/compare/v1.40.0...v1.40.1) (2026-09-26)
 
 ### Bug Fixes
