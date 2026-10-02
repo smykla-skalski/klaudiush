@@ -177,6 +177,44 @@ var _ = Describe("FileValidatorFactory", func() {
 				Expect(len(validators)).To(BeNumerically(">=", 1))
 			})
 
+			DescribeTable("pattern validators only run before the tool",
+				func(enable func(*config.FileConfig)) {
+					enable(cfg.Validators.File)
+
+					validators := fileFactory.CreateValidators(cfg)
+					Expect(validators).To(HaveLen(1))
+
+					edit := func(
+						provider hook.Provider,
+						event hook.CanonicalEvent,
+						derived bool,
+					) *hook.Context {
+						return &hook.Context{
+							Provider:     provider,
+							Event:        event,
+							ToolName:     hook.ToolTypeEdit,
+							ToolExecuted: event == hook.CanonicalEventAfterTool,
+							Derived:      derived,
+							ToolInput:    hook.ToolInput{FilePath: "/repo/main.go"},
+						}
+					}
+
+					before, after := hook.CanonicalEventBeforeTool, hook.CanonicalEventAfterTool
+					predicate := validators[0].Predicate
+
+					Expect(predicate(edit(hook.ProviderClaude, before, false))).To(BeTrue())
+					Expect(predicate(edit(hook.ProviderClaude, after, false))).To(BeFalse())
+					Expect(predicate(edit(hook.ProviderClaude, after, true))).To(BeFalse())
+					Expect(predicate(edit(hook.ProviderCodex, after, false))).To(BeFalse())
+				},
+				Entry("linter ignore", func(f *config.FileConfig) {
+					f.LinterIgnore = &config.LinterIgnoreValidatorConfig{Enabled: new(true)}
+				}),
+				Entry("AI comments", func(f *config.FileConfig) {
+					f.AIComments = &config.AICommentValidatorConfig{Enabled: new(true)}
+				}),
+			)
+
 			It("should handle nil linter ignore config", func() {
 				cfg.Validators.File.LinterIgnore = nil
 

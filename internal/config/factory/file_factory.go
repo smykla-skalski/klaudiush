@@ -407,7 +407,7 @@ func (f *FileValidatorFactory) createLinterIgnoreValidator(
 			cfg,
 		),
 		Predicate: validator.And(
-			fileResultPredicate(),
+			beforeToolOnlyPredicate(),
 			validator.ToolTypeIn(hook.ToolTypeWrite, hook.ToolTypeEdit, hook.ToolTypeMultiEdit),
 		),
 	}
@@ -431,7 +431,7 @@ func (f *FileValidatorFactory) createAICommentValidator(
 			cfg,
 		),
 		Predicate: validator.And(
-			fileResultPredicate(),
+			beforeToolOnlyPredicate(),
 			validator.ToolTypeIn(hook.ToolTypeWrite, hook.ToolTypeEdit, hook.ToolTypeMultiEdit),
 		),
 	}
