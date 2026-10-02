@@ -175,8 +175,9 @@ func BuildPermissionRequest(errs []*dispatcher.ValidationError) *PermissionReque
 }
 
 // BuildElicitation constructs an Elicitation or ElicitationResult response.
-// Claude reads only hookSpecificOutput here and discards systemMessage, so a
-// blocking finding declines the request and warnings produce no output.
+// A blocking finding sends both decline forms Claude accepts: the top-level
+// decision:block with a reason and hookSpecificOutput.action:decline. Claude
+// discards systemMessage here, so warnings produce no output.
 func BuildElicitation(
 	hookCtx *hook.Context,
 	errs []*dispatcher.ValidationError,
@@ -201,6 +202,8 @@ func BuildElicitation(
 			HookEventName: eventName,
 			Action:        elicitationDecline,
 		},
+		Decision: decisionBlock,
+		Reason:   formatDecisionReason(blocking),
 	}
 }
 

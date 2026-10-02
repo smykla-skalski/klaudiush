@@ -197,13 +197,16 @@ var _ = Describe("event decision semantics", func() {
 	})
 
 	Describe("Elicitation", func() {
-		DescribeTable("declines inside hookSpecificOutput",
+		DescribeTable("declines with top-level block and hookSpecificOutput",
 			func(raw string) {
 				fields := responseFields(hookresponse.BuildForContext(
 					eventCtx(hook.ProviderClaude, raw), semanticsBlocking(), nil,
 				))
 
-				Expect(fields).To(HaveLen(1))
+				Expect(fields).To(HaveLen(3))
+				Expect(fields).To(HaveKeyWithValue("decision", "block"))
+				Expect(fields).To(HaveKeyWithValue("reason", Not(BeEmpty())))
+				Expect(fields).NotTo(HaveKey("systemMessage"))
 				out := hookSpecific(fields)
 				Expect(out).To(HaveKeyWithValue("hookEventName", raw))
 				Expect(out).To(HaveKeyWithValue("action", "decline"))
@@ -222,6 +225,7 @@ var _ = Describe("event decision semantics", func() {
 		It("tolerates a nil context", func() {
 			resp := hookresponse.BuildElicitation(nil, semanticsBlocking(), nil)
 			Expect(resp.HookSpecificOutput.Action).To(Equal("decline"))
+			Expect(resp.Decision).To(Equal("block"))
 		})
 	})
 

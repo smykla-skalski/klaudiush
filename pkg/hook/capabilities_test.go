@@ -194,3 +194,26 @@ func TestKeepsRawEventName(t *testing.T) {
 		}
 	}
 }
+
+func TestClaudeElicitationAcceptsBothDeclineForms(t *testing.T) {
+	for _, raw := range []string{"Elicitation", "ElicitationResult"} {
+		capability, ok := ResolveEventCapability(ProviderClaude, NormalizeEventName(raw), raw)
+		if !ok {
+			t.Fatalf("%s: expected a Claude contract", raw)
+		}
+
+		if capability.Enforcement != EnforcementDeclineElicitation {
+			t.Errorf("%s: enforcement = %q, want decline_elicitation", raw, capability.Enforcement)
+		}
+
+		for _, field := range []ResponseField{ResponseFieldDecision, ResponseFieldElicitationAction} {
+			if !capability.Supports(field) {
+				t.Errorf("%s must accept %q", raw, field)
+			}
+		}
+
+		if capability.Supports(ResponseFieldSystemMessage) {
+			t.Errorf("%s must not accept systemMessage", raw)
+		}
+	}
+}

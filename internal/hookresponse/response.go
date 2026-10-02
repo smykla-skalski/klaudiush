@@ -77,10 +77,13 @@ type OpenCodeHookSpecificOutput struct {
 }
 
 // ElicitationHookResponse is the response for Elicitation/ElicitationResult
-// events. Claude acts only on hookSpecificOutput and discards systemMessage
-// and continue for these events, so neither is modelled.
+// events. Claude declines on either a top-level decision:block or
+// hookSpecificOutput.action:decline, and discards systemMessage and continue
+// for these events, so neither is modelled.
 type ElicitationHookResponse struct {
 	HookSpecificOutput *ElicitationOutput `json:"hookSpecificOutput,omitempty"`
+	Decision           string             `json:"decision,omitempty"`
+	Reason             string             `json:"reason,omitempty"`
 }
 
 // ElicitationOutput answers an MCP elicitation on the user's behalf.

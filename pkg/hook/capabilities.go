@@ -224,15 +224,16 @@ var claudeCapabilities = map[CanonicalEvent]EventCapability{
 		NativeName:  eventNameStopFailure,
 		Enforcement: EnforcementNone,
 	},
-	// Claude acts only on hookSpecificOutput here and drops systemMessage.
+	// Claude declines on a top-level decision:block (2.1.284+) or on
+	// hookSpecificOutput.action:decline, and drops systemMessage.
 	CanonicalEventElicitation: {
 		NativeName:  displayElicitation,
-		Fields:      []ResponseField{ResponseFieldElicitationAction},
+		Fields:      []ResponseField{ResponseFieldDecision, ResponseFieldElicitationAction},
 		Enforcement: EnforcementDeclineElicitation,
 	},
 	CanonicalEventElicitationResult: {
 		NativeName:  displayElicitationResult,
-		Fields:      []ResponseField{ResponseFieldElicitationAction},
+		Fields:      []ResponseField{ResponseFieldDecision, ResponseFieldElicitationAction},
 		Enforcement: EnforcementDeclineElicitation,
 	},
 }
