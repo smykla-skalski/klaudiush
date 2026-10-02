@@ -54,7 +54,7 @@ func (t *RealTerraformFormatter) CheckFormat(ctx context.Context, content string
 	if tool == "" {
 		return &LintResult{
 			Success: true,
-			Err:     nil,
+			Skipped: true,
 		}
 	}
 

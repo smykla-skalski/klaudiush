@@ -2,6 +2,8 @@ package secrets_test
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -54,6 +56,102 @@ var _ = Describe("SecretsValidator", func() {
 			ToolName:  hook.ToolTypeWrite,
 			ToolInput: hook.ToolInput{},
 		}
+	})
+
+	Describe("after the tool ran", func() {
+		const awsKey = `aws_access_key_id = "AKIAIOSFODNN7EXAMPLE"`
+
+		It("checks the whole file on disk, not the tool input", func() {
+			path := filepath.Join(GinkgoT().TempDir(), "config.go")
+			Expect(os.WriteFile(path, []byte(awsKey), 0o600)).To(Succeed())
+
+			hookCtx.Event = hook.CanonicalEventAfterTool
+			hookCtx.ToolName = hook.ToolTypeEdit
+			hookCtx.ToolInput = hook.ToolInput{FilePath: path, NewString: "unrelated"}
+
+			result := v.Validate(context.Background(), hookCtx)
+			Expect(result.Passed).To(BeFalse())
+			Expect(result.Inspected).To(BeTrue())
+
+			Expect(os.WriteFile(path, []byte("clean"), 0o600)).To(Succeed())
+
+			result = v.Validate(context.Background(), hookCtx)
+			Expect(result.Passed).To(BeTrue())
+			Expect(result.Inspected).To(BeTrue())
+
+			Expect(os.WriteFile(path, nil, 0o600)).To(Succeed())
+			Expect(v.Validate(context.Background(), hookCtx).Inspected).To(BeTrue())
+		})
+
+		It("does not count a file it could not read as checked", func() {
+			dir := GinkgoT().TempDir()
+
+			hookCtx.Event = hook.CanonicalEventAfterTool
+			hookCtx.ToolName = hook.ToolTypeEdit
+
+			for _, path := range []string{filepath.Join(dir, "missing.go"), dir} {
+				hookCtx.ToolInput = hook.ToolInput{FilePath: path, NewString: awsKey}
+
+				result := v.Validate(context.Background(), hookCtx)
+				Expect(result.Passed).To(BeTrue())
+				Expect(result.Inspected).To(BeFalse())
+			}
+		})
+
+		It("does not count an oversized file as checked", func() {
+			cfg.MaxFileSize = 4
+			v = secrets.NewSecretsValidator(logger.NewNoOpLogger(), detector, gitleaks, cfg, nil)
+
+			path := filepath.Join(GinkgoT().TempDir(), "big.go")
+			Expect(os.WriteFile(path, []byte(awsKey), 0o600)).To(Succeed())
+
+			hookCtx.Event = hook.CanonicalEventAfterTool
+			hookCtx.ToolInput = hook.ToolInput{FilePath: path}
+
+			result := v.Validate(context.Background(), hookCtx)
+			Expect(result.Passed).To(BeTrue())
+			Expect(result.Inspected).To(BeFalse())
+		})
+
+		It("reads a relative path against the hook working directory", func() {
+			dir := GinkgoT().TempDir()
+			Expect(os.WriteFile(filepath.Join(dir, "config.go"), []byte(awsKey), 0o600)).
+				To(Succeed())
+
+			hookCtx.Event = hook.CanonicalEventAfterTool
+			hookCtx.WorkingDir = dir
+			hookCtx.ToolInput = hook.ToolInput{FilePath: "config.go"}
+
+			result := v.Validate(context.Background(), hookCtx)
+			Expect(result.Passed).To(BeFalse())
+			Expect(result.Inspected).To(BeTrue())
+		})
+
+		It("does not count a failed gitleaks run as checked", func() {
+			gitleaks.available = true
+			gitleaks.result = &linters.LintResult{Success: false}
+			cfg.UseGitleaks = new(true)
+			v = secrets.NewSecretsValidator(logger.NewNoOpLogger(), detector, gitleaks, cfg, nil)
+
+			path := filepath.Join(GinkgoT().TempDir(), "clean.go")
+			Expect(os.WriteFile(path, []byte("clean"), 0o600)).To(Succeed())
+
+			hookCtx.Event = hook.CanonicalEventAfterTool
+			hookCtx.ToolInput = hook.ToolInput{FilePath: path}
+
+			result := v.Validate(context.Background(), hookCtx)
+			Expect(result.Passed).To(BeTrue())
+			Expect(result.Inspected).To(BeFalse())
+
+			gitleaks.result = nil
+
+			Expect(v.Validate(context.Background(), hookCtx).Inspected).To(BeTrue())
+		})
+
+		It("does not mark input checked before the tool ran", func() {
+			hookCtx.ToolInput.Content = "clean"
+			Expect(v.Validate(context.Background(), hookCtx).Inspected).To(BeFalse())
+		})
 	})
 
 	Describe("AWS credentials detection", func() {

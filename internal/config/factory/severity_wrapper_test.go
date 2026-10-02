@@ -95,3 +95,17 @@ func TestWrapValidatorWithSeveritySkipsDefaultErrorSeverity(t *testing.T) {
 		t.Fatal("expected error severity to preserve blocking result")
 	}
 }
+
+func TestWrapValidatorWithSeverityKeepsInspected(t *testing.T) {
+	base := fakeValidator{
+		name:   "fake",
+		result: validator.FailWithRef(validator.RefGofumpt, "unformatted").MarkInspected(),
+	}
+
+	wrapped := wrapValidatorWithSeverity(base, fakeSeverityConfig{severity: config.SeverityWarning})
+	result := wrapped.Validate(context.Background(), &hook.Context{})
+
+	if result.ShouldBlock || !result.Inspected {
+		t.Fatal("downgraded result should still report the whole-file inspection")
+	}
+}

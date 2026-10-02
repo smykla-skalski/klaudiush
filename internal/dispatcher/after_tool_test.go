@@ -70,6 +70,30 @@ func (v *recordingValidator) Validate(_ context.Context, hookCtx *hook.Context) 
 	}
 }
 
+// resultChecking makes a recording validator report that it checked the
+// whole file after the tool ran.
+type resultChecking struct{ *recordingValidator }
+
+func (v resultChecking) Validate(ctx context.Context, hookCtx *hook.Context) *validator.Result {
+	return v.recordingValidator.Validate(ctx, hookCtx).MarkInspected()
+}
+
+// fixedResult returns the same result for every context.
+type fixedResult struct {
+	name   string
+	result validator.Result
+}
+
+func (v *fixedResult) Name() string { return v.name }
+
+func (*fixedResult) Category() validator.ValidatorCategory { return validator.CategoryCPU }
+
+func (v *fixedResult) Validate(context.Context, *hook.Context) *validator.Result {
+	result := v.result
+
+	return &result
+}
+
 func (v *recordingValidator) paths() []string {
 	v.mu.Lock()
 	defer v.mu.Unlock()
@@ -173,6 +197,117 @@ var _ = Describe("Dispatcher Bash file writes after the tool ran", func() {
 		dispatch(claudeBash(hook.CanonicalEventAfterTool, heredoc("")))
 
 		Expect(rec.seen).To(BeEmpty())
+	})
+
+	It("rechecks unchanged content of a file with unresolved findings", func() {
+		writeFile("new.go", "package main\n")
+
+		hookCtx := claudeBash(hook.CanonicalEventAfterTool, heredoc(""))
+		hookCtx.RecheckFiles = []string{repo + "/new.go"}
+
+		reg := validator.NewRegistry()
+		reg.Register(resultChecking{rec}, validator.ToolTypeIs(hook.ToolTypeWrite))
+		reg.Register(&recordingValidator{}, validator.ToolTypeIs(hook.ToolTypeWrite))
+
+		outcome := dispatcher.NewDispatcher(reg, logger.NewNoOpLogger()).
+			DispatchWithChecks(context.Background(), hookCtx)
+
+		Expect(rec.paths()).To(ConsistOf(repo + "/new.go"))
+		Expect(outcome.Checks).To(ConsistOf(dispatcher.Check{
+			Validator: "recording",
+			Resource:  hook.ResourceFilePrefix + repo + "/new.go",
+		}))
+		Expect(outcome.Errors).To(HaveLen(2))
+		Expect(outcome.Errors[0].Resource).To(Equal(hook.ResourceFilePrefix + repo + "/new.go"))
+	})
+
+	It("caps how many changed files with unresolved findings it rechecks", func() {
+		hookCtx := claudeBash(hook.CanonicalEventAfterTool, "true")
+
+		for i := range 12 {
+			name := fmt.Sprintf("f%d.md", i)
+			writeFile(name, "x")
+			hookCtx.RecheckFiles = append(hookCtx.RecheckFiles, filepath.Join(repo, name))
+		}
+
+		dispatch(hookCtx)
+
+		Expect(rec.paths()).To(HaveLen(10))
+	})
+
+	It("records a file check only for runs that inspected the whole file", func() {
+		reg := validator.NewRegistry()
+
+		for _, v := range []*fixedResult{
+			{name: "inspected", result: validator.Result{Passed: true, Inspected: true}},
+			{name: "inspected-fail", result: validator.Result{Message: "bad", Inspected: true}},
+			{name: "skipped", result: validator.Result{Passed: true}},
+			{
+				name:   "unavailable",
+				result: validator.Result{Message: "no tool", Inspected: true, Unavailable: true},
+			},
+		} {
+			reg.Register(v, validator.ToolTypeIs(hook.ToolTypeWrite))
+		}
+
+		resource := hook.ResourceFilePrefix + repo + "/a.md"
+
+		for _, exec := range []dispatcher.Executor{
+			dispatcher.NewSequentialExecutor(logger.NewNoOpLogger()),
+			dispatcher.NewParallelExecutor(logger.NewNoOpLogger(), nil),
+		} {
+			outcome := dispatcher.NewDispatcherWithExecutor(reg, logger.NewNoOpLogger(), exec).
+				DispatchWithChecks(context.Background(), &hook.Context{
+					Provider:  hook.ProviderCodex,
+					Event:     hook.CanonicalEventAfterTool,
+					ToolName:  hook.ToolTypeWrite,
+					ToolInput: hook.ToolInput{FilePath: repo + "/a.md"},
+				})
+
+			Expect(outcome.Checks).To(ConsistOf(
+				dispatcher.Check{Validator: "inspected", Resource: resource},
+				dispatcher.Check{Validator: "inspected-fail", Resource: resource},
+			))
+			Expect(outcome.Errors).To(HaveLen(2))
+		}
+	})
+
+	It("records a command check for every validator that ran", func() {
+		reg := validator.NewRegistry()
+		reg.Register(
+			&fixedResult{name: "cmd", result: validator.Result{Passed: true}},
+			validator.ToolTypeIs(hook.ToolTypeBash),
+		)
+
+		outcome := dispatcher.NewDispatcher(reg, logger.NewNoOpLogger()).
+			DispatchWithChecks(context.Background(), &hook.Context{
+				Provider:  hook.ProviderCodex,
+				Event:     hook.CanonicalEventAfterTool,
+				ToolName:  hook.ToolTypeBash,
+				ToolInput: hook.ToolInput{Command: "true"},
+			})
+
+		Expect(outcome.Checks).To(ConsistOf(
+			dispatcher.Check{Validator: "cmd", Resource: hook.ResourceCommand},
+		))
+	})
+
+	It("reports no checks for a cancelled dispatch", func() {
+		reg := validator.NewRegistry()
+		reg.Register(rec, validator.ToolTypeIs(hook.ToolTypeWrite))
+
+		cancelled, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		outcome := dispatcher.NewDispatcher(reg, logger.NewNoOpLogger()).
+			DispatchWithChecks(cancelled, &hook.Context{
+				Provider:  hook.ProviderCodex,
+				Event:     hook.CanonicalEventAfterTool,
+				ToolName:  hook.ToolTypeWrite,
+				ToolInput: hook.ToolInput{FilePath: repo + "/a.md"},
+			})
+
+		Expect(outcome.Checks).To(BeEmpty())
 	})
 
 	It("skips unchanged captured content after a failed command too", func() {

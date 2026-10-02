@@ -89,14 +89,19 @@ func (v *JavaScriptValidator) Validate(
 	opts := v.buildOxlintOptions(ci.IsFragment)
 	result := v.checker.CheckWithOptions(lintCtx, ci.Content, opts)
 
+	inspected := ci.ToolResult && lintRan(lintCtx, result)
+
 	if result.Success {
 		log.Debug("oxlint passed")
-		return validator.Pass()
+		return inspectedIf(inspected, validator.Pass())
 	}
 
 	log.Debug("oxlint failed", "output", result.RawOut)
 
-	return validator.FailWithRef(validator.RefOxlintCheck, v.formatOxlintOutput(result))
+	return inspectedIf(
+		inspected,
+		validator.FailWithRef(validator.RefOxlintCheck, v.formatOxlintOutput(result)),
+	)
 }
 
 // extractContent creates a ContentExtractor and extracts content from the hook context.

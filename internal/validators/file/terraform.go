@@ -67,8 +67,11 @@ func (v *TerraformValidator) Validate(
 		return validator.Pass()
 	}
 
+	// After the tool ran, content is the whole file as the tool left it.
+	inspected := hookCtx.IsAfterTool() && hookCtx.GetFilePath() != ""
+
 	if content == "" {
-		return validator.Pass()
+		return inspectedIf(inspected, validator.Pass())
 	}
 
 	// Detect which tool to use
@@ -87,16 +90,19 @@ func (v *TerraformValidator) Validate(
 
 	// Run format check if enabled
 	if v.isCheckFormat() {
-		if fmtWarning := v.checkFormat(ctx, content, tool); fmtWarning != "" {
+		fmtWarning, ran := v.checkFormat(ctx, content, tool)
+		if fmtWarning != "" {
 			warnings = append(warnings, fmtWarning)
 		}
+
+		inspected = inspected && ran
 	}
 
 	// Run tflint if enabled and available
 	if v.isUseTflint() {
-		if lintWarnings := v.runTflint(ctx, tmpFile); len(lintWarnings) > 0 {
-			warnings = append(warnings, lintWarnings...)
-		}
+		lintWarnings, ran := v.runTflint(ctx, tmpFile)
+		warnings = append(warnings, lintWarnings...)
+		inspected = inspected && ran
 	}
 
 	if len(warnings) > 0 {
@@ -105,10 +111,10 @@ func (v *TerraformValidator) Validate(
 			"warnings": strings.Join(warnings, "\n"),
 		}
 
-		return validator.WarnWithDetails(message, details)
+		return inspectedIf(inspected, validator.WarnWithDetails(message, details))
 	}
 
-	return validator.Pass()
+	return inspectedIf(inspected, validator.Pass())
 }
 
 // getContent extracts terraform content from context
@@ -178,10 +184,14 @@ func (v *TerraformValidator) getContent(ctx *hook.Context) (string, error) {
 	return "", errNoContent
 }
 
-// checkFormat runs terraform/tofu fmt -check using TerraformFormatter
-func (v *TerraformValidator) checkFormat(ctx context.Context, content, tool string) string {
+// checkFormat runs terraform/tofu fmt -check using TerraformFormatter. The
+// second return value reports whether the check really ran.
+func (v *TerraformValidator) checkFormat(
+	ctx context.Context,
+	content, tool string,
+) (string, bool) {
 	if tool == "" {
-		return "Neither 'tofu' nor 'terraform' found in PATH - skipping format check"
+		return "Neither 'tofu' nor 'terraform' found in PATH - skipping format check", false
 	}
 
 	fmtCtx, cancel := context.WithTimeout(ctx, v.getTimeout())
@@ -190,7 +200,7 @@ func (v *TerraformValidator) checkFormat(ctx context.Context, content, tool stri
 	result := v.formatter.CheckFormat(fmtCtx, content)
 
 	if result.Success {
-		return ""
+		return "", !result.Skipped
 	}
 
 	// Format check failed
@@ -200,38 +210,39 @@ func (v *TerraformValidator) checkFormat(ctx context.Context, content, tool stri
 			"Terraform formatting issues detected:\n%s\nRun '%s fmt' to fix",
 			diff,
 			tool,
-		)
+		), true
 	}
 
 	if result.Err != nil {
 		v.Logger().Debug("fmt command failed", "error", result.Err)
-		return fmt.Sprintf("Failed to run '%s fmt -check': %v", tool, result.Err)
+		return fmt.Sprintf("Failed to run '%s fmt -check': %v", tool, result.Err), false
 	}
 
-	return ""
+	return "", false
 }
 
-// runTflint runs tflint on the file if available using TfLinter
-func (v *TerraformValidator) runTflint(ctx context.Context, filePath string) []string {
+// runTflint runs tflint on the file if available using TfLinter. The second
+// return value reports whether tflint really ran.
+func (v *TerraformValidator) runTflint(ctx context.Context, filePath string) ([]string, bool) {
 	lintCtx, cancel := context.WithTimeout(ctx, v.getTimeout())
 	defer cancel()
 
 	result := v.linter.Lint(lintCtx, filePath)
 
 	if result.Success {
-		return nil
+		return nil, !result.Skipped
 	}
 
 	output := strings.TrimSpace(result.RawOut)
 	if output != "" {
-		return []string{"tflint findings:\n" + output}
+		return []string{"tflint findings:\n" + output}, true
 	}
 
 	if result.Err != nil {
 		v.Logger().Debug("tflint failed", "error", result.Err)
 	}
 
-	return nil
+	return nil, false
 }
 
 // getTimeout returns the configured timeout for terraform/tofu operations.

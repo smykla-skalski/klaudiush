@@ -55,6 +55,14 @@ func (r *Result) MarkUnavailable() *Result {
 	return r
 }
 
+// MarkInspected records that the run checked the whole file as the tool left
+// it, so the result can prove earlier findings in that file resolved.
+func (r *Result) MarkInspected() *Result {
+	r.Inspected = true
+
+	return r
+}
+
 // SortFindings orders findings deterministically and drops exact duplicates.
 // Findings keep the order of the given priority list first, then sort by code,
 // location (numbers compared by value, so line 9 comes before line 10) and

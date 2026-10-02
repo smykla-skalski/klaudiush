@@ -124,6 +124,18 @@ func TestFileResultPredicateClaudeAfterTool(t *testing.T) {
 			want: true,
 		},
 		{
+			name: "write to a file with unresolved findings is checked again",
+			ctx: &hook.Context{
+				Provider:      hook.ProviderClaude,
+				Event:         hook.CanonicalEventAfterTool,
+				ToolExecuted:  true,
+				ToolSucceeded: true,
+				ToolInput:     hook.ToolInput{FilePath: "/repo/a.md"},
+				RecheckFiles:  []string{"/repo/a.md"},
+			},
+			want: true,
+		},
+		{
 			name: "codex after-tool keeps its coverage",
 			ctx:  &hook.Context{Provider: hook.ProviderCodex, Event: hook.CanonicalEventAfterTool},
 			want: true,

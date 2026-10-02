@@ -86,17 +86,22 @@ func (v *RustValidator) Validate(
 	defer cancel()
 
 	// Build options with edition detection
-	opts := v.buildRustfmtOptions(filePath)
+	opts := v.buildRustfmtOptions(hook.CanonicalFilePath(hookCtx.WorkingDir, filePath))
 	result := v.checker.CheckWithOptions(lintCtx, ci.Content, opts)
+
+	inspected := ci.ToolResult && lintRan(lintCtx, result)
 
 	if result.Success {
 		log.Debug("rustfmt passed")
-		return validator.Pass()
+		return inspectedIf(inspected, validator.Pass())
 	}
 
 	log.Debug("rustfmt failed", "output", result.RawOut)
 
-	return validator.FailWithRef(validator.RefRustfmtCheck, v.formatRustfmtOutput(result))
+	return inspectedIf(
+		inspected,
+		validator.FailWithRef(validator.RefRustfmtCheck, v.formatRustfmtOutput(result)),
+	)
 }
 
 // extractContent creates a ContentExtractor and extracts content from the hook context.

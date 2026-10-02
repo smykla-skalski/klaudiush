@@ -12,6 +12,8 @@ import (
 type ContentInfo struct {
 	Content    string
 	IsFragment bool
+	// ToolResult reports that Content is the whole file as the tool left it.
+	ToolResult bool
 }
 
 // ContentExtractor handles content extraction from hook contexts for file validators.
@@ -41,7 +43,7 @@ func (e *ContentExtractor) Extract(ctx *hook.Context, filePath string) (*Content
 			return nil, err
 		}
 
-		return &ContentInfo{Content: content, IsFragment: false}, nil
+		return &ContentInfo{Content: content, ToolResult: true}, nil
 	}
 
 	// For Edit operations, validate only the changed fragment with context

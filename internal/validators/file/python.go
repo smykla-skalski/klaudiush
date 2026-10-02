@@ -88,14 +88,19 @@ func (v *PythonValidator) Validate(
 	opts := v.buildRuffOptions(ci.IsFragment)
 	result := v.checker.CheckWithOptions(lintCtx, ci.Content, opts)
 
+	inspected := ci.ToolResult && lintRan(lintCtx, result)
+
 	if result.Success {
 		log.Debug("ruff passed")
-		return validator.Pass()
+		return inspectedIf(inspected, validator.Pass())
 	}
 
 	log.Debug("ruff failed", "output", result.RawOut)
 
-	return validator.FailWithRef(validator.RefRuffCheck, v.formatRuffOutput(result))
+	return inspectedIf(
+		inspected,
+		validator.FailWithRef(validator.RefRuffCheck, v.formatRuffOutput(result)),
+	)
 }
 
 // extractContent creates a ContentExtractor and extracts content from the hook context.

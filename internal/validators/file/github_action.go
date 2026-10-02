@@ -120,8 +120,13 @@ func (v *WorkflowValidator) Validate(ctx context.Context, hookCtx *hook.Context)
 		return validator.Pass()
 	}
 
+	// After the tool ran, content is the whole file as the tool left it. Only
+	// the local digest pinning check reports findings; actionlint and version
+	// lookups only print warnings.
+	inspected := hookCtx.IsAfterTool()
+
 	if content == "" {
-		return validator.Pass()
+		return inspectedIf(inspected, validator.Pass())
 	}
 
 	var allErrors []string
@@ -157,10 +162,10 @@ func (v *WorkflowValidator) Validate(ctx context.Context, hookCtx *hook.Context)
 
 	// Report errors (blocking)
 	if len(allErrors) > 0 {
-		return validator.FailWithRef(
+		return inspectedIf(inspected, validator.FailWithRef(
 			validator.RefActionlint,
 			allErrors[0],
-		).AddDetail("file", filepath.Base(filePath)).
+		)).AddDetail("file", filepath.Base(filePath)).
 			AddDetail("errors", strings.Join(allErrors, "\n")).
 			AddDetail("help", `Requirements:
   - Use digest-pinned actions with version or branch comments:
@@ -172,7 +177,7 @@ func (v *WorkflowValidator) Validate(ctx context.Context, hookCtx *hook.Context)
     uses: vendor/custom-action@v1`)
 	}
 
-	return validator.Pass()
+	return inspectedIf(inspected, validator.Pass())
 }
 
 // isWorkflowFile checks if the file path is a GitHub Actions workflow or composable action

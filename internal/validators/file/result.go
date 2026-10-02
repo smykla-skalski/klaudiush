@@ -1,6 +1,7 @@
 package file
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -9,20 +10,39 @@ import (
 
 	"github.com/cockroachdb/errors"
 
+	"github.com/smykla-skalski/klaudiush/internal/linters"
+	"github.com/smykla-skalski/klaudiush/internal/validator"
 	"github.com/smykla-skalski/klaudiush/pkg/hook"
 )
+
+// inspectedIf marks result as a check of the whole file as the tool left it
+// when inspected holds.
+func inspectedIf(inspected bool, result *validator.Result) *validator.Result {
+	if inspected {
+		return result.MarkInspected()
+	}
+
+	return result
+}
+
+// lintRan reports whether a linter really checked the content: the tool was
+// installed and finished before lintCtx ran out.
+func lintRan(lintCtx context.Context, result *linters.LintResult) bool {
+	return result != nil && !result.Skipped && lintCtx.Err() == nil
+}
 
 // readToolResult reads a file as the tool left it. Once a tool ran, the file
 // on disk is what matters: the tool input holds only what was asked for, and
 // for an Edit only a fragment of it. The second return value reports whether
 // the hook fired after the tool, in which case the caller must use this
-// result (or the error) instead of the tool input.
+// result (or the error) instead of the tool input. A relative path is read
+// against the hook's working directory, not the process's.
 func readToolResult(ctx *hook.Context, filePath string) (string, bool, error) {
 	if !ctx.IsAfterTool() || filePath == "" {
 		return "", false, nil
 	}
 
-	path := filepath.Clean(filePath)
+	path := hook.CanonicalFilePath(ctx.WorkingDir, filePath)
 
 	info, err := os.Stat(path)
 	if err != nil {
@@ -33,7 +53,7 @@ func readToolResult(ctx *hook.Context, filePath string) (string, bool, error) {
 		return "", true, errors.Newf("not a regular file: %s", path)
 	}
 
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(filepath.Clean(path))
 	if err != nil {
 		return "", true, errors.Wrap(err, "reading file after tool")
 	}

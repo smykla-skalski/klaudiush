@@ -94,14 +94,19 @@ func (v *ShellScriptValidator) Validate(
 	opts := v.buildShellCheckOptions(ci.IsFragment)
 	result := v.checker.CheckWithOptions(lintCtx, ci.Content, opts)
 
+	inspected := ci.ToolResult && lintRan(lintCtx, result)
+
 	if result.Success {
 		log.Debug("shellcheck passed")
-		return validator.Pass()
+		return inspectedIf(inspected, validator.Pass())
 	}
 
 	log.Debug("shellcheck failed", "output", result.RawOut)
 
-	return validator.FailWithRef(validator.RefShellcheck, v.formatShellCheckOutput(result.RawOut))
+	return inspectedIf(
+		inspected,
+		validator.FailWithRef(validator.RefShellcheck, v.formatShellCheckOutput(result.RawOut)),
+	)
 }
 
 // extractContent extracts shell script content from the hook context, with

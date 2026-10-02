@@ -78,12 +78,17 @@ func (v *GofumptValidator) Validate(
 		return validator.Pass()
 	}
 
-	opts := v.buildGofumptOptions(filePath)
+	opts := v.buildGofumptOptions(hook.CanonicalFilePath(hookCtx.WorkingDir, filePath))
 
 	result := v.check(ctx, content, opts)
+
+	// A timeout or crash reports neither success nor a diff.
+	inspected := hookCtx.IsAfterTool() && !result.Skipped &&
+		(result.Success || isUnformatted(result))
+
 	if result.Success {
 		log.Debug("gofumpt passed")
-		return validator.Pass()
+		return inspectedIf(inspected, validator.Pass())
 	}
 
 	log.Debug("gofumpt failed", "output", result.RawOut)
@@ -93,13 +98,13 @@ func (v *GofumptValidator) Validate(
 	if baseline != nil && isUnformatted(v.check(ctx, *baseline, opts)) {
 		log.Debug("file was not gofumpt-formatted before the edit")
 
-		return validator.WarnWithRef(
+		return inspectedIf(inspected, validator.WarnWithRef(
 			validator.RefGofumpt,
 			message+"\n\nThe file was not gofumpt-formatted before this edit either",
-		)
+		))
 	}
 
-	return validator.FailWithRef(validator.RefGofumpt, message)
+	return inspectedIf(inspected, validator.FailWithRef(validator.RefGofumpt, message))
 }
 
 // isUnformatted tells formatting differences apart from a failed run, such

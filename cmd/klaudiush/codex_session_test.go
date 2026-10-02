@@ -15,7 +15,7 @@ import (
 )
 
 var _ = Describe("applyHookSessionLifecycle", func() {
-	It("records blocking PostToolUse findings and blocks them only at Stop", func() {
+	It("records blocking PostToolUse findings and keeps them past Stop", func() {
 		tempDir := GinkgoT().TempDir()
 		currentTime := time.Date(2026, 3, 11, 12, 0, 0, 0, time.UTC)
 		store := hooksession.NewStore(
@@ -29,7 +29,7 @@ var _ = Describe("applyHookSessionLifecycle", func() {
 			Event:        hook.CanonicalEventSessionStart,
 			RawEventName: "SessionStart",
 			SessionID:    "sess-1",
-		}, nil, log)
+		}, nil, nil, log)
 		Expect(cleanup).NotTo(BeNil())
 
 		afterToolErrs := []*dispatcher.ValidationError{
@@ -49,7 +49,7 @@ var _ = Describe("applyHookSessionLifecycle", func() {
 			ToolName:     hook.ToolTypeBash,
 			ToolFamily:   hook.ToolFamilyShell,
 			ToolInput:    hook.ToolInput{Command: "git push origin main"},
-		}, afterToolErrs, log)
+		}, afterToolErrs, nil, log)
 		Expect(recordedErrs).To(Equal(afterToolErrs))
 		cleanup()
 
@@ -64,13 +64,13 @@ var _ = Describe("applyHookSessionLifecycle", func() {
 				Message:     "wrap up",
 				ShouldBlock: false,
 			},
-		}, log)
+		}, nil, log)
 		Expect(stopErrs).To(HaveLen(2))
 		Expect(dispatcher.ShouldBlock(stopErrs)).To(BeTrue())
 		cleanup()
 
 		combined, err := store.CombinedErrors(hook.ProviderCodex, "sess-1")
 		Expect(err).NotTo(HaveOccurred())
-		Expect(combined).To(BeEmpty())
+		Expect(combined).To(HaveLen(1))
 	})
 })
