@@ -175,6 +175,45 @@ var _ = Describe("Dispatcher Bash file writes after the tool ran", func() {
 		Expect(rec.seen).To(BeEmpty())
 	})
 
+	It("rechecks unchanged content of a file with unresolved findings", func() {
+		writeFile("new.go", "package main\n")
+
+		hookCtx := claudeBash(hook.CanonicalEventAfterTool, heredoc(""))
+		hookCtx.RecheckFiles = []string{repo + "/new.go"}
+
+		reg := validator.NewRegistry()
+		reg.Register(rec, validator.ToolTypeIs(hook.ToolTypeWrite))
+
+		outcome := dispatcher.NewDispatcher(reg, logger.NewNoOpLogger()).
+			DispatchWithChecks(context.Background(), hookCtx)
+
+		Expect(rec.paths()).To(ConsistOf(repo + "/new.go"))
+		Expect(outcome.Checks).To(ConsistOf(dispatcher.Check{
+			Validator: "recording",
+			Resource:  hook.ResourceFilePrefix + repo + "/new.go",
+		}))
+		Expect(outcome.Errors).To(HaveLen(1))
+		Expect(outcome.Errors[0].Resource).To(Equal(hook.ResourceFilePrefix + repo + "/new.go"))
+	})
+
+	It("reports no checks for a cancelled dispatch", func() {
+		reg := validator.NewRegistry()
+		reg.Register(rec, validator.ToolTypeIs(hook.ToolTypeWrite))
+
+		cancelled, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		outcome := dispatcher.NewDispatcher(reg, logger.NewNoOpLogger()).
+			DispatchWithChecks(cancelled, &hook.Context{
+				Provider:  hook.ProviderCodex,
+				Event:     hook.CanonicalEventAfterTool,
+				ToolName:  hook.ToolTypeWrite,
+				ToolInput: hook.ToolInput{FilePath: repo + "/a.md"},
+			})
+
+		Expect(outcome.Checks).To(BeEmpty())
+	})
+
 	It("skips unchanged captured content after a failed command too", func() {
 		writeFile("new.go", "package main\n")
 

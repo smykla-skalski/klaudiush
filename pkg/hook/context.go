@@ -209,6 +209,11 @@ type Context struct {
 	// ToolInput directly and leaves this empty.
 	PatchFiles []PatchFile
 
+	// RecheckFiles lists canonical paths of files with unresolved findings in
+	// the session. After a tool ran, these files are validated again even when
+	// the tool result alone would not call for it, so a repair is noticed.
+	RecheckFiles []string
+
 	// Elicitation contains MCP elicitation event data (nil for non-elicitation events).
 	Elicitation *ElicitationInput
 

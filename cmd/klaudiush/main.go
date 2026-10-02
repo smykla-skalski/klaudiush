@@ -269,11 +269,7 @@ func run(cmd *cobra.Command, _ []string) error {
 		dispatcher.WithBypassPolicy(bypassPolicy),
 	)
 
-	// Dispatch validation
-	errs := disp.Dispatch(context.Background(), ctx)
-	sessionStore := hooksession.NewStore()
-	errs, sessionCleanup := applyHookSessionLifecycle(sessionStore, ctx, errs, log)
-	errs, gateNotice := applyCompletionGate(sessionStore, ctx, errs, log)
+	errs, sessionCleanup, gateNotice := dispatchInSession(disp, ctx, log)
 
 	bt.mark("dispatch")
 
@@ -297,6 +293,30 @@ func run(cmd *cobra.Command, _ []string) error {
 	bt.mark("response")
 
 	return writeErr
+}
+
+// dispatchInSession validates the hook and applies the session state: it
+// rechecks unresolved files, records or replays findings, and bounds
+// completion gates. The returned cleanup runs after the response is written.
+func dispatchInSession(
+	disp *dispatcher.Dispatcher,
+	hookCtx *hook.Context,
+	log logger.Logger,
+) ([]*dispatcher.ValidationError, func(), string) {
+	sessionStore := hooksession.NewStore()
+	prepareRecheck(sessionStore, hookCtx, log)
+
+	outcome := disp.DispatchWithChecks(context.Background(), hookCtx)
+	errs, cleanup := applyHookSessionLifecycle(
+		sessionStore,
+		hookCtx,
+		outcome.Errors,
+		outcome.Checks,
+		log,
+	)
+	errs, gateNotice := applyCompletionGate(sessionStore, hookCtx, errs, log)
+
+	return errs, cleanup, gateNotice
 }
 
 func resolveHookInvocation() (hook.Provider, hook.EventType, string, error) {

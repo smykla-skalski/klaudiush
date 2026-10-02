@@ -29,7 +29,7 @@ var _ = Describe("Gemini session lifecycle", func() {
 			Event:        hook.CanonicalEventSessionStart,
 			RawEventName: "SessionStart",
 			SessionID:    "sess-gemini-1",
-		}, nil, log)
+		}, nil, nil, log)
 		cleanup()
 
 		afterToolErrs := []*dispatcher.ValidationError{
@@ -52,7 +52,7 @@ var _ = Describe("Gemini session lifecycle", func() {
 				FilePath: "README.md",
 				Content:  "hello",
 			},
-		}, afterToolErrs, log)
+		}, afterToolErrs, nil, log)
 		Expect(recordedErrs).To(Equal(afterToolErrs))
 		cleanup()
 
@@ -61,14 +61,14 @@ var _ = Describe("Gemini session lifecycle", func() {
 			Event:        hook.CanonicalEventTurnStop,
 			RawEventName: "AfterAgent",
 			SessionID:    "sess-gemini-1",
-		}, nil, log)
+		}, nil, nil, log)
 		Expect(sessionEndErrs).To(HaveLen(1))
 		Expect(sessionEndErrs[0].Reference).To(Equal(validator.RefMarkdownLint))
 		cleanup()
 
 		combined, err := store.CombinedErrors(hook.ProviderGemini, "sess-gemini-1")
 		Expect(err).NotTo(HaveOccurred())
-		Expect(combined).To(BeEmpty())
+		Expect(combined).To(HaveLen(1))
 	})
 
 	It("drops session state on SessionEnd without reporting stored findings", func() {
@@ -88,7 +88,7 @@ var _ = Describe("Gemini session lifecycle", func() {
 			Validator:   "file.markdown",
 			Message:     "missing heading",
 			ShouldBlock: true,
-		}}, log)
+		}}, nil, log)
 		cleanup()
 
 		errs, cleanup := applyHookSessionLifecycle(store, &hook.Context{
@@ -96,7 +96,7 @@ var _ = Describe("Gemini session lifecycle", func() {
 			Event:        hook.CanonicalEventSessionEnd,
 			RawEventName: "SessionEnd",
 			SessionID:    "sess-gemini-2",
-		}, nil, log)
+		}, nil, nil, log)
 		Expect(errs).To(BeEmpty())
 		cleanup()
 

@@ -18,10 +18,34 @@ const maxCompletionBlocks = 3
 // stop_hook_active alone only says whether a previous block happened.
 const untrackedCompletionBlocks = 1
 
+// prepareRecheck lists the files the session still has unresolved findings
+// for, so validation after a tool checks them again and notices a repair.
+func prepareRecheck(store *hooksession.Store, hookCtx *hook.Context, log logger.Logger) {
+	if store == nil || hookCtx == nil || !hookCtx.IsAfterTool() {
+		return
+	}
+
+	files, err := store.UnresolvedFiles(hookCtx.Provider, hookCtx.SessionID)
+	if err != nil {
+		log.Info("failed to load unresolved hook session files", "error", err)
+
+		return
+	}
+
+	hookCtx.RecheckFiles = files
+}
+
+// applyHookSessionLifecycle keeps the session's unresolved findings. After a
+// tool, findings are recorded and those a check no longer reports are
+// resolved. Completion gates replay what is still unresolved: Stop all of it,
+// SubagentStop what that subagent recorded. Nothing is dropped at a gate, so
+// an unresolved finding blocks every attempt until it is repaired; only the
+// parent's SessionEnd clears the session.
 func applyHookSessionLifecycle(
 	store *hooksession.Store,
 	hookCtx *hook.Context,
 	errs []*dispatcher.ValidationError,
+	checks []dispatcher.Check,
 	log logger.Logger,
 ) ([]*dispatcher.ValidationError, func()) {
 	cleanup := func() {}
@@ -41,7 +65,6 @@ func applyHookSessionLifecycle(
 		hook.CanonicalEventElicitationResult,
 		hook.CanonicalEventPostCompact,
 		hook.CanonicalEventUserPromptSubmit,
-		hook.CanonicalEventSubagentStop,
 		hook.CanonicalEventStopFailure:
 		return errs, cleanup
 	case hook.CanonicalEventSessionStart:
@@ -49,34 +72,55 @@ func applyHookSessionLifecycle(
 			log.Info("failed to initialize hook session state", "error", err)
 		}
 	case hook.CanonicalEventAfterTool:
-		if err := store.Append(hookCtx, errs); err != nil {
+		if err := store.Record(hookCtx, errs, checks); err != nil {
 			log.Info("failed to persist hook session findings", "error", err)
 		}
 	case hook.CanonicalEventSessionEnd:
+		// A subagent shares the parent's session ID; its end must not
+		// discard the parent's unresolved work.
+		if hookCtx.AgentID != "" {
+			return errs, cleanup
+		}
+
 		cleanup = func() {
 			if err := store.Clear(hookCtx.Provider, hookCtx.SessionID); err != nil {
 				log.Info("failed to clear hook session state", "error", err)
 			}
 		}
 	case hook.CanonicalEventTurnStop:
-		storedErrs, err := store.CombinedErrors(hookCtx.Provider, hookCtx.SessionID)
-		if err != nil {
-			log.Info("failed to load hook session findings", "error", err)
+		stored, err := store.CombinedErrors(hookCtx.Provider, hookCtx.SessionID)
+
+		return withStoredErrors(errs, stored, err, log), cleanup
+	case hook.CanonicalEventSubagentStop:
+		if hookCtx.AgentID == "" {
 			return errs, cleanup
 		}
 
-		if len(storedErrs) > 0 {
-			errs = append(storedErrs, errs...)
-		}
+		stored, err := store.AgentErrors(hookCtx.Provider, hookCtx.SessionID, hookCtx.AgentID)
 
-		cleanup = func() {
-			if err := store.ClearFindings(hookCtx.Provider, hookCtx.SessionID); err != nil {
-				log.Info("failed to clear hook session findings", "error", err)
-			}
-		}
+		return withStoredErrors(errs, stored, err, log), cleanup
 	}
 
 	return errs, cleanup
+}
+
+// withStoredErrors puts unresolved stored findings ahead of errs.
+func withStoredErrors(
+	errs, stored []*dispatcher.ValidationError,
+	err error,
+	log logger.Logger,
+) []*dispatcher.ValidationError {
+	if err != nil {
+		log.Info("failed to load hook session findings", "error", err)
+
+		return errs
+	}
+
+	if len(stored) == 0 {
+		return errs
+	}
+
+	return append(stored, errs...)
 }
 
 // applyCompletionGate bounds how often a completion gate (Claude Stop and

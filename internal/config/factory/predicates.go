@@ -33,7 +33,8 @@ func beforeToolOrProviderAfterToolPredicate() validator.Predicate {
 // shell command changed, and anything a failed tool may have left half
 // written. A Write or Edit that succeeded wrote exactly what PreToolUse
 // validated, and a blocking finding there would have denied it, so checking it
-// again would only repeat the warnings.
+// again would only repeat the warnings. A file the session still has
+// unresolved findings for is checked again, so a repair resolves them.
 func fileResultPredicate() validator.Predicate {
 	return validator.Or(
 		beforeToolOrProviderAfterToolPredicate(),
@@ -41,7 +42,7 @@ func fileResultPredicate() validator.Predicate {
 			validator.ProviderIs(hook.ProviderClaude),
 			validator.EventIs(hook.CanonicalEventAfterTool),
 			func(ctx *hook.Context) bool {
-				return ctx.Derived || ctx.ToolFailed()
+				return ctx.Derived || ctx.ToolFailed() || ctx.NeedsRecheck(ctx.GetFilePath())
 			},
 		),
 	)

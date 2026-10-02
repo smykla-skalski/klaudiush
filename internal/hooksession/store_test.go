@@ -1,7 +1,9 @@
 package hooksession
 
 import (
+	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -190,7 +192,7 @@ func TestStoreClearAndCleanupIsolateProviders(t *testing.T) {
 	}
 }
 
-func TestStoreCompletionBlocksSurviveClearFindings(t *testing.T) {
+func TestStoreCompletionBlocksSurviveResolvedFindings(t *testing.T) {
 	store := NewStore(WithStateFile(filepath.Join(t.TempDir(), "state.json")))
 
 	count, err := store.RecordCompletionBlock(hook.ProviderClaude, "sess", "turn_stop", false)
@@ -198,18 +200,24 @@ func TestStoreCompletionBlocksSurviveClearFindings(t *testing.T) {
 		t.Fatalf("first block = %d, %v; want 1, nil", count, err)
 	}
 
-	err = store.Append(&hook.Context{
+	afterTool := &hook.Context{
 		Provider:  hook.ProviderClaude,
 		Event:     hook.CanonicalEventAfterTool,
 		SessionID: "sess",
-	}, []*dispatcher.ValidationError{{Validator: "v", Message: "m", ShouldBlock: true}})
+	}
+
+	err = store.Append(afterTool, []*dispatcher.ValidationError{
+		{Validator: "v", Message: "m", ShouldBlock: true},
+	})
 	if err != nil {
 		t.Fatalf("Append() error = %v", err)
 	}
 
-	err = store.ClearFindings(hook.ProviderClaude, "sess")
+	err = store.Record(afterTool, nil, []dispatcher.Check{
+		{Validator: "v", Resource: afterTool.Resource()},
+	})
 	if err != nil {
-		t.Fatalf("ClearFindings() error = %v", err)
+		t.Fatalf("Record() error = %v", err)
 	}
 
 	combined, err := store.CombinedErrors(hook.ProviderClaude, "sess")
@@ -251,8 +259,16 @@ func TestStoreCompletionBlocksIgnoreMissingSessions(t *testing.T) {
 		t.Fatalf("ResetCompletionBlocks() error = %v", err)
 	}
 
-	if err := store.ClearFindings(hook.ProviderClaude, ""); err != nil {
-		t.Fatalf("ClearFindings() error = %v", err)
+	if err := store.Clear(hook.ProviderClaude, ""); err != nil {
+		t.Fatalf("Clear() error = %v", err)
+	}
+
+	if err := store.Clear(hook.ProviderClaude, "missing"); err != nil {
+		t.Fatalf("Clear(missing) error = %v", err)
+	}
+
+	if err := store.Record(nil, nil, nil); err != nil {
+		t.Fatalf("Record(nil) error = %v", err)
 	}
 }
 
@@ -324,5 +340,217 @@ func TestStoreKeepsStructuredFindings(t *testing.T) {
 
 	if !combined[0].Unavailable {
 		t.Fatalf("Unavailable lost in round trip")
+	}
+}
+
+func TestStoreRecordResolvesCheckedFindings(t *testing.T) {
+	now := time.Date(2026, 3, 11, 12, 0, 0, 0, time.UTC)
+	store := NewStore(
+		WithStateFile(filepath.Join(t.TempDir(), "state.json")),
+		WithTimeFunc(func() time.Time { return now }),
+	)
+
+	afterTool := func(path, agentID string) *hook.Context {
+		return &hook.Context{
+			Provider:   hook.ProviderCodex,
+			Event:      hook.CanonicalEventAfterTool,
+			SessionID:  "sess",
+			AgentID:    agentID,
+			WorkingDir: "/repo",
+			ToolName:   hook.ToolTypeWrite,
+			ToolFamily: hook.ToolFamilyWrite,
+			ToolInput:  hook.ToolInput{FilePath: path},
+		}
+	}
+
+	first := afterTool("a.md", "")
+	second := afterTool("b.md", "agent-1")
+
+	fail := func(msg string) []*dispatcher.ValidationError {
+		return []*dispatcher.ValidationError{{Validator: "file.markdown", Message: msg}}
+	}
+
+	checks := func(hookCtx *hook.Context) []dispatcher.Check {
+		return []dispatcher.Check{{Validator: "file.markdown", Resource: hookCtx.Resource()}}
+	}
+
+	mustRecord := func(hookCtx *hook.Context, errs []*dispatcher.ValidationError, c []dispatcher.Check) {
+		t.Helper()
+
+		if err := store.Record(hookCtx, errs, c); err != nil {
+			t.Fatalf("Record() error = %v", err)
+		}
+	}
+
+	mustRecord(first, fail("line 1"), checks(first))
+	mustRecord(second, fail("line 2"), checks(second))
+
+	if err := store.Start(hook.ProviderCodex, "sess"); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+
+	files, err := store.UnresolvedFiles(hook.ProviderCodex, "sess")
+	if err != nil || len(files) != 2 || files[0] != "/repo/a.md" || files[1] != "/repo/b.md" {
+		t.Fatalf("UnresolvedFiles() = %v, %v; want both files", files, err)
+	}
+
+	agentErrs, err := store.AgentErrors(hook.ProviderCodex, "sess", "agent-1")
+	if err != nil || len(agentErrs) != 1 || agentErrs[0].Resource != "file:/repo/b.md" {
+		t.Fatalf("AgentErrors() = %+v, %v; want b.md only", agentErrs, err)
+	}
+
+	mustRecord(first, fail("line 9"), checks(first))
+
+	combined, err := store.CombinedErrors(hook.ProviderCodex, "sess")
+	if err != nil || len(combined) != 2 || combined[0].Message != "line 2" ||
+		combined[1].Message != "line 9" {
+		t.Fatalf("CombinedErrors() = %+v, %v; want line 2 and line 9", combined, err)
+	}
+
+	mustRecord(first, nil, checks(first))
+
+	st, err := store.loadState()
+	if err != nil {
+		t.Fatalf("loadState() error = %v", err)
+	}
+
+	entry := st.Sessions[sessionKey(hook.ProviderCodex, "sess")]
+	if len(entry.Findings) != 1 || entry.Findings[0].Message != "line 2" {
+		t.Fatalf("Findings = %+v, want only b.md", entry.Findings)
+	}
+
+	if len(entry.Resolved) != 2 || !entry.Resolved[1].ResolvedAt.Equal(now) {
+		t.Fatalf("Resolved = %+v, want two resolved findings", entry.Resolved)
+	}
+
+	if none, err := store.UnresolvedFiles(
+		hook.ProviderCodex,
+		"missing",
+	); err != nil ||
+		none != nil {
+		t.Fatalf("UnresolvedFiles(missing) = %v, %v; want nil", none, err)
+	}
+
+	if none, err := store.UnresolvedFiles(hook.ProviderUnknown, "sess"); err != nil || none != nil {
+		t.Fatalf("UnresolvedFiles(unknown) = %v, %v; want nil", none, err)
+	}
+}
+
+func TestStoreRefreshesEvidenceAndCapsHistory(t *testing.T) {
+	store := NewStore(WithStateFile(filepath.Join(t.TempDir(), "state.json")))
+	hookCtx := &hook.Context{
+		Provider:  hook.ProviderCodex,
+		Event:     hook.CanonicalEventAfterTool,
+		SessionID: "sess",
+		ToolName:  hook.ToolTypeBash,
+		ToolInput: hook.ToolInput{Command: "make lint"},
+	}
+	resource := hookCtx.Resource()
+
+	for i := range maxResolvedHistory + 5 {
+		errs := []*dispatcher.ValidationError{{
+			Validator: "shell.lint",
+			Message:   "problem",
+			FixHint:   strconv.Itoa(i),
+			Details:   map[string]string{"run": strconv.Itoa(i)},
+		}}
+
+		if err := store.Record(hookCtx, errs, nil); err != nil {
+			t.Fatalf("Record() error = %v", err)
+		}
+
+		if err := store.Record(hookCtx, nil, []dispatcher.Check{
+			{Validator: "shell.lint", Resource: resource},
+		}); err != nil {
+			t.Fatalf("Record(resolve) error = %v", err)
+		}
+	}
+
+	if err := store.Record(hookCtx, []*dispatcher.ValidationError{
+		{Validator: "shell.lint", Message: "problem", FixHint: "a"},
+	}, nil); err != nil {
+		t.Fatalf("Record() error = %v", err)
+	}
+
+	if err := store.Record(hookCtx, []*dispatcher.ValidationError{
+		{
+			Validator: "shell.lint",
+			Message:   "problem",
+			FixHint:   "b",
+			Details:   map[string]string{"k": "v"},
+		},
+	}, nil); err != nil {
+		t.Fatalf("Record() error = %v", err)
+	}
+
+	st, err := store.loadState()
+	if err != nil {
+		t.Fatalf("loadState() error = %v", err)
+	}
+
+	entry := st.Sessions[sessionKey(hook.ProviderCodex, "sess")]
+	if len(entry.Resolved) != maxResolvedHistory {
+		t.Fatalf("len(Resolved) = %d, want %d", len(entry.Resolved), maxResolvedHistory)
+	}
+
+	if entry.Resolved[0].FixHint != "5" {
+		t.Fatalf("oldest kept = %q, want 5", entry.Resolved[0].FixHint)
+	}
+
+	if len(entry.Findings) != 1 || entry.Findings[0].FixHint != "b" ||
+		entry.Findings[0].Count != 2 || entry.Findings[0].Details["k"] != "v" {
+		t.Fatalf("Findings = %+v, want one refreshed finding", entry.Findings)
+	}
+}
+
+func TestFindingLegacyResource(t *testing.T) {
+	tests := []struct {
+		name string
+		item finding
+		want string
+	}{
+		{"file", finding{FilePath: "/repo/a.md"}, "file:/repo/a.md"},
+		{"command", finding{Command: "git push", FilePath: "x"}, "command:git push"},
+		{"tool", finding{ToolName: "Grep"}, "tool:Grep"},
+		{"recorded", finding{Resource: "file:/x", Command: "y"}, "file:/x"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.item.resource(); got != tt.want {
+				t.Fatalf("resource() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestStoreResolvesLegacyFindings(t *testing.T) {
+	stateFile := filepath.Join(t.TempDir(), "state.json")
+	legacy := `{"sessions":{"codex:sess":{"provider":"codex","session_id":"sess",` +
+		`"findings":[{"validator":"git.push","message":"m","should_block":true,` +
+		`"command":"git push","count":1}]}}}`
+
+	if err := os.WriteFile(stateFile, []byte(legacy), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	store := NewStore(WithStateFile(stateFile))
+	hookCtx := &hook.Context{
+		Provider:  hook.ProviderCodex,
+		Event:     hook.CanonicalEventAfterTool,
+		SessionID: "sess",
+		ToolName:  hook.ToolTypeBash,
+		ToolInput: hook.ToolInput{Command: "git push"},
+	}
+
+	if err := store.Record(hookCtx, nil, []dispatcher.Check{
+		{Validator: "git.push", Resource: hookCtx.Resource()},
+	}); err != nil {
+		t.Fatalf("Record() error = %v", err)
+	}
+
+	combined, err := store.CombinedErrors(hook.ProviderCodex, "sess")
+	if err != nil || len(combined) != 0 {
+		t.Fatalf("CombinedErrors() = %+v, %v; want empty", combined, err)
 	}
 }
