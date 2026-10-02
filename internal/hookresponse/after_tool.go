@@ -16,6 +16,12 @@ const (
 		"The failed tool may have left partial changes on disk. " +
 		"Repair required: fix ALL reported errors in the affected files at once."
 
+	afterToolWarningLead = "klaudiush checked the files after the tool ran. " +
+		"The changes are already applied. Repair every finding below that your change caused."
+
+	failedToolWarningLead = "klaudiush checked the files the failed tool may have " +
+		"partly changed. Repair every finding below that your change caused."
+
 	afterToolReasonPrefix  = "Repair required, the change is already applied: "
 	failedToolReasonPrefix = "Repair required, the failed tool may have left partial changes: "
 
@@ -35,11 +41,19 @@ func formatContextFor(
 	patternWarnings []string,
 ) string {
 	text := formatAdditionalContext(blocking, warnings, bypassed, patternWarnings)
-	if len(blocking) == 0 || hookCtx == nil || !hookCtx.IsAfterTool() {
+	if hookCtx == nil || !hookCtx.IsAfterTool() {
 		return text
 	}
 
-	return strings.Replace(text, blockingContextLead, afterToolLead(hookCtx), 1)
+	if len(blocking) > 0 {
+		return strings.Replace(text, blockingContextLead, afterToolLead(hookCtx), 1)
+	}
+
+	if len(warnings) == 0 {
+		return text
+	}
+
+	return warningLeadFor(hookCtx) + " " + text
 }
 
 // formatReasonFor builds the decision reason for the event the hook received.
@@ -54,6 +68,14 @@ func formatReasonFor(hookCtx *hook.Context, blocking []*dispatcher.ValidationErr
 	}
 
 	return afterToolReasonPrefix + reason
+}
+
+func warningLeadFor(hookCtx *hook.Context) string {
+	if hookCtx.ToolFailed() {
+		return failedToolWarningLead
+	}
+
+	return afterToolWarningLead
 }
 
 func afterToolLead(hookCtx *hook.Context) string {

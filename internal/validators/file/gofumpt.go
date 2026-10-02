@@ -90,7 +90,7 @@ func (v *GofumptValidator) Validate(
 
 	message := v.formatGofumptOutput(result.RawOut)
 
-	if baseline != nil && !v.check(ctx, *baseline, opts).Success {
+	if baseline != nil && isUnformatted(v.check(ctx, *baseline, opts)) {
 		log.Debug("file was not gofumpt-formatted before the edit")
 
 		return validator.WarnWithRef(
@@ -100,6 +100,12 @@ func (v *GofumptValidator) Validate(
 	}
 
 	return validator.FailWithRef(validator.RefGofumpt, message)
+}
+
+// isUnformatted tells formatting differences apart from a failed run, such
+// as a timeout, which reports no diff.
+func isUnformatted(result *linters.LintResult) bool {
+	return !result.Success && len(result.Findings) > 0
 }
 
 func (v *GofumptValidator) check(
@@ -116,7 +122,8 @@ func (v *GofumptValidator) check(
 // getContent returns the Go source to check. For an Edit or MultiEdit before
 // it runs, that is the whole file with the edit applied, and baseline is the
 // file as it is now, so formatting the edit did not break can be told apart.
-// After the tool ran, it is the file on disk.
+// After the tool ran, it is the file on disk, with the edit reverted as the
+// baseline when that is possible.
 func (v *GofumptValidator) getContent(
 	ctx *hook.Context,
 	filePath string,
@@ -124,7 +131,15 @@ func (v *GofumptValidator) getContent(
 	log := v.Logger()
 
 	if content, ok, err := readToolResult(ctx, filePath); ok {
-		return content, nil, err
+		if err != nil {
+			return "", nil, err
+		}
+
+		if original, found := originalBeforeEdit(ctx, content); found && original != "" {
+			return content, &original, nil
+		}
+
+		return content, nil, nil
 	}
 
 	if ctx.ToolName == hook.ToolTypeEdit || ctx.ToolName == hook.ToolTypeMultiEdit {

@@ -3,6 +3,8 @@ package dispatcher_test
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -62,23 +64,26 @@ func (v *recordingValidator) paths() []string {
 	return paths
 }
 
-func errorMessages(errs []*dispatcher.ValidationError) []string {
-	messages := make([]string, 0, len(errs))
-	for _, e := range errs {
-		messages = append(messages, e.Message)
-	}
-
-	return messages
-}
-
 var _ = Describe("Dispatcher Bash file writes after the tool ran", func() {
-	const heredoc = "cat > /repo/new.go <<'EOF'\npackage main\nEOF"
+	var (
+		rec  *recordingValidator
+		repo string
+	)
 
-	heredocThen := func(next string) string {
-		return "cat > /repo/new.go <<'EOF' && " + next + "\npackage main\nEOF"
+	heredoc := func(next string) string {
+		cmd := "cat > " + repo + "/new.go <<'EOF'"
+		if next != "" {
+			cmd += " && " + next
+		}
+
+		return cmd + "\npackage main\nEOF"
 	}
 
-	var rec *recordingValidator
+	writeFile := func(name, content string) {
+		path := filepath.Join(repo, name)
+		Expect(os.MkdirAll(filepath.Dir(path), 0o700)).To(Succeed())
+		Expect(os.WriteFile(path, []byte(content), 0o600)).To(Succeed())
+	}
 
 	dispatch := func(hookCtx *hook.Context) []*dispatcher.ValidationError {
 		reg := validator.NewRegistry()
@@ -96,7 +101,7 @@ var _ = Describe("Dispatcher Bash file writes after the tool ran", func() {
 			Event:         event,
 			ToolName:      hook.ToolTypeBash,
 			ToolFamily:    hook.ToolFamilyShell,
-			WorkingDir:    "/repo",
+			WorkingDir:    repo,
 			ToolExecuted:  after,
 			ToolSucceeded: after,
 			ToolInput:     hook.ToolInput{Command: command},
@@ -104,90 +109,113 @@ var _ = Describe("Dispatcher Bash file writes after the tool ran", func() {
 	}
 
 	BeforeEach(func() {
-		rec = &recordingValidator{}
+		rec = &recordingValidator{block: true}
+
+		dir, err := filepath.EvalSymlinks(GinkgoT().TempDir())
+		Expect(err).NotTo(HaveOccurred())
+
+		repo = dir
 	})
 
 	It("passes the parsed content before the command runs", func() {
-		dispatch(claudeBash(hook.CanonicalEventBeforeTool, heredoc))
+		errs := dispatch(claudeBash(hook.CanonicalEventBeforeTool, heredoc("")))
 
 		Expect(rec.seen).To(HaveLen(1))
 		Expect(rec.seen[0].content).To(Equal("package main\n"))
 		Expect(rec.seen[0].derived).To(BeTrue())
+		Expect(errs[0].ShouldBlock).To(BeTrue())
 	})
 
-	It("reads every written and reported file from disk afterwards", func() {
-		hookCtx := claudeBash(hook.CanonicalEventAfterTool, heredocThen("echo x > rel.txt"))
-		hookCtx.ChangedFiles = []string{"/repo/new.go", "/repo/gen/other.go"}
+	It("reads written and reported files from disk as advisory checks", func() {
+		writeFile("new.go", "package main\n// rewritten\n")
 
-		dispatch(hookCtx)
+		hookCtx := claudeBash(hook.CanonicalEventAfterTool, heredoc("echo x > rel.txt"))
+		hookCtx.ChangedFiles = []string{repo + "/new.go", repo + "/gen/other.go"}
 
-		Expect(rec.paths()).To(ConsistOf("/repo/new.go", "/repo/rel.txt", "/repo/gen/other.go"))
+		errs := dispatch(hookCtx)
+
+		Expect(rec.paths()).To(ConsistOf(repo+"/new.go", repo+"/rel.txt", repo+"/gen/other.go"))
 
 		for _, s := range rec.seen {
 			Expect(s.content).To(BeEmpty())
 			Expect(s.derived).To(BeTrue())
 		}
+
+		Expect(errs).To(HaveLen(3))
+
+		for _, e := range errs {
+			Expect(e.ShouldBlock).To(BeFalse())
+		}
 	})
 
-	It("drops warnings pre-tool validation already showed for the same bytes", func() {
-		hookCtx := claudeBash(hook.CanonicalEventAfterTool, heredoc)
-		hookCtx.ChangedFiles = []string{"/repo/gen/other.go"}
+	It("skips a file that still holds the bytes pre-tool validation saw", func() {
+		writeFile("new.go", "package main\n")
 
-		errs := dispatch(hookCtx)
+		dispatch(claudeBash(hook.CanonicalEventAfterTool, heredoc("")))
 
-		Expect(errorMessages(errs)).To(ConsistOf("finding in /repo/gen/other.go"))
+		Expect(rec.seen).To(BeEmpty())
 	})
 
-	It("keeps blocking findings for content pre-tool validation saw", func() {
-		rec.block = true
+	It("skips unchanged captured content after a failed command too", func() {
+		writeFile("new.go", "package main\n")
 
-		errs := dispatch(claudeBash(hook.CanonicalEventAfterTool, heredoc))
-
-		Expect(errorMessages(errs)).To(ConsistOf("finding in /repo/new.go"))
-	})
-
-	It("keeps every finding when the command failed", func() {
-		hookCtx := claudeBash(hook.CanonicalEventAfterTool, heredoc)
+		hookCtx := claudeBash(hook.CanonicalEventAfterTool, heredoc("false"))
 		hookCtx.ToolSucceeded = false
 
-		errs := dispatch(hookCtx)
+		dispatch(hookCtx)
 
-		Expect(errorMessages(errs)).To(ConsistOf("finding in /repo/new.go"))
+		Expect(rec.seen).To(BeEmpty())
 	})
 
-	It("keeps findings for content written twice in different ways", func() {
-		errs := dispatch(claudeBash(
+	It("checks a file written twice in different ways", func() {
+		writeFile("new.go", "package main\n")
+
+		dispatch(claudeBash(
 			hook.CanonicalEventAfterTool,
-			heredocThen("echo more >> /repo/new.go"),
+			heredoc("echo more >> "+repo+"/new.go"),
 		))
 
-		Expect(errorMessages(errs)).To(ConsistOf("finding in /repo/new.go"))
+		Expect(rec.paths()).To(ConsistOf(repo + "/new.go"))
 	})
 
 	It("validates reported changes of a command the parser sees no writes in", func() {
 		hookCtx := claudeBash(hook.CanonicalEventAfterTool, "make generate")
-		hookCtx.ChangedFiles = []string{"/repo/a.go", "/repo/./a.go"}
+		hookCtx.ChangedFiles = []string{repo + "/a.go", repo + "/./a.go"}
 
 		dispatch(hookCtx)
 
-		Expect(rec.paths()).To(ConsistOf("/repo/a.go"))
+		Expect(rec.paths()).To(ConsistOf(repo + "/a.go"))
 	})
 
 	It("caps how many reported changes one command gets validated for", func() {
 		hookCtx := claudeBash(hook.CanonicalEventAfterTool, "make generate")
-		for i := range 60 {
-			hookCtx.ChangedFiles = append(hookCtx.ChangedFiles, fmt.Sprintf("/repo/f%d.go", i))
+		for i := range 20 {
+			hookCtx.ChangedFiles = append(hookCtx.ChangedFiles, fmt.Sprintf("%s/f%d.go", repo, i))
 		}
 
 		dispatch(hookCtx)
 
-		Expect(rec.seen).To(HaveLen(50))
+		Expect(rec.seen).To(HaveLen(10))
+	})
+
+	It("matches a target reached through a symlink to the reported real path", func() {
+		writeFile("real/out.txt", "x\n")
+
+		link := filepath.Join(repo, "link")
+		Expect(os.Symlink(filepath.Join(repo, "real"), link)).To(Succeed())
+
+		hookCtx := claudeBash(hook.CanonicalEventAfterTool, "echo x > "+link+"/out.txt")
+		hookCtx.ChangedFiles = []string{repo + "/real/out.txt"}
+
+		dispatch(hookCtx)
+
+		Expect(rec.paths()).To(ConsistOf(repo + "/real/out.txt"))
 	})
 
 	It("resolves relative targets against the directory a cd moved to", func() {
 		dispatch(claudeBash(hook.CanonicalEventAfterTool, "cd sub && echo x > out.txt"))
 
-		Expect(rec.paths()).To(ConsistOf("/repo/sub/out.txt"))
+		Expect(rec.paths()).To(ConsistOf(repo + "/sub/out.txt"))
 	})
 
 	It("leaves a relative target as is without a working directory", func() {
@@ -197,5 +225,25 @@ var _ = Describe("Dispatcher Bash file writes after the tool ran", func() {
 		dispatch(hookCtx)
 
 		Expect(rec.paths()).To(ConsistOf("out.txt"))
+	})
+})
+
+var _ = Describe("Dispatcher failed file tools", func() {
+	It("reports findings about a failed Write as advisory", func() {
+		rec := &recordingValidator{block: true}
+		reg := validator.NewRegistry()
+		reg.Register(rec, validator.ToolTypeIs(hook.ToolTypeWrite))
+
+		errs := dispatcher.NewDispatcher(reg, logger.NewNoOpLogger()).
+			Dispatch(context.Background(), &hook.Context{
+				Provider:     hook.ProviderClaude,
+				Event:        hook.CanonicalEventAfterTool,
+				ToolName:     hook.ToolTypeWrite,
+				ToolExecuted: true,
+				ToolInput:    hook.ToolInput{FilePath: "/repo/a.go"},
+			})
+
+		Expect(errs).To(HaveLen(1))
+		Expect(errs[0].ShouldBlock).To(BeFalse())
 	})
 })

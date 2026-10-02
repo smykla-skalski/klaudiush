@@ -1,6 +1,8 @@
 package dispatcher
 
 import (
+	"bytes"
+	"os"
 	"path/filepath"
 
 	"github.com/smykla-skalski/klaudiush/pkg/hook"
@@ -9,21 +11,21 @@ import (
 
 // maxChangedFileChecks caps how many provider-reported changed files one
 // shell command gets validated for, keeping the hook inside its timeout.
-const maxChangedFileChecks = 50
+const maxChangedFileChecks = 10
 
-// fileWriteTarget is one file a shell command writes. checkedBeforeTool
-// reports whether pre-tool validation already saw the exact bytes written.
+// fileWriteTarget is one file a shell command writes. Before the command runs
+// content is what the parser recovered; afterwards it is empty so validators
+// read the file from disk. captured holds the exact bytes pre-tool validation
+// saw, when the parser could recover them.
 type fileWriteTarget struct {
-	path              string
-	content           string
-	checkedBeforeTool bool
+	path        string
+	content     string
+	captured    string
+	hasCaptured bool
 }
 
-// bashWriteTargets lists the files a shell command writes. Before the tool
-// runs, each target carries the content the parser recovered from the
-// command. Afterwards the content is left empty so validators read the file
-// as the command left it, and the files the provider reports as changed are
-// added to the parsed ones.
+// bashWriteTargets lists the files a shell command writes. After the command
+// ran, the files the provider reports as changed are added to the parsed ones.
 func bashWriteTargets(bashCtx *hook.Context, writes []parser.FileWrite) []fileWriteTarget {
 	if !bashCtx.IsAfterTool() {
 		targets := make([]fileWriteTarget, 0, len(writes))
@@ -42,22 +44,23 @@ func bashWriteTargets(bashCtx *hook.Context, writes []parser.FileWrite) []fileWr
 		path := resolveWritePath(bashCtx.WorkingDir, fw)
 
 		if i, ok := seen[path]; ok {
-			targets[i].checkedBeforeTool = targets[i].checkedBeforeTool && fw.ContentCaptured
+			targets[i].hasCaptured = false
 
 			continue
 		}
 
 		seen[path] = len(targets)
 		targets = append(targets, fileWriteTarget{
-			path:              path,
-			checkedBeforeTool: fw.ContentCaptured,
+			path:        path,
+			captured:    fw.Content,
+			hasCaptured: fw.ContentCaptured,
 		})
 	}
 
 	added := 0
 
 	for _, changed := range bashCtx.ChangedFiles {
-		path := filepath.Clean(changed)
+		path := canonicalPath(changed)
 		if _, ok := seen[path]; ok || added >= maxChangedFileChecks {
 			continue
 		}
@@ -74,7 +77,7 @@ func bashWriteTargets(bashCtx *hook.Context, writes []parser.FileWrite) []fileWr
 // after the command ran and matched against the provider's changed files.
 func resolveWritePath(workingDir string, fw parser.FileWrite) string {
 	if filepath.IsAbs(fw.Path) {
-		return filepath.Clean(fw.Path)
+		return canonicalPath(fw.Path)
 	}
 
 	base := fw.WorkingDirectory
@@ -86,29 +89,53 @@ func resolveWritePath(workingDir string, fw parser.FileWrite) string {
 		return filepath.Clean(fw.Path)
 	}
 
-	return filepath.Join(base, fw.Path)
+	return canonicalPath(filepath.Join(base, fw.Path))
 }
 
-// repeatsBeforeTool reports whether findings for a target only repeat what
-// Claude's PreToolUse already showed. Claude denies a call on a blocking
-// pre-tool finding, so once the command succeeded only its warnings can come
-// back, unless the file changed after pre-tool validation saw it.
-func repeatsBeforeTool(bashCtx *hook.Context, target fileWriteTarget) bool {
-	return bashCtx.Provider == hook.ProviderClaude &&
-		bashCtx.IsAfterTool() &&
-		!bashCtx.ToolFailed() &&
-		target.checkedBeforeTool
-}
-
-// blockingOnly drops non-blocking findings.
-func blockingOnly(errs []*ValidationError) []*ValidationError {
-	kept := make([]*ValidationError, 0, len(errs))
-
-	for _, verr := range errs {
-		if verr.ShouldBlock {
-			kept = append(kept, verr)
-		}
+// canonicalPath resolves symlinks, so a path reached through a symlinked
+// directory matches the real path the provider reports.
+func canonicalPath(path string) string {
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return filepath.Clean(path)
 	}
 
-	return kept
+	return resolved
+}
+
+// unchangedSinceBeforeTool reports whether the file holds exactly the bytes
+// pre-tool validation already checked, so checking it again would only repeat
+// those findings.
+func unchangedSinceBeforeTool(target fileWriteTarget) bool {
+	if !target.hasCaptured {
+		return false
+	}
+
+	data, err := os.ReadFile(target.path)
+	if err != nil {
+		return false
+	}
+
+	return bytes.Equal(data, []byte(target.captured))
+}
+
+// advisory turns blocking findings into warnings. Findings about a file as a
+// tool left it are advisory: the change already happened, and with no record
+// of the file before it there is no telling which problems the tool caused.
+func advisory(errs []*ValidationError) []*ValidationError {
+	result := make([]*ValidationError, 0, len(errs))
+
+	for _, verr := range errs {
+		if !verr.ShouldBlock {
+			result = append(result, verr)
+
+			continue
+		}
+
+		downgraded := *verr
+		downgraded.ShouldBlock = false
+		result = append(result, &downgraded)
+	}
+
+	return result
 }

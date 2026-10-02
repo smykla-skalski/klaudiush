@@ -30,9 +30,12 @@ var _ = Describe("InstallClaudeDispatcher", func() {
 	It("registers failed tools next to the pre- and post-tool hooks", func() {
 		path := filepath.Join(GinkgoT().TempDir(), "settings.json")
 
+		Expect(settings.NewSettingsParser(path).HasPostToolUseFailureHook()).To(BeFalse())
+
 		already, err := settings.InstallClaudeDispatcher(path, binary)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(already).To(BeFalse())
+		Expect(settings.NewSettingsParser(path).HasPostToolUseFailureHook()).To(BeTrue())
 
 		hooks := readHooks(path)
 		for _, event := range settings.ClaudeDispatcherEvents() {

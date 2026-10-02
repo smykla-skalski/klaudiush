@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/cockroachdb/errors"
@@ -64,14 +65,40 @@ func proposedEditContent(ctx *hook.Context, original string) (string, bool) {
 	return content, true
 }
 
+// originalBeforeEdit reverts an Edit or MultiEdit on the file it produced,
+// undoing the replacements in reverse order. It returns false when a
+// replacement cannot be found in the result.
+func originalBeforeEdit(ctx *hook.Context, result string) (string, bool) {
+	edits := toolEdits(ctx)
+	if len(edits) == 0 {
+		return "", false
+	}
+
+	content := result
+
+	for _, edit := range slices.Backward(edits) {
+		switch {
+		case edit.NewString == "" || !strings.Contains(content, edit.NewString):
+			return "", false
+		case edit.ReplaceAll:
+			content = strings.ReplaceAll(content, edit.NewString, edit.OldString)
+		default:
+			content = strings.Replace(content, edit.NewString, edit.OldString, 1)
+		}
+	}
+
+	return content, true
+}
+
 // toolEdits lists the replacements of an Edit or MultiEdit call.
 func toolEdits(ctx *hook.Context) []stringEdit {
 	switch ctx.ToolName {
 	case hook.ToolTypeEdit:
 		return []stringEdit{{
-			OldString:  ctx.ToolInput.OldString,
-			NewString:  ctx.ToolInput.NewString,
-			ReplaceAll: additionalBool(ctx.ToolInput.Additional, "replace_all", "replaceAll"),
+			OldString: ctx.ToolInput.OldString,
+			NewString: ctx.ToolInput.NewString,
+			ReplaceAll: additionalBool(ctx.ToolInput.Additional, "replace_all", "replaceAll") ||
+				expectsSeveralReplacements(ctx.ToolInput.Additional),
 		}}
 	case hook.ToolTypeMultiEdit:
 		raw, ok := ctx.ToolInput.Additional["edits"]
@@ -91,6 +118,22 @@ func toolEdits(ctx *hook.Context) []stringEdit {
 	default:
 		return nil
 	}
+}
+
+// expectsSeveralReplacements reports a Gemini replace call that replaces every
+// match (expected_replacements above one).
+func expectsSeveralReplacements(additional map[string]json.RawMessage) bool {
+	raw, ok := additional["expected_replacements"]
+	if !ok {
+		return false
+	}
+
+	var count int
+	if err := json.Unmarshal(raw, &count); err != nil {
+		return false
+	}
+
+	return count > 1
 }
 
 // additionalBool reads the first of keys that holds a JSON boolean.

@@ -71,15 +71,17 @@ type JSONInput struct {
 	CompactSummary   string          `json:"compact_summary,omitempty"`
 	Trigger          string          `json:"trigger,omitempty"`
 	ToolResponse     json.RawMessage `json:"tool_response,omitempty"`
-	Error            string          `json:"error,omitempty"`
+	Error            json.RawMessage `json:"error,omitempty"`
 }
 
 // claudeToolResponse holds the parts of a Claude PostToolUse tool_response
 // that say which files the tool changed. Other tools send other shapes, or a
-// plain string, so decoding failures are ignored.
+// plain string, so decoding failures are ignored. Shared marks a diff that
+// may include another concurrent command's changes.
 type claudeToolResponse struct {
 	BashEditDiff *struct {
 		ChangedFiles []string `json:"changedFiles,omitempty"`
+		Shared       bool     `json:"shared,omitempty"`
 	} `json:"bashEditDiff,omitempty"`
 }
 
@@ -586,7 +588,7 @@ func populateClaudeAfterToolFields(ctx *hook.Context, input JSONInput) {
 
 	ctx.ToolExecuted = true
 	ctx.ToolSucceeded = !isClaudeToolFailure(ctx.RawEventName)
-	ctx.ToolError = input.Error
+	_ = json.Unmarshal(input.Error, &ctx.ToolError)
 
 	if len(input.ToolResponse) == 0 {
 		return
@@ -597,7 +599,7 @@ func populateClaudeAfterToolFields(ctx *hook.Context, input JSONInput) {
 		return
 	}
 
-	if response.BashEditDiff != nil {
+	if response.BashEditDiff != nil && !response.BashEditDiff.Shared {
 		ctx.ChangedFiles = dedupePaths(response.BashEditDiff.ChangedFiles)
 	}
 }

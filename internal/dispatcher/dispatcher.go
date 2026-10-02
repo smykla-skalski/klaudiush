@@ -173,8 +173,10 @@ func (d *Dispatcher) Dispatch(ctx context.Context, hookCtx *hook.Context) []*Val
 		return d.validatePatchFiles(ctx, hookCtx)
 	}
 
-	// Run validators on the main context
 	validationErrors := d.runValidators(ctx, hookCtx)
+	if hookCtx.IsAfterTool() && hookCtx.ToolFailed() && hookCtx.IsFileTool() {
+		validationErrors = advisory(validationErrors)
+	}
 
 	// Validate the files a Bash command writes, before and after it runs.
 	if hookCtx.ToolName == hook.ToolTypeBash && (hookCtx.Event == hook.CanonicalEventBeforeTool ||
@@ -327,6 +329,12 @@ func (d *Dispatcher) validateBashFileWrites(
 	allErrors := make([]*ValidationError, 0)
 
 	for _, target := range targets {
+		if bashCtx.IsAfterTool() && unchangedSinceBeforeTool(target) {
+			d.logger.Debug("skipping write checked before the tool", "file", target.path)
+
+			continue
+		}
+
 		syntheticCtx := &hook.Context{
 			Provider:       bashCtx.Provider,
 			Event:          bashCtx.Event,
@@ -354,8 +362,8 @@ func (d *Dispatcher) validateBashFileWrites(
 		)
 
 		errs := d.runValidators(ctx, syntheticCtx)
-		if repeatsBeforeTool(bashCtx, target) {
-			errs = blockingOnly(errs)
+		if bashCtx.IsAfterTool() {
+			errs = advisory(errs)
 		}
 
 		allErrors = append(allErrors, errs...)

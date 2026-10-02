@@ -437,6 +437,36 @@ var _ = Describe("JSONParser", func() {
 			Expect(ctx.ChangedFiles).To(BeEmpty())
 		})
 
+		It("ignores changed files a concurrent command may have made", func() {
+			input := `{
+				"hook_event_name": "PostToolUse",
+				"tool_name": "Bash",
+				"tool_input": {"command": "go test ./..."},
+				"tool_response": {"bashEditDiff": {"changedFiles": ["/repo/README.md"], "shared": true}}
+			}`
+
+			p := parser.NewJSONParser(bytes.NewReader([]byte(input)))
+			ctx, err := p.ParseWithOptions(parser.ParseOptions{Provider: hook.ProviderClaude})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ctx.ChangedFiles).To(BeEmpty())
+		})
+
+		It("accepts an error that is not a string", func() {
+			input := `{
+				"hook_event_name": "PostToolUseFailure",
+				"tool_name": "mcp__srv__write",
+				"error": {"code": 1}
+			}`
+
+			p := parser.NewJSONParser(bytes.NewReader([]byte(input)))
+			ctx, err := p.ParseWithOptions(parser.ParseOptions{Provider: hook.ProviderClaude})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ctx.ToolFailed()).To(BeTrue())
+			Expect(ctx.ToolError).To(BeEmpty())
+		})
+
 		It("ignores a Claude tool_response that is not an object", func() {
 			input := `{
 				"hook_event_name": "PostToolUse",

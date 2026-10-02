@@ -209,6 +209,9 @@ func registerHookCheckers(registry *doctor.Registry, cfg *pkgConfig.Config) {
 		registry.RegisterChecker(hook.NewUserPostToolUseChecker())
 		registry.RegisterChecker(hook.NewProjectPostToolUseChecker())
 		registry.RegisterChecker(hook.NewProjectLocalPostToolUseChecker())
+		registry.RegisterChecker(hook.NewUserPostToolUseFailureChecker())
+		registry.RegisterChecker(hook.NewProjectPostToolUseFailureChecker())
+		registry.RegisterChecker(hook.NewProjectLocalPostToolUseFailureChecker())
 	}
 
 	registerCodexHookCheckers(registry, cfg.GetProviders().GetCodex())

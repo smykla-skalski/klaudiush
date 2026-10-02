@@ -48,7 +48,7 @@ var _ = Describe("after-tool responses", func() {
 		Expect(claudeResp.SystemMessage).To(HavePrefix("klaudiush checked the files a failed tool"))
 	})
 
-	It("keeps warnings after the tool free of repair framing", func() {
+	It("frames warnings after the tool as repairs of applied changes", func() {
 		resp := hookresponse.BuildForContext(
 			claudeAfter("PostToolUse", true),
 			gofumptFinding(false),
@@ -60,7 +60,21 @@ var _ = Describe("after-tool responses", func() {
 		Expect(claudeResp.Decision).To(BeEmpty())
 		Expect(claudeResp.SystemMessage).NotTo(ContainSubstring("need repair"))
 		Expect(claudeResp.HookSpecificOutput.AdditionalContext).
-			NotTo(ContainSubstring("Repair required"))
+			To(HavePrefix("klaudiush checked the files after the tool ran."))
+		Expect(claudeResp.HookSpecificOutput.AdditionalContext).NotTo(ContainSubstring("retry"))
+	})
+
+	It("frames warnings after a failed tool as possible partial changes", func() {
+		resp := hookresponse.BuildForContext(
+			claudeAfter("PostToolUseFailure", false),
+			gofumptFinding(false),
+			nil,
+		)
+
+		claudeResp, ok := resp.(*hookresponse.HookResponse)
+		Expect(ok).To(BeTrue())
+		Expect(claudeResp.HookSpecificOutput.AdditionalContext).
+			To(HavePrefix("klaudiush checked the files the failed tool may have partly changed."))
 	})
 
 	It("asks Codex for a repair instead of a retry after the tool ran", func() {
