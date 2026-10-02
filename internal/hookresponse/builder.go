@@ -5,9 +5,10 @@ import (
 	"github.com/smykla-skalski/klaudiush/pkg/hook"
 )
 
-// Permission decision values emitted in hook responses.
+// Permission decision values emitted in hook responses. There is no allow:
+// a validation finding is never permission approval, so non-blocking results
+// omit the decision and leave the action to the harness permission flow.
 const (
-	decisionAllow = "allow"
 	decisionDeny  = "deny"
 	decisionBlock = "block"
 )
@@ -20,6 +21,11 @@ func Build(eventName string, errs []*dispatcher.ValidationError) *HookResponse {
 
 // BuildWithPatterns constructs a HookResponse with optional pattern warnings.
 // Pattern warnings are appended to the additionalContext for blocking errors.
+//
+// Only blocking findings set permissionDecision. Warnings and accepted
+// exceptions carry additionalContext alone, which Claude treats like
+// "defer": the normal permission flow (rules, mode, prompt) still decides.
+// An allow here would skip the user's permission prompt.
 func BuildWithPatterns(
 	eventName string,
 	errs []*dispatcher.ValidationError,
@@ -48,17 +54,10 @@ func BuildWithPatterns(
 				patternWarnings,
 			),
 		}
-	case len(bypassed) > 0:
+	default:
 		resp.HookSpecificOutput = &HookSpecificOutput{
-			HookEventName:      eventName,
-			PermissionDecision: decisionAllow,
-			AdditionalContext:  formatAdditionalContext(nil, warnings, bypassed, nil),
-		}
-	case len(warnings) > 0:
-		resp.HookSpecificOutput = &HookSpecificOutput{
-			HookEventName:      eventName,
-			PermissionDecision: decisionAllow,
-			AdditionalContext:  formatAdditionalContext(nil, warnings, nil, nil),
+			HookEventName:     eventName,
+			AdditionalContext: formatAdditionalContext(nil, warnings, bypassed, nil),
 		}
 	}
 

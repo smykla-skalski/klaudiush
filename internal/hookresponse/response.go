@@ -12,7 +12,7 @@ type HookResponse struct {
 // HookSpecificOutput carries the permission decision and context for Claude.
 type HookSpecificOutput struct {
 	HookEventName            string `json:"hookEventName"`
-	PermissionDecision       string `json:"permissionDecision,omitempty"`       // "allow" or "deny"
+	PermissionDecision       string `json:"permissionDecision,omitempty"`       // "deny" or unset
 	PermissionDecisionReason string `json:"permissionDecisionReason,omitempty"` // shown to Claude
 	AdditionalContext        string `json:"additionalContext,omitempty"`        // behavioral framing for Claude
 }

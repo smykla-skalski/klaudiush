@@ -80,7 +80,7 @@ var _ = Describe("Build", func() {
 		Expect(resp.HookSpecificOutput.PermissionDecisionReason).To(ContainSubstring(" | "))
 	})
 
-	It("returns allow for warnings only", func() {
+	It("leaves the permission decision unset for warnings only", func() {
 		errs := []*dispatcher.ValidationError{
 			{
 				Validator:   "markdown",
@@ -91,13 +91,13 @@ var _ = Describe("Build", func() {
 
 		resp := hookresponse.Build("PreToolUse", errs)
 		Expect(resp).NotTo(BeNil())
-		Expect(resp.HookSpecificOutput.PermissionDecision).To(Equal("allow"))
+		Expect(resp.HookSpecificOutput.PermissionDecision).To(BeEmpty())
 		Expect(resp.HookSpecificOutput.PermissionDecisionReason).To(BeEmpty())
 		Expect(resp.HookSpecificOutput.AdditionalContext).To(ContainSubstring("warning"))
 		Expect(resp.HookSpecificOutput.AdditionalContext).To(ContainSubstring("Not blocking"))
 	})
 
-	It("returns allow for bypassed exception", func() {
+	It("leaves the permission decision unset for a bypassed exception", func() {
 		errs := []*dispatcher.ValidationError{
 			{
 				Validator:    "git.push",
@@ -111,7 +111,7 @@ var _ = Describe("Build", func() {
 
 		resp := hookresponse.Build("PreToolUse", errs)
 		Expect(resp).NotTo(BeNil())
-		Expect(resp.HookSpecificOutput.PermissionDecision).To(Equal("allow"))
+		Expect(resp.HookSpecificOutput.PermissionDecision).To(BeEmpty())
 		Expect(
 			resp.HookSpecificOutput.AdditionalContext,
 		).To(ContainSubstring("Exception EXC:GIT022"))
@@ -182,7 +182,7 @@ var _ = Describe("Build", func() {
 		})
 
 		Expect(resp).NotTo(BeNil())
-		Expect(resp.HookSpecificOutput.PermissionDecision).To(Equal("allow"))
+		Expect(resp.HookSpecificOutput.PermissionDecision).To(BeEmpty())
 		Expect(resp.HookSpecificOutput.AdditionalContext).NotTo(ContainSubstring("Pattern hint:"))
 	})
 

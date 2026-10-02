@@ -157,11 +157,10 @@ var _ = Describe("Notice", func() {
 			Expect(ctx).To(ContainSubstring(instruction))
 		})
 
-		It("skips an allow with warnings", func() {
+		It("skips warnings without a permission decision", func() {
 			resp := &hookresponse.HookResponse{
 				HookSpecificOutput: &hookresponse.HookSpecificOutput{
-					PermissionDecision: "allow",
-					AdditionalContext:  "warning",
+					AdditionalContext: "warning",
 				},
 			}
 			hookresponse.AppendAgentSummary(resp)

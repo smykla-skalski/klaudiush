@@ -36,7 +36,8 @@ Exceptions currently apply only to blocking `before_tool` command flows. They ar
 3. klaudiush finds exception token in command
 4. Policy check: Is GIT019 exception allowed?
 5. Rate limit check: Within limits?
-6. If allowed: deny → allow with additionalContext, command proceeds
+6. If allowed: the deny is dropped; the waiver goes to additionalContext and
+   the harness permission flow (rules, mode, prompt) still decides
 7. Audit entry logged
 ```
 

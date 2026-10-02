@@ -21,7 +21,7 @@ type Result struct {
 
 - `Passed=true` → validation passed (any other state ignored)
 - `Passed=false` + `ShouldBlock=true` → deny (JSON `permissionDecision: "deny"`)
-- `Passed=false` + `ShouldBlock=false` → allow with warning (JSON `permissionDecision: "allow"`)
+- `Passed=false` + `ShouldBlock=false` → warning (no `permissionDecision`; the harness permission flow decides)
 
 ## Reference System
 
@@ -212,7 +212,7 @@ The dispatcher maps validation results to structured JSON on stdout. klaudiush a
 
 ### JSON Fields
 
-1. **`permissionDecision`**: `"deny"` (ShouldBlock=true) or `"allow"` (pass/warn)
+1. **`permissionDecision`**: `"deny"` (ShouldBlock=true); unset for warnings and accepted exceptions, never `"allow"`
 2. **`permissionDecisionReason`**: Shown to Claude — contains `[CODE] message. Fix hint.`
 3. **`additionalContext`**: Behavioral framing that shapes how Claude responds
 4. **`systemMessage`**: Human-readable formatted output (displayed to the user)
@@ -387,7 +387,7 @@ func (v *MyValidator) Validate(
 klaudiush always exits 0 and writes structured JSON to stdout. The `ShouldBlock` field determines `permissionDecision`:
 
 - **`ShouldBlock=true`**: `permissionDecision: "deny"` — Claude is told the operation is not allowed
-- **`ShouldBlock=false`** (warnings/pass): `permissionDecision: "allow"` — operation proceeds
+- **`ShouldBlock=false`** (warnings, accepted exceptions): no `permissionDecision`, only `additionalContext` — the harness permission flow (rules, mode, prompt) still decides
 - **No errors**: No output, exit 0
 
 Exit code 2 is no longer used. All communication with Claude Code happens through the JSON structure on stdout. Only exit 3 (crash/panic) remains non-zero.
