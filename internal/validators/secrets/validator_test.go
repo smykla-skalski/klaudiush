@@ -2,6 +2,8 @@ package secrets_test
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -54,6 +56,28 @@ var _ = Describe("SecretsValidator", func() {
 			ToolName:  hook.ToolTypeWrite,
 			ToolInput: hook.ToolInput{},
 		}
+	})
+
+	Describe("after the tool ran", func() {
+		It("checks the whole file on disk, not the tool input", func() {
+			path := filepath.Join(GinkgoT().TempDir(), "config.go")
+			Expect(os.WriteFile(
+				path, []byte(`aws_access_key_id = "AKIAIOSFODNN7EXAMPLE"`), 0o600,
+			)).To(Succeed())
+
+			hookCtx.Event = hook.CanonicalEventAfterTool
+			hookCtx.ToolName = hook.ToolTypeEdit
+			hookCtx.ToolInput = hook.ToolInput{FilePath: path, NewString: "unrelated"}
+
+			Expect(v.Validate(context.Background(), hookCtx).Passed).To(BeFalse())
+			Expect(v.ChecksToolResult()).To(BeTrue())
+
+			Expect(os.WriteFile(path, []byte("clean"), 0o600)).To(Succeed())
+			Expect(v.Validate(context.Background(), hookCtx).Passed).To(BeTrue())
+
+			hookCtx.ToolInput.FilePath = filepath.Join(GinkgoT().TempDir(), "missing.go")
+			Expect(v.Validate(context.Background(), hookCtx).Passed).To(BeTrue())
+		})
 	})
 
 	Describe("AWS credentials detection", func() {

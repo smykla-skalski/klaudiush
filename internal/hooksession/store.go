@@ -74,6 +74,8 @@ type finding struct {
 	Count         int                 `json:"count"`
 	FirstSeen     time.Time           `json:"first_seen"`
 	LastSeen      time.Time           `json:"last_seen"`
+	CheckedAt     time.Time           `json:"checked_at,omitzero"`
+	Recheckable   bool                `json:"recheckable,omitempty"`
 	ResolvedAt    time.Time           `json:"resolved_at,omitzero"`
 }
 
@@ -212,7 +214,8 @@ func (s *Store) AgentErrors(
 }
 
 // FilesToRecheck returns the canonical paths of files with unresolved
-// findings that changed on disk since the findings were last reported.
+// findings that changed on disk since they were last checked. Only findings
+// a whole-file check reported count: nothing else could resolve them.
 func (s *Store) FilesToRecheck(provider hook.Provider, sessionID string) ([]string, error) {
 	if provider == hook.ProviderUnknown || sessionID == "" {
 		return nil, nil
@@ -231,8 +234,15 @@ func (s *Store) FilesToRecheck(provider hook.Provider, sessionID string) ([]stri
 	lastSeen := make(map[string]time.Time)
 
 	for _, item := range entry.Findings {
-		if path, ok := item.filePath(); ok && item.LastSeen.After(lastSeen[path]) {
-			lastSeen[path] = item.LastSeen
+		path, ok := item.filePath()
+		if !ok || !item.Recheckable {
+			continue
+		}
+
+		for _, at := range []time.Time{item.LastSeen, item.CheckedAt} {
+			if at.After(lastSeen[path]) {
+				lastSeen[path] = at
+			}
 		}
 	}
 
@@ -267,9 +277,12 @@ func (s *Store) unresolved(
 		}
 
 		changed := entry.retire(s.now(), (*finding).fileGone)
+		shown := make(map[string]bool, len(entry.Findings))
 
 		for _, item := range entry.Findings {
-			if include(item) {
+			if include(item) && !shown[item.problemKey()] {
+				shown[item.problemKey()] = true
+
 				combined = append(combined, item.validationError())
 			}
 		}
@@ -518,6 +531,10 @@ func (e *sessionEntry) record(
 		checked[checkKey{validator: check.Validator, resource: check.Resource}] = true
 	}
 
+	for _, item := range current {
+		item.Recheckable = checked[checkKey{validator: item.Validator, resource: item.Resource}]
+	}
+
 	changed := e.retire(now, func(item *finding) bool {
 		if checked[checkKey{validator: item.Validator, resource: item.Resource}] {
 			return !reported[item.problemKey()]
@@ -530,11 +547,57 @@ func (e *sessionEntry) record(
 		e.upsert(item, now)
 	}
 
-	if extra := len(e.Findings) - maxUnresolved; extra > 0 {
-		e.Findings = slices.Delete(e.Findings, 0, extra)
+	if e.markChecked(checks, now) {
+		changed = true
 	}
 
+	e.evictOverflow()
+
 	return changed || len(current) > 0
+}
+
+// markChecked records when a whole-file check last looked at each file with
+// unresolved findings, so an unchanged file is not offered for a recheck.
+func (e *sessionEntry) markChecked(checks []dispatcher.Check, now time.Time) bool {
+	files := make(map[string]bool)
+
+	for _, check := range checks {
+		if strings.HasPrefix(check.Resource, hook.ResourceFilePrefix) {
+			files[check.Resource] = true
+		}
+	}
+
+	changed := false
+
+	for _, item := range e.Findings {
+		if files[item.Resource] {
+			item.CheckedAt = now
+			changed = true
+		}
+	}
+
+	return changed
+}
+
+// evictOverflow drops the oldest findings past maxUnresolved, advisory ones
+// before blocking ones, so a flood of warnings cannot hide a blocker.
+func (e *sessionEntry) evictOverflow() {
+	extra := len(e.Findings) - maxUnresolved
+	if extra <= 0 {
+		return
+	}
+
+	for _, blocking := range []bool{false, true} {
+		e.Findings = slices.DeleteFunc(e.Findings, func(item *finding) bool {
+			if extra > 0 && item.ShouldBlock == blocking {
+				extra--
+
+				return true
+			}
+
+			return false
+		})
+	}
 }
 
 // retire moves the unresolved findings resolved reports on to the history
@@ -580,6 +643,7 @@ func (e *sessionEntry) upsert(item *finding, now time.Time) {
 
 		existing.Count++
 		existing.LastSeen = now
+		existing.Recheckable = existing.Recheckable || item.Recheckable
 
 		if item.Details != nil {
 			existing.Details = item.Details
@@ -692,7 +756,7 @@ func (f *finding) filePath() (string, bool) {
 // fileGone reports a finding about a file that no longer exists.
 func (f *finding) fileGone() bool {
 	path, ok := f.filePath()
-	if !ok {
+	if !ok || !filepath.IsAbs(path) {
 		return false
 	}
 

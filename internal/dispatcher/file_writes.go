@@ -77,12 +77,13 @@ func bashWriteTargets(
 	}
 
 	for _, path := range bashCtx.RecheckFiles {
-		if _, ok := seen[path]; ok {
+		if _, ok := seen[path]; ok || added >= maxChangedFileChecks {
 			continue
 		}
 
 		seen[path] = len(targets)
 		targets = append(targets, fileWriteTarget{path: path})
+		added++
 	}
 
 	return targets

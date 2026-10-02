@@ -3,6 +3,8 @@ package secrets
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -117,8 +119,18 @@ func (v *SecretsValidator) Validate(ctx context.Context, hookCtx *hook.Context) 
 	return validator.Pass()
 }
 
-// getContent extracts content to validate from the hook context.
+// getContent extracts content to validate from the hook context. After the
+// tool ran it is the whole file as the tool left it.
 func (*SecretsValidator) getContent(hookCtx *hook.Context) string {
+	if hookCtx.IsAfterTool() && hookCtx.GetFilePath() != "" {
+		data, err := os.ReadFile(filepath.Clean(hookCtx.GetFilePath()))
+		if err != nil {
+			return ""
+		}
+
+		return string(data)
+	}
+
 	// For Write operations, use the content directly
 	if hookCtx.ToolName == hook.ToolTypeWrite {
 		return hookCtx.GetContent()
@@ -130,6 +142,11 @@ func (*SecretsValidator) getContent(hookCtx *hook.Context) string {
 	}
 
 	return ""
+}
+
+// ChecksToolResult reports that the whole file is checked after a tool ran.
+func (*SecretsValidator) ChecksToolResult() bool {
+	return true
 }
 
 // getMaxFileSize returns the configured max file size.

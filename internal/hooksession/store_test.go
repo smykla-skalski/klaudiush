@@ -470,8 +470,13 @@ func TestStoreRecordSkipsCleanSessionsAndSharesProblems(t *testing.T) {
 	}
 
 	combined, err := store.CombinedErrors(hook.ProviderCodex, "sess")
-	if err != nil || len(combined) != 2 {
-		t.Fatalf("CombinedErrors() = %+v, %v; want both agents' findings", combined, err)
+	if err != nil || len(combined) != 1 {
+		t.Fatalf("CombinedErrors() = %+v, %v; want one shared problem", combined, err)
+	}
+
+	agentErrs, err := store.AgentErrors(hook.ProviderCodex, "sess", "agent-1")
+	if err != nil || len(agentErrs) != 1 {
+		t.Fatalf("AgentErrors() = %+v, %v; want the subagent's copy", agentErrs, err)
 	}
 
 	if recordErr := store.Record(hookCtx, nil, check); recordErr != nil {
@@ -514,7 +519,8 @@ func TestStoreFilesToRecheck(t *testing.T) {
 
 		err := store.Record(hookCtx, []*dispatcher.ValidationError{
 			{Validator: "file.markdown", Message: name},
-		}, nil)
+			{Validator: "secrets", Message: name},
+		}, []dispatcher.Check{{Validator: "file.markdown", Resource: hookCtx.Resource()}})
 		if err != nil {
 			t.Fatalf("Record() error = %v", err)
 		}
@@ -541,7 +547,7 @@ func TestStoreFilesToRecheck(t *testing.T) {
 	}
 
 	combined, err := store.CombinedErrors(hook.ProviderCodex, "sess")
-	if err != nil || len(combined) != 2 {
+	if err != nil || len(combined) != 4 {
 		t.Fatalf("CombinedErrors() = %+v, %v; want gone.md dropped", combined, err)
 	}
 
@@ -638,5 +644,126 @@ func TestStoreDropsLegacyFindings(t *testing.T) {
 	combined, err := store.CombinedErrors(hook.ProviderCodex, "sess")
 	if err != nil || len(combined) != 0 {
 		t.Fatalf("CombinedErrors() = %+v, %v; want empty", combined, err)
+	}
+}
+
+func TestStoreEvictsAdvisoryFindingsFirst(t *testing.T) {
+	store := NewStore(WithStateFile(filepath.Join(t.TempDir(), "state.json")))
+	hookCtx := &hook.Context{
+		Provider:  hook.ProviderCodex,
+		Event:     hook.CanonicalEventAfterTool,
+		SessionID: "sess",
+		ToolName:  hook.ToolTypeBash,
+		ToolInput: hook.ToolInput{Command: "git commit"},
+	}
+
+	blocking := []*dispatcher.ValidationError{
+		{Validator: "git.commit", Message: "bad", ShouldBlock: true},
+	}
+	if err := store.Record(hookCtx, blocking, nil); err != nil {
+		t.Fatalf("Record() error = %v", err)
+	}
+
+	for i := range maxUnresolved + 5 {
+		errs := []*dispatcher.ValidationError{{Validator: "lint", Message: strconv.Itoa(i)}}
+		if err := store.Record(hookCtx, errs, nil); err != nil {
+			t.Fatalf("Record() error = %v", err)
+		}
+	}
+
+	combined, err := store.CombinedErrors(hook.ProviderCodex, "sess")
+	if err != nil || len(combined) != maxUnresolved || !combined[0].ShouldBlock {
+		t.Fatalf("CombinedErrors() = %d, %v; want %d with the blocker kept",
+			len(combined), err, maxUnresolved)
+	}
+
+	entry := &sessionEntry{}
+	for i := range maxUnresolved + 2 {
+		entry.Findings = append(
+			entry.Findings,
+			&finding{Message: strconv.Itoa(i), ShouldBlock: true},
+		)
+	}
+
+	entry.evictOverflow()
+
+	if len(entry.Findings) != maxUnresolved || entry.Findings[0].Message != "2" {
+		t.Fatalf("Findings = %d starting %q, want oldest blockers evicted",
+			len(entry.Findings), entry.Findings[0].Message)
+	}
+}
+
+func TestStoreSkipsRecheckOfCheckedFiles(t *testing.T) {
+	repo := t.TempDir()
+	clock := time.Now().Add(-time.Hour)
+	store := NewStore(
+		WithStateFile(filepath.Join(t.TempDir(), "state.json")),
+		WithTimeFunc(func() time.Time { return clock }),
+	)
+
+	path := filepath.Join(repo, "a.md")
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	past := clock.Add(-time.Hour)
+	if err := os.Chtimes(path, past, past); err != nil {
+		t.Fatalf("Chtimes() error = %v", err)
+	}
+
+	hookCtx := &hook.Context{
+		Provider:  hook.ProviderCodex,
+		Event:     hook.CanonicalEventAfterTool,
+		SessionID: "sess",
+		ToolName:  hook.ToolTypeWrite,
+		ToolInput: hook.ToolInput{FilePath: path},
+	}
+	checks := []dispatcher.Check{{Validator: "file.markdown", Resource: hookCtx.Resource()}}
+
+	errs := []*dispatcher.ValidationError{
+		{Validator: "file.markdown", Message: "bad"},
+		{Validator: "plugin", Message: "other"},
+	}
+	if err := store.Record(hookCtx, errs, checks); err != nil {
+		t.Fatalf("Record() error = %v", err)
+	}
+
+	changed := clock.Add(time.Minute)
+	if err := os.Chtimes(path, changed, changed); err != nil {
+		t.Fatalf("Chtimes() error = %v", err)
+	}
+
+	files, err := store.FilesToRecheck(hook.ProviderCodex, "sess")
+	if err != nil || len(files) != 1 {
+		t.Fatalf("FilesToRecheck() = %v, %v; want the changed file", files, err)
+	}
+
+	clock = clock.Add(2 * time.Minute)
+
+	if recordErr := store.Record(hookCtx, errs[:1], checks); recordErr != nil {
+		t.Fatalf("Record() error = %v", recordErr)
+	}
+
+	files, err = store.FilesToRecheck(hook.ProviderCodex, "sess")
+	if err != nil || len(files) != 0 {
+		t.Fatalf("FilesToRecheck() = %v, %v; want none after the recheck", files, err)
+	}
+}
+
+func TestFindingFileGoneNeedsAbsolutePath(t *testing.T) {
+	relative := &finding{Resource: hook.ResourceFilePrefix + "missing-relative.md"}
+	if relative.fileGone() {
+		t.Fatal("relative path must not count as gone")
+	}
+
+	absolute := &finding{
+		Resource: hook.ResourceFilePrefix + filepath.Join(t.TempDir(), "missing.md"),
+	}
+	if !absolute.fileGone() {
+		t.Fatal("missing absolute path should count as gone")
+	}
+
+	if (&finding{Resource: hook.ResourceCommand}).fileGone() {
+		t.Fatal("command finding is never gone")
 	}
 }

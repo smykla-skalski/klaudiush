@@ -308,9 +308,10 @@ A completion gate keeps the agent working at most 3 times in a row, counted per 
 
 Findings reported after a tool ran stay with the session until they are resolved. Each one is tied to the validator that reported it and to what it is about: a file, or the shell commands that validator checks.
 
-- A file finding is resolved when the same validator checks the whole file again and finds nothing, or when the file is deleted. Validators that only look at the tool input (such as the secrets check) cannot resolve it. Findings about other files are untouched.
+- A file finding is resolved when the same validator checks the whole file again and finds nothing, or when the file is deleted. Validators that only look at the tool input, and plugins, cannot resolve it. Findings about other files are untouched.
 - A tool that writes to a file with unresolved findings always gets that file checked again. After a shell command, files with unresolved findings that changed on disk are checked again too, so repairs made with `sed`, `git checkout`, or a formatter are noticed.
-- A command already ran, so its fix is a different command (an amended commit, a push to another branch). A command finding is resolved the next time its validator passes on any command.
+- A command already ran, so its fix is a different command (an amended commit, a push to another branch). A command finding is resolved the next time its validator passes on any command, in any repository and from any agent. For example, the commit validator also checks `git tag` and `git merge`, so a passing tag clears an earlier commit message finding.
+- At most 100 findings are kept per session; warnings are dropped before blocking findings.
 
 A completion gate does not drop findings: whatever is unresolved is handed to the agent again at the next `turn_stop`, also after the gate let a turn end. `turn_stop` covers the whole session, `subagent_stop` only what that subagent recorded. A subagent's own lifecycle events never clear the parent's findings, and the session's findings are dropped only at its `session_end`.
 

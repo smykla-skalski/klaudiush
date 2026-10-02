@@ -203,6 +203,20 @@ var _ = Describe("Dispatcher Bash file writes after the tool ran", func() {
 		Expect(outcome.Errors[0].Resource).To(Equal(hook.ResourceFilePrefix + repo + "/new.go"))
 	})
 
+	It("caps how many changed files with unresolved findings it rechecks", func() {
+		hookCtx := claudeBash(hook.CanonicalEventAfterTool, "true")
+
+		for i := range 12 {
+			name := fmt.Sprintf("f%d.md", i)
+			writeFile(name, "x")
+			hookCtx.RecheckFiles = append(hookCtx.RecheckFiles, filepath.Join(repo, name))
+		}
+
+		dispatch(hookCtx)
+
+		Expect(rec.paths()).To(HaveLen(10))
+	})
+
 	It("reports no checks for a cancelled dispatch", func() {
 		reg := validator.NewRegistry()
 		reg.Register(rec, validator.ToolTypeIs(hook.ToolTypeWrite))

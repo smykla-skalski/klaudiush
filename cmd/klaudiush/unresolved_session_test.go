@@ -238,7 +238,7 @@ var _ = Describe("unresolved session findings", func() {
 		lifecycle("SessionStart", "agent-1", false)
 		lifecycle("SessionStart", "", false)
 
-		Expect(stop(false)).To(HaveLen(2))
+		Expect(stop(false)).To(HaveLen(1))
 		Expect(lifecycle("SubagentStop", "agent-1", false)).To(HaveLen(1))
 
 		lifecycle("SessionEnd", "", false)
