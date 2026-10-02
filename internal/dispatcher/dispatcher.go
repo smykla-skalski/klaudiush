@@ -176,7 +176,7 @@ func (d *Dispatcher) Dispatch(ctx context.Context, hookCtx *hook.Context) []*Val
 	// Run validators on the main context
 	validationErrors := d.runValidators(ctx, hookCtx)
 
-	// Validate synthetic Write contexts for Bash file writes on pre-tool and Codex post-tool flows.
+	// Validate the files a Bash command writes, before and after it runs.
 	if hookCtx.ToolName == hook.ToolTypeBash && (hookCtx.Event == hook.CanonicalEventBeforeTool ||
 		hookCtx.Event == hook.CanonicalEventAfterTool ||
 		hookCtx.EventType == hook.EventTypePreToolUse ||
@@ -298,13 +298,14 @@ func (d *Dispatcher) applyExceptionChecking(
 	return result
 }
 
-// validateBashFileWrites parses Bash commands for file writes and validates them
-// as synthetic Write operations.
+// validateBashFileWrites validates each file a Bash command writes as a
+// synthetic Write. Before the command runs that is the content parsed from
+// it; afterwards it is the file on disk, including files the provider reports
+// as changed that the parser could not see.
 func (d *Dispatcher) validateBashFileWrites(
 	ctx context.Context,
 	bashCtx *hook.Context,
 ) []*ValidationError {
-	// Parse the bash command
 	result, err := bashCtx.ParsedCommand()
 	if err != nil {
 		d.logger.Debug("failed to parse bash command for file writes",
@@ -314,43 +315,50 @@ func (d *Dispatcher) validateBashFileWrites(
 		return nil
 	}
 
-	// No file writes found
-	if len(result.FileWrites) == 0 {
+	targets := bashWriteTargets(bashCtx, result.FileWrites)
+	if len(targets) == 0 {
 		return nil
 	}
 
 	d.logger.Info("detected bash file writes",
-		"count", len(result.FileWrites),
+		"count", len(targets),
 	)
 
 	allErrors := make([]*ValidationError, 0)
 
-	// Create synthetic Write context for each file write
-	for _, fw := range result.FileWrites {
+	for _, target := range targets {
 		syntheticCtx := &hook.Context{
-			Provider:     bashCtx.Provider,
-			Event:        bashCtx.Event,
-			RawEventName: bashCtx.EventName(),
-			EventType:    bashCtx.EventType,
-			RawToolName:  hook.ToolTypeWrite.String(),
-			ToolFamily:   hook.ToolFamilyWrite,
-			ToolName:     hook.ToolTypeWrite,
-			WorkingDir:   bashCtx.WorkingDir,
-			SessionID:    bashCtx.SessionID,
+			Provider:       bashCtx.Provider,
+			Event:          bashCtx.Event,
+			RawEventName:   bashCtx.EventName(),
+			EventType:      bashCtx.EventType,
+			RawToolName:    hook.ToolTypeWrite.String(),
+			ToolFamily:     hook.ToolFamilyWrite,
+			ToolName:       hook.ToolTypeWrite,
+			WorkingDir:     bashCtx.WorkingDir,
+			PermissionMode: bashCtx.PermissionMode,
+			SessionID:      bashCtx.SessionID,
+			ToolUseID:      bashCtx.ToolUseID,
+			ToolExecuted:   bashCtx.ToolExecuted,
+			ToolSucceeded:  bashCtx.ToolSucceeded,
+			ToolError:      bashCtx.ToolError,
+			Derived:        true,
 			ToolInput: hook.ToolInput{
-				FilePath: fw.Path,
-				Content:  fw.Content,
+				FilePath: target.path,
+				Content:  target.content,
 			},
 		}
 
 		d.logger.Debug("validating synthetic write context",
-			"file", fw.Path,
-			"operation", fw.Operation,
+			"file", target.path,
 		)
 
-		// Run validators on the synthetic context
-		errors := d.runValidators(ctx, syntheticCtx)
-		allErrors = append(allErrors, errors...)
+		errs := d.runValidators(ctx, syntheticCtx)
+		if repeatsBeforeTool(bashCtx, target) {
+			errs = blockingOnly(errs)
+		}
+
+		allErrors = append(allErrors, errs...)
 	}
 
 	return allErrors
@@ -382,6 +390,10 @@ func (d *Dispatcher) validatePatchFiles(
 			SessionID:      patchCtx.SessionID,
 			ToolUseID:      patchCtx.ToolUseID,
 			TurnID:         patchCtx.TurnID,
+			ToolExecuted:   patchCtx.ToolExecuted,
+			ToolSucceeded:  patchCtx.ToolSucceeded,
+			ToolError:      patchCtx.ToolError,
+			Derived:        true,
 			AffectedPaths:  []string{file.Input.FilePath},
 		}
 

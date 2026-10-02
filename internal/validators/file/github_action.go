@@ -200,6 +200,10 @@ func (*WorkflowValidator) isWorkflowFile(path string) bool {
 func (v *WorkflowValidator) getContent(ctx *hook.Context) (string, error) {
 	log := v.Logger()
 
+	if content, ok, err := readToolResult(ctx, ctx.GetFilePath()); ok {
+		return content, err
+	}
+
 	// Try to get content from tool input (Write operation)
 	if ctx.ToolInput.Content != "" {
 		return ctx.ToolInput.Content, nil
@@ -233,19 +237,6 @@ func (v *WorkflowValidator) getContent(ctx *hook.Context) (string, error) {
 		editedContent := strings.Replace(string(originalContent), oldStr, newStr, 1)
 
 		return editedContent, nil
-	}
-
-	// Try to get from file path (Edit or PostToolUse)
-	filePath := ctx.GetFilePath()
-	if filePath != "" && ctx.EventType == hook.EventTypePostToolUse {
-		// In PostToolUse, we could read the file
-		//nolint:gosec // filePath is from Claude Code tool context, not user input
-		content, err := os.ReadFile(filePath)
-		if err != nil {
-			return "", errors.Wrap(err, "reading file")
-		}
-
-		return string(content), nil
 	}
 
 	return "", errNoContent

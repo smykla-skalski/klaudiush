@@ -135,8 +135,8 @@ klaudiush writes a JSON object to stdin. Fields present depend on the tool:
 | `working_dir` | string | When known | Provider-reported current working directory |
 | `session_id` | string | When known | Provider session identifier |
 | `turn_id` | string | Codex lifecycle hooks | Provider turn identifier |
-| `tool_executed` | bool | Codex `after_tool` | Whether the provider executed the tool |
-| `tool_succeeded` | bool | Codex `after_tool` | Whether the provider considered the tool successful |
+| `tool_executed` | bool | Claude and Codex `after_tool` | Whether the provider executed the tool |
+| `tool_succeeded` | bool | Claude and Codex `after_tool` | Whether the provider considered the tool successful (false on Claude `PostToolUseFailure`) |
 | `tool_mutating` | bool | Codex `after_tool` | Whether the provider considered the tool mutating |
 | `affected_paths` | []string | When known | Provider-derived changed or touched paths |
 | `config` | map[string]any | If configured | Plugin-specific config from TOML |

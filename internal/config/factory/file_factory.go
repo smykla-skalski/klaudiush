@@ -177,7 +177,7 @@ func (f *FileValidatorFactory) createMarkdownValidator(
 			cfg,
 		),
 		Predicate: validator.And(
-			beforeToolOrProviderAfterToolPredicate(),
+			fileResultPredicate(),
 			validator.ToolTypeIn(hook.ToolTypeWrite, hook.ToolTypeEdit, hook.ToolTypeMultiEdit),
 			validator.FileExtensionIs(".md"),
 		),
@@ -204,7 +204,7 @@ func (f *FileValidatorFactory) createTerraformValidator(
 			cfg,
 		),
 		Predicate: validator.And(
-			beforeToolOrProviderAfterToolPredicate(),
+			fileResultPredicate(),
 			validator.ToolTypeIn(hook.ToolTypeWrite, hook.ToolTypeEdit, hook.ToolTypeMultiEdit),
 			validator.FileExtensionIs(".tf"),
 		),
@@ -230,7 +230,7 @@ func (f *FileValidatorFactory) createShellScriptValidator(
 			cfg,
 		),
 		Predicate: validator.And(
-			beforeToolOrProviderAfterToolPredicate(),
+			fileResultPredicate(),
 			validator.ToolTypeIn(hook.ToolTypeWrite, hook.ToolTypeEdit, hook.ToolTypeMultiEdit),
 			validator.Or(
 				validator.FileExtensionIs(".sh"),
@@ -262,7 +262,7 @@ func (f *FileValidatorFactory) createWorkflowValidator(
 			cfg,
 		),
 		Predicate: validator.And(
-			beforeToolOrProviderAfterToolPredicate(),
+			fileResultPredicate(),
 			validator.ToolTypeIn(hook.ToolTypeWrite, hook.ToolTypeEdit, hook.ToolTypeMultiEdit),
 			validator.Or(
 				validator.FilePathContains(".github/workflows/"),
@@ -295,8 +295,8 @@ func (f *FileValidatorFactory) createGofumptValidator(
 			cfg,
 		),
 		Predicate: validator.And(
-			beforeToolOrProviderAfterToolPredicate(),
-			validator.ToolTypeIn(hook.ToolTypeWrite),
+			fileResultPredicate(),
+			validator.ToolTypeIn(hook.ToolTypeWrite, hook.ToolTypeEdit, hook.ToolTypeMultiEdit),
 			validator.FileExtensionIs(".go"),
 		),
 	}
@@ -335,7 +335,7 @@ func (f *FileValidatorFactory) createJavaScriptValidator(
 			cfg,
 		),
 		Predicate: validator.And(
-			beforeToolOrProviderAfterToolPredicate(),
+			fileResultPredicate(),
 			validator.ToolTypeIn(hook.ToolTypeWrite, hook.ToolTypeEdit, hook.ToolTypeMultiEdit),
 			validator.Or(
 				validator.FileExtensionIs(".js"),
@@ -382,7 +382,7 @@ func (f *FileValidatorFactory) createSingleExtensionValidator(
 			cfg,
 		),
 		Predicate: validator.And(
-			beforeToolOrProviderAfterToolPredicate(),
+			fileResultPredicate(),
 			validator.ToolTypeIn(hook.ToolTypeWrite, hook.ToolTypeEdit, hook.ToolTypeMultiEdit),
 			validator.FileExtensionIs(extension),
 		),
@@ -407,7 +407,7 @@ func (f *FileValidatorFactory) createLinterIgnoreValidator(
 			cfg,
 		),
 		Predicate: validator.And(
-			beforeToolOrProviderAfterToolPredicate(),
+			fileResultPredicate(),
 			validator.ToolTypeIn(hook.ToolTypeWrite, hook.ToolTypeEdit, hook.ToolTypeMultiEdit),
 		),
 	}
@@ -431,7 +431,7 @@ func (f *FileValidatorFactory) createAICommentValidator(
 			cfg,
 		),
 		Predicate: validator.And(
-			beforeToolOrProviderAfterToolPredicate(),
+			fileResultPredicate(),
 			validator.ToolTypeIn(hook.ToolTypeWrite, hook.ToolTypeEdit, hook.ToolTypeMultiEdit),
 		),
 	}

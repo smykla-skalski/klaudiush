@@ -51,11 +51,11 @@ func BuildClaude(
 	case hook.EnforcementDeclineElicitation:
 		return BuildElicitation(hookCtx, errs, patternWarnings)
 	case hook.EnforcementBlockDecision, hook.EnforcementContinueTurn:
-		return buildClaudeDecision(capability, eventName, errs, patternWarnings)
+		return buildClaudeDecision(hookCtx, capability, eventName, errs, patternWarnings)
 	case hook.EnforcementNone, hook.EnforcementStop:
-		return buildClaudeAdvisory(capability, eventName, errs, patternWarnings)
+		return buildClaudeAdvisory(hookCtx, capability, eventName, errs, patternWarnings)
 	default:
-		return buildClaudeAdvisory(capability, eventName, errs, patternWarnings)
+		return buildClaudeAdvisory(hookCtx, capability, eventName, errs, patternWarnings)
 	}
 }
 
@@ -71,7 +71,7 @@ func BuildClaudeAfterTool(
 
 	capability, _ := hook.ProviderEventCapability(hook.ProviderClaude, hook.CanonicalEventAfterTool)
 
-	return buildClaudeDecision(capability, hookCtx.EventName(), errs, patternWarnings)
+	return buildClaudeDecision(hookCtx, capability, hookCtx.EventName(), errs, patternWarnings)
 }
 
 // buildClaudeDecision handles events with a top-level decision: "block".
@@ -80,6 +80,7 @@ func BuildClaudeAfterTool(
 // agent working, so it is sent only alongside a block. Warnings alone must let
 // the turn end.
 func buildClaudeDecision(
+	hookCtx *hook.Context,
 	capability hook.EventCapability,
 	eventName string,
 	errs []*dispatcher.ValidationError,
@@ -92,7 +93,7 @@ func buildClaudeDecision(
 
 	if len(blocking) > 0 {
 		resp.Decision = decisionBlock
-		resp.Reason = formatDecisionReason(blocking)
+		resp.Reason = formatReasonFor(hookCtx, blocking)
 
 		if gate {
 			resp.Reason = formatCompletionReason(blocking)
@@ -103,7 +104,7 @@ func buildClaudeDecision(
 		return resp
 	}
 
-	additionalContext := formatAdditionalContext(blocking, warnings, bypassed, patternWarnings)
+	additionalContext := formatContextFor(hookCtx, blocking, warnings, bypassed, patternWarnings)
 	if additionalContext != "" && capability.Supports(hook.ResponseFieldAdditionalContext) {
 		resp.HookSpecificOutput = &HookSpecificOutput{
 			HookEventName:     eventName,
@@ -118,6 +119,7 @@ func buildClaudeDecision(
 // user through systemMessage and the model through additionalContext where
 // the event accepts them; events that accept neither get no output.
 func buildClaudeAdvisory(
+	hookCtx *hook.Context,
 	capability hook.EventCapability,
 	eventName string,
 	errs []*dispatcher.ValidationError,
@@ -132,7 +134,13 @@ func buildClaudeAdvisory(
 	if capability.Supports(hook.ResponseFieldAdditionalContext) {
 		blocking, warnings, bypassed := categorize(errs)
 
-		additionalContext := formatAdditionalContext(blocking, warnings, bypassed, patternWarnings)
+		additionalContext := formatContextFor(
+			hookCtx,
+			blocking,
+			warnings,
+			bypassed,
+			patternWarnings,
+		)
 		if additionalContext != "" {
 			resp.HookSpecificOutput = &HookSpecificOutput{
 				HookEventName:     eventName,

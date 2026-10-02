@@ -30,10 +30,20 @@ func NewContentExtractor(log logger.Logger, contextLines int) *ContentExtractor 
 }
 
 // Extract gets content from a hook context.
+// After the tool ran, it returns the whole file as the tool left it.
 // For Edit operations, extracts the changed fragment with surrounding context lines.
 // For Write operations, returns the full content from the tool input.
 // Falls back to reading the file from disk when no content is in the context.
 func (e *ContentExtractor) Extract(ctx *hook.Context, filePath string) (*ContentInfo, error) {
+	if content, ok, err := readToolResult(ctx, filePath); ok {
+		if err != nil {
+			e.logger.Debug("failed to read file after tool", "file", filePath, "error", err)
+			return nil, err
+		}
+
+		return &ContentInfo{Content: content, IsFragment: false}, nil
+	}
+
 	// For Edit operations, validate only the changed fragment with context
 	if ctx.EventType == hook.EventTypePreToolUse && ctx.ToolName == hook.ToolTypeEdit {
 		content, err := e.extractEditContent(ctx, filePath)

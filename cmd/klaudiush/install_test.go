@@ -161,6 +161,9 @@ var _ = Describe("Install", func() {
 
 			postToolUse, _ := hooks["PostToolUse"].([]any)
 			Expect(postToolUse).To(HaveLen(1))
+
+			postToolUseFailure, _ := hooks["PostToolUseFailure"].([]any)
+			Expect(postToolUseFailure).To(HaveLen(1))
 		})
 
 		It("skips when already registered", func() {
@@ -186,6 +189,18 @@ var _ = Describe("Install", func() {
 								map[string]any{
 									"type":    "command",
 									"command": fakeBinary + " --hook-type PostToolUse",
+									"timeout": float64(30),
+								},
+							},
+						},
+					},
+					"PostToolUseFailure": []any{
+						map[string]any{
+							"matcher": "Bash|Write|Edit|MultiEdit",
+							"hooks": []any{
+								map[string]any{
+									"type":    "command",
+									"command": fakeBinary + " --hook-type PostToolUseFailure",
 									"timeout": float64(30),
 								},
 							},

@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cockroachdb/errors"
+
 	"github.com/smykla-skalski/klaudiush/internal/linters"
 	"github.com/smykla-skalski/klaudiush/internal/validator"
 	"github.com/smykla-skalski/klaudiush/pkg/config"
@@ -65,8 +67,7 @@ func (v *GofumptValidator) Validate(
 		return validator.Pass()
 	}
 
-	// Get content based on operation type
-	content, err := v.getContent(hookCtx, filePath)
+	content, baseline, err := v.getContent(hookCtx, filePath)
 	if err != nil {
 		log.Debug("failed to get content", "error", err)
 		return validator.Pass()
@@ -77,14 +78,9 @@ func (v *GofumptValidator) Validate(
 		return validator.Pass()
 	}
 
-	// Run gofumpt using the linter
-	lintCtx, cancel := context.WithTimeout(ctx, v.getTimeout())
-	defer cancel()
-
-	// Build options with auto-detection
 	opts := v.buildGofumptOptions(filePath)
-	result := v.checker.CheckWithOptions(lintCtx, content, opts)
 
+	result := v.check(ctx, content, opts)
 	if result.Success {
 		log.Debug("gofumpt passed")
 		return validator.Pass()
@@ -92,45 +88,84 @@ func (v *GofumptValidator) Validate(
 
 	log.Debug("gofumpt failed", "output", result.RawOut)
 
-	return validator.FailWithRef(
-		validator.RefGofumpt,
-		v.formatGofumptOutput(result.RawOut),
-	)
+	message := v.formatGofumptOutput(result.RawOut)
+
+	if baseline != nil && !v.check(ctx, *baseline, opts).Success {
+		log.Debug("file was not gofumpt-formatted before the edit")
+
+		return validator.WarnWithRef(
+			validator.RefGofumpt,
+			message+"\n\nThe file was not gofumpt-formatted before this edit either.",
+		)
+	}
+
+	return validator.FailWithRef(validator.RefGofumpt, message)
 }
 
-// getContent extracts Go code content from context
+func (v *GofumptValidator) check(
+	ctx context.Context,
+	content string,
+	opts *linters.GofumptOptions,
+) *linters.LintResult {
+	lintCtx, cancel := context.WithTimeout(ctx, v.getTimeout())
+	defer cancel()
+
+	return v.checker.CheckWithOptions(lintCtx, content, opts)
+}
+
+// getContent returns the Go source to check. For an Edit or MultiEdit before
+// it runs, that is the whole file with the edit applied, and baseline is the
+// file as it is now, so formatting the edit did not break can be told apart.
+// After the tool ran, it is the file on disk.
 func (v *GofumptValidator) getContent(
 	ctx *hook.Context,
 	filePath string,
-) (string, error) {
+) (string, *string, error) {
 	log := v.Logger()
 
-	// For Edit operations, skip validation initially (no fragment support)
-	if ctx.EventType == hook.EventTypePreToolUse && ctx.ToolName == hook.ToolTypeEdit {
-		log.Debug("skipping Edit operations (no fragment support)")
-		return "", os.ErrNotExist
+	if content, ok, err := readToolResult(ctx, filePath); ok {
+		return content, nil, err
 	}
 
-	// Get content from context (Write operation)
-	content := ctx.ToolInput.Content
-	if content != "" {
-		return content, nil
+	if ctx.ToolName == hook.ToolTypeEdit || ctx.ToolName == hook.ToolTypeMultiEdit {
+		return v.getEditContent(ctx, filePath)
 	}
 
-	// Check if file exists
-	if _, err := os.Stat(filePath); err != nil {
-		log.Debug("file does not exist, skipping", "file", filePath)
-		return "", err
+	if content := ctx.ToolInput.Content; content != "" {
+		return content, nil, nil
 	}
 
-	// Read file content
-	data, err := os.ReadFile(filePath) //nolint:gosec // filePath is from Claude Code context
+	data, err := os.ReadFile(filepath.Clean(filePath))
 	if err != nil {
 		log.Debug("failed to read file", "file", filePath, "error", err)
-		return "", err
+		return "", nil, errors.Wrap(err, "reading file")
 	}
 
-	return string(data), nil
+	return string(data), nil, nil
+}
+
+func (v *GofumptValidator) getEditContent(
+	ctx *hook.Context,
+	filePath string,
+) (string, *string, error) {
+	data, err := os.ReadFile(filepath.Clean(filePath))
+	if err != nil && !os.IsNotExist(err) {
+		return "", nil, errors.Wrap(err, "reading file for edit")
+	}
+
+	original := string(data)
+
+	proposed, ok := proposedEditContent(ctx, original)
+	if !ok {
+		v.Logger().Debug("edit does not apply to the file, skipping", "file", filePath)
+		return "", nil, nil
+	}
+
+	if original == "" {
+		return proposed, nil, nil
+	}
+
+	return proposed, &original, nil
 }
 
 // buildGofumptOptions creates GofumptOptions with auto-detection from go.mod

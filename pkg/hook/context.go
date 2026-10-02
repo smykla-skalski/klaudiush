@@ -193,6 +193,17 @@ type Context struct {
 	// AffectedPaths contains provider-derived file paths affected by the tool.
 	AffectedPaths []string
 
+	// ChangedFiles lists the files a shell command changed, as reported by the
+	// provider after the tool ran (Claude tool_response.bashEditDiff).
+	ChangedFiles []string
+
+	// ToolError is the failure message of a tool that ran and failed.
+	ToolError string
+
+	// Derived marks a context the dispatcher built from another tool call:
+	// a file a shell command wrote, or one file of a multi-file patch.
+	Derived bool
+
 	// PatchFiles holds one entry per file of a multi-file patch. Validators see
 	// each file as its own Write or Edit; a single-file patch is mapped onto
 	// ToolInput directly and leaves this empty.
@@ -281,6 +292,22 @@ func (c *Context) GetFilePath() string {
 // GetContent returns the file content from ToolInput.
 func (c *Context) GetContent() string {
 	return c.ToolInput.Content
+}
+
+// IsAfterTool reports whether the hook fires after the tool ran, so any file
+// change it made is already on disk.
+func (c *Context) IsAfterTool() bool {
+	if c.Event != CanonicalEventUnknown {
+		return c.Event == CanonicalEventAfterTool
+	}
+
+	return c.EventType == EventTypePostToolUse
+}
+
+// ToolFailed reports whether the provider says the tool ran and failed. A
+// failed tool can still leave partial changes behind.
+func (c *Context) ToolFailed() bool {
+	return c.ToolExecuted && !c.ToolSucceeded
 }
 
 // IsBashTool returns true if the tool is Bash.
