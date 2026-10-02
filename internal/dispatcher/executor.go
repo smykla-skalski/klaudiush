@@ -21,12 +21,31 @@ const (
 
 // Executor runs validators and collects their results.
 type Executor interface {
-	// Execute runs validators and returns validation errors.
-	Execute(
+	// Run runs validators and returns the result of each one that completed.
+	Run(
 		ctx context.Context,
 		hookCtx *hook.Context,
 		validators []validator.Validator,
-	) []*ValidationError
+	) []ValidatorRun
+}
+
+// ValidatorRun is the result of one validator that ran to completion.
+type ValidatorRun struct {
+	Validator validator.Validator
+	Result    *validator.Result
+}
+
+// failures converts the failed runs to validation errors, in run order.
+func failures(runs []ValidatorRun) []*ValidationError {
+	errs := make([]*ValidationError, 0, len(runs))
+
+	for _, run := range runs {
+		if !run.Result.Passed {
+			errs = append(errs, toValidationError(run.Validator, run.Result))
+		}
+	}
+
+	return errs
 }
 
 // SequentialExecutor runs validators one at a time in order.
@@ -39,18 +58,27 @@ func NewSequentialExecutor(log logger.Logger) *SequentialExecutor {
 	return &SequentialExecutor{logger: log}
 }
 
-// Execute runs validators sequentially.
+// Execute runs validators sequentially and returns validation errors.
 func (se *SequentialExecutor) Execute(
 	ctx context.Context,
 	hookCtx *hook.Context,
 	validators []validator.Validator,
 ) []*ValidationError {
-	errors := make([]*ValidationError, 0, len(validators))
+	return failures(se.Run(ctx, hookCtx, validators))
+}
+
+// Run runs validators sequentially.
+func (se *SequentialExecutor) Run(
+	ctx context.Context,
+	hookCtx *hook.Context,
+	validators []validator.Validator,
+) []ValidatorRun {
+	runs := make([]ValidatorRun, 0, len(validators))
 
 	for _, v := range validators {
 		select {
 		case <-ctx.Done():
-			return errors
+			return runs
 		default:
 		}
 
@@ -64,12 +92,10 @@ func (se *SequentialExecutor) Execute(
 			"elapsed_ms", elapsed.Milliseconds(),
 		)
 
-		if !result.Passed {
-			errors = append(errors, toValidationError(v, result))
-		}
+		runs = append(runs, ValidatorRun{Validator: v, Result: result})
 	}
 
-	return errors
+	return runs
 }
 
 // ParallelExecutorConfig holds configuration for parallel execution.
@@ -120,12 +146,26 @@ func NewParallelExecutor(log logger.Logger, cfg *ParallelExecutorConfig) *Parall
 	}
 }
 
-// Execute runs validators concurrently, using category-specific worker pools.
+// Execute runs validators concurrently and returns validation errors.
 func (e *ParallelExecutor) Execute(
 	ctx context.Context,
 	hookCtx *hook.Context,
 	validators []validator.Validator,
 ) []*ValidationError {
+	errs := failures(e.Run(ctx, hookCtx, validators))
+	if len(errs) == 0 {
+		return nil
+	}
+
+	return errs
+}
+
+// Run runs validators concurrently, using category-specific worker pools.
+func (e *ParallelExecutor) Run(
+	ctx context.Context,
+	hookCtx *hook.Context,
+	validators []validator.Validator,
+) []ValidatorRun {
 	if len(validators) == 0 {
 		return nil
 	}
@@ -143,17 +183,13 @@ func (e *ParallelExecutor) Execute(
 			"elapsed_ms", elapsed.Milliseconds(),
 		)
 
-		if !result.Passed {
-			return []*ValidationError{toValidationError(v, result)}
-		}
-
-		return nil
+		return []ValidatorRun{{Validator: v, Result: result}}
 	}
 
 	var (
-		mu      sync.Mutex
-		wg      sync.WaitGroup
-		results []*ValidationError
+		mu   sync.Mutex
+		wg   sync.WaitGroup
+		runs []ValidatorRun
 	)
 
 	for _, v := range validators {
@@ -192,19 +228,17 @@ func (e *ParallelExecutor) Execute(
 				"elapsed_ms", elapsed.Milliseconds(),
 			)
 
-			if !result.Passed {
-				mu.Lock()
+			mu.Lock()
 
-				results = append(results, toValidationError(v, result))
+			runs = append(runs, ValidatorRun{Validator: v, Result: result})
 
-				mu.Unlock()
-			}
+			mu.Unlock()
 		}(v)
 	}
 
 	wg.Wait()
 
-	return results
+	return runs
 }
 
 // poolFor returns the appropriate semaphore pool for a validator category.

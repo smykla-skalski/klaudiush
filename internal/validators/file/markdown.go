@@ -153,8 +153,11 @@ func (v *MarkdownValidator) Validate(ctx context.Context, hookCtx *hook.Context)
 		return validator.Pass()
 	}
 
+	// After the tool ran, content is the whole file as the tool left it.
+	wholeFile := hookCtx.IsAfterTool() && hookCtx.GetFilePath() != ""
+
 	if content == "" {
-		return validator.Pass()
+		return inspectedIf(wholeFile, validator.Pass())
 	}
 
 	timeout := v.getTimeout()
@@ -167,17 +170,18 @@ func (v *MarkdownValidator) Validate(ctx context.Context, hookCtx *hook.Context)
 	displayPath := getDisplayPath(filePath)
 
 	result := v.linter.LintWithPath(lintCtx, content, initialState, displayPath)
+	inspected := wholeFile && lintCtx.Err() == nil
 
 	if !result.Success {
-		return v.buildBlockingResult(result)
+		return inspectedIf(inspected, v.buildBlockingResult(result))
 	}
 
 	// No blocking errors - check for cosmetic table warnings
 	if len(result.CosmeticTableWarnings) > 0 {
-		return v.buildCosmeticResult(result)
+		return inspectedIf(inspected, v.buildCosmeticResult(result))
 	}
 
-	return validator.Pass()
+	return inspectedIf(inspected, validator.Pass())
 }
 
 // getContentWithState extracts markdown content and detects initial state from context
@@ -375,9 +379,4 @@ func getDisplayPath(filePath string) string {
 // MarkdownValidator uses CategoryIO because it invokes markdownlint.
 func (*MarkdownValidator) Category() validator.ValidatorCategory {
 	return validator.CategoryIO
-}
-
-// ChecksToolResult reports that the whole file is checked after a tool ran.
-func (*MarkdownValidator) ChecksToolResult() bool {
-	return true
 }

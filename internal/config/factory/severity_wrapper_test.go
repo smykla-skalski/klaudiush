@@ -96,18 +96,16 @@ func TestWrapValidatorWithSeveritySkipsDefaultErrorSeverity(t *testing.T) {
 	}
 }
 
-type fakeResultChecker struct{ fakeValidator }
-
-func (fakeResultChecker) ChecksToolResult() bool { return true }
-
-func TestWrapValidatorWithSeverityForwardsChecksToolResult(t *testing.T) {
-	severity := fakeSeverityConfig{severity: config.SeverityWarning}
-
-	if !validator.ChecksToolResult(wrapValidatorWithSeverity(fakeResultChecker{}, severity)) {
-		t.Fatal("wrapped result checker should still check the tool result")
+func TestWrapValidatorWithSeverityKeepsInspected(t *testing.T) {
+	base := fakeValidator{
+		name:   "fake",
+		result: validator.FailWithRef(validator.RefGofumpt, "unformatted").MarkInspected(),
 	}
 
-	if validator.ChecksToolResult(wrapValidatorWithSeverity(fakeValidator{}, severity)) {
-		t.Fatal("wrapped input-only validator should not check the tool result")
+	wrapped := wrapValidatorWithSeverity(base, fakeSeverityConfig{severity: config.SeverityWarning})
+	result := wrapped.Validate(context.Background(), &hook.Context{})
+
+	if result.ShouldBlock || !result.Inspected {
+		t.Fatal("downgraded result should still report the whole-file inspection")
 	}
 }

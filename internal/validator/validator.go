@@ -82,6 +82,10 @@ type Result struct {
 
 	// Unavailable reports that the check itself could not run.
 	Unavailable bool
+
+	// Inspected reports that, after a tool ran, this run read and checked the
+	// whole file as the tool left it. Only such runs prove a file clean.
+	Inspected bool
 }
 
 // Pass creates a passing validation result.

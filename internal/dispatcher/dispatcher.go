@@ -264,11 +264,12 @@ func (d *Dispatcher) runValidators(
 	)
 
 	// Use executor to run validators (sequential or parallel)
-	validationErrors := d.executor.Execute(ctx, hookCtx, validators)
+	runs := d.executor.Run(ctx, hookCtx, validators)
+	validationErrors := failures(runs)
 
 	resource := hookCtx.Resource()
 
-	recordChecks(ctx, checks, validators, resource)
+	recordChecks(ctx, checks, runs, resource)
 
 	// Apply overrides to suppress disabled error codes
 	validationErrors = d.applyOverrides(validationErrors)
@@ -631,11 +632,12 @@ func (d *Dispatcher) resolver() parser.Resolver {
 
 // recordChecks adds the validators that ran on resource to checks. A
 // cancelled run may have skipped validators, so it proves nothing; on a file,
-// only validators that read the whole file after the tool prove it clean.
+// only runs that report reading and checking the whole file as the tool left
+// it prove it clean.
 func recordChecks(
 	ctx context.Context,
 	checks *[]Check,
-	validators []validator.Validator,
+	runs []ValidatorRun,
 	resource string,
 ) {
 	if checks == nil || ctx.Err() != nil {
@@ -644,12 +646,12 @@ func recordChecks(
 
 	isFile := strings.HasPrefix(resource, hook.ResourceFilePrefix)
 
-	for _, v := range validators {
-		if isFile && !validator.ChecksToolResult(v) {
+	for _, run := range runs {
+		if isFile && (!run.Result.Inspected || run.Result.Unavailable) {
 			continue
 		}
 
-		*checks = append(*checks, Check{Validator: v.Name(), Resource: resource})
+		*checks = append(*checks, Check{Validator: run.Validator.Name(), Resource: resource})
 	}
 }
 

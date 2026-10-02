@@ -54,8 +54,3 @@ func (v *severityWrappedValidator) Validate(
 
 	return &cloned
 }
-
-// ChecksToolResult forwards to the wrapped validator.
-func (v *severityWrappedValidator) ChecksToolResult() bool {
-	return validator.ChecksToolResult(v.Validator)
-}

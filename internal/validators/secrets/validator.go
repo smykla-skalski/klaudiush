@@ -83,10 +83,10 @@ func (v *SecretsValidator) Validate(ctx context.Context, hookCtx *hook.Context) 
 	}
 
 	// Get content to validate
-	content := v.getContent(hookCtx)
+	content, wholeFile := v.getContent(hookCtx)
 	if content == "" {
 		log.Debug("no content to validate")
-		return validator.Pass()
+		return inspectedIf(wholeFile, validator.Pass())
 	}
 
 	// Check file size limit
@@ -103,50 +103,66 @@ func (v *SecretsValidator) Validate(ctx context.Context, hookCtx *hook.Context) 
 	findings = v.filterFindings(findings)
 
 	if len(findings) > 0 {
-		return v.createResult(findings)
+		return inspectedIf(wholeFile, v.createResult(findings))
 	}
 
 	// Optionally run gitleaks as second-tier check
 	if v.shouldUseGitleaks() {
 		result := v.gitleaks.Check(ctx, content)
 		if !result.Success && len(result.Findings) > 0 {
-			return v.createGitleaksResult(result.Findings)
+			return inspectedIf(wholeFile, v.createGitleaksResult(result.Findings))
 		}
+
+		// A failed run without findings checked nothing.
+		wholeFile = wholeFile && result.Success
 	}
 
 	log.Debug("no secrets detected")
 
-	return validator.Pass()
+	return inspectedIf(wholeFile, validator.Pass())
+}
+
+// inspectedIf marks result as a check of the whole file as the tool left it
+// when inspected holds.
+func inspectedIf(inspected bool, result *validator.Result) *validator.Result {
+	if inspected {
+		return result.MarkInspected()
+	}
+
+	return result
 }
 
 // getContent extracts content to validate from the hook context. After the
-// tool ran it is the whole file as the tool left it.
-func (*SecretsValidator) getContent(hookCtx *hook.Context) string {
+// tool ran it is the whole file as the tool left it, read against the hook's
+// working directory, and the second return value reports that it was read.
+func (*SecretsValidator) getContent(hookCtx *hook.Context) (string, bool) {
 	if hookCtx.IsAfterTool() && hookCtx.GetFilePath() != "" {
-		data, err := os.ReadFile(filepath.Clean(hookCtx.GetFilePath()))
-		if err != nil {
-			return ""
+		path := hook.CanonicalFilePath(hookCtx.WorkingDir, hookCtx.GetFilePath())
+
+		info, err := os.Stat(path)
+		if err != nil || !info.Mode().IsRegular() {
+			return "", false
 		}
 
-		return string(data)
+		data, err := os.ReadFile(filepath.Clean(path))
+		if err != nil {
+			return "", false
+		}
+
+		return string(data), true
 	}
 
 	// For Write operations, use the content directly
 	if hookCtx.ToolName == hook.ToolTypeWrite {
-		return hookCtx.GetContent()
+		return hookCtx.GetContent(), false
 	}
 
 	// For Edit operations, validate the new content being written
 	if hookCtx.ToolName == hook.ToolTypeEdit {
-		return hookCtx.ToolInput.NewString
+		return hookCtx.ToolInput.NewString, false
 	}
 
-	return ""
-}
-
-// ChecksToolResult reports that the whole file is checked after a tool ran.
-func (*SecretsValidator) ChecksToolResult() bool {
-	return true
+	return "", false
 }
 
 // getMaxFileSize returns the configured max file size.

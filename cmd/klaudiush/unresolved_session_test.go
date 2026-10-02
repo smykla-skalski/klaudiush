@@ -18,18 +18,20 @@ import (
 )
 
 // diskValidator reads the file as the tool left it and fails while it holds
-// the text BAD.
+// the text BAD. A file it cannot read passes without counting as checked.
 type diskValidator struct{ validator.BaseValidator }
-
-func (*diskValidator) ChecksToolResult() bool { return true }
 
 func (*diskValidator) Validate(_ context.Context, hookCtx *hook.Context) *validator.Result {
 	data, err := os.ReadFile(hookCtx.GetFilePath())
-	if err != nil || !strings.Contains(string(data), "BAD") {
+	if err != nil {
 		return validator.Pass()
 	}
 
-	return validator.Fail("file holds BAD")
+	if !strings.Contains(string(data), "BAD") {
+		return validator.Pass().MarkInspected()
+	}
+
+	return validator.Fail("file holds BAD").MarkInspected()
 }
 
 // inputValidator looks only at the tool input, so it cannot prove a file clean.
@@ -198,6 +200,23 @@ var _ = Describe("unresolved session findings", func() {
 		Expect(write("a.md", "SECRET", "")).To(HaveLen(1))
 
 		Expect(write("a.md", "plain", "")).To(BeEmpty())
+		Expect(stop(false)).To(HaveLen(1))
+	})
+
+	It("keeps a file finding when the check could not read the file", func() {
+		write("a.md", "BAD", "")
+
+		Expect(os.Chmod(path("a.md"), 0)).To(Succeed())
+		DeferCleanup(os.Chmod, path("a.md"), os.FileMode(0o600))
+
+		Expect(run(&hook.Context{
+			Event:        hook.CanonicalEventAfterTool,
+			RawEventName: "PostToolUse",
+			ToolName:     hook.ToolTypeWrite,
+			ToolFamily:   hook.ToolFamilyWrite,
+			ToolInput:    hook.ToolInput{FilePath: path("a.md"), Content: "good"},
+		})).To(BeEmpty())
+
 		Expect(stop(false)).To(HaveLen(1))
 	})
 

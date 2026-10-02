@@ -25,7 +25,9 @@ type LintFinding struct {
 
 // LintResult represents the result of running a linter
 type LintResult struct {
-	Success                bool
+	Success bool
+	// Skipped reports that the tool is not installed, so nothing was checked.
+	Skipped                bool
 	Findings               []LintFinding
 	RawOut                 string
 	Err                    error

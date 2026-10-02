@@ -56,7 +56,7 @@ func (l *ContentLinter) LintContent(
 	if !l.toolChecker.IsAvailable(toolName) {
 		return &LintResult{
 			Success: true,
-			Err:     nil,
+			Skipped: true,
 		}
 	}
 

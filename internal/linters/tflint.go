@@ -50,7 +50,7 @@ func (t *RealTfLinter) Lint(ctx context.Context, filePath string) *LintResult {
 	if !t.toolChecker.IsAvailable("tflint") {
 		return &LintResult{
 			Success: true,
-			Err:     nil,
+			Skipped: true,
 		}
 	}
 
