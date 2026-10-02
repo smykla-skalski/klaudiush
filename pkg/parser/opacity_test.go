@@ -16,6 +16,7 @@ var _ = Describe("Opacity explanations", func() {
 			"broken.sh": "git commit -m x && (\n",
 			"outer.sh":  "bash ./inner.sh\n",
 			"inner.sh":  "git zz\n",
+			"outer.py":  "import os\nos.system('bash ./huge.sh')\n",
 		},
 		opaque: map[string]bool{"huge.sh": true},
 		programs: map[string]parser.Program{
@@ -184,6 +185,21 @@ var _ = Describe("Opacity explanations", func() {
 		Expect(result.Opacities[parser.MaxOpacities-1].Cause).To(Equal(parser.OpacityWorkBudget))
 	})
 
+	It("uses the last slot once the budget is reported", func() {
+		calls := strings.Repeat("g; ", 60)
+		result := parse(manyUnknown(6) + "; bash -c 'f() { " + calls + "}; g() { " +
+			strings.Repeat("git status; ", 60) + "}; f; git status && ('")
+
+		Expect(result.Opacities).To(HaveLen(parser.MaxOpacities))
+		Expect(result.Opacities[parser.MaxOpacities-2].Cause).To(Equal(parser.OpacityWorkBudget))
+		Expect(result.Opacities[parser.MaxOpacities-1]).To(Equal(parser.Opacity{
+			Cause:     parser.OpacityScriptSyntax,
+			Operation: "inline script",
+			Origin:    []string{"bash"},
+		}))
+		Expect(result.MoreOpacities).To(BeFalse())
+	})
+
 	DescribeTable("names the scripts and aliases on the way",
 		func(command string, origin []string, operation string) {
 			o := only(command)
@@ -201,6 +217,13 @@ var _ = Describe("Opacity explanations", func() {
 			[]string{"g"}, "g"),
 		Entry("a script on stdin", "bash /dev/stdin <<< 'git zz'",
 			[]string{"bash", "stdin"}, "git zz"),
+		Entry("a gh shell alias", "gh alias set --shell yy 'git zz'; gh yy",
+			[]string{"gh", "gh alias yy"}, "git zz"),
+		Entry("a gh shell alias that does not parse",
+			"gh alias set --shell yy 'git status && ('; gh yy",
+			[]string{"gh"}, "gh alias yy"),
+		Entry("a script run by an interpreter file", "python3 outer.py",
+			[]string{"python3", "outer.py", "bash"}, "huge.sh"),
 	)
 
 	It("ignores stdin with nothing on it", func() {

@@ -723,7 +723,7 @@ func (w *astWalker) follow(cmd Command, l launch, depth int) {
 	}
 
 	for _, code := range l.code {
-		w.followCode(cmd, code, depth)
+		w.followCode(cmd, code, depth, "")
 	}
 }
 
@@ -736,10 +736,11 @@ func (w *astWalker) followFile(cmd Command, file scriptFile, depth int) {
 
 	switch status {
 	case ScriptText:
+		label := scriptName(file.path)
 		if file.interpreter || interpreterShebang(text) {
-			w.followCode(cmd, text, depth)
+			w.followCode(cmd, text, depth, label)
 		} else {
-			w.walkScript(text, cmd, depth, scriptWalk{label: scriptName(file.path)})
+			w.walkScript(text, cmd, depth, scriptWalk{label: label})
 		}
 	case ScriptOpaque:
 		if file.explicit {
@@ -749,10 +750,11 @@ func (w *astWalker) followFile(cmd Command, file scriptFile, depth int) {
 	}
 }
 
-// followCode records the command lines found in program source.
-func (w *astWalker) followCode(cmd Command, code string, depth int) {
+// followCode records the command lines found in program source, naming the
+// source file by label when it came from one.
+func (w *astWalker) followCode(cmd Command, code string, depth int, label string) {
 	for _, line := range commandLines(code) {
-		w.walkScript(line, cmd, depth, scriptWalk{literal: true})
+		w.walkScript(line, cmd, depth, scriptWalk{literal: true, label: label})
 	}
 }
 

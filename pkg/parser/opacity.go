@@ -142,7 +142,7 @@ func (w *astWalker) opaque(cause OpacityCause, operation, detail string) {
 	}
 
 	limit := MaxOpacities - 1
-	if cause == OpacityWorkBudget {
+	if w.state.budgetReported {
 		limit = MaxOpacities
 	}
 
@@ -175,6 +175,8 @@ func (sw scriptWalk) operation() string {
 		return sw.label
 	case strings.HasPrefix(sw.name, "git:"):
 		return "git alias " + safeName(strings.TrimPrefix(sw.name, "git:"))
+	case strings.HasPrefix(sw.name, "gh:"):
+		return "gh alias " + safeName(strings.TrimPrefix(sw.name, "gh:"))
 	case sw.name != "":
 		return safeName(sw.name)
 	default:
