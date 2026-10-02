@@ -22,15 +22,35 @@ import (
 // remaining checks and write its answer.
 const answerMargin = 5 * time.Second
 
+const terraformName = "terraform"
+
 // criticalTools lists the external tools each tool-backed validator needs.
-var criticalTools = map[string][]string{
-	"shellscript":     {"shellcheck"},
-	"terraform":       {"tofu", "terraform"},
-	"github-workflow": {"actionlint"},
-	"gofumpt":         {"gofumpt"},
-	"python":          {"ruff"},
-	"javascript":      {"oxlint"},
-	"rust":            {"rustfmt"},
+// Each inner list is one requirement any of whose tools satisfies it.
+var criticalTools = map[string][][]string{
+	"shellscript":     {{"shellcheck"}},
+	terraformName:     {{"tofu", terraformName}},
+	"github-workflow": {{"actionlint"}},
+	"gofumpt":         {{"gofumpt"}},
+	"python":          {{"ruff"}},
+	"javascript":      {{"oxlint"}},
+	"rust":            {{"rustfmt"}},
+}
+
+// toolsFor returns what a critical validator needs under cfg: terraform
+// also needs tflint unless use_tflint is off.
+func toolsFor(name string, cfg *config.Config) ([][]string, bool) {
+	tools, ok := criticalTools[name]
+	if !ok || name != terraformName {
+		return tools, ok
+	}
+
+	if cfg != nil && cfg.Validators != nil && cfg.Validators.File != nil &&
+		cfg.Validators.File.Terraform != nil && cfg.Validators.File.Terraform.UseTflint != nil &&
+		!*cfg.Validators.File.Terraform.UseTflint {
+		return tools, true
+	}
+
+	return append(slices.Clone(tools), []string{"tflint"}), true
 }
 
 // DeadlineChecker verifies the hook deadline leaves room to answer within
@@ -196,16 +216,25 @@ func (c *CriticalToolsChecker) Check(context.Context) doctor.CheckResult {
 	var missing []string
 
 	for _, name := range critical {
-		tools, ok := criticalTools[failpolicy.NormalizeName(name)]
+		normalized := failpolicy.NormalizeName(name)
+		if !failpolicy.IsKnownName(normalized) {
+			missing = append(missing, name+" is not a known validator name, so it protects nothing")
+
+			continue
+		}
+
+		requirements, ok := toolsFor(normalized, c.cfg)
 		if !ok {
 			continue
 		}
 
-		if c.tools.FindTool(tools...) == "" {
-			missing = append(missing, fmt.Sprintf(
-				"%s needs %s, which is not installed",
-				name, strings.Join(tools, " or "),
-			))
+		for _, tools := range requirements {
+			if c.tools.FindTool(tools...) == "" {
+				missing = append(missing, fmt.Sprintf(
+					"%s needs %s, which is not installed",
+					name, strings.Join(tools, " or "),
+				))
+			}
 		}
 	}
 

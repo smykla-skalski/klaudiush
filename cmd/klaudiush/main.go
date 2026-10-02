@@ -289,6 +289,8 @@ func (h *hookRun) validate() error {
 		log,
 	)
 
+	h.errs.Store(&errs)
+
 	bt.mark("dispatch")
 
 	// Save persistent state after dispatch

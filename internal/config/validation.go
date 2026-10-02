@@ -107,7 +107,8 @@ func (v *Validator) Validate(cfg *config.Config) error {
 	return nil
 }
 
-// validateFailurePolicyConfig checks the failure modes and the deadline.
+// validateFailurePolicyConfig checks the failure modes and critical names.
+// The deadline is compared with hook timeouts by doctor, which reads them.
 func validateFailurePolicyConfig(cfg *config.FailurePolicyConfig) error {
 	var validationErrors []error
 

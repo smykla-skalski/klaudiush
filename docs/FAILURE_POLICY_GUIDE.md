@@ -24,7 +24,7 @@ klaudiush answers every failure it can catch with exit code 0 and a response the
 
 | Cause | Reason | Default |
 |:--|:--|:--|
-| A linter is not installed (shellcheck, tofu/terraform, tflint, actionlint, gofumpt, ruff, oxlint, rustfmt) | `missing_tool` | Ignored, as before |
+| A linter is not installed (shellcheck, tofu/terraform, tflint, actionlint, gofumpt, ruff, oxlint, rustfmt) | `missing_tool` | Ignored (the old "Neither 'tofu' nor 'terraform' found" warning now follows `missing_tools` too) |
 | A linter or check ran past its timeout | `timeout` | Warning |
 | A check was cut short by the hook deadline | `timeout` | Warning |
 | A check was canceled | `canceled` | Warning |
@@ -64,7 +64,9 @@ Failures of klaudiush itself (unreadable input, broken configuration, crash, dea
 
 Blocking only happens where the event can stop the action before it runs: a tool call about to run, a permission request, an MCP elicitation. After a tool ran, nothing can be stopped, so the failure is reported to the agent. At a completion gate (Stop, SubagentStop, AfterAgent) a failure of klaudiush itself only warns, so a broken setup cannot keep the agent working forever; unavailable checks there stay bounded by the completion gate limit.
 
-`critical` accepts runtime validator names (`commit`, `git-push`, `shellscript`, `plugin-registry`) and override names (`git.commit`, `git.push`, `file.shellscript`, `plugins`).
+`critical` accepts runtime validator names (`commit`, `git-push`, `shellscript`, `plugin-registry`) and override names (`git.commit`, `git.push`, `file.shellscript`, `plugins`). Plugins can only be made critical together, as `plugins`. A plugin that fails to load warns by default, while one that fails at run time blocks.
+
+A critical validator blocks when any tool it uses is missing. For `file.terraform` that includes tflint while `use_tflint` is on; when only tflint is missing and the format check found something, the format findings are shown instead. For `file.workflow`, a missing actionlint blocks before the tool runs, but after it ran the digest pinning check still decides.
 
 A blocked HOOK001 can be waived like any other code with an [exception token](EXCEPTIONS_GUIDE.md) when exceptions are enabled for it.
 
@@ -142,8 +144,8 @@ The plugin cannot read the configuration file, because reading it is klaudiush's
 klaudiush doctor --category failure_policy
 ```
 
-- **Validation deadline below hook timeout** warns when `deadline` plus 5 seconds exceeds a klaudiush hook timeout in a Claude settings file.
-- **Critical validators have their tools** fails when a validator in `critical` needs a tool that is not installed, because it would block every action it checks.
+- **Validation deadline below hook timeout** warns when `deadline` plus 5 seconds exceeds a klaudiush hook timeout in a Claude settings file. Codex and Gemini settings are not read yet; keep their klaudiush timeouts at 30 seconds or more (Gemini counts milliseconds).
+- **Critical validators have their tools** fails when a validator in `critical` needs a tool that is not installed, because it would block every action it checks, and when a name in `critical` matches no validator.
 
 ## Troubleshooting
 

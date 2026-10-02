@@ -179,8 +179,15 @@ func (v *WorkflowValidator) Validate(ctx context.Context, hookCtx *hook.Context)
     uses: vendor/custom-action@v1`)
 	}
 
-	if notRun != nil {
+	// Only digest pinning decides; actionlint just prints warnings. After the
+	// tool ran, the pinning verdict still proves the file clean, so a missing
+	// actionlint must not keep earlier pinning findings unresolved.
+	if notRun != nil && !inspected {
 		return notRun
+	}
+
+	if notRun != nil {
+		log.Info("actionlint did not run", "reason", string(notRun.UnavailableReason))
 	}
 
 	return inspectedIf(inspected, validator.Pass())

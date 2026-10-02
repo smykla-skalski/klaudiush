@@ -140,7 +140,9 @@ var _ = Describe("SecretsValidator", func() {
 			hookCtx.ToolInput = hook.ToolInput{FilePath: path}
 
 			result := v.Validate(context.Background(), hookCtx)
-			Expect(result.Passed).To(BeTrue())
+			Expect(result.Passed).To(BeFalse())
+			Expect(result.Unavailable).To(BeTrue())
+			Expect(result.UnavailableReason).To(Equal(validator.ReasonError))
 			Expect(result.Inspected).To(BeFalse())
 
 			gitleaks.result = nil

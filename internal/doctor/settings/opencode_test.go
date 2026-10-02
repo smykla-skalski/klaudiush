@@ -73,7 +73,9 @@ var _ = Describe("opencode bridge plugin", func() {
 		It("refuses tool calls klaudiush cannot answer only when asked to", func() {
 			rendered, err := settings.RenderOpenCodePlugin(binaryPath)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(string(rendered)).To(ContainSubstring("process.env.KLAUDIUSH_FAILURE_POLICY_MODE"))
+			Expect(
+				string(rendered),
+			).To(ContainSubstring("process.env.KLAUDIUSH_FAILURE_POLICY_MODE"))
 			Expect(string(rendered)).To(ContainSubstring(`event !== "tool.execute.before"`))
 			Expect(string(rendered)).To(ContainSubstring("error?.stdout"))
 		})

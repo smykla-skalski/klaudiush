@@ -3,6 +3,7 @@ package parser_test
 import (
 	"bytes"
 
+	"github.com/cockroachdb/errors"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -11,6 +12,20 @@ import (
 )
 
 var _ = Describe("JSONParser", func() {
+	DescribeTable("rejects input that is not a JSON object",
+		func(input string) {
+			_, err := parser.NewJSONParser(bytes.NewReader([]byte(input))).
+				Parse(hook.EventTypePreToolUse)
+
+			Expect(errors.Is(err, parser.ErrInvalidJSON)).To(BeTrue())
+		},
+		Entry("null", "null"),
+		Entry("array", `[{"tool_name": "Bash"}]`),
+		Entry("string", `"git push --force"`),
+		Entry("whitespace", "  \n"),
+		Entry("truncated object", `{"tool_name": "Bash"`),
+	)
+
 	Describe("Parse with session fields", func() {
 		It("parses all session fields when present", func() {
 			input := `{

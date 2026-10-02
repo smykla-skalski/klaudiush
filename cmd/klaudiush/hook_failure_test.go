@@ -11,6 +11,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/smykla-skalski/klaudiush/internal/dispatcher"
 	"github.com/smykla-skalski/klaudiush/internal/failpolicy"
 	"github.com/smykla-skalski/klaudiush/internal/validator"
 	"github.com/smykla-skalski/klaudiush/pkg/config"
@@ -199,6 +200,57 @@ var _ = Describe("hook failures", func() {
 		Expect(permissionDecision(resp)).To(Equal("deny"))
 		Expect(resp["systemMessage"]).To(ContainSubstring("timed out"))
 		Expect(h.claim()).To(BeFalse())
+	})
+
+	It("keeps a deny found before the watchdog answered", func() {
+		watchdogGrace = 10 * time.Millisecond
+
+		h := newRun(hook.ProviderClaude, "PreToolUse")
+		h.setPolicy(failpolicy.New(&config.FailurePolicyConfig{
+			Deadline: config.Duration(20 * time.Millisecond),
+		}))
+
+		found := []*dispatcher.ValidationError{{
+			Validator:   "validate-shellscript",
+			Message:     "bad script",
+			ShouldBlock: true,
+		}}
+		h.errs.Store(&found)
+
+		release := make(chan struct{})
+		defer close(release)
+
+		out := captureStdout(func() {
+			Expect(h.supervise(func() error {
+				<-release
+
+				return nil
+			})).To(Succeed())
+		})
+
+		resp := decode(out)
+		Expect(permissionDecision(resp)).To(Equal("deny"))
+		Expect(resp["systemMessage"]).To(ContainSubstring("bad script"))
+		Expect(resp["systemMessage"]).To(ContainSubstring("timed out"))
+	})
+
+	It("waits for a response validation already started writing", func() {
+		watchdogGrace = 10 * time.Millisecond
+
+		h := newRun(hook.ProviderClaude, "PreToolUse")
+		h.setPolicy(failpolicy.New(&config.FailurePolicyConfig{
+			Deadline: config.Duration(time.Millisecond),
+		}))
+
+		out := captureStdout(func() {
+			Expect(h.supervise(func() error {
+				Expect(h.claim()).To(BeTrue())
+				time.Sleep(15 * time.Millisecond)
+
+				return nil
+			})).To(Succeed())
+		})
+		Expect(out).To(BeEmpty())
 	})
 
 	It("writes one response when the watchdog already answered", func() {

@@ -100,6 +100,7 @@ var _ = Describe("CriticalToolsChecker", func() {
 
 	It("passes when every critical tool is installed", func() {
 		tools.EXPECT().FindTool("tofu", "terraform").Return("tofu")
+		tools.EXPECT().FindTool("tflint").Return("tflint")
 
 		checker := failurepolicy.NewCriticalToolsCheckerWithTools(
 			critical("file.terraform", "git.commit"),
@@ -117,6 +118,29 @@ var _ = Describe("CriticalToolsChecker", func() {
 		Expect(result.Status).To(Equal(doctor.StatusFail))
 		Expect(result.Severity).To(Equal(doctor.SeverityError))
 		Expect(result.Details[0]).To(ContainSubstring("shellscript needs shellcheck"))
+	})
+
+	It("needs tflint for terraform only while use_tflint is on", func() {
+		tools.EXPECT().FindTool("tofu", "terraform").Return("tofu").Times(2)
+		tools.EXPECT().FindTool("tflint").Return("")
+
+		cfg := critical("file.terraform")
+		Expect(failurepolicy.NewCriticalToolsCheckerWithTools(cfg, tools).
+			Check(context.Background()).Status).To(Equal(doctor.StatusFail))
+
+		cfg.Validators = &config.ValidatorsConfig{File: &config.FileConfig{
+			Terraform: &config.TerraformValidatorConfig{UseTflint: new(false)},
+		}}
+		Expect(failurepolicy.NewCriticalToolsCheckerWithTools(cfg, tools).
+			Check(context.Background()).Status).To(Equal(doctor.StatusPass))
+	})
+
+	It("flags critical names that match no validator", func() {
+		result := failurepolicy.NewCriticalToolsCheckerWithTools(critical("file.typo"), tools).
+			Check(context.Background())
+
+		Expect(result.Status).To(Equal(doctor.StatusFail))
+		Expect(result.Details[0]).To(ContainSubstring("not a known validator name"))
 	})
 
 	It("can be built with the real tool lookup", func() {

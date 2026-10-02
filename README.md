@@ -249,7 +249,7 @@ While validating such a session, klaudiush shows a reminder in `systemMessage` o
 
 ### When validation cannot run
 
-A missing or timed-out linter, a failing plugin, unreadable hook input, a broken configuration, a crash, or a run past the deadline is reported as "Validation unavailable" (HOOK001), never as a pass. By default these warn and plugin failures block; make them block with:
+A timed-out linter, a failing plugin, unreadable hook input, a broken configuration, a crash, or a run past the deadline is reported as "Validation unavailable" (HOOK001), never as a pass. By default these warn, plugin failures block, and missing linters stay ignored (`missing_tools`). Make them block with:
 
 ```toml
 [failure_policy]

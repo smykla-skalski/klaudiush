@@ -111,6 +111,18 @@ func (v *TerraformValidator) Validate(
 
 	inspected = inspected && unavailable == nil
 
+	// A missing optional tool must not hide what the other check found, as
+	// missing tools are ignored by default; any other failure is reported
+	// with the findings attached.
+	if unavailable != nil &&
+		(len(warnings) == 0 || unavailable.UnavailableReason != validator.ReasonMissingTool) {
+		if len(warnings) > 0 {
+			unavailable.Message += "\n" + strings.Join(warnings, "\n")
+		}
+
+		return unavailable
+	}
+
 	if len(warnings) > 0 {
 		message := "Terraform validation warnings"
 		details := map[string]string{
@@ -118,10 +130,6 @@ func (v *TerraformValidator) Validate(
 		}
 
 		return inspectedIf(inspected, validator.WarnWithDetails(message, details))
-	}
-
-	if unavailable != nil {
-		return unavailable
 	}
 
 	return inspectedIf(inspected, validator.Pass())

@@ -8,6 +8,7 @@
 package failpolicy
 
 import (
+	"slices"
 	"strings"
 	"time"
 
@@ -93,6 +94,27 @@ var overrideNames = map[string]string{
 	"file.markdown":    "markdown",
 	"file.ai_comments": "ai-comments",
 	"plugins":          "plugin-registry",
+}
+
+// otherNames are runtime validator names without an override spelling.
+var otherNames = []string{
+	"git-commit", "linter-ignore", "shell", "bell", "mcp-server", "lifecycle.rules",
+}
+
+// IsKnownName reports whether a normalized name is a validator klaudiush
+// ships. Plugins are matched together as "plugin-registry".
+func IsKnownName(normalized string) bool {
+	if slices.Contains(otherNames, normalized) {
+		return true
+	}
+
+	for _, runtime := range overrideNames {
+		if runtime == normalized {
+			return true
+		}
+	}
+
+	return false
 }
 
 // NormalizeName reduces a validator name to the form critical matches on.

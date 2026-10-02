@@ -50,6 +50,13 @@ var _ = Describe("Policy", func() {
 		Entry("unknown", " custom ", "custom"),
 	)
 
+	It("knows the validators klaudiush ships", func() {
+		Expect(failpolicy.IsKnownName("shellscript")).To(BeTrue())
+		Expect(failpolicy.IsKnownName("bell")).To(BeTrue())
+		Expect(failpolicy.IsKnownName("plugin-registry")).To(BeTrue())
+		Expect(failpolicy.IsKnownName("typo")).To(BeFalse())
+	})
+
 	Describe("Resolve", func() {
 		It("keeps each check's choice and ignores missing tools by default", func() {
 			for _, policy := range []*failpolicy.Policy{nil, failpolicy.New(nil)} {

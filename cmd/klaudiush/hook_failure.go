@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -69,6 +70,7 @@ type hookRun struct {
 	hookCtx   atomic.Pointer[hook.Context]
 	output    atomic.Pointer[config.OutputConfig]
 	workDir   atomic.Pointer[string]
+	errs      atomic.Pointer[[]*dispatcher.ValidationError]
 }
 
 func newHookRun(
@@ -130,6 +132,10 @@ func (h *hookRun) supervise(validate func() error) error {
 		case err := <-done:
 			return h.finish(err)
 		case <-timer.C:
+			if h.claimed.Load() {
+				return h.awaitWriter(done)
+			}
+
 			h.log.Error("hook deadline exceeded", "elapsed", time.Since(h.start).String())
 
 			return h.finish(failHook(
@@ -140,6 +146,19 @@ func (h *hookRun) supervise(validate func() error) error {
 				),
 			))
 		}
+	}
+}
+
+// awaitWriter gives validation, which already started writing its response,
+// time to finish before the process exits.
+func (h *hookRun) awaitWriter(done <-chan error) error {
+	select {
+	case err := <-done:
+		return h.finish(err)
+	case <-time.After(watchdogGrace):
+		h.log.Error("response writer did not finish in time")
+
+		return nil
 	}
 }
 
@@ -164,11 +183,17 @@ func (h *hookRun) finish(err error) error {
 	}
 
 	hookCtx := h.failureContext()
-	verr := h.failureError(hookCtx, failure)
+	errs := []*dispatcher.ValidationError{h.failureError(hookCtx, failure)}
+
+	// Findings validation already made still count: a deny found before the
+	// deadline must not turn into a timeout warning.
+	if found := h.errs.Load(); found != nil {
+		errs = append(slices.Clone(*found), errs...)
+	}
 
 	return writeResponse(
 		hookCtx,
-		[]*dispatcher.ValidationError{verr},
+		errs,
 		nil,
 		nil,
 		h.output.Load(),
