@@ -92,6 +92,13 @@ func formatAdditionalContext(
 				"(e.g., adding type(scope): prefix makes title exceed 50 chars).")
 	}
 
+	exceptionOutcome := "Validation waived for this action; " +
+		"normal permission checks still apply."
+	if len(blocking) > 0 {
+		exceptionOutcome = "Validation waived for this finding; " +
+			"the remaining errors still block the action."
+	}
+
 	for _, e := range bypassed {
 		code := extractCode(e.Reference)
 
@@ -102,7 +109,7 @@ func formatAdditionalContext(
 
 		parts = append(parts,
 			"klaudiush: Exception EXC:"+code+" accepted (reason: "+reason+"). "+
-				"Proceeding despite validation failure.")
+				exceptionOutcome)
 	}
 
 	for _, e := range warnings {

@@ -175,7 +175,7 @@ All validators log to `~/.claude/hooks/dispatcher.log`:
 klaudiush always exits 0 and writes structured JSON to stdout:
 
 - **Validation blocked**: `permissionDecision: "deny"` with error details in `permissionDecisionReason` and human-readable output in `systemMessage`
-- **Warnings only**: `permissionDecision: "allow"` with warning in `additionalContext`
+- **Warnings or accepted exceptions**: no `permissionDecision`, only `additionalContext`, so the harness permission flow still decides (klaudiush never sends `"allow"`)
 - **Clean pass**: No output, exit 0
 - **Crash**: Exit 3 with panic info on stderr (no JSON)
 

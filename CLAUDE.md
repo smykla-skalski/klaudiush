@@ -294,7 +294,7 @@ klaudiush always exits 0. Validation results are JSON on stdout:
 - `0`: JSON stdout (pass, deny, or warning). No output for clean pass.
 - `3`: Crash (panic with crash dump created, stderr only)
 
-JSON fields: `hookSpecificOutput.permissionDecision` (`"allow"` or `"deny"`), `permissionDecisionReason` (shown to Claude), `additionalContext` (behavioral framing), `systemMessage` (human-readable).
+JSON fields: `hookSpecificOutput.permissionDecision` (`"deny"` only; warnings and accepted exceptions omit it so the harness permission flow still decides, never `"allow"`), `permissionDecisionReason` (shown to Claude), `additionalContext` (behavioral framing), `systemMessage` (human-readable).
 
 `[output]` config toggles these: `user_messages = false` hides every `systemMessage` (master), `validation_messages = false` hides only validation details, `agent_summary` (default on) makes `hookresponse.AppendAgentSummary` add a one-sentence-explanation instruction to `additionalContext` on Claude denials only (advisory after-tool results let the action through, other providers drop `additionalContext` on deny).
 

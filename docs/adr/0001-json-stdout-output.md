@@ -17,7 +17,7 @@ The original trigger for this ADR was Claude Code, but the repo now uses the sam
 
 * The agent must see the specific error code, message, and fix hint so it can self-correct.
 * The model must distinguish "automated validation block" from "user denied permission."
-* Exception bypasses should use `permissionDecision: "allow"` rather than the current block-then-convert-to-warning approach.
+* Exception bypasses should surface the waiver as context without approving the action.
 * The solution should be a clean cut with no backwards-compatibility flags.
 
 ## Considered options
@@ -48,16 +48,20 @@ Chosen option: "Switch entirely to JSON stdout, always exit 0," because it clean
 | Scenario | `permissionDecision` | `permissionDecisionReason` | `additionalContext` |
 |:--|:--|:--|:--|
 | Blocking errors | `"deny"` | `[CODE] msg. Fix hint.` | `"Automated klaudiush validation check..."` |
-| Warnings only | `"allow"` | — | `"klaudiush warning: ... Not blocking."` |
-| Bypassed exception | `"allow"` | — | `"klaudiush: Exception EXC:CODE accepted..."` |
+| Warnings only | Not set | — | `"klaudiush warning: ... Not blocking."` |
+| Bypassed exception | Not set | — | `"klaudiush: Exception EXC:CODE accepted..."` |
 | Clean pass | No output | — | — |
 
 ### Positive consequences
 
 * The agent sees the actual error and fix hint via `permissionDecisionReason`, enabling self-correction.
 * The `additionalContext` field tells the agent this is an automated check, not a user denial.
-* Exception bypasses are cleaner: `"allow"` with context instead of block-then-convert.
+* Exception bypasses are cleaner: context instead of block-then-convert.
 * Single exit code (0) eliminates the conflation with user permission denials.
+
+### Amendment: no allow on warnings (2026-10)
+
+Warnings and accepted exceptions originally sent `permissionDecision: "allow"`. Claude reads `"allow"` as approval and skips its permission prompt, so a validator warning silently approved an action the user would otherwise have been asked about. These results now omit `permissionDecision`, which Claude treats as `"defer"`: the normal permission flow decides. klaudiush never sends `"allow"`; approval belongs to a separate, explicitly configured policy.
 
 ### Negative consequences
 
