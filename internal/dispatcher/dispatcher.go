@@ -304,62 +304,142 @@ func (d *Dispatcher) applyExceptionChecking(
 	return result
 }
 
-// checkException applies an exception to one error. An exception covers only
-// its own code: findings with other codes in the same result stay blocking
-// and are checked against the remaining tokens on their own.
+// checkException applies exceptions to one error. Each code among its
+// findings is checked on its own, so a token for a secondary code waives
+// those findings while the rest stay blocking. Errors without findings, or
+// whose findings all share the primary code, are checked whole.
 func (d *Dispatcher) checkException(
 	hookCtx *hook.Context,
 	verr *ValidationError,
 ) []*ValidationError {
-	modifiedErr, bypassed := d.exceptionChecker.CheckException(hookCtx, verr)
-	if modifiedErr == nil {
-		return nil
+	codes := findingCodes(verr.Findings)
+	if len(codes) == 0 || (len(codes) == 1 && codes[0] == verr.Reference.Code()) {
+		return d.checkWhole(hookCtx, verr)
 	}
 
-	if !bypassed {
-		return []*ValidationError{modifiedErr}
+	waived := make([]*ValidationError, 0, len(codes))
+	cleared := make(map[string]bool, len(codes))
+
+	for _, code := range codes {
+		part := errorForCode(verr, code)
+
+		checked, bypassed := d.exceptionChecker.CheckException(hookCtx, part)
+		if checked == nil {
+			cleared[code] = true
+
+			continue
+		}
+
+		if !bypassed {
+			continue
+		}
+
+		d.logBypass(checked)
+
+		waived = append(waived, checked)
+		cleared[code] = true
 	}
 
-	d.logger.Info("validation error bypassed via exception",
-		"validator", verr.Validator,
-		"reference", verr.Reference,
-	)
-
-	covered, rest := splitFindingsByCode(verr.Findings, verr.Reference.Code())
-	if len(rest) == 0 {
-		return []*ValidationError{modifiedErr}
+	if len(cleared) == 0 {
+		return []*ValidationError{verr}
 	}
 
-	waived := *modifiedErr
-	waived.Findings = covered
+	rest := make([]validator.Finding, 0, len(verr.Findings))
 
-	remaining := &ValidationError{
-		Validator:   verr.Validator,
-		Message:     rest[0].Message,
-		ShouldBlock: true,
-		Reference:   rest[0].Reference,
-		FixHint:     validator.GetSuggestion(rest[0].Reference),
-		Findings:    rest,
-		Unavailable: verr.Unavailable,
-	}
-
-	return append([]*ValidationError{&waived}, d.checkException(hookCtx, remaining)...)
-}
-
-// splitFindingsByCode separates the findings with the given code from the rest.
-func splitFindingsByCode(
-	findings []validator.Finding,
-	code string,
-) (covered, rest []validator.Finding) {
-	for _, f := range findings {
-		if f.Code() == code {
-			covered = append(covered, f)
-		} else {
+	for _, f := range verr.Findings {
+		if !cleared[f.Code()] {
 			rest = append(rest, f)
 		}
 	}
 
-	return covered, rest
+	if len(rest) == 0 {
+		return waived
+	}
+
+	remaining := errorFromFindings(verr, rest)
+	if !cleared[verr.Reference.Code()] {
+		remaining = withHeaderOf(verr, rest)
+	}
+
+	return append(waived, remaining)
+}
+
+// checkWhole applies an exception to the error as a single unit.
+func (d *Dispatcher) checkWhole(
+	hookCtx *hook.Context,
+	verr *ValidationError,
+) []*ValidationError {
+	checked, bypassed := d.exceptionChecker.CheckException(hookCtx, verr)
+	if checked == nil {
+		return nil
+	}
+
+	if bypassed {
+		d.logBypass(checked)
+	}
+
+	return []*ValidationError{checked}
+}
+
+func (d *Dispatcher) logBypass(verr *ValidationError) {
+	d.logger.Info("validation error bypassed via exception",
+		"validator", verr.Validator,
+		"reference", verr.Reference,
+	)
+}
+
+// findingCodes lists the distinct finding codes in order of first appearance.
+func findingCodes(findings []validator.Finding) []string {
+	seen := make(map[string]bool, len(findings))
+	codes := make([]string, 0, len(findings))
+
+	for _, f := range findings {
+		if code := f.Code(); !seen[code] {
+			seen[code] = true
+			codes = append(codes, code)
+		}
+	}
+
+	return codes
+}
+
+// errorForCode narrows an error to the findings with one code, keeping the
+// original header when the code is the primary one.
+func errorForCode(verr *ValidationError, code string) *ValidationError {
+	findings := make([]validator.Finding, 0, len(verr.Findings))
+
+	for _, f := range verr.Findings {
+		if f.Code() == code {
+			findings = append(findings, f)
+		}
+	}
+
+	if code == verr.Reference.Code() {
+		return withHeaderOf(verr, findings)
+	}
+
+	return errorFromFindings(verr, findings)
+}
+
+// withHeaderOf copies the error with its findings replaced.
+func withHeaderOf(verr *ValidationError, findings []validator.Finding) *ValidationError {
+	narrowed := *verr
+	narrowed.Findings = findings
+
+	return &narrowed
+}
+
+// errorFromFindings builds a blocking error headed by its first finding.
+func errorFromFindings(verr *ValidationError, findings []validator.Finding) *ValidationError {
+	return &ValidationError{
+		Validator:   verr.Validator,
+		Message:     findings[0].Message,
+		ShouldBlock: true,
+		Reference:   findings[0].Reference,
+		FixHint:     validator.GetSuggestion(findings[0].Reference),
+		Findings:    findings,
+		Unavailable: verr.Unavailable,
+	}
 }
 
 // validateBashFileWrites validates each file a Bash command writes as a

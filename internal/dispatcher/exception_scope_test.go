@@ -13,13 +13,18 @@ import (
 )
 
 type codeExceptionChecker struct {
-	codes map[string]bool
+	codes   map[string]bool
+	dropped map[string]bool
 }
 
 func (c *codeExceptionChecker) CheckException(
 	_ *hook.Context,
 	verr *dispatcher.ValidationError,
 ) (*dispatcher.ValidationError, bool) {
+	if c.dropped[verr.Reference.Code()] {
+		return nil, false
+	}
+
 	if !verr.ShouldBlock || !c.codes[verr.Reference.Code()] {
 		return verr, false
 	}
@@ -53,19 +58,14 @@ func (combinedValidator) Validate(_ context.Context, _ *hook.Context) *validator
 }
 
 var _ = Describe("exception scope", func() {
-	dispatch := func(codes ...string) []*dispatcher.ValidationError {
-		allowed := make(map[string]bool, len(codes))
-		for _, c := range codes {
-			allowed[c] = true
-		}
-
+	dispatchWith := func(checker *codeExceptionChecker) []*dispatcher.ValidationError {
 		reg := validator.NewRegistry()
 		reg.Register(combinedValidator{}, validator.EventTypeIs(hook.EventTypePreToolUse))
 
 		log := logger.NewNoOpLogger()
 		disp := dispatcher.NewDispatcherWithOptions(
 			reg, log, dispatcher.NewSequentialExecutor(log),
-			dispatcher.WithExceptionChecker(&codeExceptionChecker{codes: allowed}),
+			dispatcher.WithExceptionChecker(checker),
 		)
 
 		return disp.Dispatch(context.Background(), &hook.Context{
@@ -73,6 +73,15 @@ var _ = Describe("exception scope", func() {
 			Event:     hook.CanonicalEventBeforeTool,
 			ToolName:  hook.ToolTypeBash,
 		})
+	}
+
+	dispatch := func(codes ...string) []*dispatcher.ValidationError {
+		allowed := make(map[string]bool, len(codes))
+		for _, c := range codes {
+			allowed[c] = true
+		}
+
+		return dispatchWith(&codeExceptionChecker{codes: allowed})
 	}
 
 	It("waives only the findings with the excepted code", func() {
@@ -103,5 +112,28 @@ var _ = Describe("exception scope", func() {
 		Expect(errs).To(HaveLen(1))
 		Expect(errs[0].ShouldBlock).To(BeTrue())
 		Expect(errs[0].Findings).To(HaveLen(3))
+	})
+
+	It("waives a secondary code without an exception for the primary one", func() {
+		errs := dispatch("GIT005")
+
+		Expect(errs).To(HaveLen(2))
+		Expect(errs[0].Bypassed).To(BeTrue())
+		Expect(errs[0].Reference).To(Equal(validator.RefGitBadBody))
+		Expect(errs[0].Findings).To(HaveLen(1))
+		Expect(errs[1].ShouldBlock).To(BeTrue())
+		Expect(errs[1].Reference).To(Equal(validator.RefGitBadTitle))
+		Expect(errs[1].Message).To(Equal("Title too long"))
+		Expect(errs[1].Findings).To(HaveLen(2))
+		Expect(errs[1].Findings[0].Reference).To(Equal(validator.RefGitBadTitle))
+		Expect(errs[1].Findings[1].Reference).To(Equal(validator.RefGitPRRef))
+	})
+
+	It("drops the findings of a code the checker removes", func() {
+		errs := dispatchWith(&codeExceptionChecker{
+			dropped: map[string]bool{"GIT004": true, "GIT005": true, "GIT011": true},
+		})
+
+		Expect(errs).To(BeEmpty())
 	})
 })
