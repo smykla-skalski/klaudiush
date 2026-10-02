@@ -24,7 +24,7 @@ klaudiush answers every failure it can catch with exit code 0 and a response the
 
 | Cause | Reason | Default |
 |:--|:--|:--|
-| A linter is not installed (shellcheck, tofu/terraform, tflint, actionlint, gofumpt, ruff, oxlint, rustfmt) | `missing_tool` | Ignored (the old "Neither 'tofu' nor 'terraform' found" warning now follows `missing_tools` too) |
+| A linter is not installed (shellcheck, tofu/terraform, tflint, actionlint, gofumpt, ruff, oxlint, rustfmt, gitleaks when `use_gitleaks` is on) | `missing_tool` | Ignored (the old "Neither 'tofu' nor 'terraform' found" warning now follows `missing_tools` too) |
 | A linter or check ran past its timeout | `timeout` | Warning |
 | A check was cut short by the hook deadline | `timeout` | Warning |
 | A check was canceled | `canceled` | Warning |

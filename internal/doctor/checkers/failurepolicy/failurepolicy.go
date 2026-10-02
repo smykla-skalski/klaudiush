@@ -37,8 +37,18 @@ var criticalTools = map[string][][]string{
 }
 
 // toolsFor returns what a critical validator needs under cfg: terraform
-// also needs tflint unless use_tflint is off.
+// also needs tflint unless use_tflint is off, and secrets needs gitleaks
+// when use_gitleaks is on.
 func toolsFor(name string, cfg *config.Config) ([][]string, bool) {
+	if name == "secrets" {
+		if cfg != nil && cfg.Validators != nil && cfg.Validators.Secrets != nil &&
+			cfg.Validators.Secrets.Secrets.IsUseGitleaksEnabled() {
+			return [][]string{{"gitleaks"}}, true
+		}
+
+		return nil, true
+	}
+
 	tools, ok := criticalTools[name]
 	if !ok || name != terraformName {
 		return tools, ok

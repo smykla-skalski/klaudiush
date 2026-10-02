@@ -135,6 +135,20 @@ var _ = Describe("CriticalToolsChecker", func() {
 			Check(context.Background()).Status).To(Equal(doctor.StatusPass))
 	})
 
+	It("needs gitleaks for secrets only while use_gitleaks is on", func() {
+		cfg := critical("secrets")
+		Expect(failurepolicy.NewCriticalToolsCheckerWithTools(cfg, tools).
+			Check(context.Background()).Status).To(Equal(doctor.StatusPass))
+
+		tools.EXPECT().FindTool("gitleaks").Return("")
+
+		cfg.Validators = &config.ValidatorsConfig{Secrets: &config.SecretsConfig{
+			Secrets: &config.SecretsValidatorConfig{UseGitleaks: new(true)},
+		}}
+		Expect(failurepolicy.NewCriticalToolsCheckerWithTools(cfg, tools).
+			Check(context.Background()).Status).To(Equal(doctor.StatusFail))
+	})
+
 	It("flags critical names that match no validator", func() {
 		result := failurepolicy.NewCriticalToolsCheckerWithTools(critical("file.typo"), tools).
 			Check(context.Background())

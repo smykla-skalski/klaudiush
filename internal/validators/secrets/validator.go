@@ -106,6 +106,13 @@ func (v *SecretsValidator) Validate(ctx context.Context, hookCtx *hook.Context) 
 		return inspectedIf(wholeFile, v.createResult(findings))
 	}
 
+	if v.gitleaksMissing() {
+		return validator.Unavailable(
+			validator.ReasonMissingTool,
+			"gitleaks is enabled but not installed, so the second-tier secret scan did not run",
+		)
+	}
+
 	// Optionally run gitleaks as second-tier check
 	if v.shouldUseGitleaks() {
 		result := v.gitleaks.Check(ctx, content)
@@ -187,6 +194,11 @@ func (v *SecretsValidator) getMaxFileSize() config.ByteSize {
 	}
 
 	return config.DefaultMaxFileSize
+}
+
+// gitleaksMissing reports gitleaks enabled in config but not installed.
+func (v *SecretsValidator) gitleaksMissing() bool {
+	return v.config.IsUseGitleaksEnabled() && (v.gitleaks == nil || !v.gitleaks.IsAvailable())
 }
 
 // shouldUseGitleaks returns whether gitleaks should be used.
