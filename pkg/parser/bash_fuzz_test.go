@@ -51,6 +51,7 @@ func FuzzBashParse(f *testing.F) {
 	f.Add(`bash -c 'git commit -m x && ('`)
 	f.Add(`f() { git "${@:1}"; }; f commit`)
 	f.Add("HOME=/x git zz")
+	f.Add(`git -c alias.abcdefghijklmnopqrstuvwx='!git zz' abcdefghijklmnopqrstuvwx`)
 
 	f.Fuzz(func(t *testing.T, command string) {
 		p := parser.NewBashParser()
@@ -84,7 +85,12 @@ func checkOpacities(t *testing.T, result *parser.ParseResult) {
 	}
 
 	for _, o := range result.Opacities {
-		for _, name := range append(strings.Fields(o.Operation), o.Origin...) {
+		names := strings.Fields(o.Operation)
+		for _, entry := range o.Origin {
+			names = append(names, strings.Fields(entry)...)
+		}
+
+		for _, name := range names {
 			if len(name) > 32 || strings.ContainsAny(name, "$`'\"/\\;|&(){}") {
 				t.Fatalf("unsafe name %q in %+v", name, o)
 			}
