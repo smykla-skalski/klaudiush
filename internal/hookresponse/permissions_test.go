@@ -154,6 +154,19 @@ var _ = Describe("permission preservation", func() {
 		Entry("warning and exception", permissionMixedAdvisory, "Emergency hotfix"),
 	)
 
+	It("says remaining blocking findings still block next to an exception", func() {
+		errs := append(semanticsBlocking(), permissionBypassed()...)
+		out := hookSpecific(responseFields(hookresponse.BuildForContext(
+			eventCtx(hook.ProviderClaude, "PreToolUse"), errs, nil,
+		)))
+
+		Expect(out).To(HaveKeyWithValue("permissionDecision", "deny"))
+		Expect(out["additionalContext"]).
+			To(ContainSubstring("remaining errors still block the action"))
+		Expect(out["additionalContext"]).
+			NotTo(ContainSubstring("normal permission checks still apply"))
+	})
+
 	It("does not ask the agent to explain a block that did not happen", func() {
 		resp := hookresponse.BuildForContext(
 			eventCtx(hook.ProviderClaude, "PreToolUse"), permissionBypassed(), nil,
