@@ -43,6 +43,7 @@ func TestProviderEventCapabilityUnknownPairs(t *testing.T) {
 		{ProviderCodex, CanonicalEventElicitation},
 		{ProviderCodex, CanonicalEventUnknown},
 		{ProviderClaude, CanonicalEventBeforeTool},
+		{Provider("bogus"), CanonicalEventBeforeTool},
 	} {
 		if _, ok := ProviderEventCapability(tc.provider, tc.event); ok {
 			t.Errorf("unexpected contract for %s/%s", tc.provider, tc.event)

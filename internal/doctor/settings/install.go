@@ -108,18 +108,20 @@ func InstallClaudeDispatcher(settingsPath, binaryPath string) (bool, error) {
 
 // InstallCodexDispatcher registers klaudiush in a Codex hooks.json file and
 // removes its own legacy AfterToolUse entries. Unrelated hooks are kept.
+// PreToolUse counts as installed only with a synchronous matcherless handler;
+// an async or narrowed one cannot block every tool, so another is added.
 // Returns true when the file already matched and nothing was written.
 func InstallCodexDispatcher(hooksPath, binaryPath string) (bool, error) {
 	parser := NewCodexHooksParser(hooksPath)
 	missing := make(map[string]bool, len(CodexDispatcherEvents()))
 
 	for _, eventName := range CodexDispatcherEvents() {
-		hasHook, err := parser.HasEventHook(eventName, binaryPath)
+		installed, err := codexEventInstalled(parser, eventName, binaryPath)
 		if err != nil {
 			return false, errors.Wrapf(err, "failed to check %s hook", eventName)
 		}
 
-		missing[eventName] = !hasHook
+		missing[eventName] = !installed
 	}
 
 	hasLegacy, err := parser.HasEventHook(CodexLegacyEventAfterToolUse, binaryPath)
@@ -148,6 +150,19 @@ func InstallCodexDispatcher(hooksPath, binaryPath string) (bool, error) {
 	}
 
 	return false, nil
+}
+
+func codexEventInstalled(parser *CodexHooksParser, eventName, binaryPath string) (bool, error) {
+	if eventName != CodexEventPreToolUse {
+		return parser.HasEventHook(eventName, binaryPath)
+	}
+
+	enforcement, err := parser.PreToolEnforcement(binaryPath)
+	if err != nil {
+		return false, err
+	}
+
+	return enforcement.SelectsEveryTool(), nil
 }
 
 // CodexDispatcherEvents returns the Codex events klaudiush registers. PreToolUse

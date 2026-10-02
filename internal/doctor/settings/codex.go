@@ -167,6 +167,18 @@ type CodexPreToolEnforcement struct {
 	EffectiveMatcher []string
 }
 
+// SelectsEveryTool reports whether a synchronous klaudiush handler has no
+// matcher (or "*"), the only shape that gates every hook-visible tool call.
+func (e CodexPreToolEnforcement) SelectsEveryTool() bool {
+	return slices.ContainsFunc(e.EffectiveMatcher, isMatchAllMatcher)
+}
+
+func isMatchAllMatcher(matcher string) bool {
+	matcher = strings.TrimSpace(matcher)
+
+	return matcher == "" || matcher == "*"
+}
+
 // PreToolEnforcement inspects the klaudiush PreToolUse handlers. Async
 // handlers cannot block, so only synchronous ones count as enforcing.
 func (p *CodexHooksParser) PreToolEnforcement(
@@ -208,12 +220,11 @@ func (p *CodexHooksParser) PreToolEnforcement(
 // names. An empty matcher or "*" selects every tool; anything else is a regex.
 // An invalid regex selects nothing, since Codex cannot match with it either.
 func CodexMatcherSelects(matcher string, toolNames []string) bool {
-	matcher = strings.TrimSpace(matcher)
-	if matcher == "" || matcher == "*" {
+	if isMatchAllMatcher(matcher) {
 		return true
 	}
 
-	re, err := regexp.Compile("^(?:" + matcher + ")$")
+	re, err := regexp.Compile("^(?:" + strings.TrimSpace(matcher) + ")$")
 	if err != nil {
 		return false
 	}

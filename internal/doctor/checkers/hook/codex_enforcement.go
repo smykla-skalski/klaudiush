@@ -108,39 +108,74 @@ func codexRegistrationGap(
 		).WithDetails(
 			"File: "+hooksPath,
 			"Remove \"async\": true from the klaudiush PreToolUse handler",
-		), true
+			"Or add a synchronous handler with: klaudiush doctor --fix",
+		).WithFixID("install_hook"), true
 	default:
 		return doctor.CheckResult{}, false
 	}
 }
 
 func codexCoverageResult(matchers []string, hooksPath string) doctor.CheckResult {
-	var covered, uncovered []string
+	var covered, partial, uncovered []string
 
 	for _, family := range pkghook.CodexPreToolCoverage() {
-		if codexMatchersSelect(matchers, family.ProbeNames) {
+		switch codexFamilyCoverage(matchers, family) {
+		case coverageFull:
 			covered = append(covered, family.Label)
-		} else {
+		case coveragePartial:
+			partial = append(partial, family.Label)
+		case coverageNone:
 			uncovered = append(uncovered, family.Label)
 		}
 	}
 
 	uncovered = append(uncovered, pkghook.CodexUncoveredTools()...)
-	details := []string{
-		"Blocked before running: " + joinOrNone(covered),
-		"Not enforced: " + joinOrNone(uncovered),
-		"Codex runs new or changed hooks only after you trust them in /hooks",
+	details := []string{"Blocked before running: " + joinOrNone(covered)}
+
+	if len(partial) > 0 {
+		details = append(details, "Only tools the matcher names: "+strings.Join(partial, ", "))
 	}
+
+	details = append(details,
+		"Not enforced: "+joinOrNone(uncovered),
+		"Codex runs new or changed hooks only after you trust them in /hooks",
+	)
 
 	if len(covered) < len(pkghook.CodexPreToolCoverage()) {
 		return doctor.FailWarning(
 			codexEnforcementCheckName,
 			"PreToolUse matcher skips some tool calls",
-		).WithDetails(append(details, "File: "+hooksPath)...)
+		).WithDetails(append(details, "File: "+hooksPath)...).
+			WithFixID("install_hook")
 	}
 
 	return doctor.Pass(codexEnforcementCheckName, "All hook-visible tool calls").
 		WithDetails(details...)
+}
+
+type familyCoverage int
+
+const (
+	coverageNone familyCoverage = iota
+	coveragePartial
+	coverageFull
+)
+
+// codexFamilyCoverage claims a whole open-ended family only when the matchers
+// also select its made-up FamilyProbes; selecting the representative name
+// alone may just mean the matcher lists that one tool.
+func codexFamilyCoverage(matchers []string, family pkghook.ToolCoverage) familyCoverage {
+	if !codexMatchersSelect(matchers, family.ProbeNames) {
+		return coverageNone
+	}
+
+	for _, probe := range family.FamilyProbes {
+		if !codexMatchersSelect(matchers, []string{probe}) {
+			return coveragePartial
+		}
+	}
+
+	return coverageFull
 }
 
 func codexMatchersSelect(matchers, toolNames []string) bool {

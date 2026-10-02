@@ -120,9 +120,13 @@ func ProviderEventCapability(provider Provider, event CanonicalEvent) (EventCapa
 
 // ToolCoverage names a tool family and the tool names (or matcher aliases)
 // that select it, so a hook matcher can be tested against the family.
+// FamilyProbes is set for open-ended families (MCP, local functions): made-up
+// names that only a pattern spanning the whole family selects, so a matcher
+// listing a few known names is not mistaken for full coverage.
 type ToolCoverage struct {
-	Label      string
-	ProbeNames []string
+	Label        string
+	ProbeNames   []string
+	FamilyProbes []string
 }
 
 // CodexPreToolCoverage lists the tool families Codex routes through PreToolUse.
@@ -130,8 +134,16 @@ func CodexPreToolCoverage() []ToolCoverage {
 	return []ToolCoverage{
 		{Label: "shell (Bash)", ProbeNames: []string{"Bash"}},
 		{Label: "apply_patch", ProbeNames: []string{"apply_patch", "Edit", "Write"}},
-		{Label: "MCP tools", ProbeNames: []string{"mcp__server__tool"}},
-		{Label: "local function tools", ProbeNames: []string{"update_plan"}},
+		{
+			Label:        "MCP tools",
+			ProbeNames:   []string{"mcp__server__tool"},
+			FamilyProbes: []string{"mcp__klaudiush_probe__q7zx_tool", "mcp__zz9__probe"},
+		},
+		{
+			Label:        "local function tools",
+			ProbeNames:   []string{"update_plan"},
+			FamilyProbes: []string{"klaudiush_probe_q7zx", "zz9_probe_fn"},
+		},
 	}
 }
 

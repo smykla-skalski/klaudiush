@@ -4,6 +4,8 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -428,7 +430,7 @@ var _ = Describe("Codex hook checkers", func() {
 			"",
 			doctor.StatusFail,
 			"async",
-			"",
+			"install_hook",
 		),
 		Entry(
 			"Bash-only matcher",
@@ -436,7 +438,7 @@ var _ = Describe("Codex hook checkers", func() {
 			"",
 			doctor.StatusFail,
 			"matcher skips",
-			"",
+			"install_hook",
 		),
 		Entry(
 			"hooks feature disabled",
@@ -447,6 +449,131 @@ var _ = Describe("Codex hook checkers", func() {
 			"",
 		),
 	)
+})
+
+var _ = Describe("Codex enforcement coverage", func() {
+	var (
+		ctx       context.Context
+		hooksPath string
+	)
+
+	BeforeEach(func() {
+		ctx = context.Background()
+		tempDir := GinkgoT().TempDir()
+		hooksPath = filepath.Join(tempDir, "hooks.json")
+		binDir := filepath.Join(tempDir, "bin")
+		Expect(os.MkdirAll(binDir, 0o755)).To(Succeed())
+		Expect(os.WriteFile(
+			filepath.Join(binDir, "klaudiush"),
+			[]byte("#!/bin/sh\nexit 0\n"),
+			0o755,
+		)).To(Succeed())
+		GinkgoT().Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	})
+
+	check := func(matchers ...string) doctor.CheckResult {
+		groups := make([]string, 0, len(matchers))
+		for _, matcher := range matchers {
+			groups = append(groups, `{"matcher":`+strconv.Quote(matcher)+
+				`,"hooks":[{"type":"command","command":"klaudiush --provider codex --event PreToolUse"}]}`)
+		}
+
+		Expect(os.WriteFile(
+			hooksPath,
+			[]byte(`{"hooks":{"PreToolUse":[`+strings.Join(groups, ",")+`]}}`),
+			0o600,
+		)).To(Succeed())
+
+		enabled := true
+		experimental := true
+
+		return hook.NewCodexEnforcementChecker(&pkgConfig.CodexProviderConfig{
+			Enabled:         &enabled,
+			Experimental:    &experimental,
+			HooksConfigPath: hooksPath,
+		}).Check(ctx)
+	}
+
+	DescribeTable("reports family coverage from the matcher",
+		func(matchers []string, status doctor.Status, details []string) {
+			result := check(matchers...)
+
+			Expect(result.Status).To(Equal(status))
+
+			for _, detail := range details {
+				Expect(result.Details).To(ContainElement(detail))
+			}
+		},
+		Entry(
+			"exact representative names are not whole-family coverage",
+			[]string{"Bash|apply_patch|mcp__server__tool|update_plan"},
+			doctor.StatusFail,
+			[]string{
+				"Blocked before running: shell (Bash), apply_patch",
+				"Only tools the matcher names: MCP tools, local function tools",
+				"Not enforced: hosted tools (web search)",
+			},
+		),
+		Entry(
+			"one MCP server pattern misses the representative",
+			[]string{"Bash|apply_patch", "mcp__github__.*"},
+			doctor.StatusFail,
+			[]string{
+				"Blocked before running: shell (Bash), apply_patch",
+				"Not enforced: MCP tools, local function tools, hosted tools (web search)",
+			},
+		),
+		Entry(
+			"family patterns across groups cover everything",
+			[]string{"Bash|apply_patch", "mcp__.*", "[a-z_0-9]+"},
+			doctor.StatusPass,
+			[]string{
+				"Blocked before running: shell (Bash), apply_patch, MCP tools, local function tools",
+				"Not enforced: hosted tools (web search)",
+			},
+		),
+		Entry(
+			"dot-star covers everything",
+			[]string{".*"},
+			doctor.StatusPass,
+			[]string{
+				"Blocked before running: shell (Bash), apply_patch, MCP tools, local function tools",
+			},
+		),
+	)
+
+	It("skips when the binary is not on PATH", func() {
+		GinkgoT().Setenv("PATH", GinkgoT().TempDir())
+
+		result := check("")
+
+		Expect(result.Status).To(Equal(doctor.StatusSkipped))
+	})
+
+	It("warns when Codex feature flags cannot be read", func() {
+		Expect(os.WriteFile(
+			filepath.Join(filepath.Dir(hooksPath), "config.toml"),
+			[]byte("[features\n"),
+			0o600,
+		)).To(Succeed())
+
+		result := check("")
+
+		Expect(result.Status).To(Equal(doctor.StatusFail))
+		Expect(result.Severity).To(Equal(doctor.SeverityWarning))
+		Expect(result.Message).To(ContainSubstring("Cannot read Codex feature flags"))
+	})
+
+	It("never lists a partial family as blocked", func() {
+		result := check("mcp__server__tool")
+
+		Expect(result.Status).To(Equal(doctor.StatusFail))
+		Expect(result.FixID).To(Equal("install_hook"))
+		Expect(result.Details).To(ContainElements(
+			"Blocked before running: none",
+			"Only tools the matcher names: MCP tools",
+		))
+	})
 })
 
 var _ = Describe("Gemini hook checkers", func() {

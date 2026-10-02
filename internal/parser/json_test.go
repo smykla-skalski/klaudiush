@@ -316,6 +316,45 @@ var _ = Describe("JSONParser", func() {
 			Expect(ctx.PatchFiles[1].Input.NewString).To(Equal("b"))
 		})
 
+		DescribeTable("finds no patch paths without usable patch text",
+			func(toolInput string) {
+				input := `{"hook_event_name":"PreToolUse","tool_name":"apply_patch","tool_input":` +
+					toolInput + `}`
+
+				p := parser.NewJSONParser(bytes.NewReader([]byte(input)))
+				ctx, err := p.ParseWithOptions(parser.ParseOptions{
+					Provider:  hook.ProviderCodex,
+					EventName: "PreToolUse",
+				})
+
+				Expect(err).NotTo(HaveOccurred())
+				Expect(ctx.AffectedPaths).To(BeEmpty())
+				Expect(ctx.PatchFiles).To(BeEmpty())
+			},
+			Entry("no patch text", `{}`),
+			Entry("non-string input", `{"input": 42}`),
+		)
+
+		It("keeps patch context lines in both old and new text", func() {
+			input := `{
+				"hook_event_name": "PreToolUse",
+				"tool_name": "apply_patch",
+				"tool_input": {
+					"command": "*** Begin Patch\n*** Update File: a.go\n@@\n keep\n-old\n+new\n*** End Patch\n"
+				}
+			}`
+
+			p := parser.NewJSONParser(bytes.NewReader([]byte(input)))
+			ctx, err := p.ParseWithOptions(parser.ParseOptions{
+				Provider:  hook.ProviderCodex,
+				EventName: "PreToolUse",
+			})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ctx.ToolInput.OldString).To(Equal("keep\nold"))
+			Expect(ctx.ToolInput.NewString).To(Equal("keep\nnew"))
+		})
+
 		It("keeps MCP tool names and arguments on PreToolUse", func() {
 			input := `{
 				"hook_event_name": "PreToolUse",

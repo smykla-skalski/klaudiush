@@ -49,6 +49,13 @@ func codexWarning() []*dispatcher.ValidationError {
 var _ = Describe("BuildCodex", func() {
 	lifecycleFields := []string{"continue", "stopReason", "suppressOutput"}
 
+	It("returns nothing without findings", func() {
+		Expect(hookresponse.BuildCodex(&hook.Context{
+			Provider: hook.ProviderCodex,
+			Event:    hook.CanonicalEventBeforeTool,
+		}, nil, nil)).To(BeNil())
+	})
+
 	It("denies PreToolUse through hookSpecificOutput only", func() {
 		fields := codexFields(hook.CanonicalEventBeforeTool, codexBlocking())
 
