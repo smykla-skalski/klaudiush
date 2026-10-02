@@ -194,6 +194,7 @@ func (v *SecretsValidator) matchesAllowList(match string) bool {
 func (v *SecretsValidator) createResult(findings []Finding) *validator.Result {
 	// Group findings by type for better output
 	messages := make([]string, 0, len(findings))
+	structured := make([]validator.Finding, 0, len(findings))
 
 	for _, finding := range findings {
 		msg := fmt.Sprintf(
@@ -203,6 +204,16 @@ func (v *SecretsValidator) createResult(findings []Finding) *validator.Result {
 			finding.Pattern.Name,
 		)
 		messages = append(messages, msg)
+
+		// The matched value is never copied into the finding: diagnostics
+		// reach the agent, the user and logs.
+		structured = append(structured, validator.Finding{
+			Reference: finding.Pattern.Reference,
+			Location:  fmt.Sprintf("line %d", finding.Line),
+			Message:   finding.Pattern.Description + " (" + finding.Pattern.Name + ")",
+			Required:  "no secret values in content",
+			Repair:    validator.GetSuggestion(finding.Pattern.Reference),
+		})
 	}
 
 	ref := findings[0].Pattern.Reference
@@ -212,20 +223,32 @@ func (v *SecretsValidator) createResult(findings []Finding) *validator.Result {
 		strings.Join(messages, "\n"),
 	)
 
+	structured = validator.SortFindings(structured, nil)
+
 	if v.shouldBlock() {
-		return validator.FailWithRef(ref, message)
+		return validator.FailWithRef(ref, message).AddFinding(structured...)
 	}
 
-	return validator.WarnWithRef(ref, message)
+	return validator.WarnWithRef(ref, message).AddFinding(structured...)
 }
 
 // createGitleaksResult creates a validation result from gitleaks findings.
 func (v *SecretsValidator) createGitleaksResult(findings []linters.LintFinding) *validator.Result {
 	messages := make([]string, 0, len(findings))
 
+	structured := make([]validator.Finding, 0, len(findings))
+
 	for _, finding := range findings {
 		msg := fmt.Sprintf("Line %d: %s", finding.Line, finding.Message)
 		messages = append(messages, msg)
+
+		structured = append(structured, validator.Finding{
+			Reference: validator.RefSecretsToken,
+			Location:  fmt.Sprintf("line %d", finding.Line),
+			Message:   finding.Message,
+			Required:  "no secret values in content",
+			Repair:    validator.GetSuggestion(validator.RefSecretsToken),
+		})
 	}
 
 	message := fmt.Sprintf(
@@ -234,11 +257,14 @@ func (v *SecretsValidator) createGitleaksResult(findings []linters.LintFinding) 
 		strings.Join(messages, "\n"),
 	)
 
+	structured = validator.SortFindings(structured, nil)
+
 	if v.shouldBlock() {
-		return validator.FailWithRef(validator.RefSecretsToken, message)
+		return validator.FailWithRef(validator.RefSecretsToken, message).
+			AddFinding(structured...)
 	}
 
-	return validator.WarnWithRef(validator.RefSecretsToken, message)
+	return validator.WarnWithRef(validator.RefSecretsToken, message).AddFinding(structured...)
 }
 
 // shouldBlock returns whether detection should block the operation.

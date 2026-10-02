@@ -277,3 +277,52 @@ func TestStoreStartKeepsCompletionBlocks(t *testing.T) {
 		t.Fatalf("block after restart = %d, %v; want 2, nil", count, err)
 	}
 }
+
+func TestStoreKeepsStructuredFindings(t *testing.T) {
+	store := NewStore(WithStateFile(filepath.Join(t.TempDir(), "state.json")))
+
+	hookCtx := &hook.Context{
+		Provider:  hook.ProviderCodex,
+		Event:     hook.CanonicalEventBeforeTool,
+		SessionID: "sess-structured",
+		ToolName:  hook.ToolTypeBash,
+	}
+
+	finding := validator.Finding{
+		Reference: validator.RefGitBadTitle,
+		Location:  "title",
+		Message:   "Title is 80 characters long",
+		Required:  "at most 72 characters",
+		Repair:    "Shorten the title",
+	}
+
+	errs := []*dispatcher.ValidationError{{
+		Validator:   "git.commit",
+		Message:     "title too long",
+		ShouldBlock: true,
+		Reference:   validator.RefGitBadTitle,
+		Findings:    []validator.Finding{finding},
+		Unavailable: true,
+	}}
+
+	if err := store.Append(hookCtx, errs); err != nil {
+		t.Fatalf("Append() error = %v", err)
+	}
+
+	combined, err := store.CombinedErrors(hook.ProviderCodex, "sess-structured")
+	if err != nil {
+		t.Fatalf("CombinedErrors() error = %v", err)
+	}
+
+	if len(combined) != 1 || len(combined[0].Findings) != 1 {
+		t.Fatalf("combined = %+v, want one error with one finding", combined)
+	}
+
+	if combined[0].Findings[0] != finding {
+		t.Fatalf("finding = %+v, want %+v", combined[0].Findings[0], finding)
+	}
+
+	if !combined[0].Unavailable {
+		t.Fatalf("Unavailable lost in round trip")
+	}
+}

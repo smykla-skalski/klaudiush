@@ -2328,27 +2328,70 @@ Signed-off-by: Test User <test@klaudiu.sh>`
 			Expect(conventionalIdx).To(BeNumerically("<", titleLenIdx))
 		})
 
-		It("includes all_codes for multi-error results", func() {
-			// Title that is both non-conventional AND too long (triggers GIT013 + GIT004)
-			longBadTitle := "this is a plain title without any conventional format and it is way too long for the limit"
+		It("returns a finding with a repair for every violation", func() {
+			body := strings.Repeat("word ", 20) + "\n" + strings.Repeat("more ", 20)
 			ctx := &hook.Context{
 				EventType: hook.EventTypePreToolUse,
 				ToolName:  hook.ToolTypeBash,
 				ToolInput: hook.ToolInput{
-					Command: `git commit -sS -a -m "` + longBadTitle + `"`,
+					Command: `git commit -sS -a -m "feat: add a very long title that goes past the limit for sure` +
+						"\n\n" + body + "\n\nFixes #123" + `"`,
 				},
 			}
 
 			result := validator.Validate(context.Background(), ctx)
 			Expect(result.Passed).To(BeFalse())
+			Expect(result.Details).NotTo(HaveKey("all_codes"))
 
-			allCodes := result.Details["all_codes"]
-			Expect(allCodes).To(ContainSubstring("GIT013"))
-			Expect(allCodes).To(ContainSubstring("GIT004"))
+			codes := make([]string, 0, len(result.Findings))
+			for _, f := range result.Findings {
+				Expect(f.Repair).NotTo(BeEmpty(), "finding %+v", f)
+				codes = append(codes, f.Code())
+			}
+
+			Expect(codes).To(Equal([]string{"GIT013", "GIT004", "GIT005", "GIT005", "GIT011"}))
+			Expect(result.Findings[2].Location).To(Equal("message line 3"))
+			Expect(result.Findings[3].Location).To(Equal("message line 4"))
+			Expect(result.Findings[4].Repair).To(Equal("Replace '#123' with '123'"))
 		})
 
-		It("omits all_codes for single-error results", func() {
-			// Only triggers GIT013 (bad format, but short enough for title length)
+		It("quotes nondefault limits in findings and fix hints", func() {
+			titleMax, bodyMax, tolerance := 30, 40, 0
+			cfg := &config.CommitValidatorConfig{
+				Message: &config.CommitMessageConfig{
+					TitleMaxLength:    &titleMax,
+					BodyMaxLineLength: &bodyMax,
+					BodyLineTolerance: &tolerance,
+				},
+			}
+			custom := git.NewCommitValidator(log, fakeGit, cfg, nil)
+			ctx := &hook.Context{
+				EventType: hook.EventTypePreToolUse,
+				ToolName:  hook.ToolTypeBash,
+				ToolInput: hook.ToolInput{
+					Command: `git commit -sS -a -m "feat(api): a title longer than thirty` +
+						"\n\n" + strings.Repeat("x", 45) + `"`,
+				},
+			}
+
+			result := custom.Validate(context.Background(), ctx)
+			Expect(result.Passed).To(BeFalse())
+			Expect(result.FixHint).To(ContainSubstring("max 30 chars"))
+			Expect(result.FixHint).NotTo(ContainSubstring("50"))
+
+			Expect(result.Findings).To(HaveLen(2))
+			Expect(result.Findings[0].Required).To(ContainSubstring("at most 30 characters"))
+			Expect(result.Findings[0].Repair).To(ContainSubstring("30 characters or fewer"))
+			Expect(result.Findings[1].Required).To(Equal("at most 40 characters per body line"))
+			Expect(result.Findings[1].Repair).To(Equal("Wrap line 3 at 40 characters"))
+		})
+
+		It("quotes the configured title limit in format guidance", func() {
+			titleMax := 72
+			cfg := &config.CommitValidatorConfig{
+				Message: &config.CommitMessageConfig{TitleMaxLength: &titleMax},
+			}
+			custom := git.NewCommitValidator(log, fakeGit, cfg, nil)
 			ctx := &hook.Context{
 				EventType: hook.EventTypePreToolUse,
 				ToolName:  hook.ToolTypeBash,
@@ -2357,9 +2400,12 @@ Signed-off-by: Test User <test@klaudiu.sh>`
 				},
 			}
 
-			result := validator.Validate(context.Background(), ctx)
+			result := custom.Validate(context.Background(), ctx)
 			Expect(result.Passed).To(BeFalse())
-			Expect(result.Details).NotTo(HaveKey("all_codes"))
+			Expect(result.FixHint).To(ContainSubstring("at most 72 chars"))
+			Expect(result.Details["errors"]).To(ContainSubstring("72-char limit"))
+			Expect(result.Findings).To(HaveLen(1))
+			Expect(result.Findings[0].Repair).To(ContainSubstring("within 72 characters"))
 		})
 	})
 })

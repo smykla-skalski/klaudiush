@@ -50,6 +50,12 @@ type ValidationError struct {
 
 	// BypassReason is the justification from the exception token.
 	BypassReason string
+
+	// Findings lists every actionable violation behind this error.
+	Findings []validator.Finding
+
+	// Unavailable reports that the check could not run.
+	Unavailable bool
 }
 
 // Error implements the error interface.

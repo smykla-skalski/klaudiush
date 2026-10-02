@@ -6,6 +6,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -40,24 +41,26 @@ type sessionEntry struct {
 }
 
 type finding struct {
-	Validator     string            `json:"validator"`
-	Message       string            `json:"message"`
-	Details       map[string]string `json:"details,omitempty"`
-	ShouldBlock   bool              `json:"should_block"`
-	Reference     string            `json:"reference,omitempty"`
-	FixHint       string            `json:"fix_hint,omitempty"`
-	Bypassed      bool              `json:"bypassed,omitempty"`
-	BypassReason  string            `json:"bypass_reason,omitempty"`
-	Event         string            `json:"event,omitempty"`
-	RawEventName  string            `json:"raw_event_name,omitempty"`
-	ToolName      string            `json:"tool_name,omitempty"`
-	ToolFamily    string            `json:"tool_family,omitempty"`
-	Command       string            `json:"command,omitempty"`
-	FilePath      string            `json:"file_path,omitempty"`
-	AffectedPaths []string          `json:"affected_paths,omitempty"`
-	Count         int               `json:"count"`
-	FirstSeen     time.Time         `json:"first_seen"`
-	LastSeen      time.Time         `json:"last_seen"`
+	Validator     string              `json:"validator"`
+	Message       string              `json:"message"`
+	Details       map[string]string   `json:"details,omitempty"`
+	ShouldBlock   bool                `json:"should_block"`
+	Reference     string              `json:"reference,omitempty"`
+	FixHint       string              `json:"fix_hint,omitempty"`
+	Bypassed      bool                `json:"bypassed,omitempty"`
+	BypassReason  string              `json:"bypass_reason,omitempty"`
+	Findings      []validator.Finding `json:"findings,omitempty"`
+	Unavailable   bool                `json:"unavailable,omitempty"`
+	Event         string              `json:"event,omitempty"`
+	RawEventName  string              `json:"raw_event_name,omitempty"`
+	ToolName      string              `json:"tool_name,omitempty"`
+	ToolFamily    string              `json:"tool_family,omitempty"`
+	Command       string              `json:"command,omitempty"`
+	FilePath      string              `json:"file_path,omitempty"`
+	AffectedPaths []string            `json:"affected_paths,omitempty"`
+	Count         int                 `json:"count"`
+	FirstSeen     time.Time           `json:"first_seen"`
+	LastSeen      time.Time           `json:"last_seen"`
 }
 
 // Store persists per-session hook findings across hook invocations.
@@ -232,6 +235,8 @@ func (s *Store) CombinedErrors(
 			FixHint:      item.FixHint,
 			Bypassed:     item.Bypassed,
 			BypassReason: item.BypassReason,
+			Findings:     slices.Clone(item.Findings),
+			Unavailable:  item.Unavailable,
 		})
 	}
 
@@ -484,6 +489,8 @@ func findingFromValidationError(
 		FixHint:      verr.FixHint,
 		Bypassed:     verr.Bypassed,
 		BypassReason: verr.BypassReason,
+		Findings:     slices.Clone(verr.Findings),
+		Unavailable:  verr.Unavailable,
 		Count:        1,
 		FirstSeen:    now,
 		LastSeen:     now,

@@ -116,6 +116,8 @@ func (c *DefaultExceptionChecker) CheckException(
 		FixHint:      verr.FixHint,
 		Bypassed:     true,
 		BypassReason: resp.TokenReason,
+		Findings:     verr.Findings,
+		Unavailable:  verr.Unavailable,
 	}
 
 	return bypassedErr, true

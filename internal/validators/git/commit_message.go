@@ -64,6 +64,7 @@ func (v *CommitValidator) validateMessage(ctx context.Context, message string) *
 				Reference: validator.RefGitBadBody,
 				Message:   markdownErrors[0],
 				Context:   markdownErrors[1:],
+				Findings:  markdownFindings(markdownErrors),
 			})
 		}
 	}
@@ -92,8 +93,9 @@ func (v *CommitValidator) buildRules(ctx context.Context) []CommitRule {
 	switch v.getCommitStyle() {
 	case commitStyleConventional:
 		rules = append(rules, &ConventionalFormatRule{
-			ValidTypes:   v.getValidTypes(),
-			RequireScope: v.shouldRequireScope(),
+			ValidTypes:     v.getValidTypes(),
+			RequireScope:   v.shouldRequireScope(),
+			TitleMaxLength: v.getTitleMaxLength(),
 		})
 	case commitStyleScopeOnly:
 		rules = append(rules, &ScopeOnlyFormatRule{})
@@ -109,8 +111,9 @@ func (v *CommitValidator) buildRules(ctx context.Context) []CommitRule {
 			rules = append(rules, &ScopeOnlyFormatRule{})
 		} else {
 			rules = append(rules, &ConventionalFormatRule{
-				ValidTypes:   v.getValidTypes(),
-				RequireScope: v.shouldRequireScope(),
+				ValidTypes:     v.getValidTypes(),
+				RequireScope:   v.shouldRequireScope(),
+				TitleMaxLength: v.getTitleMaxLength(),
 			})
 		}
 	}
@@ -190,10 +193,29 @@ func (*CommitValidator) validateMarkdownInBody(lines []string) []string {
 	return markdownResult.Warnings
 }
 
+// markdownFindings turns body markdown warnings into findings.
+func markdownFindings(warnings []string) []validator.Finding {
+	findings := make([]validator.Finding, 0, len(warnings))
+
+	for _, warning := range warnings {
+		findings = append(findings, validator.Finding{
+			Reference: validator.RefGitBadBody,
+			Location:  "body",
+			Message:   warning,
+			Repair:    "Fix the body markdown as described",
+		})
+	}
+
+	return findings
+}
+
 // buildErrorResult constructs the error result with details.
 // It selects the most appropriate reference based on what rules failed.
 // Results are sorted by fix priority so Claude sees the most actionable errors first.
-func (*CommitValidator) buildErrorResult(results []*RuleResult, message string) *validator.Result {
+func (v *CommitValidator) buildErrorResult(
+	results []*RuleResult,
+	message string,
+) *validator.Result {
 	// Sort results by fix priority
 	sortResultsByFixOrder(results)
 
@@ -227,33 +249,49 @@ func (*CommitValidator) buildErrorResult(results []*RuleResult, message string) 
 		}
 	}
 
-	result := validator.FailWithRef(ref, primaryMsg)
+	result := validator.FailWithRef(ref, primaryMsg).
+		WithFixHint(validator.GetSuggestionWithLimits(ref, v.messageLimits())).
+		AddFinding(collectFindings(results)...)
 
 	if details.Len() > 0 {
 		result = result.AddDetail("errors", details.String())
-	}
-
-	// Collect all unique codes for multi-code disable hint
-	var allCodes []string
-
-	seenCodes := make(map[string]bool)
-
-	for _, r := range results {
-		code := r.Reference.Code()
-		if code != "" && !seenCodes[code] {
-			seenCodes[code] = true
-			allCodes = append(allCodes, code)
-		}
-	}
-
-	if len(allCodes) > 1 {
-		result = result.AddDetail("all_codes", strings.Join(allCodes, ","))
 	}
 
 	// Commit preview in separate key - formatter skips by default
 	result = result.AddDetail("commit_preview", message)
 
 	return result
+}
+
+// collectFindings gathers every rule's findings in fix order. A rule without
+// structured findings still contributes one from its message, so no violation
+// is lost.
+func collectFindings(results []*RuleResult) []validator.Finding {
+	var findings []validator.Finding
+
+	for _, r := range results {
+		if len(r.Findings) > 0 {
+			findings = append(findings, r.Findings...)
+
+			continue
+		}
+
+		findings = append(findings, validator.Finding{
+			Reference: r.Reference,
+			Message:   r.Message,
+			Repair:    validator.GetSuggestion(r.Reference),
+		})
+	}
+
+	return validator.SortFindings(findings, referenceFixOrder)
+}
+
+// messageLimits returns the effective limits that fix hints quote.
+func (v *CommitValidator) messageLimits() validator.MessageLimits {
+	return validator.MessageLimits{
+		TitleMaxLength:    v.getTitleMaxLength(),
+		BodyMaxLineLength: v.getBodyMaxLineLength(),
+	}
 }
 
 // referenceFixOrder defines the sort priority for error results.
