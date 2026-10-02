@@ -1,0 +1,32 @@
+#:schema https://klaudiu.sh/schema/v1/config.json
+# Failure policy
+# Decides what happens when validation cannot run: a linter is missing or
+# times out, a plugin fails, a validator crashes, the hook input or this
+# configuration cannot be read, or the hook runs out of time.
+# See docs/FAILURE_POLICY_GUIDE.md.
+
+[failure_policy]
+# "warn" lets the action through with a "Validation unavailable" warning
+# "block" denies it where the event can deny (before a tool runs)
+# Leave unset to keep each check's own choice: plugin failures block,
+# everything else warns
+# Also settable with --failure-mode in the hook command, which still applies
+# when this file cannot be read
+mode = "block"
+
+# What a missing linter does: "ignore" (default), "warn" or "block"
+# mode does not apply here, because a tool you never installed is usually
+# a choice, not a failure
+missing_tools = "warn"
+
+# Validators that block whenever they cannot run, for any reason including a
+# missing tool. Runtime names ("commit", "shellscript") and override names
+# ("git.commit", "file.shellscript") both work
+critical = ["git.commit", "secrets", "file.shellscript"]
+
+# How long one hook run may take. Checks still running are reported as timed
+# out and the policy applies. Keep it at least 5s below the hook timeout
+# klaudiush registers (30s); run "klaudiush doctor --category failure_policy"
+# to compare it with your settings
+# Default: "20s"
+deadline = "20s"

@@ -247,6 +247,18 @@ klaudiush bypass notify off          # Keep validating, hide the reminder
 
 While validating such a session, klaudiush shows a reminder in `systemMessage` once per session. That field goes to you, not to the model, so the agent cannot act on it. See the [bypass guide](docs/BYPASS_GUIDE.md).
 
+### When validation cannot run
+
+A missing or timed-out linter, a failing plugin, unreadable hook input, a broken configuration, a crash, or a run past the deadline is reported as "Validation unavailable" (HOOK001), never as a pass. By default these warn and plugin failures block; make them block with:
+
+```toml
+[failure_policy]
+mode = "block"
+critical = ["git.commit", "secrets"]
+```
+
+klaudiush always answers with exit code 0 and a response the provider honors, because every provider lets the action through when a hook exits non-zero or times out. See the [failure policy guide](docs/FAILURE_POLICY_GUIDE.md) for deadlines, provider behavior, and what hooks cannot guarantee.
+
 ## Performance
 
 End-to-end binary execution on Apple M3 Max (hyperfine, 30 runs, CLI git backend):

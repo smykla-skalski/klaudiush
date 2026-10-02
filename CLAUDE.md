@@ -105,7 +105,7 @@ Represents tool invocations: `EventType` (PreToolUse/PostToolUse/Notification), 
 
 **Creating**: 1) Embed `BaseValidator`, 2) Implement `Validate(ctx *hook.Context)`, 3) Register in `main.go:registerValidators()`
 
-**Error Format Policy**: Validators return errors with structured format including error codes (GIT001-GIT024, FILE001-FILE009, SEC001-SEC005, SHELL001-SHELL005), automatic fix hints from suggestions registry, and documentation URLs (`https://klaudiu.sh/{CODE}`). Use `FailWithRef(ref, msg)` to auto-populate fix hints - NEVER set `FixHint` manually. Error priority determines which reference is shown when multiple rules fail. See `.claude/validator-error-format-policy.md` for comprehensive guide.
+**Error Format Policy**: Validators return errors with structured format including error codes (GIT001-GIT024, FILE001-FILE009, SEC001-SEC005, SHELL001-SHELL005, HOOK001), automatic fix hints from suggestions registry, and documentation URLs (`https://klaudiu.sh/{CODE}`). Use `FailWithRef(ref, msg)` to auto-populate fix hints - NEVER set `FixHint` manually. Error priority determines which reference is shown when multiple rules fail. See `.claude/validator-error-format-policy.md` for comprehensive guide.
 
 ### Rule Engine (`internal/rules/`)
 
@@ -291,8 +291,10 @@ Framework: Ginkgo/Gomega. Run: `mise exec -- go test -v ./pkg/parser -run TestBa
 
 klaudiush always exits 0. Validation results are JSON on stdout:
 
-- `0`: JSON stdout (pass, deny, or warning). No output for clean pass.
-- `3`: Crash (panic with crash dump created, stderr only)
+- `0`: JSON stdout (pass, deny, or warning). No output for clean pass. Also every failure klaudiush catches during a hook run (malformed input, config error, panic, deadline): it answers "Validation unavailable" (HOOK001) per the failure policy, because every provider lets the action through on a non-zero exit or timeout.
+- `3`: Crash outside a hook's validation (crash dump created, stderr only)
+
+**Failure policy** (`internal/failpolicy/`, `[failure_policy]`, `cmd/klaudiush/hook_failure.go`): unavailable checks carry `Result.UnavailableReason` (missing_tool, timeout, canceled, panic, malformed_output, malformed_input, config, state, error); build them with `validator.Unavailable(reason, msg)`, never a plain Pass/Fail. The dispatcher resolves each via `Policy.Resolve`: `critical` blocks, missing tools follow `missing_tools` (default ignore), else `mode` (warn/block), else the check's own choice. Executors recover validator panics, report validators skipped or passing after ctx ended as unavailable. `hookRun.supervise` runs validation under a deadline (default 20s, below the 30s registered hook timeout) with a watchdog answering 3s later; `--failure-mode` and `KLAUDIUSH_FAILURE_POLICY_MODE` apply when config cannot load. File validators use `lintUnavailable`. See `docs/FAILURE_POLICY_GUIDE.md`.
 
 JSON fields: `hookSpecificOutput.permissionDecision` (`"deny"` only; warnings and accepted exceptions omit it so the harness permission flow still decides, never `"allow"`), `permissionDecisionReason` (shown to Claude), `additionalContext` (behavioral framing), `systemMessage` (human-readable).
 
@@ -352,6 +354,10 @@ Exception workflow guide available in `docs/EXCEPTIONS_GUIDE.md` with example co
 - **development.toml** - Relaxed limits for development environments
 
 Debug exceptions with: `klaudiush debug exceptions`
+
+## Failure Policy Documentation
+
+Guide available in `docs/FAILURE_POLICY_GUIDE.md` with a commented example in `examples/config/failure-policy.toml`. Doctor: `klaudiush doctor --category failure_policy`.
 
 ## Bypass Permissions Documentation
 
