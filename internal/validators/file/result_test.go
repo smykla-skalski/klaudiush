@@ -50,6 +50,13 @@ var _ = Describe("validation after the tool ran", func() {
 			Expect(info.IsFragment).To(BeFalse())
 		})
 
+		It("refuses to read something that is not a regular file", func() {
+			_, err := file.NewContentExtractor(logger.NewNoOpLogger(), 2).
+				Extract(afterFn(dir, "echo requested"), dir)
+
+			Expect(err).To(MatchError(ContainSubstring("not a regular file")))
+		})
+
 		It("fails when the tool left no file", func() {
 			path := filepath.Join(dir, "missing.sh")
 

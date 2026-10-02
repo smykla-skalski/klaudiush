@@ -22,7 +22,18 @@ func readToolResult(ctx *hook.Context, filePath string) (string, bool, error) {
 		return "", false, nil
 	}
 
-	data, err := os.ReadFile(filepath.Clean(filePath))
+	path := filepath.Clean(filePath)
+
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", true, errors.Wrap(err, "reading file after tool")
+	}
+
+	if !info.Mode().IsRegular() {
+		return "", true, errors.Newf("not a regular file: %s", path)
+	}
+
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return "", true, errors.Wrap(err, "reading file after tool")
 	}

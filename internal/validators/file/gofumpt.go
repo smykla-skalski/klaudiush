@@ -95,7 +95,7 @@ func (v *GofumptValidator) Validate(
 
 		return validator.WarnWithRef(
 			validator.RefGofumpt,
-			message+"\n\nThe file was not gofumpt-formatted before this edit either.",
+			message+"\n\nThe file was not gofumpt-formatted before this edit either",
 		)
 	}
 

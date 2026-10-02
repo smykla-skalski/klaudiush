@@ -111,12 +111,31 @@ func unchangedSinceBeforeTool(target fileWriteTarget) bool {
 		return false
 	}
 
+	info, err := os.Stat(target.path)
+	if err != nil || !info.Mode().IsRegular() {
+		return false
+	}
+
 	data, err := os.ReadFile(target.path)
 	if err != nil {
 		return false
 	}
 
 	return bytes.Equal(data, []byte(target.captured))
+}
+
+// namedAfter prefixes each finding with the file it is about. Linters report
+// a temporary copy, and one command can change several files.
+func namedAfter(path string, errs []*ValidationError) []*ValidationError {
+	named := make([]*ValidationError, 0, len(errs))
+
+	for _, verr := range errs {
+		withPath := *verr
+		withPath.Message = path + ": " + verr.Message
+		named = append(named, &withPath)
+	}
+
+	return named
 }
 
 // advisory turns blocking findings into warnings. Findings about a file as a

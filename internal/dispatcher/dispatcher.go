@@ -363,7 +363,7 @@ func (d *Dispatcher) validateBashFileWrites(
 
 		errs := d.runValidators(ctx, syntheticCtx)
 		if bashCtx.IsAfterTool() {
-			errs = advisory(errs)
+			errs = namedAfter(target.path, advisory(errs))
 		}
 
 		allErrors = append(allErrors, errs...)

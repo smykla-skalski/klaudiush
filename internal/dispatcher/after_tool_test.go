@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"syscall"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -145,6 +146,7 @@ var _ = Describe("Dispatcher Bash file writes after the tool ran", func() {
 
 		for _, e := range errs {
 			Expect(e.ShouldBlock).To(BeFalse())
+			Expect(e.Message).To(HavePrefix(repo + "/"))
 		}
 	})
 
@@ -216,6 +218,18 @@ var _ = Describe("Dispatcher Bash file writes after the tool ran", func() {
 		dispatch(claudeBash(hook.CanonicalEventAfterTool, "cd sub && echo x > out.txt"))
 
 		Expect(rec.paths()).To(ConsistOf(repo + "/sub/out.txt"))
+	})
+
+	It("does not read special files such as FIFOs", func() {
+		fifo := filepath.Join(repo, "fifo.go")
+		Expect(syscall.Mkfifo(fifo, 0o600)).To(Succeed())
+
+		dispatch(claudeBash(
+			hook.CanonicalEventAfterTool,
+			"cat > "+fifo+" <<'EOF'\npackage main\nEOF",
+		))
+
+		Expect(rec.paths()).To(ConsistOf(fifo))
 	})
 
 	It("leaves a relative target as is without a working directory", func() {
