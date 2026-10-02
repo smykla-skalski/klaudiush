@@ -456,7 +456,10 @@ var _ = Describe("SettingsParser", func() {
 				hooksPath,
 				[]byte(`{
   "hooks": {
-    "PreToolUse": [{"hooks":[{"type":"command","command":"/home/u/bin/klaudiush-audit.sh --provider codex"}]}]
+    "PreToolUse": [
+      {"hooks":[{"type":"command","command":"/home/u/bin/klaudiush-audit.sh --provider codex"}]},
+      {"hooks":[{"type":"command","command":"logger -t klaudiush pre-tool-seen"}]}
+    ]
   }
 }`),
 				0o600,
@@ -466,6 +469,26 @@ var _ = Describe("SettingsParser", func() {
 				HasEventHook("PreToolUse", "/usr/local/bin/klaudiush")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(hasHook).To(BeFalse())
+		})
+
+		It("matches the dispatcher behind env assignments", func() {
+			Expect(os.WriteFile(
+				hooksPath,
+				[]byte(`{
+  "hooks": {
+    "PreToolUse": [{"hooks":[{
+      "type": "command",
+      "command": "env KLAUDIUSH_DEBUG=1 /opt/bin/klaudiush --provider codex --event PreToolUse"
+    }]}]
+  }
+}`),
+				0o600,
+			)).To(Succeed())
+
+			hasHook, err := settings.NewCodexHooksParser(hooksPath).
+				HasEventHook("PreToolUse", "/usr/local/bin/klaudiush")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(hasHook).To(BeTrue())
 		})
 
 		It("ignores async PreToolUse handlers for enforcement", func() {
