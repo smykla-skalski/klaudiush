@@ -54,7 +54,7 @@ func (a *ValidatorAdapter) Validate(ctx context.Context, hookCtx *hook.Context) 
 		SessionID:     hookCtx.SessionID,
 		TurnID:        hookCtx.TurnID,
 		ToolExecuted:  hookCtx.ToolExecuted,
-		ToolSucceeded: hookCtx.ToolSucceeded,
+		ToolSucceeded: toolSucceeded(hookCtx),
 		ToolMutating:  hookCtx.ToolMutating,
 		AffectedPaths: hookCtx.AffectedPaths,
 	}
@@ -98,4 +98,14 @@ func (a *ValidatorAdapter) Category() validator.ValidatorCategory {
 // Close releases plugin resources.
 func (a *ValidatorAdapter) Close() error {
 	return a.plugin.Close()
+}
+
+// toolSucceeded reports the tool outcome only after the tool ran, so plugins
+// can tell a failed tool from one that has not run yet.
+func toolSucceeded(hookCtx *hook.Context) *bool {
+	if !hookCtx.ToolExecuted {
+		return nil
+	}
+
+	return new(hookCtx.ToolSucceeded)
 }

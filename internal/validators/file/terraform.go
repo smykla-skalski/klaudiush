@@ -115,6 +115,10 @@ func (v *TerraformValidator) Validate(
 func (v *TerraformValidator) getContent(ctx *hook.Context) (string, error) {
 	log := v.Logger()
 
+	if content, ok, err := readToolResult(ctx, ctx.GetFilePath()); ok {
+		return content, err
+	}
+
 	// Try to get content from tool input (Write operation)
 	if ctx.ToolInput.Content != "" {
 		return ctx.ToolInput.Content, nil

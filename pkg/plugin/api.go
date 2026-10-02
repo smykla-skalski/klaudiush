@@ -116,8 +116,10 @@ type ValidateRequest struct {
 	// ToolExecuted reports whether the provider executed the tool.
 	ToolExecuted bool `json:"tool_executed,omitempty"`
 
-	// ToolSucceeded reports whether the provider considered the tool successful.
-	ToolSucceeded bool `json:"tool_succeeded,omitempty"`
+	// ToolSucceeded reports whether the provider considered the tool
+	// successful. It is set only once the tool ran, so false means it failed
+	// and nil means the outcome is unknown.
+	ToolSucceeded *bool `json:"tool_succeeded,omitempty"`
 
 	// ToolMutating reports whether the provider considers the tool mutating.
 	ToolMutating bool `json:"tool_mutating,omitempty"`

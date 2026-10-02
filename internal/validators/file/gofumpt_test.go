@@ -2,6 +2,7 @@ package file_test
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 
@@ -15,6 +16,12 @@ import (
 	"github.com/smykla-skalski/klaudiush/pkg/hook"
 	"github.com/smykla-skalski/klaudiush/pkg/logger"
 )
+
+var unformatted = &linters.LintResult{
+	Success:  false,
+	RawOut:   "diff",
+	Findings: []linters.LintFinding{{Message: "diff"}},
+}
 
 var _ = Describe("GofumptValidator", func() {
 	var (
@@ -114,16 +121,212 @@ var _ = Describe("GofumptValidator", func() {
 		})
 
 		Context("when Edit operation", func() {
-			It("should return Pass (no fragment support)", func() {
-				hookCtx.ToolName = hook.ToolTypeEdit
-				hookCtx.ToolInput.OldString = "old"
-				hookCtx.ToolInput.NewString = "new"
+			const original = "package main\n\nfunc main() {}\n"
 
+			BeforeEach(func() {
+				Expect(os.WriteFile(testFilePath, []byte(original), 0o600)).To(Succeed())
+
+				hookCtx.ToolName = hook.ToolTypeEdit
+				hookCtx.ToolInput.OldString = "func main() {}"
+				hookCtx.ToolInput.NewString = "func main()  {}"
 				validator = file.NewGofumptValidator(log, mockChecker, nil, nil)
+			})
+
+			It("blocks an edit that breaks formatting of a formatted file", func() {
+				proposed := "package main\n\nfunc main()  {}\n"
+
+				mockChecker.EXPECT().
+					CheckWithOptions(gomock.Any(), proposed, gomock.Any()).
+					Return(&linters.LintResult{Success: false, RawOut: "diff"})
+				mockChecker.EXPECT().
+					CheckWithOptions(gomock.Any(), original, gomock.Any()).
+					Return(&linters.LintResult{Success: true})
 
 				result := validator.Validate(ctx, hookCtx)
 
-				Expect(result.Passed).To(BeTrue())
+				Expect(result.Passed).To(BeFalse())
+				Expect(result.ShouldBlock).To(BeTrue())
+				Expect(string(result.Reference)).To(ContainSubstring("FILE"))
+			})
+
+			It("only warns when the file was already unformatted", func() {
+				mockChecker.EXPECT().
+					CheckWithOptions(gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(unformatted).
+					Times(2)
+
+				result := validator.Validate(ctx, hookCtx)
+
+				Expect(result.Passed).To(BeFalse())
+				Expect(result.ShouldBlock).To(BeFalse())
+				Expect(result.Message).To(ContainSubstring("before this edit"))
+			})
+
+			It("still blocks when the baseline check fails without a diff", func() {
+				mockChecker.EXPECT().
+					CheckWithOptions(gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(unformatted)
+				mockChecker.EXPECT().
+					CheckWithOptions(gomock.Any(), original, gomock.Any()).
+					Return(&linters.LintResult{Success: false, RawOut: "signal: killed"})
+
+				Expect(validator.Validate(ctx, hookCtx).ShouldBlock).To(BeTrue())
+			})
+
+			It("replaces every match when Gemini expects several", func() {
+				Expect(
+					os.WriteFile(testFilePath, []byte("package main\n\nvar a, b = 1, 1\n"), 0o600),
+				).
+					To(Succeed())
+
+				hookCtx.ToolInput.OldString = "1"
+				hookCtx.ToolInput.NewString = "2"
+				hookCtx.ToolInput.Additional = map[string]json.RawMessage{
+					"expected_replacements": json.RawMessage("2"),
+				}
+
+				mockChecker.EXPECT().
+					CheckWithOptions(gomock.Any(), "package main\n\nvar a, b = 2, 2\n", gomock.Any()).
+					Return(&linters.LintResult{Success: true})
+
+				Expect(validator.Validate(ctx, hookCtx).Passed).To(BeTrue())
+			})
+
+			It("applies replace_all to every occurrence", func() {
+				Expect(
+					os.WriteFile(testFilePath, []byte("package main\n\nvar a, b = 1, 1\n"), 0o600),
+				).
+					To(Succeed())
+
+				hookCtx.ToolInput.OldString = "1"
+				hookCtx.ToolInput.NewString = "2"
+				hookCtx.ToolInput.Additional = map[string]json.RawMessage{
+					"replace_all": json.RawMessage("true"),
+				}
+
+				mockChecker.EXPECT().
+					CheckWithOptions(gomock.Any(), "package main\n\nvar a, b = 2, 2\n", gomock.Any()).
+					Return(&linters.LintResult{Success: true})
+
+				Expect(validator.Validate(ctx, hookCtx).Passed).To(BeTrue())
+			})
+
+			It("passes when the edit does not apply to the file", func() {
+				hookCtx.ToolInput.OldString = "not in file"
+
+				Expect(validator.Validate(ctx, hookCtx).Passed).To(BeTrue())
+			})
+
+			It("checks a file created by an edit without a baseline", func() {
+				Expect(os.Remove(testFilePath)).To(Succeed())
+
+				hookCtx.ToolInput.OldString = ""
+				hookCtx.ToolInput.NewString = "package main\n"
+
+				mockChecker.EXPECT().
+					CheckWithOptions(gomock.Any(), "package main\n", gomock.Any()).
+					Return(&linters.LintResult{Success: false, RawOut: "diff"})
+
+				result := validator.Validate(ctx, hookCtx)
+
+				Expect(result.ShouldBlock).To(BeTrue())
+			})
+
+			It("applies every MultiEdit replacement in order", func() {
+				hookCtx.ToolName = hook.ToolTypeMultiEdit
+				hookCtx.ToolInput.OldString = ""
+				hookCtx.ToolInput.NewString = ""
+				hookCtx.ToolInput.Additional = map[string]json.RawMessage{
+					"edits": json.RawMessage(
+						`[{"old_string":"main()","new_string":"run()"},` +
+							`{"old_string":"run() {}","new_string":"run() { }"}]`,
+					),
+				}
+
+				mockChecker.EXPECT().
+					CheckWithOptions(gomock.Any(), "package main\n\nfunc run() { }\n", gomock.Any()).
+					Return(&linters.LintResult{Success: true})
+
+				Expect(validator.Validate(ctx, hookCtx).Passed).To(BeTrue())
+			})
+
+			It("passes a MultiEdit without edits", func() {
+				hookCtx.ToolName = hook.ToolTypeMultiEdit
+				hookCtx.ToolInput.Additional = map[string]json.RawMessage{
+					"edits": json.RawMessage(`"bad"`),
+				}
+
+				Expect(validator.Validate(ctx, hookCtx).Passed).To(BeTrue())
+			})
+		})
+
+		Context("after the tool ran", func() {
+			BeforeEach(func() {
+				hookCtx.Event = hook.CanonicalEventAfterTool
+				hookCtx.EventType = hook.EventTypePostToolUse
+				validator = file.NewGofumptValidator(log, mockChecker, nil, nil)
+			})
+
+			It("checks the file on disk, not the tool input", func() {
+				onDisk := "package main\n\nfunc main()  {}\n"
+				Expect(os.WriteFile(testFilePath, []byte(onDisk), 0o600)).To(Succeed())
+
+				hookCtx.ToolName = hook.ToolTypeEdit
+				hookCtx.ToolInput.OldString = "x"
+				hookCtx.ToolInput.NewString = "y"
+
+				mockChecker.EXPECT().
+					CheckWithOptions(gomock.Any(), onDisk, gomock.Any()).
+					Return(&linters.LintResult{Success: false, RawOut: "diff"})
+
+				result := validator.Validate(ctx, hookCtx)
+
+				Expect(result.ShouldBlock).To(BeTrue())
+			})
+
+			It("only warns when reverting the edit shows the file was unformatted", func() {
+				onDisk := "package main\n\nfunc  run() {}\n"
+				Expect(os.WriteFile(testFilePath, []byte(onDisk), 0o600)).To(Succeed())
+
+				hookCtx.ToolName = hook.ToolTypeMultiEdit
+				hookCtx.ToolInput.Additional = map[string]json.RawMessage{
+					"edits": json.RawMessage(
+						`[{"old_string":"main","new_string":"run"},` +
+							`{"old_string":"x","new_string":"{}","replace_all":true}]`,
+					),
+				}
+
+				mockChecker.EXPECT().
+					CheckWithOptions(gomock.Any(), onDisk, gomock.Any()).
+					Return(unformatted)
+				mockChecker.EXPECT().
+					CheckWithOptions(gomock.Any(), "package main\n\nfunc  main() x\n", gomock.Any()).
+					Return(unformatted)
+
+				result := validator.Validate(ctx, hookCtx)
+
+				Expect(result.Passed).To(BeFalse())
+				Expect(result.ShouldBlock).To(BeFalse())
+			})
+
+			It("blocks when the edit cannot be reverted", func() {
+				Expect(os.WriteFile(testFilePath, []byte("package main\n"), 0o600)).To(Succeed())
+
+				hookCtx.ToolName = hook.ToolTypeEdit
+				hookCtx.ToolInput.OldString = "a"
+				hookCtx.ToolInput.NewString = ""
+
+				mockChecker.EXPECT().
+					CheckWithOptions(gomock.Any(), "package main\n", gomock.Any()).
+					Return(unformatted)
+
+				Expect(validator.Validate(ctx, hookCtx).ShouldBlock).To(BeTrue())
+			})
+
+			It("passes when the file is gone", func() {
+				hookCtx.ToolInput.Content = "package main\n"
+
+				Expect(validator.Validate(ctx, hookCtx).Passed).To(BeTrue())
 			})
 		})
 

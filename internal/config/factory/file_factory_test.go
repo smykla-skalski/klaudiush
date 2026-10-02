@@ -6,6 +6,7 @@ import (
 
 	"github.com/smykla-skalski/klaudiush/internal/config/factory"
 	"github.com/smykla-skalski/klaudiush/pkg/config"
+	"github.com/smykla-skalski/klaudiush/pkg/hook"
 	"github.com/smykla-skalski/klaudiush/pkg/logger"
 )
 
@@ -114,6 +115,31 @@ var _ = Describe("FileValidatorFactory", func() {
 				Expect(len(validators)).To(Equal(0))
 			})
 
+			It("selects Go edits before the tool and failed ones after it", func() {
+				cfg.Validators.File.Gofumpt = &config.GofumptValidatorConfig{
+					Enabled: new(true),
+				}
+
+				validators := fileFactory.CreateValidators(cfg)
+				Expect(validators).To(HaveLen(1))
+
+				edit := func(event hook.CanonicalEvent, succeeded bool) *hook.Context {
+					return &hook.Context{
+						Provider:      hook.ProviderClaude,
+						Event:         event,
+						ToolName:      hook.ToolTypeEdit,
+						ToolExecuted:  event == hook.CanonicalEventAfterTool,
+						ToolSucceeded: succeeded,
+						ToolInput:     hook.ToolInput{FilePath: "/repo/main.go"},
+					}
+				}
+
+				predicate := validators[0].Predicate
+				Expect(predicate(edit(hook.CanonicalEventBeforeTool, false))).To(BeTrue())
+				Expect(predicate(edit(hook.CanonicalEventAfterTool, true))).To(BeFalse())
+				Expect(predicate(edit(hook.CanonicalEventAfterTool, false))).To(BeTrue())
+			})
+
 			It("should handle nil gofumpt config", func() {
 				cfg.Validators.File.Gofumpt = nil
 
@@ -150,6 +176,44 @@ var _ = Describe("FileValidatorFactory", func() {
 				validators := fileFactory.CreateValidators(cfg)
 				Expect(len(validators)).To(BeNumerically(">=", 1))
 			})
+
+			DescribeTable("pattern validators only run before the tool",
+				func(enable func(*config.FileConfig)) {
+					enable(cfg.Validators.File)
+
+					validators := fileFactory.CreateValidators(cfg)
+					Expect(validators).To(HaveLen(1))
+
+					edit := func(
+						provider hook.Provider,
+						event hook.CanonicalEvent,
+						derived bool,
+					) *hook.Context {
+						return &hook.Context{
+							Provider:     provider,
+							Event:        event,
+							ToolName:     hook.ToolTypeEdit,
+							ToolExecuted: event == hook.CanonicalEventAfterTool,
+							Derived:      derived,
+							ToolInput:    hook.ToolInput{FilePath: "/repo/main.go"},
+						}
+					}
+
+					before, after := hook.CanonicalEventBeforeTool, hook.CanonicalEventAfterTool
+					predicate := validators[0].Predicate
+
+					Expect(predicate(edit(hook.ProviderClaude, before, false))).To(BeTrue())
+					Expect(predicate(edit(hook.ProviderClaude, after, false))).To(BeFalse())
+					Expect(predicate(edit(hook.ProviderClaude, after, true))).To(BeFalse())
+					Expect(predicate(edit(hook.ProviderCodex, after, false))).To(BeFalse())
+				},
+				Entry("linter ignore", func(f *config.FileConfig) {
+					f.LinterIgnore = &config.LinterIgnoreValidatorConfig{Enabled: new(true)}
+				}),
+				Entry("AI comments", func(f *config.FileConfig) {
+					f.AIComments = &config.AICommentValidatorConfig{Enabled: new(true)}
+				}),
+			)
 
 			It("should handle nil linter ignore config", func() {
 				cfg.Validators.File.LinterIgnore = nil

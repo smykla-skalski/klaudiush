@@ -77,8 +77,15 @@ func formatPatternViolations(header string, violations []violation) string {
 	return sb.String()
 }
 
-// getWriteOrEditContent extracts the new content from a Write or Edit hook context.
+// getWriteOrEditContent extracts the new content from a Write or Edit hook
+// context. After the tool ran there is nothing new to check: pre-tool
+// validation saw the same input, and the file on disk also holds what was
+// there before.
 func getWriteOrEditContent(hookCtx *hook.Context) string {
+	if hookCtx.IsAfterTool() {
+		return ""
+	}
+
 	if hookCtx.ToolInput.Content != "" {
 		return hookCtx.ToolInput.Content
 	}

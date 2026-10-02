@@ -21,7 +21,7 @@ func BuildCodex(
 	}
 
 	blocking, warnings, bypassed := categorize(errs)
-	additionalContext := formatAdditionalContext(blocking, warnings, bypassed, patternWarnings)
+	additionalContext := formatContextFor(hookCtx, blocking, warnings, bypassed, patternWarnings)
 
 	resp := &CodexCommandResponse{
 		SystemMessage: FormatSystemMessage(errs),

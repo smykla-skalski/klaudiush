@@ -73,6 +73,12 @@ func formatSingleReason(e *dispatcher.ValidationError) string {
 	return s
 }
 
+// blockingContextLead opens additionalContext when a finding stopped the action.
+const blockingContextLead = "Automated klaudiush validation check. " +
+	"Fix ALL reported errors at once and retry. " +
+	"Fixing one issue can introduce another " +
+	"(e.g., adding type(scope): prefix makes title exceed 50 chars)."
+
 // maxTableSuggestionLines limits how many lines of a table suggestion
 // are included in additionalContext to avoid bloating the context.
 const maxTableSuggestionLines = 15
@@ -85,11 +91,7 @@ func formatAdditionalContext(
 	var parts []string
 
 	if len(blocking) > 0 {
-		parts = append(parts,
-			"Automated klaudiush validation check. "+
-				"Fix ALL reported errors at once and retry. "+
-				"Fixing one issue can introduce another "+
-				"(e.g., adding type(scope): prefix makes title exceed 50 chars).")
+		parts = append(parts, blockingContextLead)
 	}
 
 	exceptionOutcome := "Validation waived for this action; " +

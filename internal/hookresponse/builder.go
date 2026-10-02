@@ -80,6 +80,19 @@ func BuildForContext(
 		return BuildWithPatterns("", errs, patternWarnings)
 	}
 
+	resp := buildForProvider(hookCtx, errs, patternWarnings)
+	if !IsEmpty(resp) {
+		noteAfterToolRepair(hookCtx, errs, resp)
+	}
+
+	return resp
+}
+
+func buildForProvider(
+	hookCtx *hook.Context,
+	errs []*dispatcher.ValidationError,
+	patternWarnings []string,
+) any {
 	switch hookCtx.Provider {
 	case hook.ProviderCodex:
 		if hookCtx.IsPermissionRequest() {
@@ -109,7 +122,7 @@ func BuildGemini(
 	}
 
 	blocking, warnings, bypassed := categorize(errs)
-	additionalContext := formatAdditionalContext(blocking, warnings, bypassed, patternWarnings)
+	additionalContext := formatContextFor(hookCtx, blocking, warnings, bypassed, patternWarnings)
 
 	resp := &GeminiCommandResponse{
 		SystemMessage: FormatSystemMessage(errs),
@@ -164,7 +177,7 @@ func BuildOpenCode(
 	}
 
 	blocking, warnings, bypassed := categorize(errs)
-	additionalContext := formatAdditionalContext(blocking, warnings, bypassed, patternWarnings)
+	additionalContext := formatContextFor(hookCtx, blocking, warnings, bypassed, patternWarnings)
 
 	resp := &OpenCodeCommandResponse{
 		Continue:      true,

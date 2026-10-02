@@ -100,6 +100,7 @@ var _ = Describe("ValidatorAdapter", func() {
 			Expect(capturedRequest.ToolFamily).To(Equal("shell"))
 			Expect(capturedRequest.RawToolName).To(Equal("Bash"))
 			Expect(capturedRequest.Command).To(Equal("git commit -m 'test'"))
+			Expect(capturedRequest.ToolSucceeded).To(BeNil())
 		})
 
 		It("should include Codex lifecycle execution metadata", func() {
@@ -145,7 +146,7 @@ var _ = Describe("ValidatorAdapter", func() {
 			Expect(capturedRequest.SessionID).To(Equal("session-123"))
 			Expect(capturedRequest.TurnID).To(Equal("turn-456"))
 			Expect(capturedRequest.ToolExecuted).To(BeTrue())
-			Expect(capturedRequest.ToolSucceeded).To(BeFalse())
+			Expect(capturedRequest.ToolSucceeded).To(HaveValue(BeFalse()))
 			Expect(capturedRequest.ToolMutating).To(BeTrue())
 			Expect(capturedRequest.AffectedPaths).To(Equal([]string{"go.mod", "README.md"}))
 		})

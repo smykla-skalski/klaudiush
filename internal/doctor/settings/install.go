@@ -25,6 +25,14 @@ const (
 	eventSessionStart = "SessionStart"
 )
 
+// Claude hook event names. PostToolUseFailure covers tools that failed after
+// they may have changed files.
+const (
+	ClaudeEventPreToolUse         = "PreToolUse"
+	ClaudeEventPostToolUse        = "PostToolUse"
+	ClaudeEventPostToolUseFailure = "PostToolUseFailure"
+)
+
 // Codex hook event names. AfterToolUse is the legacy post-tool name that
 // current Codex no longer fires.
 const (
@@ -78,18 +86,20 @@ func LoadRawJSONFile(path string) (map[string]any, error) {
 // Returns true when all supported Claude hooks were already present.
 func InstallClaudeDispatcher(settingsPath, binaryPath string) (bool, error) {
 	parser := NewSettingsParser(settingsPath)
+	missing := make(map[string]bool, len(ClaudeDispatcherEvents()))
+	allPresent := true
 
-	hasPreToolUse, err := parser.HasEventHookCommand("PreToolUse", binaryPath)
-	if err != nil {
-		return false, errors.Wrap(err, "failed to check settings")
+	for _, eventName := range ClaudeDispatcherEvents() {
+		hasHook, err := parser.HasEventHookCommand(eventName, binaryPath)
+		if err != nil {
+			return false, errors.Wrap(err, "failed to check settings")
+		}
+
+		missing[eventName] = !hasHook
+		allPresent = allPresent && hasHook
 	}
 
-	hasPostToolUse, err := parser.HasEventHookCommand("PostToolUse", binaryPath)
-	if err != nil {
-		return false, errors.Wrap(err, "failed to check settings")
-	}
-
-	if hasPreToolUse && hasPostToolUse {
+	if allPresent {
 		return true, nil
 	}
 
@@ -98,7 +108,7 @@ func InstallClaudeDispatcher(settingsPath, binaryPath string) (bool, error) {
 		return false, err
 	}
 
-	AddClaudeDispatcherHooks(raw, binaryPath, !hasPreToolUse, !hasPostToolUse)
+	AddClaudeDispatcherHooks(raw, binaryPath, missing)
 
 	if err := writeRawJSONFile(settingsPath, raw); err != nil {
 		return false, errors.Wrap(err, "failed to write settings")
@@ -226,28 +236,27 @@ func InstallGeminiDispatcher(settingsPath, binaryPath string) (bool, error) {
 	return false, nil
 }
 
-// AddClaudeDispatcherHooks appends missing Claude command hooks.
-func AddClaudeDispatcherHooks(
-	raw map[string]any,
-	binaryPath string,
-	addPreToolUse bool,
-	addPostToolUse bool,
-) {
+// ClaudeDispatcherEvents lists the Claude events klaudiush registers for.
+func ClaudeDispatcherEvents() []string {
+	return []string{
+		ClaudeEventPreToolUse,
+		ClaudeEventPostToolUse,
+		ClaudeEventPostToolUseFailure,
+	}
+}
+
+// AddClaudeDispatcherHooks appends Claude command hooks for the missing events.
+func AddClaudeDispatcherHooks(raw map[string]any, binaryPath string, missing map[string]bool) {
 	hooks := ensureHooksMap(raw)
 
-	if addPreToolUse {
-		hooks["PreToolUse"] = appendEventHookWithMatcher(
-			hooks["PreToolUse"],
-			ClaudeDispatcherCommand(binaryPath, "PreToolUse"),
-			claudeDispatcherMatcher(),
-			DefaultCommandHookTimeout,
-		)
-	}
+	for _, eventName := range ClaudeDispatcherEvents() {
+		if !missing[eventName] {
+			continue
+		}
 
-	if addPostToolUse {
-		hooks["PostToolUse"] = appendEventHookWithMatcher(
-			hooks["PostToolUse"],
-			ClaudeDispatcherCommand(binaryPath, "PostToolUse"),
+		hooks[eventName] = appendEventHookWithMatcher(
+			hooks[eventName],
+			ClaudeDispatcherCommand(binaryPath, eventName),
 			claudeDispatcherMatcher(),
 			DefaultCommandHookTimeout,
 		)

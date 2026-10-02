@@ -396,6 +396,105 @@ var _ = Describe("JSONParser", func() {
 			Expect(ctx.IsPermissionRequest()).To(BeTrue())
 		})
 
+		It("records a Claude PostToolUse as a successful run with changed files", func() {
+			input := `{
+				"hook_event_name": "PostToolUse",
+				"tool_name": "Bash",
+				"tool_input": {"command": "sed -i s/a/b/ main.go"},
+				"tool_response": {
+					"stdout": "",
+					"bashEditDiff": {"changedFiles": ["/repo/main.go", "/repo/main.go", ""]}
+				}
+			}`
+
+			p := parser.NewJSONParser(bytes.NewReader([]byte(input)))
+			ctx, err := p.ParseWithOptions(parser.ParseOptions{Provider: hook.ProviderClaude})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ctx.IsAfterTool()).To(BeTrue())
+			Expect(ctx.ToolExecuted).To(BeTrue())
+			Expect(ctx.ToolSucceeded).To(BeTrue())
+			Expect(ctx.ToolFailed()).To(BeFalse())
+			Expect(ctx.ChangedFiles).To(Equal([]string{"/repo/main.go"}))
+		})
+
+		It("records a Claude PostToolUseFailure as a failed run", func() {
+			input := `{
+				"hook_event_name": "PostToolUseFailure",
+				"tool_name": "Write",
+				"tool_input": {"file_path": "/repo/main.go", "content": "package main"},
+				"error": "ENOSPC: no space left on device",
+				"is_interrupt": false
+			}`
+
+			p := parser.NewJSONParser(bytes.NewReader([]byte(input)))
+			ctx, err := p.ParseWithOptions(parser.ParseOptions{Provider: hook.ProviderClaude})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ctx.EventName()).To(Equal("PostToolUseFailure"))
+			Expect(ctx.ToolFailed()).To(BeTrue())
+			Expect(ctx.ToolError).To(Equal("ENOSPC: no space left on device"))
+			Expect(ctx.ChangedFiles).To(BeEmpty())
+		})
+
+		It("ignores changed files a concurrent command may have made", func() {
+			input := `{
+				"hook_event_name": "PostToolUse",
+				"tool_name": "Bash",
+				"tool_input": {"command": "go test ./..."},
+				"tool_response": {"bashEditDiff": {"changedFiles": ["/repo/README.md"], "shared": true}}
+			}`
+
+			p := parser.NewJSONParser(bytes.NewReader([]byte(input)))
+			ctx, err := p.ParseWithOptions(parser.ParseOptions{Provider: hook.ProviderClaude})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ctx.ChangedFiles).To(BeEmpty())
+		})
+
+		It("accepts an error that is not a string", func() {
+			input := `{
+				"hook_event_name": "PostToolUseFailure",
+				"tool_name": "mcp__srv__write",
+				"error": {"code": 1}
+			}`
+
+			p := parser.NewJSONParser(bytes.NewReader([]byte(input)))
+			ctx, err := p.ParseWithOptions(parser.ParseOptions{Provider: hook.ProviderClaude})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ctx.ToolFailed()).To(BeTrue())
+			Expect(ctx.ToolError).To(BeEmpty())
+		})
+
+		It("ignores a Claude tool_response that is not an object", func() {
+			input := `{
+				"hook_event_name": "PostToolUse",
+				"tool_name": "Read",
+				"tool_input": {"file_path": "/repo/main.go"},
+				"tool_response": "1\tpackage main"
+			}`
+
+			p := parser.NewJSONParser(bytes.NewReader([]byte(input)))
+			ctx, err := p.ParseWithOptions(parser.ParseOptions{Provider: hook.ProviderClaude})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ctx.ToolSucceeded).To(BeTrue())
+			Expect(ctx.ChangedFiles).To(BeEmpty())
+		})
+
+		It("leaves pre-tool contexts without run results", func() {
+			input := `{"hook_event_name": "PreToolUse", "tool_name": "Bash",
+				"tool_input": {"command": "ls"}}`
+
+			p := parser.NewJSONParser(bytes.NewReader([]byte(input)))
+			ctx, err := p.ParseWithOptions(parser.ParseOptions{Provider: hook.ProviderClaude})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ctx.IsAfterTool()).To(BeFalse())
+			Expect(ctx.ToolExecuted).To(BeFalse())
+		})
+
 		It("echoes Claude SubagentStart and PostToolUseFailure by name", func() {
 			for _, raw := range []string{"SubagentStart", "PostToolUseFailure"} {
 				input := `{"hook_event_name": "` + raw + `", "session_id": "s", "agent_id": "a1"}`

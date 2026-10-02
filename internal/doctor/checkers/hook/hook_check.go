@@ -249,6 +249,62 @@ func (c *PostToolUseChecker) Check(_ context.Context) doctor.CheckResult {
 	)
 }
 
+// PostToolUseFailureChecker checks if PostToolUseFailure hooks are configured.
+type PostToolUseFailureChecker struct {
+	settingsPath string
+	settingsType string
+}
+
+// NewUserPostToolUseFailureChecker creates a PostToolUseFailure checker for
+// user settings.
+func NewUserPostToolUseFailureChecker() *PostToolUseFailureChecker {
+	return &PostToolUseFailureChecker{
+		settingsPath: settings.GetUserSettingsPath(),
+		settingsType: settingsTypeUser,
+	}
+}
+
+// NewProjectPostToolUseFailureChecker creates a PostToolUseFailure checker for
+// project settings.
+func NewProjectPostToolUseFailureChecker() *PostToolUseFailureChecker {
+	return &PostToolUseFailureChecker{
+		settingsPath: settings.GetProjectSettingsPath(),
+		settingsType: settingsTypeProject,
+	}
+}
+
+// NewProjectLocalPostToolUseFailureChecker creates a PostToolUseFailure
+// checker for project-local settings.
+func NewProjectLocalPostToolUseFailureChecker() *PostToolUseFailureChecker {
+	return &PostToolUseFailureChecker{
+		settingsPath: settings.GetProjectLocalSettingsPath(),
+		settingsType: settingsTypeProjectLocal,
+	}
+}
+
+// Name returns the name of the check.
+func (c *PostToolUseFailureChecker) Name() string {
+	return fmt.Sprintf("PostToolUseFailure hook in %s settings", c.settingsType)
+}
+
+// Category returns the category of the check.
+func (*PostToolUseFailureChecker) Category() doctor.Category {
+	return doctor.CategoryHook
+}
+
+// Check performs the PostToolUseFailure hook check.
+func (c *PostToolUseFailureChecker) Check(_ context.Context) doctor.CheckResult {
+	return checkClaudeToolHook(
+		c.settingsPath,
+		c.settingsType,
+		"PostToolUseFailure",
+		"The dispatcher requires PostToolUseFailure hooks to audit files a failed tool changed",
+		func(parser *settings.SettingsParser) (bool, error) {
+			return parser.HasPostToolUseFailureHook()
+		},
+	)
+}
+
 func checkClaudeToolHook(
 	settingsPath string,
 	settingsType string,

@@ -70,6 +70,19 @@ type JSONInput struct {
 	Content          json.RawMessage `json:"content,omitempty"`
 	CompactSummary   string          `json:"compact_summary,omitempty"`
 	Trigger          string          `json:"trigger,omitempty"`
+	ToolResponse     json.RawMessage `json:"tool_response,omitempty"`
+	Error            json.RawMessage `json:"error,omitempty"`
+}
+
+// claudeToolResponse holds the parts of a Claude PostToolUse tool_response
+// that say which files the tool changed. Other tools send other shapes, or a
+// plain string, so decoding failures are ignored. Shared marks a diff that
+// may include another concurrent command's changes.
+type claudeToolResponse struct {
+	BashEditDiff *struct {
+		ChangedFiles []string `json:"changedFiles,omitempty"`
+		Shared       bool     `json:"shared,omitempty"`
+	} `json:"bashEditDiff,omitempty"`
 }
 
 // CodexAfterToolEvent represents the nested Codex AfterToolUse payload.
@@ -149,6 +162,7 @@ func (p *JSONParser) ParseWithOptions(opts ParseOptions) (*hook.Context, error) 
 	}
 
 	populateElicitationFields(ctx, input, canonicalEvent)
+	populateClaudeAfterToolFields(ctx, input)
 	populateCompactFields(ctx, input, canonicalEvent)
 
 	if input.LastAssistant != nil {
@@ -561,6 +575,37 @@ func populateElicitationFields(
 		Action:          input.Action,
 		Content:         input.Content,
 	}
+}
+
+// populateClaudeAfterToolFields records how a Claude tool call ended.
+// PostToolUse fires only after a tool succeeded and PostToolUseFailure only
+// after one started and failed, so the event name alone settles both flags.
+// Source: https://code.claude.com/docs/en/hooks#posttooluse.
+func populateClaudeAfterToolFields(ctx *hook.Context, input JSONInput) {
+	if ctx.Provider != hook.ProviderClaude || ctx.Event != hook.CanonicalEventAfterTool {
+		return
+	}
+
+	ctx.ToolExecuted = true
+	ctx.ToolSucceeded = !isClaudeToolFailure(ctx.RawEventName)
+	_ = json.Unmarshal(input.Error, &ctx.ToolError)
+
+	if len(input.ToolResponse) == 0 {
+		return
+	}
+
+	var response claudeToolResponse
+	if err := json.Unmarshal(input.ToolResponse, &response); err != nil {
+		return
+	}
+
+	if response.BashEditDiff != nil && !response.BashEditDiff.Shared {
+		ctx.ChangedFiles = dedupePaths(response.BashEditDiff.ChangedFiles)
+	}
+}
+
+func isClaudeToolFailure(rawEventName string) bool {
+	return normalizeToolName(rawEventName) == "posttoolusefailure"
 }
 
 func populateCompactFields(

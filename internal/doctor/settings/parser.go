@@ -143,6 +143,12 @@ func (p *SettingsParser) HasPostToolUseHook() (bool, error) {
 	return p.hasEventHook("PostToolUse")
 }
 
+// HasPostToolUseFailureHook checks if the settings file contains any
+// PostToolUseFailure hooks.
+func (p *SettingsParser) HasPostToolUseFailureHook() (bool, error) {
+	return p.hasEventHook("PostToolUseFailure")
+}
+
 // HasEventHookCommand checks whether the given event registers the dispatcher command.
 func (p *SettingsParser) HasEventHookCommand(eventName, dispatcherPath string) (bool, error) {
 	settings, err := p.Parse()

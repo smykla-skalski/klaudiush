@@ -79,6 +79,22 @@ type Resolver interface {
 	GHAlias(name string) (string, bool)
 }
 
+// ExpandHome expands a leading ~ or ~/ the way the shell does, from the HOME
+// resolver reports. Anything else, ~user included, is returned unchanged, as
+// is a ~ path when HOME is unset or relative.
+func ExpandHome(path string, resolver Resolver) string {
+	if path != "~" && !strings.HasPrefix(path, "~/") {
+		return path
+	}
+
+	home, ok := resolver.LookupEnv("HOME")
+	if !ok || !filepath.IsAbs(home) {
+		return path
+	}
+
+	return filepath.Join(home, path[1:])
+}
+
 // OSResolver answers from the running system. It remembers what it learns,
 // so each lookup runs at most once for the parse it serves.
 type OSResolver struct {

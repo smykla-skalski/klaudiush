@@ -739,5 +739,10 @@ func loadRawSettings(path string) (map[string]any, error) {
 
 // addHookToSettings adds the standard Claude hook entries for klaudiush.
 func addHookToSettings(raw map[string]any, binaryPath string) {
-	settings.AddClaudeDispatcherHooks(raw, binaryPath, true, true)
+	missing := make(map[string]bool, len(settings.ClaudeDispatcherEvents()))
+	for _, eventName := range settings.ClaudeDispatcherEvents() {
+		missing[eventName] = true
+	}
+
+	settings.AddClaudeDispatcherHooks(raw, binaryPath, missing)
 }

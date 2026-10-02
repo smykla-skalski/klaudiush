@@ -252,7 +252,10 @@ var _ = Describe("Build", func() {
 		Expect(geminiResp.Reason).To(BeEmpty())
 		Expect(geminiResp.HookSpecificOutput).NotTo(BeNil())
 		Expect(geminiResp.HookSpecificOutput.HookEventName).To(Equal("AfterTool"))
-		Expect(geminiResp.HookSpecificOutput.AdditionalContext).To(ContainSubstring("Fix ALL"))
+		Expect(geminiResp.HookSpecificOutput.AdditionalContext).
+			To(ContainSubstring("Repair required"))
+		Expect(geminiResp.HookSpecificOutput.AdditionalContext).NotTo(ContainSubstring("retry"))
+		Expect(geminiResp.SystemMessage).To(HavePrefix("klaudiush checked the result after"))
 	})
 
 	It("builds Gemini SessionEnd summary responses without flow-control fields", func() {
@@ -298,9 +301,12 @@ var _ = Describe("Build", func() {
 		Expect(ok).To(BeTrue())
 		Expect(claudeResp.Decision).To(Equal("block"))
 		Expect(claudeResp.Reason).To(ContainSubstring("[GIT022]"))
+		Expect(claudeResp.Reason).To(HavePrefix("Repair required, the change is already applied: "))
 		Expect(claudeResp.HookSpecificOutput).NotTo(BeNil())
 		Expect(claudeResp.HookSpecificOutput.HookEventName).To(Equal("PostToolUse"))
-		Expect(claudeResp.HookSpecificOutput.AdditionalContext).To(ContainSubstring("Fix ALL"))
+		Expect(claudeResp.HookSpecificOutput.AdditionalContext).
+			To(ContainSubstring("its changes are already applied"))
+		Expect(claudeResp.HookSpecificOutput.AdditionalContext).NotTo(ContainSubstring("retry"))
 		Expect(claudeResp.HookSpecificOutput.PermissionDecision).To(BeEmpty())
 	})
 })

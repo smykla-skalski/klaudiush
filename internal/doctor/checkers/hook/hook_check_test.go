@@ -237,6 +237,32 @@ var _ = Describe("PostToolUseChecker", func() {
 	})
 })
 
+var _ = Describe("PostToolUseFailureChecker", func() {
+	It("names and categorizes each settings scope", func() {
+		checkers := map[string]*hook.PostToolUseFailureChecker{
+			"user":          hook.NewUserPostToolUseFailureChecker(),
+			"project":       hook.NewProjectPostToolUseFailureChecker(),
+			"project-local": hook.NewProjectLocalPostToolUseFailureChecker(),
+		}
+
+		for scope, checker := range checkers {
+			Expect(checker.Name()).To(Equal("PostToolUseFailure hook in " + scope + " settings"))
+			Expect(checker.Category()).To(Equal(doctor.CategoryHook))
+		}
+	})
+
+	It("performs the check", func() {
+		result := hook.NewProjectLocalPostToolUseFailureChecker().Check(context.Background())
+
+		Expect(result.Name).To(Equal("PostToolUseFailure hook in project-local settings"))
+		Expect(result.Status).To(BeElementOf(
+			doctor.StatusPass,
+			doctor.StatusFail,
+			doctor.StatusSkipped,
+		))
+	})
+})
+
 var _ = Describe("PathValidationChecker", func() {
 	var (
 		checker *hook.PathValidationChecker

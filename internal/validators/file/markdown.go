@@ -186,6 +186,10 @@ func (v *MarkdownValidator) getContentWithState(
 ) (string, *validators.MarkdownState, error) {
 	log := v.Logger()
 
+	if content, ok, err := readToolResult(ctx, ctx.GetFilePath()); ok {
+		return content, nil, err
+	}
+
 	// Try to get content from tool input (Write operation)
 	if ctx.ToolInput.Content != "" {
 		return ctx.ToolInput.Content, nil, nil
