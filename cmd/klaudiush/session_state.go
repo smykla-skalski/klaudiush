@@ -76,12 +76,7 @@ func applyHookSessionLifecycle(
 		if err := store.Record(hookCtx, errs, checks); err != nil {
 			log.Info("failed to persist hook session findings", "error", err)
 
-			if len(errs) > 0 {
-				return append(
-					errs,
-					stateUnavailable("record these findings for the session", err),
-				), cleanup
-			}
+			return append(errs, stateUnavailable("record this check for the session", err)), cleanup
 		}
 	case hook.CanonicalEventSessionEnd:
 		// A subagent shares the parent's session ID; its end must not

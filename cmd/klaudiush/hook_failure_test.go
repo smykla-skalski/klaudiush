@@ -282,6 +282,40 @@ var _ = Describe("hook failures", func() {
 		})
 	})
 
+	DescribeTable("scanMode",
+		func(content, want string) {
+			Expect(scanMode(content)).To(Equal(want))
+		},
+		Entry("plain", "[failure_policy]\nmode = \"block\"\n", "block"),
+		Entry("comment and quotes", "[ failure_policy ]\n  mode='warn' # note\n", "warn"),
+		Entry("other section", "[output]\nmode = \"block\"\n", ""),
+		Entry("broken file", "[failure_policy]\nmode = \"block\"\n[validators\n", "block"),
+		Entry("missing", "", ""),
+	)
+
+	It("blocks a deadline overrun when a validator is critical", func() {
+		watchdogGrace = 10 * time.Millisecond
+
+		h := newRun(hook.ProviderClaude, "PreToolUse")
+		h.setPolicy(failpolicy.New(&config.FailurePolicyConfig{
+			Critical: []string{"plugins"},
+			Deadline: config.Duration(10 * time.Millisecond),
+		}))
+
+		release := make(chan struct{})
+		defer close(release)
+
+		out := captureStdout(func() {
+			Expect(h.supervise(func() error {
+				<-release
+
+				return nil
+			})).To(Succeed())
+		})
+
+		Expect(permissionDecision(decode(out))).To(Equal("deny"))
+	})
+
 	It("knows where a deny stops the action", func() {
 		Expect(canStopAction(&hook.Context{Event: hook.CanonicalEventBeforeTool})).To(BeTrue())
 		Expect(canStopAction(&hook.Context{Event: hook.CanonicalEventElicitation})).To(BeTrue())
@@ -381,6 +415,20 @@ var _ = Describe("hook failures", func() {
 			Expect(os.WriteFile(
 				filepath.Join(workDir, ".klaudiush", "config.toml"),
 				[]byte("[validators\nbroken"),
+				0o600,
+			)).To(Succeed())
+
+			Expect(fallbackPolicy(workDir, log).Mode()).To(Equal(failpolicy.ActionBlock))
+		})
+
+		It("scans the mode out of a file that does not decode", func() {
+			workDir := GinkgoT().TempDir()
+			Expect(os.MkdirAll(filepath.Join(workDir, ".klaudiush"), 0o700)).To(Succeed())
+			Expect(os.WriteFile(
+				filepath.Join(workDir, ".klaudiush", "config.toml"),
+				[]byte(
+					"[failure_policy]\nmode = \"block\"\n[validators.git.commit.message]\ntitle_max_length = \"abc\"\n",
+				),
 				0o600,
 			)).To(Succeed())
 

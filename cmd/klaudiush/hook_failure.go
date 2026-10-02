@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync/atomic"
@@ -209,7 +210,16 @@ func (h *hookRun) failureError(
 	hookCtx *hook.Context,
 	failure *hookFailureError,
 ) *dispatcher.ValidationError {
-	action := h.effectivePolicy().Mode()
+	policy := h.effectivePolicy()
+
+	action := policy.Mode()
+
+	// The watchdog cannot tell which check hung, so any critical validator
+	// makes an overrun block.
+	if failure.reason == validator.ReasonTimeout && len(policy.Critical()) > 0 {
+		action = failpolicy.ActionBlock
+	}
+
 	if !canStopAction(hookCtx) {
 		action = failpolicy.ActionWarn
 	}
@@ -320,31 +330,114 @@ func fallbackPolicy(workDir string, log logger.Logger) *failpolicy.Policy {
 		return failpolicy.New(nil).WithMode(action)
 	}
 
-	if cfg := looseConfig(workDir); cfg != nil {
+	if cfg := looseConfig(workDir); cfg != nil && cfg.FailurePolicy.GetMode() != "" {
 		return failpolicy.New(cfg.FailurePolicy)
+	}
+
+	if mode := scannedMode(workDir); mode != "" {
+		action, err := failpolicy.ParseMode(mode)
+		if err != nil {
+			action = failpolicy.ActionBlock
+		}
+
+		return failpolicy.New(nil).WithMode(action)
 	}
 
 	return failpolicy.New(nil)
 }
 
-// looseConfig reads what it can of a configuration that failed to load.
-func looseConfig(workDir string) *config.Config {
-	var (
-		loader *internalconfig.KoanfLoader
-		err    error
-	)
-
-	if workDir != "" {
-		homeDir, homeErr := os.UserHomeDir()
-		if homeErr != nil {
-			return nil
-		}
-
-		loader, err = internalconfig.NewKoanfLoaderWithDirs(homeDir, workDir)
-	} else {
-		loader, err = internalconfig.NewKoanfLoader()
+// scannedMode reads failure_policy.mode line by line from the project and
+// global config files, for files that do not parse or decode. The strictest
+// mode found wins.
+func scannedMode(workDir string) string {
+	loader, err := configLoader(workDir)
+	if err != nil {
+		return ""
 	}
 
+	found := ""
+
+	for _, path := range append(loader.ProjectConfigPaths(), loader.GlobalConfigPath()) {
+		data, readErr := readConfigFile(path)
+		if readErr != nil {
+			continue
+		}
+
+		mode := scanMode(string(data))
+		if mode == "" {
+			continue
+		}
+
+		if action, parseErr := failpolicy.ParseMode(mode); parseErr != nil ||
+			action == failpolicy.ActionBlock {
+			return config.FailureModeBlock
+		}
+
+		found = mode
+	}
+
+	return found
+}
+
+// readConfigFile reads one config file through a root at its directory, so
+// the read cannot leave it.
+func readConfigFile(path string) ([]byte, error) {
+	root, err := os.OpenRoot(filepath.Dir(path))
+	if err != nil {
+		return nil, errors.Wrap(err, "open config directory")
+	}
+
+	data, err := root.ReadFile(filepath.Base(path))
+
+	return data, errors.CombineErrors(
+		errors.Wrap(err, "read config file"),
+		errors.Wrap(root.Close(), "close config directory"),
+	)
+}
+
+// scanMode finds mode = "..." inside a [failure_policy] table.
+func scanMode(content string) string {
+	inSection := false
+
+	for line := range strings.Lines(content) {
+		line = strings.TrimSpace(line)
+
+		if strings.HasPrefix(line, "[") {
+			inSection = strings.Trim(line, "[] \t") == "failure_policy"
+
+			continue
+		}
+
+		key, value, ok := strings.Cut(line, "=")
+		if !inSection || !ok || strings.TrimSpace(key) != "mode" {
+			continue
+		}
+
+		value, _, _ = strings.Cut(strings.TrimSpace(value), "#")
+
+		return strings.Trim(strings.TrimSpace(value), `"'`)
+	}
+
+	return ""
+}
+
+// configLoader returns a loader for workDir, or the process directory.
+func configLoader(workDir string) (*internalconfig.KoanfLoader, error) {
+	if workDir == "" {
+		return internalconfig.NewKoanfLoader()
+	}
+
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return nil, errors.Wrap(err, "home directory")
+	}
+
+	return internalconfig.NewKoanfLoaderWithDirs(homeDir, workDir)
+}
+
+// looseConfig reads what it can of a configuration that failed to load.
+func looseConfig(workDir string) *config.Config {
+	loader, err := configLoader(workDir)
 	if err != nil {
 		return nil
 	}

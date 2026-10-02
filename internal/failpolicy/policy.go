@@ -58,7 +58,7 @@ func ParseMode(mode string) (Action, error) {
 }
 
 func parseMissingTools(value string) Action {
-	switch value {
+	switch strings.ToLower(strings.TrimSpace(value)) {
 	case config.FailureModeWarn:
 		return ActionWarn
 	case config.FailureModeBlock:

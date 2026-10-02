@@ -118,6 +118,7 @@ func (l *ExecLoader) verifyExecutable(path string) error {
 
 		ctx, cancel := context.WithTimeout(context.Background(), defaultExecPluginTimeout)
 		result := l.runner.Run(ctx, path, "--version")
+		timedOut := ctx.Err() != nil
 
 		cancel()
 
@@ -128,7 +129,9 @@ func (l *ExecLoader) verifyExecutable(path string) error {
 				path,
 			)
 
-			if strings.Contains(result.Err.Error(), "signal: killed") {
+			// A plugin killed by its own timeout hangs; only a kill from
+			// outside (an antivirus scan) is worth another attempt.
+			if !timedOut && strings.Contains(result.Err.Error(), "signal: killed") {
 				continue
 			}
 
@@ -154,7 +157,7 @@ func (l *ExecLoader) verifyExecutable(path string) error {
 func (l *ExecLoader) fetchInfo(cfg *config.PluginInstanceConfig) (plugin.Info, error) {
 	ctx, cancel := context.WithTimeout(
 		context.Background(),
-		cfg.GetTimeout(defaultExecPluginTimeout),
+		min(cfg.GetTimeout(defaultExecPluginTimeout), defaultExecPluginTimeout),
 	)
 	defer cancel()
 
@@ -244,6 +247,14 @@ func (a *execPluginAdapter) Validate(
 
 	// Parse response JSON from stdout
 	var resp plugin.ValidateResponse
+
+	if !hasPassedField(result.Stdout) {
+		return nil, errors.Mark(
+			errors.New("plugin response has no \"passed\" field"),
+			ErrPluginBadResponse,
+		)
+	}
+
 	if err := json.Unmarshal([]byte(result.Stdout), &resp); err != nil {
 		return nil, errors.Mark(
 			errors.Wrap(err, "failed to parse response JSON"),
@@ -252,6 +263,19 @@ func (a *execPluginAdapter) Validate(
 	}
 
 	return &resp, nil
+}
+
+// hasPassedField reports whether a response is a JSON object with a
+// "passed" field; null or {} would otherwise decode into a passing result.
+func hasPassedField(stdout string) bool {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(stdout), &fields); err != nil {
+		return true
+	}
+
+	_, ok := fields["passed"]
+
+	return ok
 }
 
 // Close releases any resources held by the plugin.

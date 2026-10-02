@@ -114,6 +114,15 @@ var _ = Describe("Plugin failures", func() {
 		Expect(result.UnavailableReason).To(Equal(validator.ReasonMalformedOutput))
 	})
 
+	It("reports a response without a verdict", func() {
+		for _, body := range []string{"echo '{}'", "echo null"} {
+			result := validate(instance("empty", writePluginScript(pluginDir, "empty", body)))
+
+			Expect(result.UnavailableReason).To(Equal(validator.ReasonMalformedOutput), body)
+			Expect(result.ShouldBlock).To(BeTrue())
+		}
+	})
+
 	It("reports a plugin that ran past its timeout", func() {
 		slow := instance("slow", writePluginScript(pluginDir, "slow", "sleep 5"))
 		slow.Timeout = config.Duration(100 * time.Millisecond)

@@ -112,7 +112,8 @@ func (v *Validator) Validate(cfg *config.Config) error {
 func validateFailurePolicyConfig(cfg *config.FailurePolicyConfig) error {
 	var validationErrors []error
 
-	if cfg.Mode != "" && cfg.Mode != config.FailureModeWarn && cfg.Mode != config.FailureModeBlock {
+	if mode := strings.ToLower(cfg.Mode); mode != "" && mode != config.FailureModeWarn &&
+		mode != config.FailureModeBlock {
 		validationErrors = append(validationErrors, errors.Wrapf(
 			ErrInvalidOption,
 			"mode must be %q or %q, got %q",
@@ -120,7 +121,7 @@ func validateFailurePolicyConfig(cfg *config.FailurePolicyConfig) error {
 		))
 	}
 
-	switch cfg.MissingTools {
+	switch strings.ToLower(cfg.MissingTools) {
 	case "", config.FailureModeIgnore, config.FailureModeWarn, config.FailureModeBlock:
 	default:
 		validationErrors = append(validationErrors, errors.Wrapf(

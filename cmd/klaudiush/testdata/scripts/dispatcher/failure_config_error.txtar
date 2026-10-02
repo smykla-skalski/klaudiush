@@ -9,6 +9,11 @@ stdout 'configuration error'
 cp $WORK/broken.toml .klaudiush/config.toml
 stdin $WORK/ls.json
 exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+
+cp $WORK/broken-nomode.toml .klaudiush/config.toml
+stdin $WORK/ls.json
+exec klaudiush --hook-type PreToolUse
 ! stdout 'permissionDecision'
 stdout 'Validation unavailable HOOK001'
 
@@ -35,6 +40,10 @@ title_max_length = -5
 -- broken.toml --
 [failure_policy]
 mode = "block"
+[validators.git.commit
+broken
+
+-- broken-nomode.toml --
 [validators.git.commit
 broken
 

@@ -60,9 +60,11 @@ The policy resolves each unavailable check in this order:
 3. Anything else follows `mode` when it is set.
 4. Without `mode`, the check keeps its own choice: plugin failures block, everything else warns.
 
-Failures of klaudiush itself (unreadable input, broken configuration, crash, deadline) follow `mode` and warn when it is unset.
+Failures of klaudiush itself (unreadable input, broken configuration, crash, deadline) follow `mode` and warn when it is unset. When the whole hook overruns its deadline, klaudiush cannot tell which check hung, so it blocks whenever any validator is listed in `critical`.
 
-Blocking only happens where the event can stop the action before it runs: a tool call about to run, a permission request, an MCP elicitation. After a tool ran, nothing can be stopped, so the failure is reported to the agent. At a completion gate (Stop, SubagentStop, AfterAgent) a failure of klaudiush itself only warns, so a broken setup cannot keep the agent working forever; unavailable checks there stay bounded by the completion gate limit.
+A failure of klaudiush itself only blocks where the event can stop the action before it runs: a tool call about to run, a permission request, an MCP elicitation. After a tool ran, nothing can be stopped, so the failure is reported to the agent. At a completion gate (Stop, SubagentStop, AfterAgent) it only warns, so a broken setup cannot keep the agent working forever.
+
+An unavailable check follows the same event rules as a violation: after a tool it is advisory, at a completion gate it stays bounded by the completion gate limit, and on a prompt submission a blocking plugin failure blocks the prompt, as it did before.
 
 `critical` accepts runtime validator names (`commit`, `git-push`, `shellscript`, `plugin-registry`) and override names (`git.commit`, `git.push`, `file.shellscript`, `plugins`). Plugins can only be made critical together, as `plugins`. A plugin that fails to load warns by default, while one that fails at run time blocks.
 
@@ -77,7 +79,7 @@ The configuration that sets the policy may be what failed. klaudiush then looks 
 1. The `--failure-mode=warn|block` flag of the hook command.
 2. The `KLAUDIUSH_FAILURE_POLICY_MODE` environment variable.
 3. The configuration read without validation, so an invalid value elsewhere does not hide the mode.
-4. The global configuration alone, so a broken project file does not hide a global mode.
+4. A line scan of the project and global files for `mode` under `[failure_policy]`, so a syntax or type error elsewhere does not hide it. The strictest mode found wins.
 5. The default, `warn`.
 
 An unreadable mode at any step counts as `block`. Put `--failure-mode=block` in the hook command when the guarantee must survive an edit to the configuration files:
