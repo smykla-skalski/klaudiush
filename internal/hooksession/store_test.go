@@ -255,3 +255,25 @@ func TestStoreCompletionBlocksIgnoreMissingSessions(t *testing.T) {
 		t.Fatalf("ClearFindings() error = %v", err)
 	}
 }
+
+func TestStoreStartKeepsCompletionBlocks(t *testing.T) {
+	store := NewStore(WithStateFile(filepath.Join(t.TempDir(), "state.json")))
+
+	if _, err := store.RecordCompletionBlock(
+		hook.ProviderClaude,
+		"sess",
+		"turn_stop",
+		false,
+	); err != nil {
+		t.Fatalf("RecordCompletionBlock() error = %v", err)
+	}
+
+	if err := store.Start(hook.ProviderClaude, "sess"); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+
+	count, err := store.RecordCompletionBlock(hook.ProviderClaude, "sess", "turn_stop", true)
+	if err != nil || count != 2 {
+		t.Fatalf("block after restart = %d, %v; want 2, nil", count, err)
+	}
+}

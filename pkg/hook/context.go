@@ -175,6 +175,9 @@ type Context struct {
 	// StopHookActive indicates whether a stop hook is already active.
 	StopHookActive bool
 
+	// AgentID identifies the subagent on subagent events (Claude, Codex).
+	AgentID string
+
 	// TurnID identifies the provider turn when available.
 	TurnID string
 

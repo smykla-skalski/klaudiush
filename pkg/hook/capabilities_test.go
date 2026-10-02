@@ -180,6 +180,8 @@ func TestKeepsRawEventName(t *testing.T) {
 	}{
 		{ProviderClaude, "PermissionRequest", true},
 		{ProviderClaude, "PreToolUse", false},
+		{ProviderClaude, "SubagentStart", true},
+		{ProviderClaude, "PostToolUseFailure", true},
 		{ProviderCodex, "PermissionRequest", true},
 		{ProviderCodex, "SubagentStart", true},
 		{ProviderCodex, "SubagentStop", false},

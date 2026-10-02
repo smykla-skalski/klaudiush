@@ -375,13 +375,19 @@ func IsPermissionRequestEvent(rawEventName string) bool {
 
 // KeepsRawEventName reports whether a raw event name must survive parsing
 // because its canonical event's display name belongs to a different native
-// event with a different response contract.
+// event, which the response must echo in hookEventName or answer with a
+// different contract.
 func KeepsRawEventName(provider Provider, rawEventName string) bool {
 	switch provider {
 	case ProviderCodex:
 		return IsCodexAliasedEvent(rawEventName)
 	case ProviderClaude:
-		return IsPermissionRequestEvent(rawEventName)
+		switch normalizeToken(rawEventName) {
+		case tokenPermissionRequest, tokenSubagentStart, "posttoolusefailure":
+			return true
+		default:
+			return false
+		}
 	case ProviderUnknown, ProviderGemini, ProviderOpenCode:
 		return false
 	default:
@@ -428,7 +434,7 @@ func CodexUncoveredTools() []string {
 // response shaped for the canonical event would be invalid for it.
 func IsCodexAliasedEvent(rawEventName string) bool {
 	switch normalizeToken(rawEventName) {
-	case tokenPermissionRequest, "subagentstart":
+	case tokenPermissionRequest, tokenSubagentStart:
 		return true
 	default:
 		return false

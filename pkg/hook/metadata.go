@@ -129,6 +129,7 @@ const (
 	tokenElicitation       = "elicitation"
 	tokenPostCompress      = "postcompress"
 	tokenPermissionRequest = "permissionrequest"
+	tokenSubagentStart     = "subagentstart"
 )
 
 // opencode hook identifiers. These are the plugin hook names opencode itself
@@ -196,7 +197,7 @@ func NormalizeEventName(name string) CanonicalEvent {
 	case "aftertool", "posttooluse", "aftertooluse", "toolexecuteafter",
 		"posttoolusefailure":
 		return CanonicalEventAfterTool
-	case "sessionstart", "sessioncreated", "subagentstart":
+	case "sessionstart", "sessioncreated", tokenSubagentStart:
 		return CanonicalEventSessionStart
 	// Only events that can keep the agent working are completion gates.
 	// Session end and turn failure are observational, and a subagent stop

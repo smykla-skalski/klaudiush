@@ -110,7 +110,9 @@ func NewStore(opts ...Option) *Store {
 	return store
 }
 
-// Start initializes or resets a provider/session entry.
+// Start initializes or resets a provider/session entry. Completion-gate
+// counters survive, since subagent starts and resumed or compacted sessions
+// also report as a session start.
 func (s *Store) Start(provider hook.Provider, sessionID string) error {
 	if provider == hook.ProviderUnknown || sessionID == "" {
 		return nil
@@ -124,12 +126,19 @@ func (s *Store) Start(provider hook.Provider, sessionID string) error {
 	s.cleanupExpired(st)
 
 	now := s.now()
-	st.Sessions[sessionKey(provider, sessionID)] = &sessionEntry{
+	key := sessionKey(provider, sessionID)
+	entry := &sessionEntry{
 		Provider:  string(provider),
 		SessionID: sessionID,
 		StartedAt: now,
 		UpdatedAt: now,
 	}
+
+	if previous := st.Sessions[key]; previous != nil {
+		entry.CompletionBlocks = previous.CompletionBlocks
+	}
+
+	st.Sessions[key] = entry
 
 	return s.saveState(st)
 }

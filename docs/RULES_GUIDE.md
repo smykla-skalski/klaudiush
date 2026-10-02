@@ -304,7 +304,7 @@ What a `block` does depends on the event the provider fired:
 | `stop_failure` | Claude `StopFailure` | None |
 | `before_tool` | Claude and Codex `PermissionRequest` | Denies the approval request |
 
-A completion gate keeps the agent working at most 3 times in a row. After that klaudiush lets the turn end, reports the findings as unresolved, and starts counting again on the next turn. Without a session id only one continuation is allowed.
+A completion gate keeps the agent working at most 3 times in a row, counted per session (and per subagent for `subagent_stop`). After that klaudiush lets the turn end, reports the findings as unresolved, and starts counting again the next time the provider reaches the gate without a prior block (`stop_hook_active` false). Without a session id only one continuation is allowed.
 
 ## Actions
 

@@ -59,6 +59,7 @@ type JSONInput struct {
 	TranscriptPath   string          `json:"transcript_path,omitempty"`
 	LastAssistant    *string         `json:"last_assistant_message,omitempty"`
 	StopHookActive   bool            `json:"stop_hook_active,omitempty"`
+	AgentID          string          `json:"agent_id,omitempty"`
 	HookEvent        json.RawMessage `json:"hook_event,omitempty"`
 	MCPServerName    string          `json:"mcp_server_name,omitempty"`
 	Mode             string          `json:"mode,omitempty"`
@@ -162,6 +163,7 @@ func (p *JSONParser) ParseWithOptions(opts ParseOptions) (*hook.Context, error) 
 	}
 
 	ctx.StopHookActive = input.StopHookActive
+	ctx.AgentID = input.AgentID
 
 	return ctx, nil
 }

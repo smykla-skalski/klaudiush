@@ -14,6 +14,10 @@ import (
 // continuations at 8 on its own; Codex and Gemini document no cap.
 const maxCompletionBlocks = 3
 
+// untrackedCompletionBlocks applies when there is no session to count in:
+// stop_hook_active alone only says whether a previous block happened.
+const untrackedCompletionBlocks = 1
+
 func applyHookSessionLifecycle(
 	store *hooksession.Store,
 	hookCtx *hook.Context,
@@ -80,7 +84,8 @@ func applyHookSessionLifecycle(
 // agent working. Blocks count per session and reset whenever the provider
 // reaches the gate without a prior block (stop_hook_active false) or the gate
 // passes. Past maxCompletionBlocks the findings are downgraded to warnings so
-// the turn ends, and the returned notice tells the user why. Without a session
+// the turn ends, and the returned notice tells the user why; the streak stays
+// exhausted until the provider reaches the gate fresh again. Without a session
 // to count in, one continuation is allowed.
 func applyCompletionGate(
 	store *hooksession.Store,
@@ -93,7 +98,7 @@ func applyCompletionGate(
 		return errs, ""
 	}
 
-	gate := string(hookCtx.Event)
+	gate := completionGateKey(hookCtx)
 	tracked := store != nil && hookCtx.SessionID != ""
 
 	if !dispatcher.ShouldBlock(errs) {
@@ -104,7 +109,7 @@ func applyCompletionGate(
 		return errs, ""
 	}
 
-	attempt := 1
+	attempt, limit := 1, maxCompletionBlocks
 
 	switch {
 	case tracked:
@@ -124,25 +129,31 @@ func applyCompletionGate(
 			attempt = maxCompletionBlocks + 1
 		}
 	case hookCtx.StopHookActive:
-		attempt = maxCompletionBlocks + 1
+		attempt, limit = untrackedCompletionBlocks+1, untrackedCompletionBlocks
 	}
 
-	if attempt <= maxCompletionBlocks {
+	if attempt <= limit {
 		log.Info("completion gate blocked", "gate", gate, "attempt", attempt)
 
 		return errs, ""
 	}
 
-	if tracked {
-		resetCompletionBlocks(store, hookCtx, gate, log)
-	}
-
 	log.Info("completion gate released after repeated blocks",
 		"gate", gate,
-		"limit", maxCompletionBlocks,
+		"limit", limit,
 	)
 
-	return releaseBlocking(errs), completionReleaseNotice(hookCtx.EventName())
+	return releaseBlocking(errs), completionReleaseNotice(hookCtx.EventName(), limit)
+}
+
+// completionGateKey separates the counters of gates that can interleave:
+// parallel subagents share a session but each has its own stop streak.
+func completionGateKey(hookCtx *hook.Context) string {
+	if hookCtx.Event == hook.CanonicalEventSubagentStop && hookCtx.AgentID != "" {
+		return string(hookCtx.Event) + ":" + hookCtx.AgentID
+	}
+
+	return string(hookCtx.Event)
 }
 
 func resetCompletionBlocks(
@@ -176,16 +187,16 @@ func releaseBlocking(errs []*dispatcher.ValidationError) []*dispatcher.Validatio
 	return released
 }
 
-func completionReleaseNotice(eventName string) string {
+func completionReleaseNotice(eventName string, limit int) string {
 	if eventName == "" {
 		eventName = "completion"
 	}
 
 	return fmt.Sprintf(
-		"klaudiush: the %s check kept failing after %d continuations, so the agent "+
+		"klaudiush: the %s check kept failing after %d continuation(s), so the agent "+
 			"was allowed to stop. The findings in this message are still unresolved; "+
 			"fix them before relying on this result.",
 		eventName,
-		maxCompletionBlocks,
+		limit,
 	)
 }

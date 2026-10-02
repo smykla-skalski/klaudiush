@@ -396,6 +396,19 @@ var _ = Describe("JSONParser", func() {
 			Expect(ctx.IsPermissionRequest()).To(BeTrue())
 		})
 
+		It("echoes Claude SubagentStart and PostToolUseFailure by name", func() {
+			for _, raw := range []string{"SubagentStart", "PostToolUseFailure"} {
+				input := `{"hook_event_name": "` + raw + `", "session_id": "s", "agent_id": "a1"}`
+
+				p := parser.NewJSONParser(bytes.NewReader([]byte(input)))
+				ctx, err := p.ParseWithOptions(parser.ParseOptions{Provider: hook.ProviderClaude})
+
+				Expect(err).NotTo(HaveOccurred())
+				Expect(ctx.EventName()).To(Equal(raw))
+				Expect(ctx.AgentID).To(Equal("a1"))
+			}
+		})
+
 		It("names Claude Stop and SubagentStop by their native events", func() {
 			for _, raw := range []string{"Stop", "SubagentStop", "SessionEnd", "StopFailure"} {
 				input := `{"hook_event_name": "` + raw + `", "session_id": "s", "stop_hook_active": true}`

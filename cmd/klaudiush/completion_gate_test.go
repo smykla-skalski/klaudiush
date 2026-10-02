@@ -71,7 +71,12 @@ var _ = Describe("applyCompletionGate", func() {
 			errs, _ = applyCompletionGate(
 				store, gateCtx(provider, raw, "sess", true), gateBlocking(), log,
 			)
-			Expect(dispatcher.ShouldBlock(errs)).To(BeTrue(), "counter restarts after release")
+			Expect(dispatcher.ShouldBlock(errs)).To(BeFalse(), "streak stays exhausted")
+
+			errs, _ = applyCompletionGate(
+				store, gateCtx(provider, raw, "sess", false), gateBlocking(), log,
+			)
+			Expect(dispatcher.ShouldBlock(errs)).To(BeTrue(), "a fresh stop restarts the count")
 		},
 		Entry("Claude Stop", hook.ProviderClaude, "Stop"),
 		Entry("Claude SubagentStop", hook.ProviderClaude, "SubagentStop"),
@@ -152,6 +157,29 @@ var _ = Describe("applyCompletionGate", func() {
 		Expect(dispatcher.ShouldBlock(errs)).To(BeTrue())
 	})
 
+	It("counts parallel subagents separately", func() {
+		subagent := func(agentID string, active bool) *hook.Context {
+			ctx := gateCtx(hook.ProviderClaude, "SubagentStop", "s", active)
+			ctx.AgentID = agentID
+
+			return ctx
+		}
+
+		applyCompletionGate(store, subagent("a", false), gateBlocking(), log)
+
+		for range maxCompletionBlocks - 1 {
+			applyCompletionGate(store, subagent("a", true), gateBlocking(), log)
+			applyCompletionGate(store, subagent("b", false), gateBlocking(), log)
+		}
+
+		errs, notice := applyCompletionGate(store, subagent("a", true), gateBlocking(), log)
+		Expect(dispatcher.ShouldBlock(errs)).To(BeFalse())
+		Expect(notice).NotTo(BeEmpty())
+
+		errs, _ = applyCompletionGate(store, subagent("b", true), gateBlocking(), log)
+		Expect(dispatcher.ShouldBlock(errs)).To(BeTrue())
+	})
+
 	It("allows one continuation without a session id", func() {
 		errs, _ := applyCompletionGate(
 			store, gateCtx(hook.ProviderClaude, "Stop", "", false), gateBlocking(), log,
@@ -162,7 +190,7 @@ var _ = Describe("applyCompletionGate", func() {
 			store, gateCtx(hook.ProviderClaude, "Stop", "", true), gateBlocking(), log,
 		)
 		Expect(dispatcher.ShouldBlock(errs)).To(BeFalse())
-		Expect(notice).NotTo(BeEmpty())
+		Expect(notice).To(ContainSubstring("after 1 continuation"))
 	})
 
 	It("releases on a continued stop when the counter cannot be stored", func() {
@@ -203,6 +231,6 @@ var _ = Describe("applyCompletionGate", func() {
 	})
 
 	It("names a generic gate when the event has no name", func() {
-		Expect(completionReleaseNotice("")).To(ContainSubstring("completion check"))
+		Expect(completionReleaseNotice("", 3)).To(ContainSubstring("completion check"))
 	})
 })
