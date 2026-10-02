@@ -59,8 +59,10 @@ func (*NestingValidator) Validate(_ context.Context, hookCtx *hook.Context) *val
 		findings = append(findings, opacityFinding(o))
 	}
 
-	return validator.FailWithRef(validator.RefShellNesting, truncatedSummary(parsed.Opacities)).
-		AddFinding(findings...)
+	return validator.FailWithRef(
+		validator.RefShellNesting,
+		truncatedSummary(parsed.Opacities, parsed.MoreOpacities),
+	).AddFinding(findings...)
 }
 
 // Category returns the validator category for parallel execution.
@@ -86,11 +88,16 @@ func parseFailedFinding(err error) validator.Finding {
 }
 
 // truncatedSummary names the single cause, or counts several.
-func truncatedSummary(opacities []parser.Opacity) string {
-	switch len(opacities) {
-	case 0:
+func truncatedSummary(opacities []parser.Opacity, more bool) string {
+	switch {
+	case more:
+		return fmt.Sprintf(
+			"Command cannot be fully inspected: more than %d parts are opaque, the first are listed",
+			len(opacities),
+		)
+	case len(opacities) == 0:
 		return truncatedText
-	case 1:
+	case len(opacities) == 1:
 		return "Command cannot be inspected: " + causeSummary(opacities[0].Cause)
 	default:
 		return fmt.Sprintf(
@@ -129,7 +136,7 @@ func opacityFinding(o parser.Opacity) validator.Finding {
 	switch o.Cause {
 	case parser.OpacityDepthLimit:
 		f.Message = fmt.Sprintf(
-			"%s is nested more than %d launchers, scripts or aliases deep",
+			"%s launches commands nested more than %d launchers, scripts or aliases deep",
 			o.Operation, parser.MaxLaunchDepth,
 		)
 		f.Required = fmt.Sprintf(

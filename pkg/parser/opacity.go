@@ -45,11 +45,18 @@ type Opacity struct {
 	Detail    string
 }
 
-// maxOpacities bounds the opacities one parse keeps.
-const maxOpacities = 8
+// MaxOpacities bounds the opacities one parse keeps. One slot is held for an
+// exhausted work budget, so it is reported however many came before.
+const MaxOpacities = 8
 
 // maxShownNameLen bounds a name shown in an opacity.
 const maxShownNameLen = 32
+
+// minTokenLen is the shortest name checked for looking like a secret.
+const minTokenLen = 6
+
+// digits are the characters that make a mixed name look like a secret.
+const digits = "0123456789"
 
 // hiddenName stands in for a name that is not safe to show.
 const hiddenName = "<hidden>"
@@ -69,16 +76,44 @@ var shownName = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_.+@-]*$`)
 // safeName returns name when it is plain and short enough to show, and a
 // placeholder otherwise, so a diagnostic never carries command text.
 func safeName(name string) string {
-	if len(name) > maxShownNameLen || !shownName.MatchString(name) {
+	if len(name) > maxShownNameLen || !shownName.MatchString(name) || tokenLike(name) {
 		return hiddenName
 	}
 
 	return name
 }
 
+// tokenLike reports a name that mixes letters and digits like a key or
+// password would, unless it is a program or git command klaudiush knows.
+func tokenLike(name string) bool {
+	if len(name) < minTokenLen || gitBuiltins[name] {
+		return false
+	}
+
+	if _, ok := launchers[name]; ok {
+		return false
+	}
+
+	if _, ok := interpreters[name]; ok {
+		return false
+	}
+
+	return strings.ContainsAny(name, digits) &&
+		strings.ContainsFunc(name, func(r rune) bool {
+			return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')
+		})
+}
+
 // scriptName returns the shown name of a script file.
 func scriptName(path string) string {
-	return safeName(filepath.Base(path))
+	switch {
+	case path == "-" || path == devStdin:
+		return "stdin"
+	case strings.HasPrefix(path, procSubstPrefix):
+		return "process substitution"
+	default:
+		return safeName(filepath.Base(path))
+	}
 }
 
 // opaque records that something could not be inspected, so the parse fails
@@ -102,8 +137,18 @@ func (w *astWalker) opaque(cause OpacityCause, operation, detail string) {
 		Detail:    detail,
 	}
 
-	if len(w.state.opacities) >= maxOpacities ||
-		slices.ContainsFunc(w.state.opacities, o.equal) {
+	if slices.ContainsFunc(w.state.opacities, o.equal) {
+		return
+	}
+
+	limit := MaxOpacities - 1
+	if cause == OpacityWorkBudget {
+		limit = MaxOpacities
+	}
+
+	if len(w.state.opacities) >= limit {
+		w.state.moreOpacities = true
+
 		return
 	}
 

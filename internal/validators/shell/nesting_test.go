@@ -48,7 +48,7 @@ var _ = Describe("NestingValidator", func() {
 		).To(ContainSubstring("nests launchers, scripts or aliases too deeply"))
 		Expect(result.Findings).To(ConsistOf(SatisfyAll(
 			HaveField("Location", "via "+strings.Repeat("env > ", 7)+"env"),
-			HaveField("Message", ContainSubstring("env is nested more than 8")),
+			HaveField("Message", ContainSubstring("env launches commands nested more than 8")),
 			HaveField("Required", ContainSubstring("at most 8")),
 			HaveField("Repair", ContainSubstring("Run the inner command directly")),
 		)))
@@ -155,6 +155,18 @@ var _ = Describe("NestingValidator", func() {
 
 		Expect(result.Message).To(ContainSubstring("2 parts are opaque"))
 		Expect(result.Findings).To(HaveLen(2))
+	})
+
+	It("says when it lists only the first opaque operations", func() {
+		parts := make([]string, 0, 12)
+		for i := range 12 {
+			parts = append(parts, "HOME=/nonexistent-klaudiush git zz"+strings.Repeat("z", i))
+		}
+
+		result := blocked(strings.Join(parts, "; "))
+
+		Expect(result.Message).To(ContainSubstring("more than 7 parts are opaque"))
+		Expect(result.Findings).To(HaveLen(7))
 	})
 
 	It("does not show command arguments", func() {

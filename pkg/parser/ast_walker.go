@@ -56,10 +56,12 @@ type astWalker struct {
 }
 
 // parseState is shared by a walker and all the child walkers of one parse.
-// opacities explains why the parse is truncated, and budgetReported keeps
-// the exhausted work budget from being explained more than once.
+// opacities explains why the parse is truncated, moreOpacities records that
+// some explanations were dropped, and budgetReported keeps the exhausted work
+// budget from being explained more than once.
 type parseState struct {
 	opacities      []Opacity
+	moreOpacities  bool
 	budgetReported bool
 	// work is how many more commands and scripts may be followed. Fan-out
 	// through functions, aliases or scripts would otherwise grow without

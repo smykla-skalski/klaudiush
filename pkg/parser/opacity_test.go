@@ -14,6 +14,8 @@ var _ = Describe("Opacity explanations", func() {
 		files: map[string]string{
 			"ok.sh":     "git status\n",
 			"broken.sh": "git commit -m x && (\n",
+			"outer.sh":  "bash ./inner.sh\n",
+			"inner.sh":  "git zz\n",
 		},
 		opaque: map[string]bool{"huge.sh": true},
 		programs: map[string]parser.Program{
@@ -153,18 +155,56 @@ var _ = Describe("Opacity explanations", func() {
 		Entry("a script named by a variable", `bash "$X"`, "<hidden>"),
 		Entry("a long script name", `bash "$D/`+strings.Repeat("a", 40)+`.sh"`, "<hidden>"),
 		Entry("a script under a directory", `bash "$D/x/run.sh"`, "run.sh"),
+		Entry("a subcommand that looks like a password", "git hunter2pw", "git <hidden>"),
+		Entry("a function that looks like a key",
+			`AKIAIOSFODNN7EXAMPLE() { git "${@:1}"; }; AKIAIOSFODNN7EXAMPLE x`, "<hidden>"),
+		Entry("a short mixed subcommand", "git zz9", "git zz9"),
 	)
 
-	It("keeps a bounded number of distinct opacities", func() {
-		parts := make([]string, 0, 20)
-		for i := range 20 {
-			parts = append(parts, "git zz"+strings.Repeat("z", i))
-		}
+	It("hides origin names that look like secrets but keeps known programs", func() {
+		o := only("ab12cd34() { python3 -c 'import os; os.system(\"bash ./huge.sh\")'; }; ab12cd34")
 
-		result := parse(strings.Join(parts, "; ") + "; git zz")
+		Expect(o.Origin).To(Equal([]string{"<hidden>", "python3", "bash"}))
+	})
+
+	It("keeps a bounded number of distinct opacities", func() {
+		result := parse(manyUnknown(20))
 
 		Expect(result.Truncated).To(BeTrue())
-		Expect(result.Opacities).To(HaveLen(8))
+		Expect(result.Opacities).To(HaveLen(parser.MaxOpacities - 1))
+		Expect(result.MoreOpacities).To(BeTrue())
+	})
+
+	It("keeps a slot for an exhausted budget", func() {
+		calls := strings.Repeat("g; ", 60)
+		result := parse(manyUnknown(20) + "; f() { " + calls + "}; g() { " +
+			strings.Repeat("git status; ", 60) + "}; f")
+
+		Expect(result.Opacities).To(HaveLen(parser.MaxOpacities))
+		Expect(result.Opacities[parser.MaxOpacities-1].Cause).To(Equal(parser.OpacityWorkBudget))
+	})
+
+	DescribeTable("names the scripts and aliases on the way",
+		func(command string, origin []string, operation string) {
+			o := only(command)
+
+			Expect(o.Origin).To(Equal(origin))
+			Expect(o.Operation).To(Equal(operation))
+		},
+		Entry("a script running a script", "bash ./outer.sh",
+			[]string{"bash", "outer.sh", "bash", "inner.sh"}, "git zz"),
+		Entry("a git shell alias", `git -c alias.yy='!git zz' yy`,
+			[]string{"git", "git alias yy"}, "git zz"),
+		Entry("a git shell alias that does not parse", `git -c alias.yy='!git status && (' yy`,
+			[]string{"git"}, "git alias yy"),
+		Entry("a same-line alias that does not parse", "alias g='git status && ('; g",
+			[]string{"g"}, "g"),
+		Entry("a script on stdin", "bash /dev/stdin <<< 'git zz'",
+			[]string{"bash", "stdin"}, "git zz"),
+	)
+
+	It("ignores stdin with nothing on it", func() {
+		Expect(parse("bash -").Truncated).To(BeFalse())
 	})
 
 	It("reports a repeated opacity once", func() {
@@ -173,3 +213,13 @@ var _ = Describe("Opacity explanations", func() {
 		Expect(result.Opacities).To(HaveLen(1))
 	})
 })
+
+// manyUnknown runs count distinct unknown git subcommands.
+func manyUnknown(count int) string {
+	parts := make([]string, 0, count)
+	for i := range count {
+		parts = append(parts, "git zz"+strings.Repeat("z", i))
+	}
+
+	return strings.Join(parts, "; ")
+}

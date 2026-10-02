@@ -28,6 +28,7 @@ const (
 	unresolvedProgram = "$(...)"
 	// procSubstPrefix names the files process substitutions stand for.
 	procSubstPrefix = "/dev/fd/klaudiush-"
+	devStdin        = "/dev/stdin"
 	// lookupWords is a lookup command plus the operand it names.
 	lookupWords = 2
 )
@@ -759,7 +760,7 @@ func (w *astWalker) followCode(cmd Command, code string, depth int) {
 // substitution, a file written earlier on the same line, or the file on disk.
 // For an opaque script it also says why.
 func (w *astWalker) scriptSource(path string, cmd Command) (string, ScriptStatus, string) {
-	if path == "-" || path == "/dev/stdin" {
+	if path == "-" || path == devStdin {
 		if cmd.Stdin == "" {
 			return "", ScriptMissing, ""
 		}
@@ -826,6 +827,11 @@ func (w *astWalker) walkScript(script string, parent Command, depth int, sw scri
 
 	if sw.name != "" {
 		child.expanding[sw.name] = true
+	}
+
+	if op := sw.operation(); (sw.name != "" || sw.label != "") &&
+		(len(child.via) == 0 || child.via[len(child.via)-1] != op) {
+		child.via = append(child.via, op)
 	}
 
 	for stmt, err := range syntax.NewParser().StmtsSeq(strings.NewReader(script)) {
