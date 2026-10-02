@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"path/filepath"
 	"time"
 
@@ -24,6 +25,8 @@ var _ = Describe("Gemini session lifecycle", func() {
 		)
 		log := logger.NewNoOpLogger()
 
+		Expect(os.WriteFile(filepath.Join(tempDir, "README.md"), nil, 0o600)).To(Succeed())
+
 		_, cleanup := applyHookSessionLifecycle(store, &hook.Context{
 			Provider:     hook.ProviderGemini,
 			Event:        hook.CanonicalEventSessionStart,
@@ -46,6 +49,7 @@ var _ = Describe("Gemini session lifecycle", func() {
 			Event:        hook.CanonicalEventAfterTool,
 			RawEventName: "AfterTool",
 			SessionID:    "sess-gemini-1",
+			WorkingDir:   tempDir,
 			ToolName:     hook.ToolTypeWrite,
 			ToolFamily:   hook.ToolFamilyWrite,
 			ToolInput: hook.ToolInput{

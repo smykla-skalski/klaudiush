@@ -70,6 +70,12 @@ func (v *recordingValidator) Validate(_ context.Context, hookCtx *hook.Context) 
 	}
 }
 
+// resultChecking marks a recording validator as one that reads the whole
+// file after the tool ran.
+type resultChecking struct{ *recordingValidator }
+
+func (resultChecking) ChecksToolResult() bool { return true }
+
 func (v *recordingValidator) paths() []string {
 	v.mu.Lock()
 	defer v.mu.Unlock()
@@ -182,7 +188,8 @@ var _ = Describe("Dispatcher Bash file writes after the tool ran", func() {
 		hookCtx.RecheckFiles = []string{repo + "/new.go"}
 
 		reg := validator.NewRegistry()
-		reg.Register(rec, validator.ToolTypeIs(hook.ToolTypeWrite))
+		reg.Register(resultChecking{rec}, validator.ToolTypeIs(hook.ToolTypeWrite))
+		reg.Register(&recordingValidator{}, validator.ToolTypeIs(hook.ToolTypeWrite))
 
 		outcome := dispatcher.NewDispatcher(reg, logger.NewNoOpLogger()).
 			DispatchWithChecks(context.Background(), hookCtx)
@@ -192,7 +199,7 @@ var _ = Describe("Dispatcher Bash file writes after the tool ran", func() {
 			Validator: "recording",
 			Resource:  hook.ResourceFilePrefix + repo + "/new.go",
 		}))
-		Expect(outcome.Errors).To(HaveLen(1))
+		Expect(outcome.Errors).To(HaveLen(2))
 		Expect(outcome.Errors[0].Resource).To(Equal(hook.ResourceFilePrefix + repo + "/new.go"))
 	})
 

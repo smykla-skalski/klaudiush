@@ -275,3 +275,8 @@ func (v *TerraformValidator) isUseTflint() bool {
 func (*TerraformValidator) Category() validator.ValidatorCategory {
 	return validator.CategoryIO
 }
+
+// ChecksToolResult reports that the whole file is checked after a tool ran.
+func (*TerraformValidator) ChecksToolResult() bool {
+	return true
+}

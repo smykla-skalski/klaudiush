@@ -297,3 +297,8 @@ func (v *ShellScriptValidator) getContextLines() int {
 func (*ShellScriptValidator) Category() validator.ValidatorCategory {
 	return validator.CategoryIO
 }
+
+// ChecksToolResult reports that the whole file is checked after a tool ran.
+func (*ShellScriptValidator) ChecksToolResult() bool {
+	return true
+}

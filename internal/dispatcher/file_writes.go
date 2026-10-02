@@ -26,7 +26,8 @@ type fileWriteTarget struct {
 }
 
 // bashWriteTargets lists the files a shell command writes. After the command
-// ran, the files the provider reports as changed are added to the parsed ones.
+// ran, the files the provider reports as changed and the files with unresolved
+// findings that changed on disk are added to the parsed ones.
 func bashWriteTargets(
 	bashCtx *hook.Context,
 	writes []parser.FileWrite,
@@ -73,6 +74,15 @@ func bashWriteTargets(
 		seen[path] = len(targets)
 		targets = append(targets, fileWriteTarget{path: path})
 		added++
+	}
+
+	for _, path := range bashCtx.RecheckFiles {
+		if _, ok := seen[path]; ok {
+			continue
+		}
+
+		seen[path] = len(targets)
+		targets = append(targets, fileWriteTarget{path: path})
 	}
 
 	return targets

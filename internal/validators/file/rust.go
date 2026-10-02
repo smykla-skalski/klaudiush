@@ -262,3 +262,8 @@ func (v *RustValidator) isUseRustfmt() bool {
 
 	return true
 }
+
+// ChecksToolResult reports that the whole file is checked after a tool ran.
+func (*RustValidator) ChecksToolResult() bool {
+	return true
+}

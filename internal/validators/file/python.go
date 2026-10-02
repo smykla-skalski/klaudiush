@@ -201,3 +201,8 @@ func (v *PythonValidator) isUseRuff() bool {
 
 	return true
 }
+
+// ChecksToolResult reports that the whole file is checked after a tool ran.
+func (*PythonValidator) ChecksToolResult() bool {
+	return true
+}

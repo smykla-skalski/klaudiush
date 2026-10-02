@@ -341,3 +341,8 @@ func (v *GofumptValidator) getTimeout() time.Duration {
 func (*GofumptValidator) Category() validator.ValidatorCategory {
 	return validator.CategoryIO
 }
+
+// ChecksToolResult reports that the whole file is checked after a tool ran.
+func (*GofumptValidator) ChecksToolResult() bool {
+	return true
+}

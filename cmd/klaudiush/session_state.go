@@ -25,7 +25,7 @@ func prepareRecheck(store *hooksession.Store, hookCtx *hook.Context, log logger.
 		return
 	}
 
-	files, err := store.UnresolvedFiles(hookCtx.Provider, hookCtx.SessionID)
+	files, err := store.FilesToRecheck(hookCtx.Provider, hookCtx.SessionID)
 	if err != nil {
 		log.Info("failed to load unresolved hook session files", "error", err)
 

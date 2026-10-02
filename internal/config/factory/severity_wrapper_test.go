@@ -95,3 +95,19 @@ func TestWrapValidatorWithSeveritySkipsDefaultErrorSeverity(t *testing.T) {
 		t.Fatal("expected error severity to preserve blocking result")
 	}
 }
+
+type fakeResultChecker struct{ fakeValidator }
+
+func (fakeResultChecker) ChecksToolResult() bool { return true }
+
+func TestWrapValidatorWithSeverityForwardsChecksToolResult(t *testing.T) {
+	severity := fakeSeverityConfig{severity: config.SeverityWarning}
+
+	if !validator.ChecksToolResult(wrapValidatorWithSeverity(fakeResultChecker{}, severity)) {
+		t.Fatal("wrapped result checker should still check the tool result")
+	}
+
+	if validator.ChecksToolResult(wrapValidatorWithSeverity(fakeValidator{}, severity)) {
+		t.Fatal("wrapped input-only validator should not check the tool result")
+	}
+}

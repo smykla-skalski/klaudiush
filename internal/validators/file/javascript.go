@@ -202,3 +202,8 @@ func (v *JavaScriptValidator) isUseOxlint() bool {
 
 	return true
 }
+
+// ChecksToolResult reports that the whole file is checked after a tool ran.
+func (*JavaScriptValidator) ChecksToolResult() bool {
+	return true
+}

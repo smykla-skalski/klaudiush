@@ -3,6 +3,7 @@ package hooksession
 
 import (
 	"encoding/json"
+	"io/fs"
 	"maps"
 	"os"
 	"path/filepath"
@@ -26,6 +27,10 @@ const (
 
 	// maxResolvedHistory bounds the resolved findings kept per session.
 	maxResolvedHistory = 50
+
+	// maxUnresolved bounds the unresolved findings kept per session; the
+	// oldest are dropped first.
+	maxUnresolved = 100
 )
 
 type state struct {
@@ -154,12 +159,35 @@ func (s *Store) Record(
 	errs []*dispatcher.ValidationError,
 	checks []dispatcher.Check,
 ) error {
-	if hookCtx == nil {
+	if hookCtx == nil || hookCtx.Provider == hook.ProviderUnknown || hookCtx.SessionID == "" {
 		return nil
 	}
 
-	return s.updateEntry(hookCtx.Provider, hookCtx.SessionID, true, func(entry *sessionEntry) {
-		entry.record(hookCtx, errs, checks, s.now())
+	return s.update(func(st *state) bool {
+		key := sessionKey(hookCtx.Provider, hookCtx.SessionID)
+		now := s.now()
+
+		entry := st.Sessions[key]
+		if entry == nil {
+			if len(errs) == 0 {
+				return false
+			}
+
+			entry = &sessionEntry{
+				Provider:  hookCtx.ProviderName(),
+				SessionID: hookCtx.SessionID,
+				StartedAt: now,
+			}
+			st.Sessions[key] = entry
+		}
+
+		if !entry.record(hookCtx, errs, checks, now) {
+			return false
+		}
+
+		entry.UpdatedAt = now
+
+		return true
 	})
 }
 
@@ -183,9 +211,9 @@ func (s *Store) AgentErrors(
 	})
 }
 
-// UnresolvedFiles returns the canonical paths of files with unresolved
-// findings in a provider/session pair.
-func (s *Store) UnresolvedFiles(provider hook.Provider, sessionID string) ([]string, error) {
+// FilesToRecheck returns the canonical paths of files with unresolved
+// findings that changed on disk since the findings were last reported.
+func (s *Store) FilesToRecheck(provider hook.Provider, sessionID string) ([]string, error) {
 	if provider == hook.ProviderUnknown || sessionID == "" {
 		return nil, nil
 	}
@@ -200,11 +228,18 @@ func (s *Store) UnresolvedFiles(provider hook.Provider, sessionID string) ([]str
 		return nil, nil
 	}
 
-	var files []string
+	lastSeen := make(map[string]time.Time)
 
 	for _, item := range entry.Findings {
-		if path, ok := strings.CutPrefix(item.resource(), hook.ResourceFilePrefix); ok &&
-			!slices.Contains(files, path) {
+		if path, ok := item.filePath(); ok && item.LastSeen.After(lastSeen[path]) {
+			lastSeen[path] = item.LastSeen
+		}
+	}
+
+	var files []string
+
+	for path, seen := range lastSeen {
+		if info, err := os.Stat(path); err == nil && info.ModTime().After(seen) {
 			files = append(files, path)
 		}
 	}
@@ -231,13 +266,15 @@ func (s *Store) unresolved(
 			return false
 		}
 
+		changed := entry.retire(s.now(), (*finding).fileGone)
+
 		for _, item := range entry.Findings {
 			if include(item) {
 				combined = append(combined, item.validationError())
 			}
 		}
 
-		return false
+		return changed
 	})
 	if err != nil {
 		return nil, err
@@ -381,6 +418,12 @@ func (s *Store) loadState() (*state, error) {
 		st.Sessions = make(map[string]*sessionEntry)
 	}
 
+	for _, entry := range st.Sessions {
+		if entry != nil {
+			entry.Findings = slices.DeleteFunc(entry.Findings, isLegacyFinding)
+		}
+	}
+
 	return &st, nil
 }
 
@@ -449,13 +492,14 @@ func (s *Store) cleanupExpired(st *state) bool {
 	return changed
 }
 
-// record resolves the findings the checks cleared and upserts errs.
+// record resolves the findings the checks cleared or whose file is gone,
+// upserts errs, and reports whether anything changed.
 func (e *sessionEntry) record(
 	hookCtx *hook.Context,
 	errs []*dispatcher.ValidationError,
 	checks []dispatcher.Check,
 	now time.Time,
-) {
+) bool {
 	current := make([]*finding, 0, len(errs))
 	reported := make(map[string]bool, len(errs))
 
@@ -466,24 +510,7 @@ func (e *sessionEntry) record(
 
 		item := findingFromValidationError(hookCtx, verr, now)
 		current = append(current, item)
-		reported[item.identityKey()] = true
-	}
-
-	e.resolve(checks, reported, now)
-
-	for _, item := range current {
-		e.upsert(item, now)
-	}
-}
-
-// resolve moves findings a check covered but did not report to the history.
-func (e *sessionEntry) resolve(
-	checks []dispatcher.Check,
-	reported map[string]bool,
-	now time.Time,
-) {
-	if len(checks) == 0 || len(e.Findings) == 0 {
-		return
+		reported[item.problemKey()] = true
 	}
 
 	checked := make(map[checkKey]bool, len(checks))
@@ -491,26 +518,54 @@ func (e *sessionEntry) resolve(
 		checked[checkKey{validator: check.Validator, resource: check.Resource}] = true
 	}
 
-	unresolved := e.Findings[:0]
+	changed := e.retire(now, func(item *finding) bool {
+		if checked[checkKey{validator: item.Validator, resource: item.Resource}] {
+			return !reported[item.problemKey()]
+		}
+
+		return item.fileGone()
+	})
+
+	for _, item := range current {
+		e.upsert(item, now)
+	}
+
+	if extra := len(e.Findings) - maxUnresolved; extra > 0 {
+		e.Findings = slices.Delete(e.Findings, 0, extra)
+	}
+
+	return changed || len(current) > 0
+}
+
+// retire moves the unresolved findings resolved reports on to the history
+// and reports whether there were any.
+func (e *sessionEntry) retire(now time.Time, resolved func(*finding) bool) bool {
+	unresolved := make([]*finding, 0, len(e.Findings))
+	changed := false
 
 	for _, item := range e.Findings {
-		key := checkKey{validator: item.Validator, resource: item.resource()}
-		if !checked[key] || reported[item.identityKey()] {
+		if !resolved(item) {
 			unresolved = append(unresolved, item)
 
 			continue
 		}
 
-		item.ResolvedAt = now
-		e.Resolved = append(e.Resolved, item)
+		changed = true
+
+		e.Resolved = append(e.Resolved, item.historyEntry(now))
 	}
 
-	clear(e.Findings[len(unresolved):])
+	if !changed {
+		return false
+	}
+
 	e.Findings = unresolved
 
 	if extra := len(e.Resolved) - maxResolvedHistory; extra > 0 {
 		e.Resolved = slices.Delete(e.Resolved, 0, extra)
 	}
+
+	return true
 }
 
 // upsert adds item or refreshes the matching unresolved finding with the
@@ -609,38 +664,67 @@ func (f *finding) validationError() *dispatcher.ValidationError {
 		BypassReason: f.BypassReason,
 		Findings:     slices.Clone(f.Findings),
 		Unavailable:  f.Unavailable,
-		Resource:     f.resource(),
+		Resource:     f.Resource,
 	}
 }
 
-// resource returns what the finding is about. Findings stored before
-// resources were recorded fall back to the evidence they kept.
-func (f *finding) resource() string {
-	if f.Resource != "" {
-		return f.Resource
-	}
-
-	switch {
-	case f.FilePath != "" && f.Command == "":
-		return hook.ResourceFilePrefix + hook.CanonicalFilePath("", f.FilePath)
-	case f.Command != "":
-		return hook.ResourceCommandPrefix + f.Command
-	default:
-		return hook.ResourceToolPrefix + f.ToolName
+// historyEntry is the slim record of a resolved finding kept for audit.
+func (f *finding) historyEntry(now time.Time) *finding {
+	return &finding{
+		Validator:   f.Validator,
+		Resource:    f.Resource,
+		AgentID:     f.AgentID,
+		Message:     f.Message,
+		ShouldBlock: f.ShouldBlock,
+		Reference:   f.Reference,
+		Count:       f.Count,
+		FirstSeen:   f.FirstSeen,
+		LastSeen:    f.LastSeen,
+		ResolvedAt:  now,
 	}
 }
 
-// identityKey tells findings apart within one session: the same problem on
-// the same resource is one finding however often it is reported.
+// filePath returns the file a finding is about, if it is about one.
+func (f *finding) filePath() (string, bool) {
+	return strings.CutPrefix(f.Resource, hook.ResourceFilePrefix)
+}
+
+// fileGone reports a finding about a file that no longer exists.
+func (f *finding) fileGone() bool {
+	path, ok := f.filePath()
+	if !ok {
+		return false
+	}
+
+	_, err := os.Lstat(path)
+
+	return errors.Is(err, fs.ErrNotExist)
+}
+
+// identityKey tells findings apart within one session: the same problem
+// reported by the same agent is one finding however often it is reported.
 func (f *finding) identityKey() string {
+	return f.AgentID + "\x1f" + f.problemKey()
+}
+
+// problemKey identifies the problem on its resource whoever reported it, so
+// a check that still sees it keeps every agent's copy unresolved.
+func (f *finding) problemKey() string {
 	return strings.Join([]string{
 		f.Validator,
-		f.resource(),
+		f.Resource,
 		f.Message,
 		strconv.FormatBool(f.ShouldBlock),
 		f.Reference,
 		strconv.FormatBool(f.Bypassed),
 	}, "\x1f")
+}
+
+// isLegacyFinding reports a finding stored before findings named the
+// resource they are about. Nothing could resolve it, and the releases that
+// wrote it dropped findings at every completion gate anyway.
+func isLegacyFinding(item *finding) bool {
+	return item == nil || item.Resource == ""
 }
 
 func sessionKey(provider hook.Provider, sessionID string) string {

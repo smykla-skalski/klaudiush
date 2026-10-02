@@ -268,12 +268,7 @@ func (d *Dispatcher) runValidators(
 
 	resource := hookCtx.Resource()
 
-	// A cancelled run may have skipped validators, so it proves nothing.
-	if checks != nil && ctx.Err() == nil {
-		for _, v := range validators {
-			*checks = append(*checks, Check{Validator: v.Name(), Resource: resource})
-		}
-	}
+	recordChecks(ctx, checks, validators, resource)
 
 	// Apply overrides to suppress disabled error codes
 	validationErrors = d.applyOverrides(validationErrors)
@@ -632,6 +627,30 @@ func (d *Dispatcher) resolver() parser.Resolver {
 	}
 
 	return d.pathResolver
+}
+
+// recordChecks adds the validators that ran on resource to checks. A
+// cancelled run may have skipped validators, so it proves nothing; on a file,
+// only validators that read the whole file after the tool prove it clean.
+func recordChecks(
+	ctx context.Context,
+	checks *[]Check,
+	validators []validator.Validator,
+	resource string,
+) {
+	if checks == nil || ctx.Err() != nil {
+		return
+	}
+
+	isFile := strings.HasPrefix(resource, hook.ResourceFilePrefix)
+
+	for _, v := range validators {
+		if isFile && !validator.ChecksToolResult(v) {
+			continue
+		}
+
+		*checks = append(*checks, Check{Validator: v.Name(), Resource: resource})
+	}
 }
 
 // ShouldBlock returns true if any validation error should block the operation.

@@ -607,3 +607,8 @@ func (v *WorkflowValidator) isUseActionlint() bool {
 func (*WorkflowValidator) Category() validator.ValidatorCategory {
 	return validator.CategoryIO
 }
+
+// ChecksToolResult reports that the whole file is checked after a tool ran.
+func (*WorkflowValidator) ChecksToolResult() bool {
+	return true
+}

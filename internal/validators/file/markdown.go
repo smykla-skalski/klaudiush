@@ -376,3 +376,8 @@ func getDisplayPath(filePath string) string {
 func (*MarkdownValidator) Category() validator.ValidatorCategory {
 	return validator.CategoryIO
 }
+
+// ChecksToolResult reports that the whole file is checked after a tool ran.
+func (*MarkdownValidator) ChecksToolResult() bool {
+	return true
+}

@@ -1,117 +1,179 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	"github.com/smykla-skalski/klaudiush/internal/dispatcher"
 	"github.com/smykla-skalski/klaudiush/internal/hooksession"
+	"github.com/smykla-skalski/klaudiush/internal/validator"
 	"github.com/smykla-skalski/klaudiush/pkg/hook"
 	"github.com/smykla-skalski/klaudiush/pkg/logger"
 )
+
+// diskValidator reads the file as the tool left it and fails while it holds
+// the text BAD.
+type diskValidator struct{ validator.BaseValidator }
+
+func (*diskValidator) ChecksToolResult() bool { return true }
+
+func (*diskValidator) Validate(_ context.Context, hookCtx *hook.Context) *validator.Result {
+	data, err := os.ReadFile(hookCtx.GetFilePath())
+	if err != nil || !strings.Contains(string(data), "BAD") {
+		return validator.Pass()
+	}
+
+	return validator.Fail("file holds BAD")
+}
+
+// inputValidator looks only at the tool input, so it cannot prove a file clean.
+type inputValidator struct{ validator.BaseValidator }
+
+func (*inputValidator) Validate(_ context.Context, hookCtx *hook.Context) *validator.Result {
+	if strings.Contains(hookCtx.ToolInput.Content, "SECRET") {
+		return validator.Fail("secret in input")
+	}
+
+	return validator.Pass()
+}
+
+// commandValidator fails commit commands with a bad message.
+type commandValidator struct{ validator.BaseValidator }
+
+func (*commandValidator) Validate(_ context.Context, hookCtx *hook.Context) *validator.Result {
+	if strings.Contains(hookCtx.GetCommand(), "bad") {
+		return validator.Fail("bad commit message")
+	}
+
+	return validator.Pass()
+}
 
 var _ = Describe("unresolved session findings", func() {
 	const sessionID = "sess-unresolved"
 
 	var (
 		store *hooksession.Store
+		disp  *dispatcher.Dispatcher
 		log   logger.Logger
 		dir   string
 	)
 
-	afterWrite := func(path, agentID string) *hook.Context {
-		return &hook.Context{
-			Provider:     hook.ProviderCodex,
+	path := func(name string) string { return filepath.Join(dir, name) }
+
+	writeFile := func(name, content string) {
+		Expect(os.WriteFile(path(name), []byte(content), 0o600)).To(Succeed())
+	}
+
+	changeLater := func(name, content string) {
+		writeFile(name, content)
+
+		later := time.Now().Add(time.Minute)
+		Expect(os.Chtimes(path(name), later, later)).To(Succeed())
+	}
+
+	run := func(hookCtx *hook.Context) []*dispatcher.ValidationError {
+		hookCtx.Provider = hook.ProviderCodex
+		hookCtx.SessionID = sessionID
+		hookCtx.WorkingDir = dir
+
+		errs, cleanup, _ := dispatchInSession(disp, store, hookCtx, log)
+		cleanup()
+
+		return errs
+	}
+
+	write := func(name, content, agentID string) []*dispatcher.ValidationError {
+		writeFile(name, content)
+
+		return run(&hook.Context{
 			Event:        hook.CanonicalEventAfterTool,
 			RawEventName: "PostToolUse",
-			SessionID:    sessionID,
 			AgentID:      agentID,
-			WorkingDir:   dir,
 			ToolName:     hook.ToolTypeWrite,
 			ToolFamily:   hook.ToolFamilyWrite,
-			ToolInput:    hook.ToolInput{FilePath: path},
-		}
+			ToolInput:    hook.ToolInput{FilePath: path(name), Content: content},
+		})
 	}
 
-	failure := func(hookCtx *hook.Context) []*dispatcher.ValidationError {
-		return []*dispatcher.ValidationError{{
-			Validator:   "file.markdown",
-			Message:     hookCtx.GetFilePath() + ": bad heading",
-			ShouldBlock: true,
-			Resource:    hookCtx.Resource(),
-		}}
+	bash := func(command, agentID string) []*dispatcher.ValidationError {
+		return run(&hook.Context{
+			Event:        hook.CanonicalEventAfterTool,
+			RawEventName: "PostToolUse",
+			AgentID:      agentID,
+			ToolName:     hook.ToolTypeBash,
+			ToolFamily:   hook.ToolFamilyShell,
+			ToolInput:    hook.ToolInput{Command: command},
+		})
 	}
 
-	check := func(hookCtx *hook.Context) []dispatcher.Check {
-		return []dispatcher.Check{{Validator: "file.markdown", Resource: hookCtx.Resource()}}
-	}
+	lifecycle := func(raw, agentID string, active bool) []*dispatcher.ValidationError {
+		hookCtx := gateCtx(hook.ProviderCodex, raw, sessionID, active)
+		hookCtx.AgentID = agentID
 
-	record := func(
-		hookCtx *hook.Context,
-		errs []*dispatcher.ValidationError,
-		checks []dispatcher.Check,
-	) {
-		_, cleanup := applyHookSessionLifecycle(store, hookCtx, errs, checks, log)
-		cleanup()
+		return run(hookCtx)
 	}
 
 	stop := func(active bool) []*dispatcher.ValidationError {
-		hookCtx := gateCtx(hook.ProviderCodex, "Stop", sessionID, active)
-		errs, cleanup := applyHookSessionLifecycle(store, hookCtx, nil, nil, log)
-		errs, _ = applyCompletionGate(store, hookCtx, errs, log)
-
-		cleanup()
-
-		return errs
-	}
-
-	subagentStop := func(agentID string) []*dispatcher.ValidationError {
-		hookCtx := gateCtx(hook.ProviderCodex, "SubagentStop", sessionID, false)
-		hookCtx.AgentID = agentID
-		errs, cleanup := applyHookSessionLifecycle(store, hookCtx, nil, nil, log)
-
-		cleanup()
-
-		return errs
+		return lifecycle("Stop", "", active)
 	}
 
 	BeforeEach(func() {
-		dir = GinkgoT().TempDir()
+		var err error
+
+		dir, err = filepath.EvalSymlinks(GinkgoT().TempDir())
+		Expect(err).NotTo(HaveOccurred())
+
 		store = hooksession.NewStore(
 			hooksession.WithStateFile(filepath.Join(dir, "state", "state.json")),
 		)
 		log = logger.NewNoOpLogger()
+
+		reg := validator.NewRegistry()
+		reg.Register(
+			&diskValidator{BaseValidator: *validator.NewBaseValidator("file.disk", log)},
+			validator.ToolTypeIs(hook.ToolTypeWrite),
+		)
+		reg.Register(
+			&inputValidator{BaseValidator: *validator.NewBaseValidator("file.input", log)},
+			validator.ToolTypeIs(hook.ToolTypeWrite),
+		)
+		reg.Register(
+			&commandValidator{BaseValidator: *validator.NewBaseValidator("git.commit", log)},
+			validator.ToolTypeIs(hook.ToolTypeBash),
+		)
+		disp = dispatcher.NewDispatcher(reg, log)
 	})
 
-	It("stops blocking completion once the file is repaired", func() {
-		broken := afterWrite("README.md", "")
-		record(broken, failure(broken), check(broken))
-		Expect(dispatcher.ShouldBlock(stop(false))).To(BeTrue())
+	It("stops reporting a file once a write repairs it", func() {
+		Expect(write("a.md", "BAD", "")).To(HaveLen(1))
 
-		repaired := afterWrite(filepath.Join(dir, "README.md"), "")
-		record(repaired, nil, check(repaired))
+		errs := stop(false)
+		Expect(errs).To(HaveLen(1))
+		Expect(errs[0].Message).To(ContainSubstring(path("a.md")))
+		Expect(dispatcher.ShouldBlock(errs)).To(BeFalse())
 
+		Expect(write("a.md", "good", "")).To(BeEmpty())
 		Expect(stop(false)).To(BeEmpty())
 	})
 
-	It("keeps an unresolved finding through a denied Stop", func() {
-		broken := afterWrite("README.md", "")
-		record(broken, failure(broken), check(broken))
+	It("resolves a command finding once the same check passes on the fix", func() {
+		Expect(dispatcher.ShouldBlock(bash("git commit -m bad", ""))).To(BeTrue())
 
 		Expect(dispatcher.ShouldBlock(stop(false))).To(BeTrue())
 		Expect(dispatcher.ShouldBlock(stop(true))).To(BeTrue())
 
-		combined, err := store.CombinedErrors(hook.ProviderCodex, sessionID)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(combined).To(HaveLen(1))
+		Expect(bash("git commit --amend -m good", "")).To(BeEmpty())
+		Expect(stop(true)).To(BeEmpty())
 	})
 
 	It("keeps findings unresolved after the gate releases the turn", func() {
-		broken := afterWrite("README.md", "")
-		record(broken, failure(broken), check(broken))
+		bash("git commit -m bad", "")
 
 		for attempt := 1; attempt <= maxCompletionBlocks; attempt++ {
 			Expect(dispatcher.ShouldBlock(stop(attempt > 1))).To(BeTrue())
@@ -121,70 +183,65 @@ var _ = Describe("unresolved session findings", func() {
 		Expect(dispatcher.ShouldBlock(stop(false))).To(BeTrue())
 	})
 
-	It("resolves only the resource that was checked again", func() {
-		first := afterWrite("a.md", "")
-		second := afterWrite("b.md", "")
+	It("resolves only the file that was checked again", func() {
+		write("a.md", "BAD", "")
+		write("b.md", "BAD", "")
 
-		record(first, failure(first), check(first))
-		record(second, failure(second), check(second))
-
-		record(first, nil, check(first))
+		write("a.md", "good", "")
 
 		errs := stop(false)
 		Expect(errs).To(HaveLen(1))
-		Expect(errs[0].Resource).To(Equal(second.Resource()))
+		Expect(errs[0].Resource).To(Equal(hook.ResourceFilePrefix + path("b.md")))
 	})
 
-	It("does not resolve a finding when a different validator passes", func() {
-		broken := afterWrite("README.md", "")
-		record(broken, failure(broken), check(broken))
+	It("does not let an input-only check clear a file finding", func() {
+		Expect(write("a.md", "SECRET", "")).To(HaveLen(1))
 
-		record(broken, nil, []dispatcher.Check{
-			{Validator: "file.shellscript", Resource: broken.Resource()},
-		})
+		Expect(write("a.md", "plain", "")).To(BeEmpty())
+		Expect(stop(false)).To(HaveLen(1))
+	})
+
+	It("rechecks a file changed outside a parsed write", func() {
+		write("a.md", "BAD", "")
+
+		changeLater("a.md", "good")
+		Expect(bash("sed -i '' s/BAD/good/ a.md", "")).To(BeEmpty())
+
+		Expect(stop(false)).To(BeEmpty())
+	})
+
+	It("still reports a file changed outside a write that stays broken", func() {
+		write("a.md", "BAD", "")
+
+		changeLater("a.md", "still BAD")
+		Expect(bash("true", "")).To(HaveLen(1))
 
 		Expect(stop(false)).To(HaveLen(1))
 	})
 
-	It("rechecks unresolved files after a tool", func() {
-		broken := afterWrite("README.md", "")
-		record(broken, failure(broken), check(broken))
+	It("drops findings about a deleted file", func() {
+		write("a.md", "BAD", "")
+		Expect(os.Remove(path("a.md"))).To(Succeed())
 
-		next := afterWrite("other.md", "")
-		prepareRecheck(store, next, log)
-		Expect(next.RecheckFiles).To(ConsistOf(hook.CanonicalFilePath(dir, "README.md")))
-		Expect(next.NeedsRecheck(filepath.Join(dir, "README.md"))).To(BeTrue())
-		Expect(next.NeedsRecheck("other.md")).To(BeFalse())
-
-		before := gateCtx(hook.ProviderCodex, "PreToolUse", sessionID, false)
-		prepareRecheck(store, before, log)
-		Expect(before.RecheckFiles).To(BeEmpty())
+		Expect(stop(false)).To(BeEmpty())
 	})
 
 	It("keeps parent and subagent work apart", func() {
-		parent := afterWrite("parent.md", "")
-		child := afterWrite("child.md", "agent-1")
+		bash("git commit -m bad", "")
+		bash("git commit -m bad", "agent-1")
 
-		record(parent, failure(parent), check(parent))
-		record(child, failure(child), check(child))
+		Expect(dispatcher.ShouldBlock(lifecycle("SubagentStop", "agent-1", false))).To(BeTrue())
+		Expect(lifecycle("SubagentStop", "agent-2", false)).To(BeEmpty())
+		Expect(lifecycle("SubagentStop", "", false)).To(BeEmpty())
 
-		childErrs := subagentStop("agent-1")
-		Expect(childErrs).To(HaveLen(1))
-		Expect(childErrs[0].Resource).To(Equal(child.Resource()))
-		Expect(subagentStop("agent-2")).To(BeEmpty())
-		Expect(subagentStop("")).To(BeEmpty())
-
-		subagentEnd := gateCtx(hook.ProviderCodex, "SessionEnd", sessionID, false)
-		subagentEnd.AgentID = "agent-1"
-		record(subagentEnd, nil, nil)
+		lifecycle("SessionEnd", "agent-1", false)
+		lifecycle("SessionStart", "agent-1", false)
+		lifecycle("SessionStart", "", false)
 
 		Expect(stop(false)).To(HaveLen(2))
-		Expect(subagentStop("agent-1")).To(HaveLen(1))
+		Expect(lifecycle("SubagentStop", "agent-1", false)).To(HaveLen(1))
 
-		record(gateCtx(hook.ProviderCodex, "SessionStart", sessionID, false), nil, nil)
-		Expect(stop(false)).To(HaveLen(2))
-
-		record(gateCtx(hook.ProviderCodex, "SessionEnd", sessionID, false), nil, nil)
+		lifecycle("SessionEnd", "", false)
 		Expect(stop(false)).To(BeEmpty())
 	})
 
@@ -194,14 +251,18 @@ var _ = Describe("unresolved session findings", func() {
 
 		store = hooksession.NewStore(hooksession.WithStateFile(stateFile))
 
-		hookCtx := afterWrite("README.md", "")
+		hookCtx := &hook.Context{
+			Provider:     hook.ProviderCodex,
+			Event:        hook.CanonicalEventAfterTool,
+			SessionID:    sessionID,
+			RawEventName: "PostToolUse",
+		}
 		prepareRecheck(store, hookCtx, log)
 		Expect(hookCtx.RecheckFiles).To(BeEmpty())
 
-		original := failure(hookCtx)
-
 		Expect(stop(false)).To(BeEmpty())
 
+		original := []*dispatcher.ValidationError{{Validator: "v", Message: "m"}}
 		subErrs, cleanup := applyHookSessionLifecycle(
 			store,
 			&hook.Context{
@@ -215,6 +276,7 @@ var _ = Describe("unresolved session findings", func() {
 			nil,
 			log,
 		)
+
 		cleanup()
 		Expect(subErrs).To(Equal(original))
 	})

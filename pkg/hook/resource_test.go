@@ -63,7 +63,7 @@ func TestContextResource(t *testing.T) {
 		{
 			"shell command",
 			&Context{ToolName: ToolTypeBash, ToolInput: ToolInput{Command: "ls"}},
-			"command:ls",
+			ResourceCommand,
 		},
 		{
 			"read path",

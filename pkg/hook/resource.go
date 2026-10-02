@@ -5,11 +5,14 @@ import (
 	"slices"
 )
 
-// Resource kinds prefix the identity of what a validator checked.
+// Resource kinds identify what a validator checked. Files are told apart by
+// path. Commands are not: a command already ran, and the repair is a later,
+// different command (an amended commit, a push to another branch), so a
+// validator passing on any command clears its earlier command findings.
 const (
-	ResourceFilePrefix    = "file:"
-	ResourceCommandPrefix = "command:"
-	ResourceToolPrefix    = "tool:"
+	ResourceFilePrefix = "file:"
+	ResourceCommand    = "command"
+	ResourceToolPrefix = "tool:"
 )
 
 // CanonicalFilePath makes path absolute against workingDir and resolves
@@ -32,7 +35,7 @@ func CanonicalFilePath(workingDir, path string) string {
 }
 
 // Resource identifies what the validators of this context check: the file a
-// file tool touches, the command a shell tool runs, or else the tool itself.
+// file tool touches, any shell command, or else the tool itself.
 func (c *Context) Resource() string {
 	if c == nil {
 		return ""
@@ -44,8 +47,8 @@ func (c *Context) Resource() string {
 		}
 	}
 
-	if command := c.GetCommand(); command != "" {
-		return ResourceCommandPrefix + command
+	if c.GetCommand() != "" {
+		return ResourceCommand
 	}
 
 	if path := c.GetFilePath(); path != "" {

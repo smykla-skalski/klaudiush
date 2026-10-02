@@ -269,7 +269,7 @@ func run(cmd *cobra.Command, _ []string) error {
 		dispatcher.WithBypassPolicy(bypassPolicy),
 	)
 
-	errs, sessionCleanup, gateNotice := dispatchInSession(disp, ctx, log)
+	errs, sessionCleanup, gateNotice := dispatchInSession(disp, hooksession.NewStore(), ctx, log)
 
 	bt.mark("dispatch")
 
@@ -300,10 +300,10 @@ func run(cmd *cobra.Command, _ []string) error {
 // completion gates. The returned cleanup runs after the response is written.
 func dispatchInSession(
 	disp *dispatcher.Dispatcher,
+	sessionStore *hooksession.Store,
 	hookCtx *hook.Context,
 	log logger.Logger,
 ) ([]*dispatcher.ValidationError, func(), string) {
-	sessionStore := hooksession.NewStore()
 	prepareRecheck(sessionStore, hookCtx, log)
 
 	outcome := disp.DispatchWithChecks(context.Background(), hookCtx)
