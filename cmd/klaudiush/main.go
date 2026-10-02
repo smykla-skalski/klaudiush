@@ -273,6 +273,7 @@ func run(cmd *cobra.Command, _ []string) error {
 	errs := disp.Dispatch(context.Background(), ctx)
 	sessionStore := hooksession.NewStore()
 	errs, sessionCleanup := applyHookSessionLifecycle(sessionStore, ctx, errs, log)
+	errs, gateNotice := applyCompletionGate(sessionStore, ctx, errs, log)
 
 	bt.mark("dispatch")
 
@@ -284,6 +285,9 @@ func run(cmd *cobra.Command, _ []string) error {
 
 	// Collect user-only notices (bypass reminder, update availability)
 	notices := collectNotices(bypassPolicy, cfg, ctx, log)
+	if gateNotice != "" && cfg.Output.IsUserMessagesEnabled() {
+		notices = append(notices, gateNotice)
+	}
 
 	// Build and write response
 	writeErr := writeResponse(ctx, errs, patternWarnings, notices, cfg.Output, log)

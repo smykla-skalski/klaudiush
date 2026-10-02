@@ -62,7 +62,9 @@ var _ = Describe("BuildOpenCode", func() {
 		Expect(resp.SystemMessage).NotTo(BeEmpty())
 	})
 
-	It("blocks rather than denies on turn stop", func() {
+	// session.idle is a bus event the bridge only reports, so a decision
+	// there would promise enforcement opencode cannot deliver.
+	It("only reports findings on turn stop", func() {
 		resp := hookresponse.BuildOpenCode(
 			ctxFor(hook.CanonicalEventTurnStop),
 			blockingErrs(),
@@ -70,8 +72,10 @@ var _ = Describe("BuildOpenCode", func() {
 		)
 
 		Expect(resp).NotTo(BeNil())
-		Expect(resp.Decision).To(Equal("block"))
-		Expect(resp.Reason).To(ContainSubstring("Force push is blocked"))
+		Expect(resp.Decision).To(BeEmpty())
+		Expect(resp.Reason).To(BeEmpty())
+		Expect(resp.HookSpecificOutput).To(BeNil())
+		Expect(resp.SystemMessage).To(ContainSubstring("Force push is blocked"))
 	})
 
 	// The tool already ran, so findings are advisory context, never a denial.

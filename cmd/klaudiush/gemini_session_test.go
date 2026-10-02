@@ -15,7 +15,7 @@ import (
 )
 
 var _ = Describe("Gemini session lifecycle", func() {
-	It("aggregates AfterTool findings until SessionEnd", func() {
+	It("aggregates AfterTool findings until AfterAgent", func() {
 		tempDir := GinkgoT().TempDir()
 		currentTime := time.Date(2026, 3, 11, 12, 0, 0, 0, time.UTC)
 		store := hooksession.NewStore(
@@ -59,7 +59,7 @@ var _ = Describe("Gemini session lifecycle", func() {
 		sessionEndErrs, cleanup := applyHookSessionLifecycle(store, &hook.Context{
 			Provider:     hook.ProviderGemini,
 			Event:        hook.CanonicalEventTurnStop,
-			RawEventName: "SessionEnd",
+			RawEventName: "AfterAgent",
 			SessionID:    "sess-gemini-1",
 		}, nil, log)
 		Expect(sessionEndErrs).To(HaveLen(1))
@@ -67,6 +67,40 @@ var _ = Describe("Gemini session lifecycle", func() {
 		cleanup()
 
 		combined, err := store.CombinedErrors(hook.ProviderGemini, "sess-gemini-1")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(combined).To(BeEmpty())
+	})
+
+	It("drops session state on SessionEnd without reporting stored findings", func() {
+		tempDir := GinkgoT().TempDir()
+		store := hooksession.NewStore(
+			hooksession.WithStateFile(filepath.Join(tempDir, "state.json")),
+		)
+		log := logger.NewNoOpLogger()
+		afterTool := &hook.Context{
+			Provider:     hook.ProviderGemini,
+			Event:        hook.CanonicalEventAfterTool,
+			RawEventName: "AfterTool",
+			SessionID:    "sess-gemini-2",
+		}
+
+		_, cleanup := applyHookSessionLifecycle(store, afterTool, []*dispatcher.ValidationError{{
+			Validator:   "file.markdown",
+			Message:     "missing heading",
+			ShouldBlock: true,
+		}}, log)
+		cleanup()
+
+		errs, cleanup := applyHookSessionLifecycle(store, &hook.Context{
+			Provider:     hook.ProviderGemini,
+			Event:        hook.CanonicalEventSessionEnd,
+			RawEventName: "SessionEnd",
+			SessionID:    "sess-gemini-2",
+		}, nil, log)
+		Expect(errs).To(BeEmpty())
+		cleanup()
+
+		combined, err := store.CombinedErrors(hook.ProviderGemini, "sess-gemini-2")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(combined).To(BeEmpty())
 	})

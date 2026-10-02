@@ -30,7 +30,7 @@ func TestNormalizeEventName_OpenCodeHookIDs(t *testing.T) {
 		},
 		{"session created", "session.created", CanonicalEventSessionStart},
 		{"session idle", "session.idle", CanonicalEventTurnStop},
-		{"session error", "session.error", CanonicalEventTurnStop},
+		{"session error is observational", "session.error", CanonicalEventStopFailure},
 		{"session compacting", "session.compacting", CanonicalEventPreCompress},
 		{"session compacted", "session.compacted", CanonicalEventPostCompact},
 		{"chat message", "chat.message", CanonicalEventUserPromptSubmit},
@@ -38,13 +38,17 @@ func TestNormalizeEventName_OpenCodeHookIDs(t *testing.T) {
 		{"permission updated legacy spelling", "permission.updated", CanonicalEventNotification},
 		{"claude user prompt alias", "UserPromptSubmit", CanonicalEventUserPromptSubmit},
 		{"subagent start folds onto session start", "SubagentStart", CanonicalEventSessionStart},
-		{"subagent stop folds onto turn stop", "SubagentStop", CanonicalEventTurnStop},
+		{"subagent stop gates the subagent", "SubagentStop", CanonicalEventSubagentStop},
 		{
 			"post tool use failure folds onto after tool",
 			"PostToolUseFailure",
 			CanonicalEventAfterTool,
 		},
-		{"stop failure folds onto turn stop", "StopFailure", CanonicalEventTurnStop},
+		{"stop failure is observational", "StopFailure", CanonicalEventStopFailure},
+		{"session end is observational", "SessionEnd", CanonicalEventSessionEnd},
+		{"gemini after agent is the turn stop", "AfterAgent", CanonicalEventTurnStop},
+		{"claude stop", "Stop", CanonicalEventTurnStop},
+		{"permission request gates before the tool", "PermissionRequest", CanonicalEventBeforeTool},
 	}
 
 	for _, tt := range tests {

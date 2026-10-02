@@ -189,3 +189,69 @@ func TestStoreClearAndCleanupIsolateProviders(t *testing.T) {
 		t.Fatalf("expected stale session to be cleaned up")
 	}
 }
+
+func TestStoreCompletionBlocksSurviveClearFindings(t *testing.T) {
+	store := NewStore(WithStateFile(filepath.Join(t.TempDir(), "state.json")))
+
+	count, err := store.RecordCompletionBlock(hook.ProviderClaude, "sess", "turn_stop", false)
+	if err != nil || count != 1 {
+		t.Fatalf("first block = %d, %v; want 1, nil", count, err)
+	}
+
+	err = store.Append(&hook.Context{
+		Provider:  hook.ProviderClaude,
+		Event:     hook.CanonicalEventAfterTool,
+		SessionID: "sess",
+	}, []*dispatcher.ValidationError{{Validator: "v", Message: "m", ShouldBlock: true}})
+	if err != nil {
+		t.Fatalf("Append() error = %v", err)
+	}
+
+	err = store.ClearFindings(hook.ProviderClaude, "sess")
+	if err != nil {
+		t.Fatalf("ClearFindings() error = %v", err)
+	}
+
+	combined, err := store.CombinedErrors(hook.ProviderClaude, "sess")
+	if err != nil || len(combined) != 0 {
+		t.Fatalf("CombinedErrors() = %v, %v; want empty", combined, err)
+	}
+
+	count, err = store.RecordCompletionBlock(hook.ProviderClaude, "sess", "turn_stop", true)
+	if err != nil || count != 2 {
+		t.Fatalf("continued block = %d, %v; want 2, nil", count, err)
+	}
+
+	count, err = store.RecordCompletionBlock(hook.ProviderClaude, "sess", "turn_stop", false)
+	if err != nil || count != 1 {
+		t.Fatalf("fresh block = %d, %v; want 1, nil", count, err)
+	}
+
+	err = store.ResetCompletionBlocks(hook.ProviderClaude, "sess", "turn_stop")
+	if err != nil {
+		t.Fatalf("ResetCompletionBlocks() error = %v", err)
+	}
+
+	count, err = store.RecordCompletionBlock(hook.ProviderClaude, "sess", "turn_stop", true)
+	if err != nil || count != 1 {
+		t.Fatalf("block after reset = %d, %v; want 1, nil", count, err)
+	}
+}
+
+func TestStoreCompletionBlocksIgnoreMissingSessions(t *testing.T) {
+	stateFile := filepath.Join(t.TempDir(), "state.json")
+	store := NewStore(WithStateFile(stateFile))
+
+	count, err := store.RecordCompletionBlock(hook.ProviderUnknown, "sess", "turn_stop", false)
+	if err != nil || count != 0 {
+		t.Fatalf("unknown provider = %d, %v; want 0, nil", count, err)
+	}
+
+	if err := store.ResetCompletionBlocks(hook.ProviderClaude, "missing", "turn_stop"); err != nil {
+		t.Fatalf("ResetCompletionBlocks() error = %v", err)
+	}
+
+	if err := store.ClearFindings(hook.ProviderClaude, ""); err != nil {
+		t.Fatalf("ClearFindings() error = %v", err)
+	}
+}

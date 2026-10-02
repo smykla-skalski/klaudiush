@@ -137,10 +137,64 @@ func TestDisplayEventName_NewEvents(t *testing.T) {
 			expected:  "ElicitationResult",
 		},
 		{
-			name:      "claude post compact returns empty",
+			name:      "claude post compact",
 			provider:  ProviderClaude,
 			canonical: CanonicalEventPostCompact,
+			expected:  "PostCompact",
+		},
+		{
+			name:      "claude stop",
+			provider:  ProviderClaude,
+			canonical: CanonicalEventTurnStop,
+			expected:  "Stop",
+		},
+		{
+			name:      "claude subagent stop",
+			provider:  ProviderClaude,
+			canonical: CanonicalEventSubagentStop,
+			expected:  "SubagentStop",
+		},
+		{
+			name:      "claude session end",
+			provider:  ProviderClaude,
+			canonical: CanonicalEventSessionEnd,
+			expected:  "SessionEnd",
+		},
+		{
+			name:      "claude stop failure",
+			provider:  ProviderClaude,
+			canonical: CanonicalEventStopFailure,
+			expected:  "StopFailure",
+		},
+		{
+			name:      "claude unmapped event returns empty",
+			provider:  ProviderClaude,
+			canonical: CanonicalEventPreCompress,
 			expected:  "",
+		},
+		{
+			name:      "gemini after agent is the turn stop",
+			provider:  ProviderGemini,
+			canonical: CanonicalEventTurnStop,
+			expected:  "AfterAgent",
+		},
+		{
+			name:      "gemini session end",
+			provider:  ProviderGemini,
+			canonical: CanonicalEventSessionEnd,
+			expected:  "SessionEnd",
+		},
+		{
+			name:      "gemini unmapped event returns empty",
+			provider:  ProviderGemini,
+			canonical: CanonicalEventSubagentStop,
+			expected:  "",
+		},
+		{
+			name:      "codex subagent stop",
+			provider:  ProviderCodex,
+			canonical: CanonicalEventSubagentStop,
+			expected:  "SubagentStop",
 		},
 		// Codex
 		{

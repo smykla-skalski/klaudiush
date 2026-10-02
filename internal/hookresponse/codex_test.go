@@ -146,8 +146,8 @@ var _ = Describe("BuildCodex", func() {
 	It("emits only systemMessage for Codex events aliased onto another contract", func() {
 		resp := hookresponse.BuildForContext(&hook.Context{
 			Provider:     hook.ProviderCodex,
-			Event:        hook.CanonicalEventBeforeTool,
-			RawEventName: "PermissionRequest",
+			Event:        hook.CanonicalEventSessionStart,
+			RawEventName: "SubagentStart",
 		}, codexBlocking(), nil)
 
 		data, err := json.Marshal(resp)

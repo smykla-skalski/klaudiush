@@ -292,6 +292,20 @@ event_type = "before_tool"
 
 Prefer canonical values such as `before_tool`, `after_tool`, `session_start`, `turn_stop`, `shell`, and `write`. Legacy aliases such as `PreToolUse` and `Write` are still accepted.
 
+### Completion gates and lifecycle events
+
+What a `block` does depends on the event the provider fired:
+
+| Canonical event | Native events | Effect of a blocking finding |
+|:--|:--|:--|
+| `turn_stop` | Claude `Stop`, Codex `Stop`, Gemini `AfterAgent`, opencode `session.idle` | Keeps the agent working and hands it the findings (opencode only reports them) |
+| `subagent_stop` | Claude and Codex `SubagentStop` | Keeps the subagent working |
+| `session_end` | Claude, Codex, and Gemini `SessionEnd` | None, reported to the user where the provider shows it |
+| `stop_failure` | Claude `StopFailure` | None |
+| `before_tool` | Claude and Codex `PermissionRequest` | Denies the approval request |
+
+A completion gate keeps the agent working at most 3 times in a row. After that klaudiush lets the turn end, reports the findings as unresolved, and starts counting again on the next turn. Without a session id only one continuation is allowed.
+
 ## Actions
 
 ### block

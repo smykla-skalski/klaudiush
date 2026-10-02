@@ -12,7 +12,7 @@ type HookResponse struct {
 // HookSpecificOutput carries the permission decision and context for Claude.
 type HookSpecificOutput struct {
 	HookEventName            string `json:"hookEventName"`
-	PermissionDecision       string `json:"permissionDecision"`                 // "allow" or "deny"
+	PermissionDecision       string `json:"permissionDecision,omitempty"`       // "allow" or "deny"
 	PermissionDecisionReason string `json:"permissionDecisionReason,omitempty"` // shown to Claude
 	AdditionalContext        string `json:"additionalContext,omitempty"`        // behavioral framing for Claude
 }
@@ -76,9 +76,36 @@ type OpenCodeHookSpecificOutput struct {
 	AdditionalContext string `json:"additionalContext,omitempty"`
 }
 
-// ElicitationHookResponse is the response for Elicitation/ElicitationResult events.
+// ElicitationHookResponse is the response for Elicitation/ElicitationResult
+// events. Claude acts only on hookSpecificOutput and discards systemMessage
+// and continue for these events, so neither is modelled.
 type ElicitationHookResponse struct {
-	Action        string         `json:"action,omitempty"`
+	HookSpecificOutput *ElicitationOutput `json:"hookSpecificOutput,omitempty"`
+}
+
+// ElicitationOutput answers an MCP elicitation on the user's behalf.
+type ElicitationOutput struct {
+	HookEventName string         `json:"hookEventName"`
+	Action        string         `json:"action"`
 	Content       map[string]any `json:"content,omitempty"`
-	SystemMessage string         `json:"systemMessage,omitempty"`
+}
+
+// PermissionRequestResponse is the Claude and Codex PermissionRequest
+// response: a decision object instead of a PreToolUse permissionDecision.
+type PermissionRequestResponse struct {
+	HookSpecificOutput *PermissionRequestOutput `json:"hookSpecificOutput,omitempty"`
+	SystemMessage      string                   `json:"systemMessage,omitempty"`
+}
+
+// PermissionRequestOutput carries the PermissionRequest decision.
+type PermissionRequestOutput struct {
+	HookEventName string                     `json:"hookEventName"`
+	Decision      *PermissionRequestDecision `json:"decision,omitempty"`
+}
+
+// PermissionRequestDecision denies (or allows) the approval prompt. Message is
+// read only for a deny and tells the agent why.
+type PermissionRequestDecision struct {
+	Behavior string `json:"behavior"`
+	Message  string `json:"message,omitempty"`
 }

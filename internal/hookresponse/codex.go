@@ -54,7 +54,12 @@ func BuildCodex(
 		} else {
 			resp.HookSpecificOutput = codexContext(eventName, additionalContext)
 		}
-	case hook.CanonicalEventTurnStop, hook.CanonicalEventUserPromptSubmit:
+	case hook.CanonicalEventTurnStop, hook.CanonicalEventSubagentStop:
+		if len(blocking) > 0 {
+			resp.Decision = decisionBlock
+			resp.Reason = formatCompletionReason(blocking)
+		}
+	case hook.CanonicalEventUserPromptSubmit:
 		if len(blocking) > 0 {
 			resp.Decision = decisionBlock
 			resp.Reason = formatDecisionReason(blocking)
@@ -65,10 +70,16 @@ func BuildCodex(
 		resp.HookSpecificOutput = codexContext(eventName, additionalContext)
 	case hook.CanonicalEventUnknown, hook.CanonicalEventNotification,
 		hook.CanonicalEventPreCompress, hook.CanonicalEventElicitation,
-		hook.CanonicalEventElicitationResult:
+		hook.CanonicalEventElicitationResult, hook.CanonicalEventSessionEnd,
+		hook.CanonicalEventStopFailure:
 	}
 
-	return restrictCodexResponse(resp, capability)
+	resp = restrictCodexResponse(resp, capability)
+	if *resp == (CodexCommandResponse{}) {
+		return nil
+	}
+
+	return resp
 }
 
 func codexContext(eventName, additionalContext string) *CodexHookSpecificOutput {

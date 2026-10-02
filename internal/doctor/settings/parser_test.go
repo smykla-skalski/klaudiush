@@ -847,6 +847,38 @@ var _ = Describe("SettingsParser", func() {
 			Expect(hasHook).To(BeTrue())
 		})
 
+		It("registers the AfterAgent completion gate and stays idempotent", func() {
+			const binary = "/usr/local/bin/klaudiush"
+
+			Expect(os.WriteFile(settingsPath, []byte(`{"hooks":{
+  "SessionEnd": [{"hooks":[{"type":"command","command":"/usr/local/bin/klaudiush --provider gemini --event SessionEnd","timeout":30000}]}]
+}}`), 0o600)).To(Succeed())
+
+			unchanged, err := settings.InstallGeminiDispatcher(settingsPath, binary)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(unchanged).To(BeFalse())
+
+			parser := settings.NewGeminiSettingsParser(settingsPath)
+			result, err := parser.Parse()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.Hooks.AfterAgent).To(HaveLen(1))
+			Expect(result.Hooks.AfterAgent[0].Matcher).To(BeEmpty())
+			Expect(result.Hooks.AfterAgent[0].Hooks[0].Command).
+				To(Equal(settings.GeminiAfterAgentCommand(binary)))
+			Expect(result.Hooks.SessionEnd).To(HaveLen(1))
+
+			for _, alias := range []string{"AfterAgent", "turn_stop", "SessionEnd", "session_end"} {
+				hasHook, hookErr := parser.HasEventHook(alias, binary)
+				Expect(hookErr).NotTo(HaveOccurred())
+				Expect(hasHook).To(BeTrue(), alias)
+			}
+
+			unchanged, err = settings.InstallGeminiDispatcher(settingsPath, binary)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(unchanged).To(BeTrue())
+			Expect(settings.GeminiDispatcherEvents()).To(ContainElement("AfterAgent"))
+		})
+
 		It("expands tilde paths before reading settings.json", func() {
 			homeDir := filepath.Join(filepath.Dir(settingsPath), "home")
 			Expect(os.MkdirAll(filepath.Join(homeDir, ".gemini"), 0o755)).To(Succeed())

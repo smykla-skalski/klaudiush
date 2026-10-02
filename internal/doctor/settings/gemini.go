@@ -20,6 +20,7 @@ type GeminiSettingsFile struct {
 type GeminiHookEvents struct {
 	BeforeTool   []CodexMatcherGroup `json:"BeforeTool,omitempty"`
 	AfterTool    []CodexMatcherGroup `json:"AfterTool,omitempty"`
+	AfterAgent   []CodexMatcherGroup `json:"AfterAgent,omitempty"`
 	SessionStart []CodexMatcherGroup `json:"SessionStart,omitempty"`
 	SessionEnd   []CodexMatcherGroup `json:"SessionEnd,omitempty"`
 	Notification []CodexMatcherGroup `json:"Notification,omitempty"`
@@ -47,14 +48,7 @@ func (p *GeminiSettingsParser) Parse() (*GeminiSettingsFile, error) {
 
 // IsDispatcherRegistered checks whether any supported Gemini hook is configured for klaudiush.
 func (p *GeminiSettingsParser) IsDispatcherRegistered(dispatcherPath string) (bool, error) {
-	for _, eventName := range []string{
-		geminiEventBeforeTool,
-		geminiEventAfterTool,
-		geminiEventSessionStart,
-		geminiEventSessionEnd,
-		geminiEventNotification,
-		geminiEventPreCompress,
-	} {
+	for _, eventName := range GeminiDispatcherEvents() {
 		hasHook, err := p.HasEventHook(eventName, dispatcherPath)
 		if err != nil {
 			return false, err
@@ -92,7 +86,9 @@ func geminiEventGroups(settingsFile *GeminiSettingsFile, eventName string) []Cod
 		return settingsFile.Hooks.AfterTool
 	case "sessionstart", "session_start":
 		return settingsFile.Hooks.SessionStart
-	case "sessionend", "turn_stop":
+	case "afteragent", "turn_stop":
+		return settingsFile.Hooks.AfterAgent
+	case "sessionend", "session_end":
 		return settingsFile.Hooks.SessionEnd
 	case "notification":
 		return settingsFile.Hooks.Notification
