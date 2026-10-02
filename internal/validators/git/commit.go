@@ -112,7 +112,7 @@ func (v *CommitValidator) validateCommits(
 
 		res := v.validateGitCommit(ctx, gitCmd, hasGitAdd, result)
 		if attribution != nil {
-			return withAttribution(res, attribution)
+			return v.withAttribution(res, attribution, hookCtx.GetCommand(), gitCmd, result)
 		}
 
 		switch {
@@ -133,24 +133,46 @@ func (v *CommitValidator) validateCommits(
 // withAttribution reports command-level AI attribution together with the
 // message findings, so the agent repairs every violation in one retry. A
 // result without findings (missing flags, nothing staged) still yields to the
-// attribution block as before.
-func withAttribution(res, attribution *validator.Result) *validator.Result {
+// attribution block as before. When the message already has an attribution
+// finding, attribution elsewhere on the command gets its own finding.
+func (v *CommitValidator) withAttribution(
+	res, attribution *validator.Result,
+	command string,
+	gitCmd *parser.GitCommand,
+	parsed *parser.ParseResult,
+) *validator.Result {
 	if !res.ShouldBlock || len(res.Findings) == 0 {
 		return attribution
 	}
 
-	for _, f := range res.Findings {
-		if f.Reference == validator.RefGitClaudeAttr {
+	extra := attribution.Findings
+
+	if slices.ContainsFunc(res.Findings, func(f validator.Finding) bool {
+		return f.Reference == validator.RefGitClaudeAttr
+	}) {
+		msg, err := v.extractCommitMessage(gitCmd, parsed)
+		if err != nil || !containsAIAttribution(withoutMessage(command, msg)) {
 			return res
+		}
+
+		extra = []validator.Finding{commandAttributionFinding()}
+	}
+
+	res.Findings = validator.SortFindings(append(res.Findings, extra...), referenceFixOrder)
+
+	return res
+}
+
+// withoutMessage removes one copy of each message line from the command, so
+// what is left is the text the parsed message does not cover.
+func withoutMessage(command, message string) string {
+	for line := range strings.SplitSeq(message, "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			command = strings.Replace(command, line, "", 1)
 		}
 	}
 
-	res.Findings = validator.SortFindings(
-		append(res.Findings, attribution.Findings...),
-		referenceFixOrder,
-	)
-
-	return res
+	return command
 }
 
 // otherMessageSubcommands are the git subcommands that write a commit message

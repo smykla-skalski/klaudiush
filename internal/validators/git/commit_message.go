@@ -193,11 +193,19 @@ func (*CommitValidator) validateMarkdownInBody(lines []string) []string {
 	return markdownResult.Warnings
 }
 
-// markdownFindings turns body markdown warnings into findings.
+// markdownFindings turns body markdown warnings into findings. A warning
+// starts with "Line N:"; the context entries after it (previous line, header,
+// next line) describe the same violation, so they join its finding.
 func markdownFindings(warnings []string) []validator.Finding {
 	findings := make([]validator.Finding, 0, len(warnings))
 
 	for _, warning := range warnings {
+		if last := len(findings) - 1; last >= 0 && !strings.HasPrefix(warning, "Line ") {
+			findings[last].Message += "; " + warning
+
+			continue
+		}
+
 		findings = append(findings, validator.Finding{
 			Reference: validator.RefGitBadBody,
 			Location:  "body",

@@ -13,6 +13,7 @@ import (
 const (
 	locationTitle   = "title"
 	locationMessage = "message"
+	locationCommand = "command arguments outside the message"
 )
 
 // RuleResult contains the result of a rule validation including reference.
@@ -630,6 +631,16 @@ func aiAttributionFinding() validator.Finding {
 		Message:   "AI attribution found",
 		Required:  "no AI generation credit, co-author trailer or session link",
 		Repair:    "Delete the line that credits an AI assistant",
+	}
+}
+
+func commandAttributionFinding() validator.Finding {
+	return validator.Finding{
+		Reference: validator.RefGitClaudeAttr,
+		Location:  locationCommand,
+		Message:   "AI attribution in a --trailer, extra -m or other argument",
+		Required:  "no AI generation credit in any command argument",
+		Repair:    "Remove the AI credit from every --trailer and extra message argument",
 	}
 }
 
