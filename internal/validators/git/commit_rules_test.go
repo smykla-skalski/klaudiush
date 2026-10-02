@@ -484,3 +484,80 @@ var _ = Describe("ConventionalFormatRule cascading warning", func() {
 		Expect(allText).To(ContainSubstring("type(scope): prefix counts toward 50-char limit"))
 	})
 })
+
+var _ = Describe("rule findings", func() {
+	It("reports every PR URL as written in the message", func() {
+		result := git.NewPRReferenceRule().Validate(
+			&git.ParsedCommit{Title: "test", Valid: true},
+			"see github.com/o/r/pull/12 and http://github.com/o/r/pull/34 and #5",
+		)
+		Expect(result).NotTo(BeNil())
+
+		repairs := make([]string, 0, len(result.Findings))
+		for _, f := range result.Findings {
+			repairs = append(repairs, f.Repair)
+		}
+
+		Expect(repairs).To(ConsistOf(
+			"Replace '#5' with '5'",
+			"Replace 'github.com/o/r/pull/12' with '12'",
+			"Replace 'http://github.com/o/r/pull/34' with '34'",
+		))
+	})
+
+	It("counts body line length in characters", func() {
+		rule := git.NewBodyLineLengthRule(72, 0)
+		line := strings.Repeat("ż", 70)
+
+		Expect(rule.Validate(nil, "title\n\n"+line)).To(BeNil())
+
+		result := rule.Validate(nil, "title\n\n"+line+"ąąą")
+		Expect(result).NotTo(BeNil())
+		Expect(result.Findings).To(HaveLen(1))
+		Expect(result.Findings[0].Message).To(Equal("Body line is 73 characters long"))
+		Expect(result.Findings[0].Actual).To(Equal(line + "ąąą"))
+		Expect(result.Findings[0].Required).To(Equal("at most 72 characters per body line"))
+	})
+
+	It("mentions the tolerance in the requirement", func() {
+		result := git.NewBodyLineLengthRule(72, 5).Validate(nil, "t\n\n"+strings.Repeat("x", 80))
+		Expect(result).NotTo(BeNil())
+		Expect(result.Findings[0].Required).To(ContainSubstring("up to 77 tolerated"))
+	})
+
+	It("gives scope-only, custom pattern, infra scope and signoff findings", func() {
+		commit := &git.ParsedCommit{Title: "Bad Title", Valid: false}
+
+		scope := (&git.ScopeOnlyFormatRule{}).Validate(commit, "Bad Title")
+		Expect(scope.Findings).To(HaveLen(1))
+		Expect(scope.Findings[0].Repair).To(ContainSubstring("scope: description"))
+
+		custom := git.NewCustomPatternRule(`^JIRA-\d+`).Validate(commit, "Bad Title")
+		Expect(custom.Findings[0].Required).To(Equal(`matches ^JIRA-\d+`))
+
+		infra := git.NewInfraScopeMisuseRule().Validate(
+			&git.ParsedCommit{Title: "feat(ci): x", Valid: true}, "feat(ci): x",
+		)
+		Expect(infra.Findings[0].Repair).To(Equal("Replace 'feat(ci):' with 'ci(<scope>):'"))
+
+		signoff := (&git.SignoffRule{ExpectedSignoff: "A <a@b.c>"}).Validate(
+			nil, "t\n\nSigned-off-by: B <b@b.c>",
+		)
+		Expect(signoff.Findings[0].Required).To(Equal("Signed-off-by: A <a@b.c>"))
+
+		ai := git.NewAIAttributionRule().Validate(nil, "t\n\nGenerated with Claude Code")
+		Expect(ai.Findings).To(HaveLen(1))
+
+		forbidden := (&git.ForbiddenPatternRule{Patterns: []string{`tmp/`, `TODO`}}).Validate(
+			nil, "t\n\nsee tmp/x TODO",
+		)
+		Expect(forbidden.Findings).To(HaveLen(2))
+	})
+
+	It("names the missing scope", func() {
+		rule := &git.ConventionalFormatRule{ValidTypes: []string{"feat"}, RequireScope: true}
+		result := rule.Validate(&git.ParsedCommit{Title: "feat: x", Type: "feat", Valid: true}, "")
+		Expect(result.Findings[0].Message).To(Equal("Title has no scope"))
+		Expect(result.Findings[0].Repair).To(ContainSubstring("within 50 characters"))
+	})
+})

@@ -21,10 +21,14 @@ func BuildCodex(
 	}
 
 	blocking, warnings, bypassed := categorize(errs)
-	additionalContext := formatContextFor(hookCtx, blocking, warnings, bypassed, patternWarnings)
+	reasonSent := hookCtx.Event == hook.CanonicalEventBeforeTool
+	additionalContext := formatContextFor(
+		hookCtx, blocking, warnings, bypassed, patternWarnings, !reasonSent,
+	)
+	budget := agentBudgetFor(hookCtx)
 
 	resp := &CodexCommandResponse{
-		SystemMessage: FormatSystemMessage(errs),
+		SystemMessage: formatSystemMessageFor(hookCtx, errs),
 	}
 
 	capability, known := hook.ProviderEventCapability(hook.ProviderCodex, hookCtx.Event)
@@ -44,25 +48,28 @@ func BuildCodex(
 			}
 
 			resp.HookSpecificOutput.PermissionDecision = decisionDeny
-			resp.HookSpecificOutput.PermissionDecisionReason = formatDecisionReason(blocking)
+			resp.HookSpecificOutput.PermissionDecisionReason = formatDecisionReasonWithin(
+				blocking,
+				budget,
+			)
 		}
 	case hook.CanonicalEventSessionStart, hook.CanonicalEventPostCompact:
 		if len(blocking) > 0 {
 			stop := false
 			resp.Continue = &stop
-			resp.StopReason = formatDecisionReason(blocking)
+			resp.StopReason = formatDecisionReasonWithin(blocking, budget)
 		} else {
 			resp.HookSpecificOutput = codexContext(eventName, additionalContext)
 		}
 	case hook.CanonicalEventTurnStop, hook.CanonicalEventSubagentStop:
 		if len(blocking) > 0 {
 			resp.Decision = decisionBlock
-			resp.Reason = formatCompletionReason(blocking)
+			resp.Reason = formatCompletionReason(blocking, budget)
 		}
 	case hook.CanonicalEventUserPromptSubmit:
 		if len(blocking) > 0 {
 			resp.Decision = decisionBlock
-			resp.Reason = formatDecisionReason(blocking)
+			resp.Reason = formatDecisionReasonWithin(blocking, budget)
 		} else {
 			resp.HookSpecificOutput = codexContext(eventName, additionalContext)
 		}

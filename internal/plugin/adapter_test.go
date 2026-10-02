@@ -399,6 +399,7 @@ var _ = Describe("ValidatorAdapter", func() {
 			Expect(result.Passed).To(BeFalse())
 			Expect(result.ShouldBlock).To(BeTrue())
 			Expect(result.Message).To(ContainSubstring("Plugin error"))
+			Expect(result.Unavailable).To(BeTrue())
 		})
 	})
 

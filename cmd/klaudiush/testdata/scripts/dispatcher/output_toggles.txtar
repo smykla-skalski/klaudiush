@@ -12,7 +12,7 @@ mkdir .klaudiush
 stdin session-a.json
 exec klaudiush --hook-type PreToolUse
 stdout '"permissionDecision":"deny"'
-stdout 'Wrong for your workflow'
+stdout 'Blocked GIT0'
 stdout 'klaudiush still validates with approval prompts off'
 stdout 'plain-language sentence what klaudiush blocked'
 
@@ -21,7 +21,7 @@ cp validation-off.toml .klaudiush/config.toml
 stdin session-b.json
 exec klaudiush --hook-type PreToolUse
 stdout '"permissionDecision":"deny"'
-! stdout 'Wrong for your workflow'
+! stdout 'Blocked GIT0'
 stdout 'klaudiush still validates with approval prompts off'
 stdout 'plain-language sentence what klaudiush blocked'
 

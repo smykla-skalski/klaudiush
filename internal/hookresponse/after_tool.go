@@ -30,26 +30,42 @@ const (
 
 	failedToolUserNotice = "klaudiush checked the files a failed tool may have " +
 		"partly changed. The files below need repair."
+
+	afterToolUnavailableLead = "Automated klaudiush validation check after the tool ran. " +
+		"A required check could not run, so the result was not validated. " +
+		"Do not edit files for it; tell the user what failed."
 )
 
 // formatContextFor builds additionalContext for the event the hook received.
 // After a tool ran nothing can be prevented, so blocking findings ask for a
-// repair instead of a retry.
+// repair instead of a retry. withFindings lists the blocking findings in the
+// context, for responses that give the agent no decision reason.
 func formatContextFor(
 	hookCtx *hook.Context,
 	blocking, warnings, bypassed []*dispatcher.ValidationError,
 	patternWarnings []string,
+	withFindings bool,
 ) string {
-	text := formatAdditionalContext(blocking, warnings, bypassed, patternWarnings)
+	text := buildContext(contextRequest{
+		hookCtx:         hookCtx,
+		blocking:        blocking,
+		warnings:        warnings,
+		bypassed:        bypassed,
+		patternWarnings: patternWarnings,
+		withFindings:    withFindings,
+		budget:          agentBudgetFor(hookCtx),
+	})
 	if hookCtx == nil || !hookCtx.IsAfterTool() {
 		return text
 	}
 
 	if len(blocking) > 0 {
+		text = strings.Replace(text, unavailableContextLead, afterToolUnavailableLead, 1)
+
 		return strings.Replace(text, blockingContextLead, afterToolLead(hookCtx), 1)
 	}
 
-	if len(warnings) == 0 {
+	if !needsRepair(warnings) {
 		return text
 	}
 
@@ -58,16 +74,16 @@ func formatContextFor(
 
 // formatReasonFor builds the decision reason for the event the hook received.
 func formatReasonFor(hookCtx *hook.Context, blocking []*dispatcher.ValidationError) string {
-	reason := formatDecisionReason(blocking)
-	if hookCtx == nil || !hookCtx.IsAfterTool() {
-		return reason
+	prefix := ""
+
+	if hookCtx != nil && hookCtx.IsAfterTool() && needsRepair(blocking) {
+		prefix = afterToolReasonPrefix
+		if hookCtx.ToolFailed() {
+			prefix = failedToolReasonPrefix
+		}
 	}
 
-	if hookCtx.ToolFailed() {
-		return failedToolReasonPrefix + reason
-	}
-
-	return afterToolReasonPrefix + reason
+	return prefix + formatDecisionReasonWithin(blocking, agentBudgetFor(hookCtx)-len(prefix))
 }
 
 func warningLeadFor(hookCtx *hook.Context) string {
@@ -93,7 +109,8 @@ func noteAfterToolRepair(
 	errs []*dispatcher.ValidationError,
 	resp any,
 ) {
-	if hookCtx == nil || !hookCtx.IsAfterTool() || !dispatcher.ShouldBlock(errs) {
+	blocking, _, _ := categorize(errs)
+	if hookCtx == nil || !hookCtx.IsAfterTool() || !needsRepair(blocking) {
 		return
 	}
 
@@ -107,5 +124,19 @@ func noteAfterToolRepair(
 		notice = failedToolUserNotice
 	}
 
-	*p = notice + "\n\n" + *p
+	const separator = "\n\n"
+
+	*p = notice + separator + fitBudget(*p, humanBudget-len(notice)-len(separator))
+}
+
+// needsRepair reports whether any finding asks for a file change. A check that
+// could not run says nothing about the files.
+func needsRepair(errs []*dispatcher.ValidationError) bool {
+	for _, e := range errs {
+		if !e.Unavailable {
+			return true
+		}
+	}
+
+	return false
 }

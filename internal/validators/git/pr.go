@@ -149,8 +149,9 @@ func (v *PRValidator) buildPRTitleFormatRules(ctx context.Context) []CommitRule 
 	case commitStyleConventional:
 		// PR titles don't require scope (scope is optional)
 		formatRules = append(formatRules, &ConventionalFormatRule{
-			ValidTypes:   v.getValidTypes(),
-			RequireScope: false,
+			ValidTypes:     v.getValidTypes(),
+			RequireScope:   false,
+			TitleMaxLength: v.getTitleMaxLength(),
 		})
 		formatRules = append(formatRules, NewInfraScopeMisuseRule())
 
@@ -171,8 +172,9 @@ func (v *PRValidator) buildPRTitleFormatRules(ctx context.Context) []CommitRule 
 			formatRules = append(formatRules, &ScopeOnlyFormatRule{})
 		} else {
 			formatRules = append(formatRules, &ConventionalFormatRule{
-				ValidTypes:   v.getValidTypes(),
-				RequireScope: false,
+				ValidTypes:     v.getValidTypes(),
+				RequireScope:   false,
+				TitleMaxLength: v.getTitleMaxLength(),
 			})
 			formatRules = append(formatRules, NewInfraScopeMisuseRule())
 		}

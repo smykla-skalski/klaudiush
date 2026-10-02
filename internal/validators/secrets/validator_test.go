@@ -2,6 +2,7 @@ package secrets_test
 
 import (
 	"context"
+	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -278,6 +279,37 @@ secret = os.getenv("SECRET_KEY")
 		})
 	})
 
+	Describe("structured findings", func() {
+		It("reports every secret with a repair and without its value", func() {
+			token := "ghp_" + strings.Repeat("x", 36)
+			hookCtx.ToolInput.Content = "A=AKIAIOSFODNN7EXAMPLE\nB=" + token
+			result := v.Validate(context.Background(), hookCtx)
+
+			Expect(result.Passed).To(BeFalse())
+			Expect(result.Findings).To(HaveLen(2))
+
+			for _, f := range result.Findings {
+				Expect(f.Actual).To(BeEmpty())
+				Expect(f.Repair).NotTo(BeEmpty())
+				Expect(f.Message).NotTo(ContainSubstring(token))
+				Expect(f.Message).NotTo(ContainSubstring("AKIAIOSFODNN7EXAMPLE"))
+			}
+
+			Expect(result.Findings[0].Location).To(Equal("line 1"))
+			Expect(result.Findings[1].Location).To(Equal("line 2"))
+		})
+
+		It("keeps findings on warnings", func() {
+			cfg.BlockOnDetection = new(false)
+			v = secrets.NewSecretsValidator(logger.NewNoOpLogger(), detector, gitleaks, cfg, nil)
+			hookCtx.ToolInput.Content = "A=AKIAIOSFODNN7EXAMPLE"
+			result := v.Validate(context.Background(), hookCtx)
+
+			Expect(result.ShouldBlock).To(BeFalse())
+			Expect(result.Findings).To(HaveLen(1))
+		})
+	})
+
 	Describe("gitleaks integration", func() {
 		It("should use gitleaks when available and enabled", func() {
 			cfg.UseGitleaks = new(true)
@@ -295,6 +327,9 @@ secret = os.getenv("SECRET_KEY")
 			result := v.Validate(context.Background(), hookCtx)
 			Expect(result.Passed).To(BeFalse())
 			Expect(result.Message).To(ContainSubstring("Gitleaks"))
+			Expect(result.Findings).To(HaveLen(1))
+			Expect(result.Findings[0].Location).To(Equal("line 1"))
+			Expect(result.Findings[0].Repair).NotTo(BeEmpty())
 		})
 
 		It("should skip gitleaks when not available", func() {

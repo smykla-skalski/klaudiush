@@ -96,7 +96,7 @@ func buildForProvider(
 	switch hookCtx.Provider {
 	case hook.ProviderCodex:
 		if hookCtx.IsPermissionRequest() {
-			return BuildPermissionRequest(errs)
+			return permissionRequestWithin(errs, agentBudgetFor(hookCtx))
 		}
 
 		return BuildCodex(hookCtx, errs, patternWarnings)
@@ -122,17 +122,20 @@ func BuildGemini(
 	}
 
 	blocking, warnings, bypassed := categorize(errs)
-	additionalContext := formatContextFor(hookCtx, blocking, warnings, bypassed, patternWarnings)
+	additionalContext := formatContextFor(
+		hookCtx, blocking, warnings, bypassed, patternWarnings, true,
+	)
+	budget := agentBudgetFor(hookCtx)
 
 	resp := &GeminiCommandResponse{
-		SystemMessage: FormatSystemMessage(errs),
+		SystemMessage: formatSystemMessageFor(hookCtx, errs),
 	}
 
 	switch hookCtx.Event {
 	case hook.CanonicalEventBeforeTool:
 		if len(blocking) > 0 {
 			resp.Decision = decisionDeny
-			resp.Reason = formatDecisionReason(blocking)
+			resp.Reason = formatDecisionReasonWithin(blocking, budget)
 
 			return resp
 		}
@@ -155,7 +158,7 @@ func BuildGemini(
 	case hook.CanonicalEventTurnStop:
 		if len(blocking) > 0 {
 			resp.Decision = decisionDeny
-			resp.Reason = formatCompletionReason(blocking)
+			resp.Reason = formatCompletionReason(blocking, budget)
 		}
 	// Every other event is advisory: Gemini ignores flow control on
 	// SessionEnd, Notification, and PreCompress, and an unmapped event has no
@@ -177,18 +180,21 @@ func BuildOpenCode(
 	}
 
 	blocking, warnings, bypassed := categorize(errs)
-	additionalContext := formatContextFor(hookCtx, blocking, warnings, bypassed, patternWarnings)
+	additionalContext := formatContextFor(
+		hookCtx, blocking, warnings, bypassed, patternWarnings, true,
+	)
+	budget := agentBudgetFor(hookCtx)
 
 	resp := &OpenCodeCommandResponse{
 		Continue:      true,
-		SystemMessage: FormatSystemMessage(errs),
+		SystemMessage: formatSystemMessageFor(hookCtx, errs),
 	}
 
 	switch hookCtx.Event {
 	case hook.CanonicalEventBeforeTool:
 		if len(blocking) > 0 {
 			resp.Decision = decisionDeny
-			resp.Reason = formatDecisionReason(blocking)
+			resp.Reason = formatDecisionReasonWithin(blocking, budget)
 
 			return resp
 		}
@@ -204,7 +210,7 @@ func BuildOpenCode(
 	default:
 		if len(blocking) > 0 {
 			resp.Decision = decisionDeny
-			resp.Reason = formatDecisionReason(blocking)
+			resp.Reason = formatDecisionReasonWithin(blocking, budget)
 
 			return resp
 		}

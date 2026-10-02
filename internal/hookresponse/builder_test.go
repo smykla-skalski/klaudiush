@@ -48,10 +48,8 @@ var _ = Describe("Build", func() {
 		// Ref: instead of Reference:
 		Expect(resp.SystemMessage).To(ContainSubstring("Ref:"))
 		Expect(resp.SystemMessage).NotTo(ContainSubstring("Reference:"))
-		// Disable hint for blocking errors
-		Expect(
-			resp.SystemMessage,
-		).To(ContainSubstring("Wrong for your workflow? klaudiush disable GIT001"))
+		// Disable guidance stays behind explicit help
+		Expect(resp.SystemMessage).NotTo(ContainSubstring("klaudiush disable"))
 	})
 
 	It("returns deny for multiple blocking errors", func() {
@@ -77,7 +75,8 @@ var _ = Describe("Build", func() {
 		Expect(resp.HookSpecificOutput.PermissionDecision).To(Equal("deny"))
 		Expect(resp.HookSpecificOutput.PermissionDecisionReason).To(ContainSubstring("[GIT001]"))
 		Expect(resp.HookSpecificOutput.PermissionDecisionReason).To(ContainSubstring("[GIT002]"))
-		Expect(resp.HookSpecificOutput.PermissionDecisionReason).To(ContainSubstring(" | "))
+		Expect(resp.HookSpecificOutput.PermissionDecisionReason).To(Equal(
+			"[GIT001] Missing -s flag. Add -s flag\n[GIT002] Missing -S flag. Add -S flag"))
 	})
 
 	It("leaves the permission decision unset for warnings only", func() {
@@ -142,10 +141,8 @@ var _ = Describe("Build", func() {
 		Expect(resp.SystemMessage).To(ContainSubstring("line too long"))
 		Expect(resp.SystemMessage).NotTo(ContainSubstring("Validation Failed:"))
 		Expect(resp.SystemMessage).NotTo(ContainSubstring("Warnings:"))
-		// Disable hint for the blocking code
-		Expect(
-			resp.SystemMessage,
-		).To(ContainSubstring("Wrong for your workflow? klaudiush disable GIT001"))
+		Expect(resp.SystemMessage).To(ContainSubstring("Blocked GIT001: Missing -s flag"))
+		Expect(resp.SystemMessage).To(ContainSubstring("Warning: line too long"))
 	})
 
 	It("appends pattern warnings to deny-path additional context", func() {

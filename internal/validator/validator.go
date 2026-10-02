@@ -75,6 +75,13 @@ type Result struct {
 
 	// FixHint provides a short suggestion for fixing the issue.
 	FixHint string
+
+	// Findings lists every actionable violation behind this result, each with
+	// its own location, requirement and repair.
+	Findings []Finding
+
+	// Unavailable reports that the check itself could not run.
+	Unavailable bool
 }
 
 // Pass creates a passing validation result.

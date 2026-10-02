@@ -4,8 +4,16 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/smykla-skalski/klaudiush/internal/validator"
+	"github.com/smykla-skalski/klaudiush/pkg/config"
+)
+
+const (
+	locationTitle   = "title"
+	locationMessage = "message"
+	locationCommand = "command arguments outside the message"
 )
 
 // RuleResult contains the result of a rule validation including reference.
@@ -18,6 +26,9 @@ type RuleResult struct {
 
 	// Reference is the URL that uniquely identifies this type of validation failure.
 	Reference validator.Reference
+
+	// Findings lists each violation the rule found, with its repair.
+	Findings []validator.Finding
 }
 
 // CommitRule represents a validation rule for commit messages.
@@ -63,6 +74,23 @@ func (r *TitleLengthRule) Validate(commit *ParsedCommit, _ string) *RuleResult {
 			"type(scope): prefix counts toward the limit",
 			"Revert commits are exempt",
 		},
+		Findings: []validator.Finding{
+			{
+				Reference: validator.RefGitBadTitle,
+				Location:  locationTitle,
+				Message:   fmt.Sprintf("Title is %d characters long", titleLength),
+				Actual:    commit.Title,
+				Required: fmt.Sprintf(
+					"at most %d characters including any type(scope): prefix",
+					r.MaxLength,
+				),
+				Repair: fmt.Sprintf(
+					"Shorten the title to %d characters or fewer (%d over)",
+					r.MaxLength,
+					titleLength-r.MaxLength,
+				),
+			},
+		},
 	}
 }
 
@@ -70,6 +98,10 @@ func (r *TitleLengthRule) Validate(commit *ParsedCommit, _ string) *RuleResult {
 type ConventionalFormatRule struct {
 	ValidTypes   []string
 	RequireScope bool
+
+	// TitleMaxLength is the effective title limit quoted in guidance; zero
+	// means the default.
+	TitleMaxLength int
 }
 
 func (*ConventionalFormatRule) Name() string {
@@ -82,43 +114,73 @@ func (r *ConventionalFormatRule) Validate(commit *ParsedCommit, _ string) *RuleR
 		return nil
 	}
 
-	if !commit.Valid || commit.ParseError != "" {
-		ctx := []string{}
-
-		if r.RequireScope {
-			ctx = append(ctx, "Scope is mandatory")
-		}
-
-		ctx = append(ctx,
-			"Valid types: "+strings.Join(r.ValidTypes, ", "),
-			"Alternative: Revert \"original commit title\"",
-			fmt.Sprintf("Current title: '%s'", commit.Title),
-			"type(scope): prefix counts toward 50-char limit",
-		)
-
-		return &RuleResult{
-			Reference: validator.RefGitConventionalCommit,
-			Message:   "Title doesn't follow conventional commits format: type(scope): description",
-			Context:   ctx,
-		}
+	invalid := !commit.Valid || commit.ParseError != ""
+	if !invalid && (!r.RequireScope || commit.Scope != "") {
+		return nil
 	}
 
-	// Check scope requirement
-	if r.RequireScope && commit.Scope == "" {
-		return &RuleResult{
-			Reference: validator.RefGitConventionalCommit,
-			Message:   "Title doesn't follow conventional commits format: type(scope): description",
-			Context: []string{
-				"Scope is mandatory",
-				"Valid types: " + strings.Join(r.ValidTypes, ", "),
-				"Alternative: Revert \"original commit title\"",
-				fmt.Sprintf("Current title: '%s'", commit.Title),
-				"type(scope): prefix counts toward 50-char limit",
-			},
-		}
+	maxLength := r.titleMaxLength()
+
+	ctx := []string{}
+
+	if r.RequireScope {
+		ctx = append(ctx, "Scope is mandatory")
 	}
 
-	return nil
+	ctx = append(ctx,
+		"Valid types: "+strings.Join(r.ValidTypes, ", "),
+		"Alternative: Revert \"original commit title\"",
+		fmt.Sprintf("Current title: '%s'", commit.Title),
+		fmt.Sprintf("type(scope): prefix counts toward %d-char limit", maxLength),
+	)
+
+	return &RuleResult{
+		Reference: validator.RefGitConventionalCommit,
+		Message:   "Title doesn't follow conventional commits format: type(scope): description",
+		Context:   ctx,
+		Findings:  []validator.Finding{r.finding(commit, invalid, maxLength)},
+	}
+}
+
+func (r *ConventionalFormatRule) titleMaxLength() int {
+	if r.TitleMaxLength > 0 {
+		return r.TitleMaxLength
+	}
+
+	return config.DefaultTitleMaxLength
+}
+
+func (r *ConventionalFormatRule) finding(
+	commit *ParsedCommit,
+	invalid bool,
+	maxLength int,
+) validator.Finding {
+	form := "type(scope): description"
+	if !r.RequireScope {
+		form = "type(scope): description or type: description"
+	}
+
+	message := "Title is not in conventional commits format"
+	if !invalid {
+		message = "Title has no scope"
+	}
+
+	return validator.Finding{
+		Reference: validator.RefGitConventionalCommit,
+		Location:  locationTitle,
+		Message:   message,
+		Actual:    commit.Title,
+		Required: fmt.Sprintf(
+			"%s with type one of: %s",
+			form,
+			strings.Join(r.ValidTypes, ", "),
+		),
+		Repair: fmt.Sprintf(
+			"Rewrite the title as %s, keeping it within %d characters",
+			form,
+			maxLength,
+		),
+	}
 }
 
 // scopeOnlyTitleRegex matches "scope: description" format used by projects like home-manager.
@@ -152,6 +214,14 @@ func (*ScopeOnlyFormatRule) Validate(commit *ParsedCommit, _ string) *RuleResult
 			"Examples: 'home-environment: use nix profile', 'modules/systemd: add unit'",
 			fmt.Sprintf("Current title: '%s'", commit.Title),
 		},
+		Findings: []validator.Finding{{
+			Reference: validator.RefGitConventionalCommit,
+			Location:  locationTitle,
+			Message:   "Title is not in scope-only format",
+			Actual:    commit.Title,
+			Required:  "scope: description, scope in lowercase letters, digits, '.', '/', '_', '-'",
+			Repair:    "Rewrite the title as scope: description, e.g. 'modules/systemd: add unit'",
+		}},
 	}
 }
 
@@ -186,6 +256,14 @@ func (r *CustomPatternRule) Validate(commit *ParsedCommit, _ string) *RuleResult
 			"Pattern: " + r.Pattern.String(),
 			fmt.Sprintf("Current title: '%s'", commit.Title),
 		},
+		Findings: []validator.Finding{{
+			Reference: validator.RefGitConventionalCommit,
+			Location:  locationTitle,
+			Message:   "Title does not match the configured pattern",
+			Actual:    commit.Title,
+			Required:  "matches " + r.Pattern.String(),
+			Repair:    "Rewrite the title so it matches " + r.Pattern.String(),
+		}},
 	}
 }
 
@@ -231,6 +309,19 @@ func (r *InfraScopeMisuseRule) Validate(commit *ParsedCommit, _ string) *RuleRes
 		Context: []string{
 			"feat/fix should only be used for user-facing changes",
 		},
+		Findings: []validator.Finding{{
+			Reference: validator.RefGitFeatCI,
+			Location:  locationTitle,
+			Message:   "feat/fix used for an infrastructure scope",
+			Actual:    typeMatch + "(" + scopeMatch + ")",
+			Required:  scopeMatch + "(...) for " + scopeMatch + " changes",
+			Repair: fmt.Sprintf(
+				"Replace '%s(%s):' with '%s(<scope>):'",
+				typeMatch,
+				scopeMatch,
+				scopeMatch,
+			),
+		}},
 	}
 }
 
@@ -260,6 +351,7 @@ func (r *BodyLineLengthRule) Validate(_ *ParsedCommit, commitMsg string) *RuleRe
 	var primary string
 
 	ctx := make([]string, 0)
+	findings := make([]validator.Finding, 0)
 
 	for lineNum, line := range lines {
 		// Skip title (first line)
@@ -277,7 +369,7 @@ func (r *BodyLineLengthRule) Validate(_ *ParsedCommit, commitMsg string) *RuleRe
 			continue
 		}
 
-		lineLen := len(line)
+		lineLen := utf8.RuneCountInString(line)
 		if lineLen > maxLenWithTolerance {
 			truncated := truncateLine(line)
 			msg := fmt.Sprintf(
@@ -295,6 +387,8 @@ func (r *BodyLineLengthRule) Validate(_ *ParsedCommit, commitMsg string) *RuleRe
 			} else {
 				ctx = append(ctx, msg, fmt.Sprintf("Line: '%s'", truncated))
 			}
+
+			findings = append(findings, r.finding(lineNum+1, lineLen, line))
 		}
 	}
 
@@ -306,6 +400,27 @@ func (r *BodyLineLengthRule) Validate(_ *ParsedCommit, commitMsg string) *RuleRe
 		Reference: validator.RefGitBadBody,
 		Message:   primary,
 		Context:   ctx,
+		Findings:  findings,
+	}
+}
+
+func (r *BodyLineLengthRule) finding(lineNum, lineLen int, line string) validator.Finding {
+	required := fmt.Sprintf("at most %d characters per body line", r.MaxLength)
+	if r.Tolerance > 0 {
+		required = fmt.Sprintf(
+			"at most %d characters per body line (up to %d tolerated)",
+			r.MaxLength,
+			r.MaxLength+r.Tolerance,
+		)
+	}
+
+	return validator.Finding{
+		Reference: validator.RefGitBadBody,
+		Location:  fmt.Sprintf("message line %d", lineNum),
+		Message:   fmt.Sprintf("Body line is %d characters long", lineLen),
+		Actual:    line,
+		Required:  required,
+		Repair:    fmt.Sprintf("Wrap line %d at %d characters", lineNum, r.MaxLength),
 	}
 }
 
@@ -365,6 +480,14 @@ func (r *ListFormattingRule) Validate(_ *ParsedCommit, message string) *RuleResu
 						"List items must be preceded by an empty line",
 						fmt.Sprintf("Line: '%s'", truncated),
 					},
+					Findings: []validator.Finding{{
+						Reference: validator.RefGitListFormat,
+						Location:  fmt.Sprintf("message line %d", lineNum+1),
+						Message:   "List starts without an empty line before it",
+						Actual:    line,
+						Required:  "an empty line before the first list item",
+						Repair:    fmt.Sprintf("Insert an empty line before line %d", lineNum+1),
+					}},
 				}
 			}
 
@@ -406,11 +529,16 @@ func (r *PRReferenceRule) Validate(_ *ParsedCommit, message string) *RuleResult 
 	}
 
 	ctx := make([]string, 0)
+	findings := make([]validator.Finding, 0)
 
 	// Show examples for hash references
 	if hashMatch := r.hashRefRegex.FindString(message); hashMatch != "" {
 		fix := strings.TrimPrefix(hashMatch, "#")
 		ctx = append(ctx, fmt.Sprintf("Found: '%s' -> Should be: '%s'", hashMatch, fix))
+	}
+
+	for _, hashMatch := range r.hashRefRegex.FindAllString(message, -1) {
+		findings = append(findings, prRefFinding(hashMatch, strings.TrimPrefix(hashMatch, "#")))
 	}
 
 	// Show examples for URL references
@@ -430,10 +558,44 @@ func (r *PRReferenceRule) Validate(_ *ParsedCommit, message string) *RuleResult 
 		)
 	}
 
+	for _, loc := range r.urlRefRegex.FindAllStringIndex(message, -1) {
+		found := prURLAt(message, loc[0], loc[1])
+		findings = append(findings, prRefFinding(found, prNumberRegex.FindString(found)))
+	}
+
 	return &RuleResult{
 		Reference: validator.RefGitPRRef,
 		Message:   "PR references found - remove '#' prefix or convert URLs to plain numbers",
 		Context:   ctx,
+		Findings:  findings,
+	}
+}
+
+var prNumberRegex = regexp.MustCompile(`[0-9]{1,10}$`)
+
+// prURLAt returns the pull request URL as written in the message, scheme
+// included, for a match of urlRefRegex that may carry one leading anchor
+// character.
+func prURLAt(message string, start, end int) string {
+	host := start + strings.Index(message[start:end], "github.com")
+
+	for _, scheme := range []string{"https://", "http://"} {
+		if strings.HasSuffix(message[:host], scheme) {
+			return message[host-len(scheme) : end]
+		}
+	}
+
+	return message[host:end]
+}
+
+func prRefFinding(found, replacement string) validator.Finding {
+	return validator.Finding{
+		Reference: validator.RefGitPRRef,
+		Location:  locationMessage,
+		Message:   "PR reference in commit message",
+		Actual:    found,
+		Required:  "no '#' references or pull request URLs",
+		Repair:    fmt.Sprintf("Replace '%s' with '%s'", found, replacement),
 	}
 }
 
@@ -459,7 +621,27 @@ func aiAttributionResult(text, subject string) *validator.Result {
 	return validator.FailWithRef(
 		validator.RefGitClaudeAttr,
 		subject+" contains AI attribution - remove any AI generation attribution",
-	)
+	).AddFinding(aiAttributionFinding())
+}
+
+func aiAttributionFinding() validator.Finding {
+	return validator.Finding{
+		Reference: validator.RefGitClaudeAttr,
+		Location:  locationMessage,
+		Message:   "AI attribution found",
+		Required:  "no AI generation credit, co-author trailer or session link",
+		Repair:    "Delete the line that credits an AI assistant",
+	}
+}
+
+func commandAttributionFinding() validator.Finding {
+	return validator.Finding{
+		Reference: validator.RefGitClaudeAttr,
+		Location:  locationCommand,
+		Message:   "AI attribution in a --trailer, extra -m or other argument",
+		Required:  "no AI generation credit in any command argument",
+		Repair:    "Remove the AI credit from every --trailer and extra message argument",
+	}
 }
 
 func (*AIAttributionRule) Validate(_ *ParsedCommit, message string) *RuleResult {
@@ -470,6 +652,7 @@ func (*AIAttributionRule) Validate(_ *ParsedCommit, message string) *RuleResult 
 	return &RuleResult{
 		Reference: validator.RefGitClaudeAttr,
 		Message:   "Commit message contains AI attribution - remove any AI generation attribution",
+		Findings:  []validator.Finding{aiAttributionFinding()},
 	}
 }
 
@@ -490,6 +673,7 @@ func (r *ForbiddenPatternRule) Validate(_ *ParsedCommit, message string) *RuleRe
 	var primary string
 
 	ctx := make([]string, 0)
+	findings := make([]validator.Finding, 0)
 
 	for _, pattern := range r.Patterns {
 		re, err := regexp.Compile(pattern)
@@ -508,6 +692,15 @@ func (r *ForbiddenPatternRule) Validate(_ *ParsedCommit, message string) *RuleRe
 			} else {
 				ctx = append(ctx, msg, "Pattern: "+pattern)
 			}
+
+			findings = append(findings, validator.Finding{
+				Reference: validator.RefGitForbiddenPattern,
+				Location:  locationMessage,
+				Message:   "Forbidden pattern found",
+				Actual:    match,
+				Required:  "no match for " + pattern,
+				Repair:    fmt.Sprintf("Remove or reword '%s'", match),
+			})
 		}
 	}
 
@@ -519,6 +712,7 @@ func (r *ForbiddenPatternRule) Validate(_ *ParsedCommit, message string) *RuleRe
 		Reference: validator.RefGitForbiddenPattern,
 		Message:   primary,
 		Context:   ctx,
+		Findings:  findings,
 	}
 }
 
@@ -560,6 +754,14 @@ func (r *SignoffRule) Validate(_ *ParsedCommit, message string) *RuleResult {
 				"Found: " + signoffLine,
 				"Expected: " + expectedSignoffLine,
 			},
+			Findings: []validator.Finding{{
+				Reference: validator.RefGitSignoffMismatch,
+				Location:  "Signed-off-by trailer",
+				Message:   "Signoff identity does not match",
+				Actual:    signoffLine,
+				Required:  expectedSignoffLine,
+				Repair:    "Replace the trailer with '" + expectedSignoffLine + "'",
+			}},
 		}
 	}
 

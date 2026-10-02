@@ -1,5 +1,11 @@
 package validator
 
+import (
+	"strconv"
+
+	"github.com/smykla-skalski/klaudiush/pkg/config"
+)
+
 // DefaultSuggestions maps references to fix suggestions.
 // These hints provide actionable guidance for resolving validation failures.
 //
@@ -10,15 +16,15 @@ var DefaultSuggestions = map[Reference]string{
 	RefGitNoGPGSign:          "Add -S flag: git commit -sS -m \"message\"",
 	RefGitMissingFlags:       "Add -sS flags to your command, keeping ALL existing arguments. Example: git commit -sS -m \"your message\"",
 	RefGitNoStaged:           "Stage specific files with git add <files> (check git status first), then retry the commit",
-	RefGitBadTitle:           "Shorten title to max 50 chars total including type(scope): prefix",
-	RefGitBadBody:            "Wrap body lines at 72 characters",
+	RefGitBadTitle:           titleLengthSuggestion(config.DefaultTitleMaxLength),
+	RefGitBadBody:            bodyLineSuggestion(config.DefaultBodyMaxLineLength),
 	RefGitFeatCI:             "Use ci(...) instead of feat(ci) or fix(ci)",
 	RefGitNoRemote:           "Specify remote: git push <remote> <branch>",
 	RefGitNoBranch:           "Specify branch: git push <remote> <branch>",
 	RefGitFileNotExist:       "Verify the file exists before adding",
 	RefGitPRRef:              "Remove PR reference from commit message (use in PR body instead)",
 	RefGitClaudeAttr:         "Remove AI attribution from the commit message or PR description",
-	RefGitConventionalCommit: "Use format: type(scope): description (total title must be under 50 chars)",
+	RefGitConventionalCommit: conventionalSuggestion(config.DefaultTitleMaxLength),
 	RefGitForbiddenPattern:   "Remove forbidden pattern from commit message",
 	RefGitSignoffMismatch:    "Use correct signoff identity: git config user.name and user.email",
 	RefGitListFormat:         "Add empty line before list items in commit body",
@@ -76,4 +82,50 @@ func GetSuggestion(ref Reference) string {
 	}
 
 	return ""
+}
+
+// MessageLimits carries the effective commit message limits that fix hints
+// quote. A zero field falls back to the built-in default.
+type MessageLimits struct {
+	TitleMaxLength    int
+	BodyMaxLineLength int
+}
+
+// GetSuggestionWithLimits returns the fix suggestion for a reference, quoting
+// the given limits instead of the defaults where the hint names one.
+func GetSuggestionWithLimits(ref Reference, limits MessageLimits) string {
+	title := limits.TitleMaxLength
+	if title <= 0 {
+		title = config.DefaultTitleMaxLength
+	}
+
+	body := limits.BodyMaxLineLength
+	if body <= 0 {
+		body = config.DefaultBodyMaxLineLength
+	}
+
+	switch ref {
+	case RefGitBadTitle:
+		return titleLengthSuggestion(title)
+	case RefGitBadBody:
+		return bodyLineSuggestion(body)
+	case RefGitConventionalCommit:
+		return conventionalSuggestion(title)
+	default:
+		return GetSuggestion(ref)
+	}
+}
+
+func titleLengthSuggestion(maxLength int) string {
+	return "Shorten title to max " + strconv.Itoa(maxLength) +
+		" chars total including type(scope): prefix"
+}
+
+func bodyLineSuggestion(maxLength int) string {
+	return "Wrap body lines at " + strconv.Itoa(maxLength) + " characters"
+}
+
+func conventionalSuggestion(maxLength int) string {
+	return "Use format: type(scope): description (total title at most " +
+		strconv.Itoa(maxLength) + " chars)"
 }

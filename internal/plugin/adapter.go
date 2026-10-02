@@ -68,7 +68,7 @@ func (a *ValidatorAdapter) Validate(ctx context.Context, hookCtx *hook.Context) 
 			"error", err,
 		)
 
-		return validator.Fail("Plugin error: " + err.Error())
+		return validator.Fail("Plugin error: " + err.Error()).MarkUnavailable()
 	}
 
 	// Convert plugin response to validator result

@@ -228,5 +228,7 @@ func toValidationError(v validator.Validator, result *validator.Result) *Validat
 		ShouldBlock: result.ShouldBlock,
 		Reference:   result.Reference,
 		FixHint:     result.FixHint,
+		Findings:    result.Findings,
+		Unavailable: result.Unavailable,
 	}
 }

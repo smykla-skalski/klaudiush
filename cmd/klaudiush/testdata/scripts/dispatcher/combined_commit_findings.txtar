@@ -1,0 +1,40 @@
+exec git init --initial-branch=main
+exec git config user.email "test@test.com"
+exec git config user.name "Test User"
+
+cp file.go staged.go
+exec git add staged.go
+mkdir .klaudiush
+cp limits.toml .klaudiush/config.toml
+
+stdin combined.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'title: Title is 67 characters long'
+stdout 'Shorten the title to 64 characters or fewer'
+stdout 'Wrap line 3 at 60 characters'
+stdout 'Wrap line 4 at 60 characters'
+stdout 'Replace ''#42'' with ''42'''
+stdout 'Blocked GIT004'
+! stdout 'klaudiush disable'
+! stdout '50 char'
+
+-- file.go --
+package main
+
+func main() {}
+
+-- limits.toml --
+[validators.git.commit.message]
+title_max_length = 64
+body_max_line_length = 60
+body_line_tolerance = 0
+
+-- combined.json --
+{
+  "session_id": "sess-combined",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "git commit -sS -m 'feat(api): add a much longer title than the configured limit allows\n\nThis first body line is clearly longer than sixty characters in total.\nAnd this second body line is also longer than sixty characters too.\n\nSee #42'"
+  }
+}
