@@ -16,6 +16,7 @@ import (
 	"github.com/cockroachdb/errors"
 
 	"github.com/smykla-skalski/klaudiush/internal/dispatcher"
+	"github.com/smykla-skalski/klaudiush/internal/filelock"
 	"github.com/smykla-skalski/klaudiush/internal/validator"
 	"github.com/smykla-skalski/klaudiush/internal/xdg"
 	"github.com/smykla-skalski/klaudiush/pkg/hook"
@@ -23,7 +24,6 @@ import (
 
 const (
 	defaultRetention = 7 * 24 * time.Hour
-	stateFileMode    = 0o600
 
 	// maxResolvedHistory bounds the resolved findings kept per session.
 	maxResolvedHistory = 50
@@ -31,7 +31,21 @@ const (
 	// maxUnresolved bounds the unresolved findings kept per session; the
 	// oldest are dropped first.
 	maxUnresolved = 100
+
+	// defaultLockTimeout bounds how long a hook waits for other hooks of
+	// the same user to finish their state transactions.
+	defaultLockTimeout = 5 * time.Second
+
+	// maxTouchInterval bounds how stale UpdatedAt of a session that is
+	// still in use may get before a hook without changes refreshes it.
+	maxTouchInterval = time.Hour
+
+	// touchDivisor keeps the refresh interval well inside a short retention.
+	touchDivisor = 4
 )
+
+// errCorruptState marks a state file that exists but cannot be parsed.
+var errCorruptState = errors.New("corrupt hook session state")
 
 type state struct {
 	Sessions map[string]*sessionEntry `json:"sessions"`
@@ -86,11 +100,14 @@ type checkKey struct {
 }
 
 // Store persists per-session hook findings across hook invocations. Every
-// change is one load, modify, save transaction (see update).
+// change is one load, modify, save transaction (see update) that holds an
+// exclusive lock, so concurrent hooks of one user cannot lose each other's
+// updates.
 type Store struct {
-	stateFile string
-	now       func() time.Time
-	retention time.Duration
+	stateFile   string
+	now         func() time.Time
+	retention   time.Duration
+	lockTimeout time.Duration
 }
 
 // Option configures a Store.
@@ -121,12 +138,22 @@ func WithRetention(retention time.Duration) Option {
 	}
 }
 
+// WithLockTimeout overrides how long a transaction waits for the state lock.
+func WithLockTimeout(timeout time.Duration) Option {
+	return func(s *Store) {
+		if timeout > 0 {
+			s.lockTimeout = timeout
+		}
+	}
+}
+
 // NewStore creates a persisted session findings store.
 func NewStore(opts ...Option) *Store {
 	store := &Store{
-		stateFile: xdg.HookSessionStateFile(),
-		now:       time.Now,
-		retention: defaultRetention,
+		stateFile:   xdg.HookSessionStateFile(),
+		now:         time.Now,
+		retention:   defaultRetention,
+		lockTimeout: defaultLockTimeout,
 	}
 
 	for _, opt := range opts {
@@ -140,7 +167,7 @@ func NewStore(opts ...Option) *Store {
 // unresolved findings and completion-gate counters: resumed, compacted and
 // forked sessions, and subagents in some providers, also report a start.
 func (s *Store) Start(provider hook.Provider, sessionID string) error {
-	return s.updateEntry(provider, sessionID, true, func(*sessionEntry) {})
+	return s.updateEntry(provider, sessionID, true, func(*sessionEntry) bool { return true })
 }
 
 // Append records findings without any checks, so nothing is resolved.
@@ -184,7 +211,7 @@ func (s *Store) Record(
 		}
 
 		if !entry.record(hookCtx, errs, checks, now) {
-			return false
+			return entry.touch(now, s.touchInterval())
 		}
 
 		entry.UpdatedAt = now
@@ -221,29 +248,18 @@ func (s *Store) FilesToRecheck(provider hook.Provider, sessionID string) ([]stri
 		return nil, nil
 	}
 
-	st, err := s.loadState()
-	if err != nil {
-		return nil, err
-	}
-
-	entry := st.Sessions[sessionKey(provider, sessionID)]
-	if entry == nil {
-		return nil, nil
-	}
-
 	lastSeen := make(map[string]time.Time)
 
-	for _, item := range entry.Findings {
-		path, ok := item.filePath()
-		if !ok || !item.Recheckable {
-			continue
+	err := s.update(func(st *state) bool {
+		entry := st.Sessions[sessionKey(provider, sessionID)]
+		if entry != nil {
+			collectRecheckTimes(entry, lastSeen)
 		}
 
-		for _, at := range []time.Time{item.LastSeen, item.CheckedAt} {
-			if at.After(lastSeen[path]) {
-				lastSeen[path] = at
-			}
-		}
+		return false
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	var files []string
@@ -257,6 +273,23 @@ func (s *Store) FilesToRecheck(provider hook.Provider, sessionID string) ([]stri
 	sort.Strings(files)
 
 	return files, nil
+}
+
+// collectRecheckTimes records, per file with recheckable findings, when the
+// file was last reported or checked.
+func collectRecheckTimes(entry *sessionEntry, lastSeen map[string]time.Time) {
+	for _, item := range entry.Findings {
+		path, ok := item.filePath()
+		if !ok || !item.Recheckable {
+			continue
+		}
+
+		for _, at := range []time.Time{item.LastSeen, item.CheckedAt} {
+			if at.After(lastSeen[path]) {
+				lastSeen[path] = at
+			}
+		}
+	}
 }
 
 func (s *Store) unresolved(
@@ -276,7 +309,15 @@ func (s *Store) unresolved(
 			return false
 		}
 
-		changed := entry.retire(s.now(), (*finding).fileGone)
+		now := s.now()
+
+		changed := entry.retire(now, (*finding).fileGone)
+		if changed {
+			entry.UpdatedAt = now
+		} else {
+			changed = entry.touch(now, s.touchInterval())
+		}
+
 		shown := make(map[string]bool, len(entry.Findings))
 
 		for _, item := range entry.Findings {
@@ -307,7 +348,7 @@ func (s *Store) RecordCompletionBlock(
 ) (int, error) {
 	count := 0
 
-	err := s.updateEntry(provider, sessionID, true, func(entry *sessionEntry) {
+	err := s.updateEntry(provider, sessionID, true, func(entry *sessionEntry) bool {
 		if entry.CompletionBlocks == nil {
 			entry.CompletionBlocks = make(map[string]int)
 		}
@@ -318,6 +359,8 @@ func (s *Store) RecordCompletionBlock(
 
 		entry.CompletionBlocks[gate]++
 		count = entry.CompletionBlocks[gate]
+
+		return true
 	})
 
 	return count, err
@@ -325,18 +368,25 @@ func (s *Store) RecordCompletionBlock(
 
 // ResetCompletionBlocks clears a gate's consecutive-block counter.
 func (s *Store) ResetCompletionBlocks(provider hook.Provider, sessionID, gate string) error {
-	return s.updateEntry(provider, sessionID, false, func(entry *sessionEntry) {
+	return s.updateEntry(provider, sessionID, false, func(entry *sessionEntry) bool {
+		if _, ok := entry.CompletionBlocks[gate]; !ok {
+			return false
+		}
+
 		delete(entry.CompletionBlocks, gate)
+
+		return true
 	})
 }
 
-// updateEntry applies fn to a provider/session entry and saves the state. A
-// missing entry is created only when create is true; otherwise fn is skipped.
+// updateEntry applies fn to a provider/session entry and saves the state when
+// fn reports a change. A missing entry is created only when create is true;
+// otherwise fn is skipped.
 func (s *Store) updateEntry(
 	provider hook.Provider,
 	sessionID string,
 	create bool,
-	fn func(*sessionEntry),
+	fn func(*sessionEntry) bool,
 ) error {
 	if provider == hook.ProviderUnknown || sessionID == "" {
 		return nil
@@ -360,7 +410,9 @@ func (s *Store) updateEntry(
 			st.Sessions[key] = entry
 		}
 
-		fn(entry)
+		if !fn(entry) {
+			return false
+		}
 
 		entry.UpdatedAt = now
 
@@ -368,11 +420,31 @@ func (s *Store) updateEntry(
 	})
 }
 
-// update runs one load, modify, save transaction. fn reports whether it
-// changed the state; expired sessions are dropped either way. Every write
-// goes through here, so serializing writers only needs to wrap this.
-func (s *Store) update(fn func(*state) bool) error {
+// update runs one load, modify, save transaction under the state lock. fn
+// reports whether it changed the state; expired sessions are dropped either
+// way. Every write goes through here. When the lock cannot be taken in time
+// the transaction is skipped and the error wraps filelock.ErrTimeout.
+func (s *Store) update(fn func(*state) bool) (err error) {
+	if err = xdg.EnsureDir(filepath.Dir(s.stateFile)); err != nil {
+		return err
+	}
+
+	lock, err := filelock.Acquire(s.lockFile(), s.lockTimeout)
+	if err != nil {
+		return errors.Wrap(err, "failed to lock hook session state")
+	}
+
+	defer func() {
+		if releaseErr := lock.Release(); releaseErr != nil && err == nil {
+			err = errors.Wrap(releaseErr, "failed to unlock hook session state")
+		}
+	}()
+
 	st, err := s.loadState()
+	if errors.Is(err, errCorruptState) {
+		st, err = s.quarantineCorruptState()
+	}
+
 	if err != nil {
 		return err
 	}
@@ -387,7 +459,31 @@ func (s *Store) update(fn func(*state) bool) error {
 		return nil
 	}
 
+	s.removeOrphanedTempFiles()
+
 	return s.saveState(st)
+}
+
+// quarantineCorruptState moves an unparsable state file aside, keeping it
+// for inspection, so one bad write by an older release cannot block every
+// later update. Callers hold the state lock.
+func (s *Store) quarantineCorruptState() (*state, error) {
+	corrupt := s.stateFile + ".corrupt-" + strconv.FormatInt(time.Now().UnixNano(), 10)
+	if err := os.Rename(s.stateFile, corrupt); err != nil {
+		return nil, errors.Wrap(err, "failed to move corrupt hook session state aside")
+	}
+
+	return &state{Sessions: make(map[string]*sessionEntry)}, nil
+}
+
+func (s *Store) lockFile() string {
+	return s.stateFile + ".lock"
+}
+
+// touchInterval is how stale a session in use may get before a hook with
+// nothing else to save refreshes it, so cleanup never drops it.
+func (s *Store) touchInterval() time.Duration {
+	return min(maxTouchInterval, s.retention/touchDivisor)
 }
 
 // Clear removes a provider/session entry.
@@ -424,7 +520,10 @@ func (s *Store) loadState() (*state, error) {
 
 	var st state
 	if err := json.Unmarshal(data, &st); err != nil {
-		return nil, errors.Wrap(err, "failed to parse hook session state")
+		return nil, errors.Mark(
+			errors.Wrap(err, "failed to parse hook session state"),
+			errCorruptState,
+		)
 	}
 
 	if st.Sessions == nil {
@@ -449,10 +548,6 @@ func (s *Store) saveState(st *state) error {
 		st.Sessions = make(map[string]*sessionEntry)
 	}
 
-	if err := xdg.EnsureDir(filepath.Dir(s.stateFile)); err != nil {
-		return err
-	}
-
 	data, err := json.MarshalIndent(st, "", "  ")
 	if err != nil {
 		return errors.Wrap(err, "failed to marshal hook session state")
@@ -460,17 +555,7 @@ func (s *Store) saveState(st *state) error {
 
 	data = append(data, '\n')
 
-	tmpFile := s.stateFile + ".tmp"
-	if err := os.WriteFile(tmpFile, data, stateFileMode); err != nil {
-		return errors.Wrap(err, "failed to write hook session temp file")
-	}
-
-	if err := os.Rename(tmpFile, s.stateFile); err != nil {
-		_ = os.Remove(tmpFile)
-		return errors.Wrap(err, "failed to replace hook session state")
-	}
-
-	return nil
+	return writeFileAtomic(s.stateFile, data)
 }
 
 func (s *Store) cleanupExpired(st *state) bool {
@@ -503,6 +588,18 @@ func (s *Store) cleanupExpired(st *state) bool {
 	}
 
 	return changed
+}
+
+// touch refreshes UpdatedAt of a session still in use once it is older than
+// interval, and reports whether it did.
+func (e *sessionEntry) touch(now time.Time, interval time.Duration) bool {
+	if now.Sub(e.UpdatedAt) < interval {
+		return false
+	}
+
+	e.UpdatedAt = now
+
+	return true
 }
 
 // record resolves the findings the checks cleared or whose file is gone,
