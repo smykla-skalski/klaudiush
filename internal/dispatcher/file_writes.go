@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/smykla-skalski/klaudiush/pkg/hook"
 	"github.com/smykla-skalski/klaudiush/pkg/parser"
@@ -26,7 +27,11 @@ type fileWriteTarget struct {
 
 // bashWriteTargets lists the files a shell command writes. After the command
 // ran, the files the provider reports as changed are added to the parsed ones.
-func bashWriteTargets(bashCtx *hook.Context, writes []parser.FileWrite) []fileWriteTarget {
+func bashWriteTargets(
+	bashCtx *hook.Context,
+	writes []parser.FileWrite,
+	resolver parser.Resolver,
+) []fileWriteTarget {
 	if !bashCtx.IsAfterTool() {
 		targets := make([]fileWriteTarget, 0, len(writes))
 
@@ -41,7 +46,7 @@ func bashWriteTargets(bashCtx *hook.Context, writes []parser.FileWrite) []fileWr
 	seen := make(map[string]int, cap(targets))
 
 	for _, fw := range writes {
-		path := resolveWritePath(bashCtx.WorkingDir, fw)
+		path := resolveWritePath(bashCtx.WorkingDir, fw, resolver)
 
 		if i, ok := seen[path]; ok {
 			targets[i].hasCaptured = false
@@ -74,22 +79,25 @@ func bashWriteTargets(bashCtx *hook.Context, writes []parser.FileWrite) []fileWr
 }
 
 // resolveWritePath makes a parsed write target absolute, so it can be read
-// after the command ran and matched against the provider's changed files.
-func resolveWritePath(workingDir string, fw parser.FileWrite) string {
-	if filepath.IsAbs(fw.Path) {
-		return canonicalPath(fw.Path)
+// after the command ran and matched against the provider's changed files. A
+// ~ in the target or in the directory a cd moved to is the home directory,
+// not a directory under the hook's one.
+func resolveWritePath(workingDir string, fw parser.FileWrite, resolver parser.Resolver) string {
+	path := parser.ExpandHome(fw.Path, resolver)
+	if filepath.IsAbs(path) {
+		return canonicalPath(path)
 	}
 
-	base := fw.WorkingDirectory
-	if !filepath.IsAbs(base) {
+	base := parser.ExpandHome(fw.WorkingDirectory, resolver)
+	if !filepath.IsAbs(base) && !strings.HasPrefix(base, "~") {
 		base = filepath.Join(workingDir, base)
 	}
 
-	if !filepath.IsAbs(base) {
-		return filepath.Clean(fw.Path)
+	if !filepath.IsAbs(base) || strings.HasPrefix(path, "~") {
+		return filepath.Clean(path)
 	}
 
-	return canonicalPath(filepath.Join(base, fw.Path))
+	return canonicalPath(filepath.Join(base, path))
 }
 
 // canonicalPath resolves symlinks, so a path reached through a symlinked

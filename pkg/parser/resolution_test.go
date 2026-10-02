@@ -384,3 +384,15 @@ var _ = Describe("Command resolution beyond the command text", func() {
 		Expect(cmd.Invoked).To(Equal("/usr/bin/Git"))
 	})
 })
+
+var _ = DescribeTable("ExpandHome",
+	func(env map[string]string, path, want string) {
+		Expect(parser.ExpandHome(path, fakeResolver{env: env})).To(Equal(want))
+	},
+	Entry("bare ~", map[string]string{"HOME": "/home/u"}, "~", "/home/u"),
+	Entry("~/ path", map[string]string{"HOME": "/home/u"}, "~/repo/a.go", "/home/u/repo/a.go"),
+	Entry("~user path", map[string]string{"HOME": "/home/u"}, "~bob/a.go", "~bob/a.go"),
+	Entry("no ~", map[string]string{"HOME": "/home/u"}, "repo/a.go", "repo/a.go"),
+	Entry("HOME unset", map[string]string{}, "~/a.go", "~/a.go"),
+	Entry("relative HOME", map[string]string{"HOME": "home"}, "~/a.go", "~/a.go"),
+)

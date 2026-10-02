@@ -12,6 +12,7 @@ import (
 	"github.com/smykla-skalski/klaudiush/pkg/config"
 	"github.com/smykla-skalski/klaudiush/pkg/hook"
 	"github.com/smykla-skalski/klaudiush/pkg/logger"
+	"github.com/smykla-skalski/klaudiush/pkg/parser"
 )
 
 var (
@@ -80,6 +81,7 @@ type Dispatcher struct {
 	exceptionChecker ExceptionChecker
 	overrides        *config.OverridesConfig
 	bypassPolicy     BypassPolicy
+	pathResolver     parser.Resolver
 }
 
 // NewDispatcher creates a new Dispatcher with sequential execution.
@@ -133,6 +135,16 @@ func WithBypassPolicy(policy BypassPolicy) DispatcherOption {
 	}
 }
 
+// WithPathResolver sets what expands ~ in the paths a shell command writes.
+// Without one, the running system answers.
+func WithPathResolver(resolver parser.Resolver) DispatcherOption {
+	return func(d *Dispatcher) {
+		if resolver != nil {
+			d.pathResolver = resolver
+		}
+	}
+}
+
 // NewDispatcherWithOptions creates a new Dispatcher with options.
 func NewDispatcherWithOptions(
 	registry *validator.Registry,
@@ -173,10 +185,7 @@ func (d *Dispatcher) Dispatch(ctx context.Context, hookCtx *hook.Context) []*Val
 		return d.validatePatchFiles(ctx, hookCtx)
 	}
 
-	validationErrors := d.runValidators(ctx, hookCtx)
-	if hookCtx.IsAfterTool() && hookCtx.ToolFailed() && hookCtx.IsFileTool() {
-		validationErrors = advisory(validationErrors)
-	}
+	validationErrors := afterToolFindings(hookCtx, d.runValidators(ctx, hookCtx))
 
 	// Validate the files a Bash command writes, before and after it runs.
 	if hookCtx.ToolName == hook.ToolTypeBash && (hookCtx.Event == hook.CanonicalEventBeforeTool ||
@@ -317,7 +326,7 @@ func (d *Dispatcher) validateBashFileWrites(
 		return nil
 	}
 
-	targets := bashWriteTargets(bashCtx, result.FileWrites)
+	targets := bashWriteTargets(bashCtx, result.FileWrites, d.resolver())
 	if len(targets) == 0 {
 		return nil
 	}
@@ -407,10 +416,29 @@ func (d *Dispatcher) validatePatchFiles(
 
 		d.logger.Debug("validating patch file", "file", file.Input.FilePath)
 
-		allErrors = append(allErrors, d.runValidators(ctx, fileCtx)...)
+		errs := afterToolFindings(fileCtx, d.runValidators(ctx, fileCtx))
+		allErrors = append(allErrors, errs...)
 	}
 
 	return allErrors
+}
+
+// afterToolFindings makes the findings about a file a tool already changed
+// advisory and names the file in each, as for shell writes.
+func afterToolFindings(hookCtx *hook.Context, errs []*ValidationError) []*ValidationError {
+	if len(errs) == 0 || !hookCtx.IsAfterTool() || !hookCtx.IsFileTool() {
+		return errs
+	}
+
+	return namedAfter(hookCtx.GetFilePath(), advisory(errs))
+}
+
+func (d *Dispatcher) resolver() parser.Resolver {
+	if d.pathResolver == nil {
+		return &parser.OSResolver{}
+	}
+
+	return d.pathResolver
 }
 
 // ShouldBlock returns true if any validation error should block the operation.

@@ -15,7 +15,24 @@ import (
 	"github.com/smykla-skalski/klaudiush/internal/validator"
 	"github.com/smykla-skalski/klaudiush/pkg/hook"
 	"github.com/smykla-skalski/klaudiush/pkg/logger"
+	"github.com/smykla-skalski/klaudiush/pkg/parser"
 )
+
+// homeResolver answers HOME from a fixed value and everything else from the
+// running system.
+type homeResolver struct {
+	parser.OSResolver
+
+	home string
+}
+
+func (r *homeResolver) LookupEnv(name string) (string, bool) {
+	if name == "HOME" {
+		return r.home, r.home != ""
+	}
+
+	return r.OSResolver.LookupEnv(name)
+}
 
 type seenWrite struct {
 	path    string
@@ -220,6 +237,49 @@ var _ = Describe("Dispatcher Bash file writes after the tool ran", func() {
 		Expect(rec.paths()).To(ConsistOf(repo + "/sub/out.txt"))
 	})
 
+	DescribeTable("resolves ~ to the home directory, not one under the hook's",
+		func(command string, succeeded bool, want string) {
+			home := filepath.Join(repo, "home")
+
+			reg := validator.NewRegistry()
+			reg.Register(rec, validator.ToolTypeIs(hook.ToolTypeWrite))
+
+			hookCtx := claudeBash(hook.CanonicalEventAfterTool, command)
+			hookCtx.ToolSucceeded = succeeded
+
+			dispatcher.NewDispatcherWithOptions(
+				reg,
+				logger.NewNoOpLogger(),
+				dispatcher.NewSequentialExecutor(logger.NewNoOpLogger()),
+				dispatcher.WithPathResolver(&homeResolver{home: home}),
+			).Dispatch(context.Background(), hookCtx)
+
+			Expect(rec.paths()).To(ConsistOf(filepath.Join(home, want)))
+		},
+		Entry("cd ~/dir", "cd ~/proj && echo x > out.txt", true, "proj/out.txt"),
+		Entry("cd ~/dir after a failed command", "cd ~/proj && echo x > out.txt", false,
+			"proj/out.txt"),
+		Entry("bare cd", "cd && echo x > out.txt", true, "out.txt"),
+		Entry("~ target", "cd sub && echo x > ~/out.txt", true, "out.txt"),
+	)
+
+	It("leaves a ~ target unjoined when HOME is unknown", func() {
+		reg := validator.NewRegistry()
+		reg.Register(rec, validator.ToolTypeIs(hook.ToolTypeWrite))
+
+		dispatcher.NewDispatcherWithOptions(
+			reg,
+			logger.NewNoOpLogger(),
+			dispatcher.NewSequentialExecutor(logger.NewNoOpLogger()),
+			dispatcher.WithPathResolver(&homeResolver{}),
+		).Dispatch(context.Background(), claudeBash(
+			hook.CanonicalEventAfterTool,
+			"cd ~/proj && echo x > out.txt && echo y > ~/b.txt",
+		))
+
+		Expect(rec.paths()).To(ConsistOf("out.txt", "~/b.txt"))
+	})
+
 	It("does not read special files such as FIFOs", func() {
 		fifo := filepath.Join(repo, "fifo.go")
 		Expect(syscall.Mkfifo(fifo, 0o600)).To(Succeed())
@@ -242,22 +302,84 @@ var _ = Describe("Dispatcher Bash file writes after the tool ran", func() {
 	})
 })
 
-var _ = Describe("Dispatcher failed file tools", func() {
-	It("reports findings about a failed Write as advisory", func() {
-		rec := &recordingValidator{block: true}
-		reg := validator.NewRegistry()
-		reg.Register(rec, validator.ToolTypeIs(hook.ToolTypeWrite))
+var _ = Describe("Dispatcher file tools after they ran", func() {
+	var rec *recordingValidator
 
-		errs := dispatcher.NewDispatcher(reg, logger.NewNoOpLogger()).
-			Dispatch(context.Background(), &hook.Context{
-				Provider:     hook.ProviderClaude,
-				Event:        hook.CanonicalEventAfterTool,
-				ToolName:     hook.ToolTypeWrite,
-				ToolExecuted: true,
-				ToolInput:    hook.ToolInput{FilePath: "/repo/a.go"},
-			})
+	dispatch := func(hookCtx *hook.Context) []*dispatcher.ValidationError {
+		reg := validator.NewRegistry()
+		reg.Register(rec, validator.ToolTypeIn(hook.ToolTypeWrite, hook.ToolTypeEdit))
+
+		return dispatcher.NewDispatcher(reg, logger.NewNoOpLogger()).
+			Dispatch(context.Background(), hookCtx)
+	}
+
+	write := func(provider hook.Provider, event hook.CanonicalEvent, succeeded bool) *hook.Context {
+		return &hook.Context{
+			Provider:      provider,
+			Event:         event,
+			ToolName:      hook.ToolTypeWrite,
+			ToolExecuted:  event == hook.CanonicalEventAfterTool,
+			ToolSucceeded: succeeded,
+			ToolInput:     hook.ToolInput{FilePath: "/repo/a.go"},
+		}
+	}
+
+	BeforeEach(func() {
+		rec = &recordingValidator{block: true}
+	})
+
+	DescribeTable("reports findings as advisory and names the file",
+		func(provider hook.Provider, succeeded bool) {
+			errs := dispatch(write(provider, hook.CanonicalEventAfterTool, succeeded))
+
+			Expect(errs).To(HaveLen(1))
+			Expect(errs[0].ShouldBlock).To(BeFalse())
+			Expect(errs[0].Message).To(Equal("/repo/a.go: finding in /repo/a.go"))
+		},
+		Entry("failed Claude Write", hook.ProviderClaude, false),
+		Entry("successful Codex Write", hook.ProviderCodex, true),
+		Entry("successful Gemini Write", hook.ProviderGemini, true),
+		Entry("successful opencode Write", hook.ProviderOpenCode, true),
+	)
+
+	It("keeps findings before the tool blocking and unnamed", func() {
+		errs := dispatch(write(hook.ProviderCodex, hook.CanonicalEventBeforeTool, false))
 
 		Expect(errs).To(HaveLen(1))
-		Expect(errs[0].ShouldBlock).To(BeFalse())
+		Expect(errs[0].ShouldBlock).To(BeTrue())
+		Expect(errs[0].Message).To(Equal("finding in /repo/a.go"))
+	})
+
+	It("reports each file of an applied patch as advisory and named", func() {
+		errs := dispatch(&hook.Context{
+			Provider:      hook.ProviderCodex,
+			Event:         hook.CanonicalEventAfterTool,
+			RawToolName:   "apply_patch",
+			ToolName:      hook.ToolTypeEdit,
+			ToolFamily:    hook.ToolFamilyEdit,
+			ToolExecuted:  true,
+			ToolSucceeded: true,
+			PatchFiles: []hook.PatchFile{
+				{
+					ToolName:   hook.ToolTypeWrite,
+					ToolFamily: hook.ToolFamilyWrite,
+					Input:      hook.ToolInput{FilePath: "/repo/a.go"},
+				},
+				{
+					ToolName:   hook.ToolTypeEdit,
+					ToolFamily: hook.ToolFamilyEdit,
+					Input:      hook.ToolInput{FilePath: "/repo/b.go"},
+				},
+			},
+		})
+
+		Expect(errs).To(HaveLen(2))
+
+		for _, e := range errs {
+			Expect(e.ShouldBlock).To(BeFalse())
+		}
+
+		Expect(errs[0].Message).To(Equal("/repo/a.go: finding in /repo/a.go"))
+		Expect(errs[1].Message).To(Equal("/repo/b.go: finding in /repo/b.go"))
 	})
 })
