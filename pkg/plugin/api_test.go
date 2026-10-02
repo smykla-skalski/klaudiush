@@ -1,6 +1,8 @@
 package plugin_test
 
 import (
+	"encoding/json"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -52,7 +54,7 @@ var _ = Describe("API", func() {
 				Pattern:       "*.go",
 				TurnID:        "turn-123",
 				ToolExecuted:  true,
-				ToolSucceeded: true,
+				ToolSucceeded: new(true),
 				ToolMutating:  true,
 				Config: map[string]any{
 					"key": "value",
@@ -69,7 +71,7 @@ var _ = Describe("API", func() {
 			Expect(req.Pattern).To(Equal("*.go"))
 			Expect(req.TurnID).To(Equal("turn-123"))
 			Expect(req.ToolExecuted).To(BeTrue())
-			Expect(req.ToolSucceeded).To(BeTrue())
+			Expect(req.ToolSucceeded).To(HaveValue(BeTrue()))
 			Expect(req.ToolMutating).To(BeTrue())
 			Expect(req.Config).To(HaveKeyWithValue("key", "value"))
 		})
@@ -87,6 +89,27 @@ var _ = Describe("API", func() {
 			Expect(req.Content).To(BeEmpty())
 			Expect(req.Config).To(BeNil())
 		})
+
+		DescribeTable("serializes tool_succeeded only when the outcome is known",
+			func(succeeded *bool, want string) {
+				data, err := json.Marshal(&plugin.ValidateRequest{ToolSucceeded: succeeded})
+				Expect(err).NotTo(HaveOccurred())
+
+				var fields map[string]any
+				Expect(json.Unmarshal(data, &fields)).To(Succeed())
+
+				if want == "" {
+					Expect(fields).NotTo(HaveKey("tool_succeeded"))
+
+					return
+				}
+
+				Expect(string(data)).To(ContainSubstring(`"tool_succeeded":` + want))
+			},
+			Entry("failed tool", new(false), "false"),
+			Entry("succeeded tool", new(true), "true"),
+			Entry("unknown outcome", nil, ""),
+		)
 
 		It("should backfill normalized event and tool fields from legacy values", func() {
 			req := &plugin.ValidateRequest{
