@@ -29,10 +29,10 @@ var _ = Describe("FormatSystemMessage", func() {
 		}
 
 		result := hookresponse.FormatSystemMessage(errs)
-		Expect(result).To(ContainSubstring("\u274c GIT001: Missing -s flag"))
+		Expect(result).To(ContainSubstring("\u274c Blocked GIT001: Missing -s flag"))
 		Expect(result).To(ContainSubstring("  Fix: Add -s flag"))
 		Expect(result).To(ContainSubstring("  Ref: https://klaudiu.sh/e/GIT001"))
-		Expect(result).To(ContainSubstring("Wrong for your workflow? klaudiush disable GIT001"))
+		Expect(result).NotTo(ContainSubstring("klaudiush disable"))
 	})
 
 	It("formats warnings with warning emoji header", func() {
@@ -45,7 +45,7 @@ var _ = Describe("FormatSystemMessage", func() {
 		}
 
 		result := hookresponse.FormatSystemMessage(errs)
-		Expect(result).To(ContainSubstring("\u26a0\ufe0f line too long"))
+		Expect(result).To(ContainSubstring("\u26a0\ufe0f Warning: line too long"))
 	})
 
 	It("separates blocking errors and warnings", func() {
@@ -63,8 +63,8 @@ var _ = Describe("FormatSystemMessage", func() {
 		}
 
 		result := hookresponse.FormatSystemMessage(errs)
-		Expect(result).To(ContainSubstring("\u274c Blocking error"))
-		Expect(result).To(ContainSubstring("\u26a0\ufe0f Warning message"))
+		Expect(result).To(ContainSubstring("\u274c Blocked: Blocking error"))
+		Expect(result).To(ContainSubstring("\u26a0\ufe0f Warning: Warning message"))
 	})
 
 	It("includes error details", func() {
@@ -100,23 +100,6 @@ var _ = Describe("FormatSystemMessage", func() {
 		Expect(result).To(ContainSubstring("output\n\npermissionDecisionReason"))
 	})
 
-	It("includes all_codes in disable hint for combined errors", func() {
-		errs := []*dispatcher.ValidationError{
-			{
-				Validator:   "git.commit",
-				Message:     "Commit message validation failed",
-				ShouldBlock: true,
-				Reference:   validator.RefGitConventionalCommit,
-				Details: map[string]string{
-					"all_codes": "GIT013,GIT004",
-				},
-			},
-		}
-
-		result := hookresponse.FormatSystemMessage(errs)
-		Expect(result).To(ContainSubstring("klaudiush disable GIT013 GIT004"))
-	})
-
 	It("does not render all_codes in error details", func() {
 		errs := []*dispatcher.ValidationError{
 			{
@@ -144,14 +127,14 @@ var _ = Describe("FormatSystemMessage", func() {
 		}
 
 		result := hookresponse.FormatSystemMessage(errs)
-		Expect(result).To(ContainSubstring("\u274c error"))
+		Expect(result).To(ContainSubstring("\u274c Blocked: error"))
 		Expect(result).NotTo(ContainSubstring("validate-git-commit"))
 		Expect(result).NotTo(ContainSubstring("git-commit"))
 	})
 })
 
 var _ = Describe("Decision reason formatting", func() {
-	It("truncates long messages to 200 chars per error", func() {
+	It("keeps a long message whole while it fits the budget", func() {
 		longMsg := strings.Repeat("x", 250)
 		errs := []*dispatcher.ValidationError{
 			{
@@ -164,8 +147,7 @@ var _ = Describe("Decision reason formatting", func() {
 
 		resp := hookresponse.Build("PreToolUse", errs)
 		Expect(resp).NotTo(BeNil())
-		Expect(len(resp.HookSpecificOutput.PermissionDecisionReason)).To(BeNumerically("<=", 200))
-		Expect(resp.HookSpecificOutput.PermissionDecisionReason).To(HaveSuffix("..."))
+		Expect(resp.HookSpecificOutput.PermissionDecisionReason).To(Equal("[GIT001] " + longMsg))
 	})
 
 	It("includes fix hint in decision reason", func() {
@@ -433,7 +415,8 @@ var _ = Describe("Additional context formatting", func() {
 
 		resp := hookresponse.Build("PreToolUse", errs)
 		ctx := resp.HookSpecificOutput.AdditionalContext
-		Expect(ctx).To(ContainSubstring("type(scope): prefix makes title exceed 50 chars"))
+		Expect(ctx).To(ContainSubstring("can push the title over its length limit"))
+		Expect(ctx).NotTo(ContainSubstring("50"))
 	})
 
 	It("truncates large table suggestions", func() {

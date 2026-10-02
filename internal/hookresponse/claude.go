@@ -35,7 +35,7 @@ func BuildClaude(
 		hookCtx.RawEventName,
 	)
 	if !ok {
-		return &HookResponse{SystemMessage: FormatSystemMessage(errs)}
+		return &HookResponse{SystemMessage: formatSystemMessageFor(hookCtx, errs)}
 	}
 
 	eventName := hookCtx.EventName()
@@ -89,7 +89,7 @@ func buildClaudeDecision(
 	blocking, warnings, bypassed := categorize(errs)
 	gate := capability.Enforcement == hook.EnforcementContinueTurn
 
-	resp := &HookResponse{SystemMessage: FormatSystemMessage(errs)}
+	resp := &HookResponse{SystemMessage: formatSystemMessageFor(hookCtx, errs)}
 
 	if len(blocking) > 0 {
 		resp.Decision = decisionBlock
@@ -104,7 +104,9 @@ func buildClaudeDecision(
 		return resp
 	}
 
-	additionalContext := formatContextFor(hookCtx, blocking, warnings, bypassed, patternWarnings)
+	additionalContext := formatContextFor(
+		hookCtx, blocking, warnings, bypassed, patternWarnings, false,
+	)
 	if additionalContext != "" && capability.Supports(hook.ResponseFieldAdditionalContext) {
 		resp.HookSpecificOutput = &HookSpecificOutput{
 			HookEventName:     eventName,
@@ -128,7 +130,7 @@ func buildClaudeAdvisory(
 	resp := &HookResponse{}
 
 	if capability.Supports(hook.ResponseFieldSystemMessage) {
-		resp.SystemMessage = FormatSystemMessage(errs)
+		resp.SystemMessage = formatSystemMessageFor(hookCtx, errs)
 	}
 
 	if capability.Supports(hook.ResponseFieldAdditionalContext) {
@@ -140,6 +142,7 @@ func buildClaudeAdvisory(
 			warnings,
 			bypassed,
 			patternWarnings,
+			true,
 		)
 		if additionalContext != "" {
 			resp.HookSpecificOutput = &HookSpecificOutput{

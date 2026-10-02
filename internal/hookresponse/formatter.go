@@ -1,20 +1,17 @@
 package hookresponse
 
 import (
+	"maps"
+	"slices"
 	"strings"
 	"unicode"
 
 	"github.com/smykla-skalski/klaudiush/internal/dispatcher"
 	"github.com/smykla-skalski/klaudiush/internal/validator"
+	"github.com/smykla-skalski/klaudiush/pkg/hook"
 )
 
 const (
-	// maxReasonCharsPerError caps each error's contribution to permissionDecisionReason.
-	maxReasonCharsPerError = 200
-
-	// reasonSeparator joins multiple error reasons.
-	reasonSeparator = " | "
-
 	// maxSummaryParagraphs limits how many non-supplementary paragraphs
 	// are kept in the concise summary.
 	maxSummaryParagraphs = 2
@@ -27,81 +24,78 @@ const (
 	zeroWidthJoiner = 0x200D
 )
 
-// formatDecisionReason builds the permissionDecisionReason string shown to Claude.
-// Format per error: [CODE] message. Fix hint.
+// formatDecisionReason builds the decision reason shown to the agent with the
+// default budget. Every blocking error is listed with every finding and repair.
 func formatDecisionReason(blocking []*dispatcher.ValidationError) string {
+	return formatDecisionReasonWithin(blocking, defaultAgentBudget)
+}
+
+// formatDecisionReasonWithin builds the decision reason within budget bytes,
+// trimming supplementary detail before any repair.
+func formatDecisionReasonWithin(blocking []*dispatcher.ValidationError, budget int) string {
 	if len(blocking) == 0 {
 		return ""
 	}
 
-	parts := make([]string, 0, len(blocking))
-
-	for _, e := range blocking {
-		parts = append(parts, formatSingleReason(e))
-	}
-
-	return strings.Join(parts, reasonSeparator)
-}
-
-// formatSingleReason formats one error for the decision reason.
-func formatSingleReason(e *dispatcher.ValidationError) string {
-	var b strings.Builder
-
-	code := extractCode(e.Reference)
-	if code != "" {
-		b.WriteString("[")
-		b.WriteString(code)
-		b.WriteString("] ")
-	}
-
-	b.WriteString(summarizeMessage(e.Message))
-
-	if e.FixHint != "" {
-		if !strings.HasSuffix(e.Message, ".") {
-			b.WriteString(".")
-		}
-
-		b.WriteString(" ")
-		b.WriteString(e.FixHint)
-	}
-
-	s := b.String()
-	if len(s) > maxReasonCharsPerError {
-		return s[:maxReasonCharsPerError-3] + "..."
-	}
-
-	return s
+	return renderWithin(budget, func(level detail) string {
+		return agentEntries(blocking, level)
+	})
 }
 
 // blockingContextLead opens additionalContext when a finding stopped the action.
 const blockingContextLead = "Automated klaudiush validation check. " +
 	"Fix ALL reported errors at once and retry. " +
 	"Fixing one issue can introduce another " +
-	"(e.g., adding type(scope): prefix makes title exceed 50 chars)."
+	"(e.g., adding a type(scope): prefix can push the title over its length limit)."
 
 // maxTableSuggestionLines limits how many lines of a table suggestion
 // are included in additionalContext to avoid bloating the context.
 const maxTableSuggestionLines = 15
+
+// contextRequest is the input for one additionalContext rendering.
+// withFindings lists the blocking findings too, for responses that carry no
+// decision reason to the agent.
+type contextRequest struct {
+	hookCtx                      *hook.Context
+	blocking, warnings, bypassed []*dispatcher.ValidationError
+	patternWarnings              []string
+	withFindings                 bool
+	budget                       int
+}
 
 // formatAdditionalContext builds behavioral framing for Claude.
 func formatAdditionalContext(
 	blocking, warnings, bypassed []*dispatcher.ValidationError,
 	patternWarnings []string,
 ) string {
-	var parts []string
+	return buildContext(contextRequest{
+		blocking:        blocking,
+		warnings:        warnings,
+		bypassed:        bypassed,
+		patternWarnings: patternWarnings,
+		budget:          defaultAgentBudget,
+	})
+}
 
-	if len(blocking) > 0 {
-		parts = append(parts, blockingContextLead)
+// buildContext renders additionalContext: the lead, the findings the agent
+// must act on, accepted exceptions, a table suggestion and pattern warnings.
+// Findings get whatever budget the fixed parts leave.
+func buildContext(req contextRequest) string {
+	var lead string
+	if len(req.blocking) > 0 {
+		lead = blockingContextLead
 	}
 
 	exceptionOutcome := "Validation waived for this action; " +
 		"normal permission checks still apply."
-	if len(blocking) > 0 {
+	if len(req.blocking) > 0 {
 		exceptionOutcome = "Validation waived for this finding; " +
 			"the remaining errors still block the action."
 	}
 
-	for _, e := range bypassed {
+	exceptions := make([]string, 0, len(req.bypassed))
+
+	for _, e := range req.bypassed {
 		code := extractCode(e.Reference)
 
 		reason := e.BypassReason
@@ -109,33 +103,82 @@ func formatAdditionalContext(
 			reason = "no reason provided"
 		}
 
-		parts = append(parts,
+		exceptions = append(exceptions, sanitizeText(
 			"klaudiush: Exception EXC:"+code+" accepted (reason: "+reason+"). "+
-				exceptionOutcome)
+				exceptionOutcome))
 	}
 
-	for _, e := range warnings {
-		parts = append(parts,
-			"klaudiush warning: "+e.Message+". Not blocking.")
+	var trailing []string
+
+	if table := firstTableSuggestion(req.blocking, req.warnings); table != "" {
+		trailing = append(trailing, table)
 	}
 
-	// Include table suggestions in context so Claude can see the correctly
-	// formatted table. Check both blocking and warning errors.
-	allErrs := make([]*dispatcher.ValidationError, 0, len(blocking)+len(warnings))
-	allErrs = append(allErrs, blocking...)
-	allErrs = append(allErrs, warnings...)
+	trailing = append(trailing, req.patternWarnings...)
 
-	for _, e := range allErrs {
-		if suggestion, ok := e.Details["suggested_table"]; ok && suggestion != "" {
-			parts = append(parts, truncateTableSuggestion(suggestion))
+	fixed := len(lead) + len(strings.Join(exceptions, " ")) + len(strings.Join(trailing, " "))
+	findingsBudget := max(req.budget-contextReserve-fixed, 0)
 
-			break // Only include first suggestion
+	findings := renderWithin(findingsBudget, func(level detail) string {
+		return contextFindings(req, level)
+	})
+
+	parts := make([]string, 0, 3+len(exceptions)+len(trailing))
+	if lead != "" {
+		parts = append(parts, lead)
+	}
+
+	if findings != "" {
+		parts = append(parts, findings)
+	}
+
+	parts = append(parts, exceptions...)
+	parts = append(parts, trailing...)
+
+	return strings.Join(parts, " ")
+}
+
+// contextFindings renders blocking findings (when asked) and every warning,
+// each labeled with what it means for the action.
+func contextFindings(req contextRequest, level detail) string {
+	var parts []string
+
+	if req.withFindings && len(req.blocking) > 0 {
+		parts = append(parts, "Findings:\n"+agentEntries(req.blocking, level))
+	}
+
+	for _, e := range req.warnings {
+		parts = append(parts, warningPrefix(outcomeOf(req.hookCtx, e))+agentEntry(e, level))
+	}
+
+	return strings.Join(parts, "\n")
+}
+
+func warningPrefix(o outcome) string {
+	switch o {
+	case outcomeRepairRequired:
+		return "Repair required: "
+	case outcomeUnavailable:
+		return "klaudiush could not validate this action, so it was not checked: "
+	case outcomeBlocked, outcomeExceptionAccepted, outcomeWarning:
+		return "klaudiush warning: Not blocking. "
+	default:
+		return "klaudiush warning: Not blocking. "
+	}
+}
+
+// firstTableSuggestion returns the first table suggestion, so the agent can
+// see the correctly formatted table.
+func firstTableSuggestion(blocking, warnings []*dispatcher.ValidationError) string {
+	for _, list := range [][]*dispatcher.ValidationError{blocking, warnings} {
+		for _, e := range list {
+			if suggestion, ok := e.Details["suggested_table"]; ok && suggestion != "" {
+				return sanitizeText(truncateTableSuggestion(suggestion))
+			}
 		}
 	}
 
-	parts = append(parts, patternWarnings...)
-
-	return strings.Join(parts, " ")
+	return ""
 }
 
 // truncateTableSuggestion caps a table suggestion to maxTableSuggestionLines.
@@ -149,8 +192,14 @@ func truncateTableSuggestion(suggestion string) string {
 }
 
 // FormatSystemMessage builds the human-readable message shown in the UI.
-// This replaces the old FormatErrors function in the dispatcher package.
 func FormatSystemMessage(errs []*dispatcher.ValidationError) string {
+	return formatSystemMessageFor(nil, errs)
+}
+
+// formatSystemMessageFor builds the human message for the event the hook
+// received, labeling each error with its outcome. Disable guidance is left to
+// `klaudiush disable --help` so a block never advertises turning checks off.
+func formatSystemMessageFor(hookCtx *hook.Context, errs []*dispatcher.ValidationError) string {
 	if len(errs) == 0 {
 		return ""
 	}
@@ -158,90 +207,61 @@ func FormatSystemMessage(errs []*dispatcher.ValidationError) string {
 	var b strings.Builder
 
 	for _, e := range errs {
-		formatSingleError(&b, e)
+		formatSingleError(&b, outcomeOf(hookCtx, e), e)
 	}
 
-	// Append disable hint for blocking error codes
-	var codes []string
+	return fitBudget(sanitizeText(b.String()), humanBudget)
+}
 
-	seen := make(map[string]bool)
-
-	for _, e := range errs {
-		if !e.ShouldBlock {
-			continue
-		}
-
-		code := extractCode(e.Reference)
-		if code != "" && !seen[code] {
-			seen[code] = true
-			codes = append(codes, code)
-		}
-
-		// Include additional codes from combined validator results
-		if additional, ok := e.Details["all_codes"]; ok {
-			for c := range strings.SplitSeq(additional, ",") {
-				c = strings.TrimSpace(c)
-				if c != "" && !seen[c] {
-					seen[c] = true
-					codes = append(codes, c)
-				}
-			}
-		}
-	}
-
-	b.WriteString(FormatDisableHint(codes))
-
-	return b.String()
+// hiddenDetailKeys are details rendered elsewhere or kept for tooling.
+var hiddenDetailKeys = map[string]bool{
+	"suggested_table": true,
+	"commit_preview":  true,
+	"all_codes":       true,
 }
 
 // formatSingleError writes one error entry with compact, non-duplicating format.
-func formatSingleError(b *strings.Builder, e *dispatcher.ValidationError) {
+func formatSingleError(b *strings.Builder, o outcome, e *dispatcher.ValidationError) {
 	code := extractCode(e.Reference)
-	emoji := "\u274c"
 
-	if !e.ShouldBlock {
-		emoji = "\u26a0\ufe0f"
-	}
-
-	// Header: emoji CODE: message
-	b.WriteString(emoji)
+	b.WriteString(o.icon())
 	b.WriteString(" ")
+	b.WriteString(o.label())
 
 	if code != "" {
+		b.WriteString(" ")
 		b.WriteString(code)
-		b.WriteString(": ")
 	}
 
+	b.WriteString(": ")
 	b.WriteString(stripEmoji(e.Message))
 	b.WriteString("\n")
 
-	// Fix hint
-	if e.FixHint != "" {
+	humanFindings(b, e.Findings, code)
+
+	if e.FixHint != "" && len(e.Findings) == 0 {
 		b.WriteString("  Fix: ")
 		b.WriteString(e.FixHint)
 		b.WriteString("\n")
 	}
 
-	// Reference
 	if e.Reference != "" {
 		b.WriteString("  Ref: ")
 		b.WriteString(string(e.Reference))
 		b.WriteString("\n")
 	}
 
-	// Details (supplementary only - skip keys rendered elsewhere)
-	if len(e.Details) > 0 {
-		for k, v := range e.Details {
-			if k == "suggested_table" || k == "commit_preview" || k == "all_codes" {
-				continue
-			}
+	keys := slices.Sorted(maps.Keys(e.Details))
+	for _, k := range keys {
+		if hiddenDetailKeys[k] || (k == "errors" && len(e.Findings) > 0) {
+			continue
+		}
 
-			trimmed := strings.TrimSpace(v)
-			if trimmed != "" {
-				b.WriteString("\n")
-				b.WriteString(trimmed)
-				b.WriteString("\n")
-			}
+		trimmed := strings.TrimSpace(e.Details[k])
+		if trimmed != "" {
+			b.WriteString("\n")
+			b.WriteString(trimmed)
+			b.WriteString("\n")
 		}
 	}
 
@@ -317,6 +337,47 @@ func summarizeMessage(msg string) string {
 	}
 
 	return parts[0] + ". " + parts[1]
+}
+
+// messageDetailLines returns the lines of a rich message that its summary
+// leaves out, skipping supplementary paragraphs. A linter's per-line findings
+// live there, and the agent needs them when the validator sent no structured
+// findings.
+func messageDetailLines(msg string) []string {
+	if !strings.Contains(msg, "\n") {
+		return nil
+	}
+
+	var lines []string
+
+	summarized := 0
+
+	for p := range strings.SplitSeq(msg, "\n\n") {
+		if strings.TrimSpace(p) == "" || isSupplementaryContext(p) ||
+			stripEmoji(firstNonEmptyLine(p)) == "" {
+			continue
+		}
+
+		skipFirst := summarized < maxSummaryParagraphs
+		summarized++
+
+		for line := range strings.SplitSeq(p, "\n") {
+			line = stripEmoji(line)
+			if line == "" {
+				continue
+			}
+
+			if skipFirst {
+				skipFirst = false
+
+				continue
+			}
+
+			lines = append(lines, line)
+		}
+	}
+
+	return lines
 }
 
 // supplementaryPrefixes are line prefixes that indicate context paragraphs

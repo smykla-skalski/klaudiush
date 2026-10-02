@@ -14,8 +14,30 @@ type Result struct {
     ShouldBlock bool                      // Whether to block the operation
     Reference   validator.Reference       // Error documentation URL
     FixHint     string                    // Short fix suggestion
+    Findings    []validator.Finding       // Every actionable violation
+    Unavailable bool                      // The check itself could not run
 }
 ```
+
+## Structured Findings
+
+A result that bundles several violations (a commit with a long title and a long body line) lists each one as a `validator.Finding` so the agent can repair all of them in one retry:
+
+```go
+type Finding struct {
+    Reference Reference // violated rule
+    Location  string    // "title", "message line 4", "line 12"
+    Message   string    // what is wrong
+    Actual    string    // offending value; leave empty when it may be secret
+    Required  string    // effective configured requirement
+    Repair    string    // what to change
+}
+```
+
+- Add them with `result.AddFinding(...)`; order them with `validator.SortFindings(findings, priority)` (deterministic, deduplicated, line numbers compared by value)
+- Derive `Required` and `Repair` from the effective config, never the defaults; use `GetSuggestionWithLimits(ref, limits)` + `WithFixHint` for limit-quoting hints
+- Never put a secret value in a finding; rendering also masks values matching the built-in secret patterns
+- Mark a check that could not run with `result.MarkUnavailable()`
 
 **Key semantics:**
 
@@ -213,9 +235,16 @@ The dispatcher maps validation results to structured JSON on stdout. klaudiush a
 ### JSON Fields
 
 1. **`permissionDecision`**: `"deny"` (ShouldBlock=true); unset for warnings and accepted exceptions, never `"allow"`
-2. **`permissionDecisionReason`**: Shown to Claude — contains `[CODE] message. Fix hint.`
+2. **`permissionDecisionReason`**: Shown to Claude — one `[CODE] summary` entry per error, then a `- location: message (actual: ...; required: ...). Repair: ...` line per finding (or `. Fix hint.` without findings)
 3. **`additionalContext`**: Behavioral framing that shapes how Claude responds
 4. **`systemMessage`**: Human-readable formatted output (displayed to the user)
+
+### Outcomes and Budgets
+
+- Human messages label each error: `Blocked`, `Repair required` (after a tool ran), `Exception accepted`, `Validation unavailable`, `Warning`
+- Disable guidance is not printed on blocks; it lives behind `klaudiush disable --help`
+- Agent fields are budgeted per provider (Claude 9000 bytes against its 10,000-character cap, Codex 6000 against its ~2,500-token `additionalContext` cap); over budget, actual values are shortened, then dropped, then requirements, and repairs are kept; a last-resort cut stays on a rune boundary
+- Responses with no reason channel (after-tool context, advisory events) list blocking findings in `additionalContext`
 
 ## Real-World Examples
 
@@ -261,21 +290,13 @@ func (v *CommitValidator) buildErrorResult(
     results []*RuleResult,
     message string,
 ) *validator.Result {
-    // Select most important error by priority
+    sortResultsByFixOrder(results)
     ref := selectPrimaryReference(results)
 
-    // Collect all errors
-    var details strings.Builder
-    for _, result := range results {
-        for _, err := range result.Errors {
-            details.WriteString(err + "\n")
-        }
-    }
-
-    return validator.FailWithRef(
-        ref,
-        "Commit message validation failed",
-    ).AddDetail("errors", details.String())
+    // Every rule's findings, each with location, requirement and repair
+    return validator.FailWithRef(ref, results[0].Message).
+        WithFixHint(validator.GetSuggestionWithLimits(ref, v.messageLimits())).
+        AddFinding(collectFindings(results)...)
 }
 ```
 

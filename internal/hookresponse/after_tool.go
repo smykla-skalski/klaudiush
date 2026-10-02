@@ -34,13 +34,23 @@ const (
 
 // formatContextFor builds additionalContext for the event the hook received.
 // After a tool ran nothing can be prevented, so blocking findings ask for a
-// repair instead of a retry.
+// repair instead of a retry. withFindings lists the blocking findings in the
+// context, for responses that give the agent no decision reason.
 func formatContextFor(
 	hookCtx *hook.Context,
 	blocking, warnings, bypassed []*dispatcher.ValidationError,
 	patternWarnings []string,
+	withFindings bool,
 ) string {
-	text := formatAdditionalContext(blocking, warnings, bypassed, patternWarnings)
+	text := buildContext(contextRequest{
+		hookCtx:         hookCtx,
+		blocking:        blocking,
+		warnings:        warnings,
+		bypassed:        bypassed,
+		patternWarnings: patternWarnings,
+		withFindings:    withFindings,
+		budget:          agentBudgetFor(hookCtx),
+	})
 	if hookCtx == nil || !hookCtx.IsAfterTool() {
 		return text
 	}
@@ -58,16 +68,16 @@ func formatContextFor(
 
 // formatReasonFor builds the decision reason for the event the hook received.
 func formatReasonFor(hookCtx *hook.Context, blocking []*dispatcher.ValidationError) string {
-	reason := formatDecisionReason(blocking)
-	if hookCtx == nil || !hookCtx.IsAfterTool() {
-		return reason
+	prefix := ""
+
+	if hookCtx != nil && hookCtx.IsAfterTool() {
+		prefix = afterToolReasonPrefix
+		if hookCtx.ToolFailed() {
+			prefix = failedToolReasonPrefix
+		}
 	}
 
-	if hookCtx.ToolFailed() {
-		return failedToolReasonPrefix + reason
-	}
-
-	return afterToolReasonPrefix + reason
+	return prefix + formatDecisionReasonWithin(blocking, agentBudgetFor(hookCtx)-len(prefix))
 }
 
 func warningLeadFor(hookCtx *hook.Context) string {
