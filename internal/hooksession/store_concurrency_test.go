@@ -28,6 +28,7 @@ const (
 	workerCount      = 8
 	processCount     = 6
 	testLockTimeout  = 30 * time.Second
+	privateFileMode  = 0o600
 )
 
 func TestStoreConcurrentRecordsKeepEveryFinding(t *testing.T) {
@@ -242,8 +243,8 @@ func TestStoreWritesLeaveNoTempFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if info.Mode().Perm() != stateFileMode {
-		t.Fatalf("state file mode = %v, want %v", info.Mode().Perm(), os.FileMode(stateFileMode))
+	if info.Mode().Perm() != privateFileMode {
+		t.Fatalf("state file mode = %v, want %v", info.Mode().Perm(), os.FileMode(privateFileMode))
 	}
 }
 
@@ -492,5 +493,113 @@ func workerErrors(worker, round int) []*dispatcher.ValidationError {
 			Message:     fmt.Sprintf("finding %d/%d", worker, round),
 			ShouldBlock: true,
 		},
+	}
+}
+
+func TestStoreQuarantinesCorruptState(t *testing.T) {
+	dir := t.TempDir()
+	stateFile := filepath.Join(dir, "state.json")
+	corrupt := []byte("{\"sessions\": {}}\x00\x00\x00trailing tail")
+
+	if err := os.WriteFile(stateFile, corrupt, privateFileMode); err != nil {
+		t.Fatal(err)
+	}
+
+	store := NewStore(WithStateFile(stateFile))
+
+	err := store.Record(workerContext(hook.ProviderClaude, "sess-1"), workerErrors(0, 0), nil)
+	if err != nil {
+		t.Fatalf("Record() over a corrupt state error = %v", err)
+	}
+
+	stored, err := store.CombinedErrors(hook.ProviderClaude, "sess-1")
+	if err != nil {
+		t.Fatalf("CombinedErrors() error = %v", err)
+	}
+
+	if len(stored) != 1 {
+		t.Fatalf("len(stored) = %d, want 1", len(stored))
+	}
+
+	matches, err := filepath.Glob(stateFile + ".corrupt-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(matches) != 1 {
+		t.Fatalf("quarantined files = %v, want one", matches)
+	}
+
+	kept, err := os.ReadFile(matches[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if string(kept) != string(corrupt) {
+		t.Fatal("quarantined file does not keep the corrupt content")
+	}
+}
+
+func TestStoreReadsWaitForTheLock(t *testing.T) {
+	stateFile := filepath.Join(t.TempDir(), "state.json")
+	store := NewStore(WithStateFile(stateFile), WithLockTimeout(20*time.Millisecond))
+
+	lock, err := filelock.Acquire(store.lockFile(), time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer func() { _ = lock.Release() }()
+
+	if _, err = store.FilesToRecheck(
+		hook.ProviderClaude,
+		"sess-1",
+	); !errors.Is(
+		err,
+		filelock.ErrTimeout,
+	) {
+		t.Fatalf("FilesToRecheck() error = %v, want filelock.ErrTimeout", err)
+	}
+
+	if _, err = store.CombinedErrors(
+		hook.ProviderClaude,
+		"sess-1",
+	); !errors.Is(
+		err,
+		filelock.ErrTimeout,
+	) {
+		t.Fatalf("CombinedErrors() error = %v, want filelock.ErrTimeout", err)
+	}
+}
+
+func TestStoreResetOfUnknownGateDoesNotWrite(t *testing.T) {
+	stateFile := filepath.Join(t.TempDir(), "state.json")
+	store := NewStore(WithStateFile(stateFile))
+
+	if err := store.Start(hook.ProviderClaude, "sess-1"); err != nil {
+		t.Fatal(err)
+	}
+
+	before, err := os.Stat(stateFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	old := before.ModTime().Add(-time.Hour)
+	if err = os.Chtimes(stateFile, old, old); err != nil {
+		t.Fatal(err)
+	}
+
+	if err = store.ResetCompletionBlocks(hook.ProviderClaude, "sess-1", "Stop"); err != nil {
+		t.Fatal(err)
+	}
+
+	after, err := os.Stat(stateFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !after.ModTime().Equal(old) {
+		t.Fatal("resetting a gate without a counter rewrote the state")
 	}
 }

@@ -17,10 +17,9 @@ const orphanedTempAge = time.Minute
 
 // writeFileAtomic replaces path with data through a uniquely named temp file
 // in the same directory, so writers never share a temp file and a reader or
-// an interrupted writer only ever sees the old or the new content. The temp
-// file is synced before the rename so a crash cannot leave the new name
-// pointing at unwritten data; the directory is not synced, so a crash may
-// keep the previous state instead.
+// an interrupted writer only ever sees the old or the new content. Nothing
+// is fsynced: the state is a cache of findings, an empty file reads as no
+// state, and a flush on every hook would stall the hooks queued on the lock.
 func writeFileAtomic(path string, data []byte) error {
 	dir := filepath.Dir(path)
 
@@ -31,7 +30,7 @@ func writeFileAtomic(path string, data []byte) error {
 
 	tmpPath := tmp.Name()
 
-	if err := writeAndSync(tmp, data); err != nil {
+	if err := writeAndClose(tmp, data); err != nil {
 		_ = os.Remove(tmpPath)
 
 		return err
@@ -46,17 +45,11 @@ func writeFileAtomic(path string, data []byte) error {
 	return nil
 }
 
-func writeAndSync(file *os.File, data []byte) error {
+func writeAndClose(file *os.File, data []byte) error {
 	if _, err := file.Write(data); err != nil {
 		_ = file.Close()
 
 		return errors.Wrap(err, "failed to write hook session temp file")
-	}
-
-	if err := file.Sync(); err != nil {
-		_ = file.Close()
-
-		return errors.Wrap(err, "failed to sync hook session temp file")
 	}
 
 	if err := file.Close(); err != nil {

@@ -69,7 +69,8 @@ func Acquire(path string, timeout time.Duration) (*Lock, error) {
 	}
 }
 
-// Release unlocks and closes the lock file.
+// Release unlocks and closes the lock file. Closing the file drops the lock
+// as well, so an unlock error only matters when the close fails too.
 func (l *Lock) Release() error {
 	if l == nil || l.file == nil {
 		return nil
@@ -79,14 +80,9 @@ func (l *Lock) Release() error {
 	l.file = nil
 
 	unlockErr := unlock(file)
-	closeErr := file.Close()
 
-	if unlockErr != nil {
-		return errors.Wrap(unlockErr, "failed to unlock file")
-	}
-
-	if closeErr != nil {
-		return errors.Wrap(closeErr, "failed to close lock file")
+	if err := file.Close(); err != nil {
+		return errors.Wrap(errors.CombineErrors(err, unlockErr), "failed to release file lock")
 	}
 
 	return nil
