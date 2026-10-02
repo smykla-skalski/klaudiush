@@ -150,7 +150,7 @@ var _ = Describe("permission preservation", func() {
 			Expect(fields).NotTo(HaveKey("decision"))
 		},
 		Entry("warning", semanticsWarning, "Not blocking"),
-		Entry("accepted exception", permissionBypassed, "Exception EXC:GIT022"),
+		Entry("accepted exception", permissionBypassed, "normal permission checks still apply"),
 		Entry("warning and exception", permissionMixedAdvisory, "Emergency hotfix"),
 	)
 

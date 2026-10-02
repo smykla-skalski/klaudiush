@@ -102,7 +102,7 @@ func formatAdditionalContext(
 
 		parts = append(parts,
 			"klaudiush: Exception EXC:"+code+" accepted (reason: "+reason+"). "+
-				"Proceeding despite validation failure.")
+				"Validation waived for this action; normal permission checks still apply.")
 	}
 
 	for _, e := range warnings {

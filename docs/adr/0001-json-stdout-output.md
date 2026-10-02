@@ -17,7 +17,7 @@ The original trigger for this ADR was Claude Code, but the repo now uses the sam
 
 * The agent must see the specific error code, message, and fix hint so it can self-correct.
 * The model must distinguish "automated validation block" from "user denied permission."
-* Exception bypasses should report the waiver as context rather than the current block-then-convert-to-warning approach.
+* Exception bypasses should surface the waiver as context without approving the action.
 * The solution should be a clean cut with no backwards-compatibility flags.
 
 ## Considered options
