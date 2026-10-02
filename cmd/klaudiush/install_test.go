@@ -8,6 +8,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/smykla-skalski/klaudiush/internal/doctor/settings"
 	pkgConfig "github.com/smykla-skalski/klaudiush/pkg/config"
 )
 
@@ -392,7 +393,7 @@ var _ = Describe("Install", func() {
         {"type":"command","command":"`+fakeBinary+` --provider codex --event AfterToolUse","timeout":30},
         {"type":"command","command":"`+userHook+` after"}
       ]},
-      {"hooks":[{"type":"command","command":"/old/path/klaudiush --provider codex --event AfterToolUse"}]}
+      {"hooks":[{"type":"command","command":"/old/path/klaudiush --event AfterToolUse"}]}
     ]
   }
 }`), 0o600)).To(Succeed())
@@ -420,7 +421,9 @@ var _ = Describe("Install", func() {
 			Expect(legacyHandlers[0].(map[string]any)).
 				To(HaveKeyWithValue("command", userHook+" after"))
 
-			Expect(performCodexInstall(hooksPath, fakeBinary)).To(Succeed())
+			registered, err := settings.InstallCodexDispatcher(hooksPath, fakeBinary)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(registered).To(BeTrue())
 
 			again, err := os.ReadFile(hooksPath)
 			Expect(err).NotTo(HaveOccurred())

@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -311,7 +310,7 @@ func isRawCodexDispatcherHandler(handler any, binaryPath string) bool {
 	return isCodexDispatcherHook(
 		CodexHookCommandConfig{Type: hookType, Command: command},
 		binaryPath,
-	) && strings.Contains(command, "--provider codex")
+	)
 }
 
 // AddGeminiDispatcherHooks appends missing Gemini command hooks.

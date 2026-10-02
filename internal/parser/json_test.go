@@ -243,10 +243,33 @@ var _ = Describe("JSONParser", func() {
 			Expect(ctx.GetCommand()).To(BeEmpty())
 			Expect(ctx.AffectedPaths).To(ConsistOf("docs/guide.md"))
 			Expect(ctx.GetFilePath()).To(Equal("docs/guide.md"))
+			Expect(ctx.ToolInput.OldString).To(Equal("old line"))
 			Expect(ctx.ToolInput.NewString).To(Equal("new line\nsecond line"))
 		})
 
-		It("exposes no single NewString for multi-file apply_patch payloads", func() {
+		It("treats an apply_patch that only adds one file as a Write", func() {
+			input := `{
+				"hook_event_name": "PreToolUse",
+				"tool_name": "apply_patch",
+				"tool_input": {
+					"command": "*** Begin Patch\n*** Add File: run.sh\n+#!/bin/sh\n+echo $1\n*** End Patch\n"
+				}
+			}`
+
+			p := parser.NewJSONParser(bytes.NewReader([]byte(input)))
+			ctx, err := p.ParseWithOptions(parser.ParseOptions{
+				Provider:  hook.ProviderCodex,
+				EventName: "PreToolUse",
+			})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ctx.ToolName).To(Equal(hook.ToolTypeWrite))
+			Expect(ctx.RawToolName).To(Equal("apply_patch"))
+			Expect(ctx.GetFilePath()).To(Equal("run.sh"))
+			Expect(ctx.GetContent()).To(Equal("#!/bin/sh\necho $1"))
+		})
+
+		It("splits multi-file apply_patch payloads into per-file entries", func() {
 			input := `{
 				"hook_event_name": "PreToolUse",
 				"tool_name": "apply_patch",
@@ -263,7 +286,34 @@ var _ = Describe("JSONParser", func() {
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(ctx.AffectedPaths).To(ConsistOf("a.md", "b.md"))
+			Expect(ctx.ToolName).To(Equal(hook.ToolTypeEdit))
 			Expect(ctx.ToolInput.NewString).To(BeEmpty())
+			Expect(ctx.PatchFiles).To(HaveLen(2))
+			Expect(ctx.PatchFiles[1].ToolName).To(Equal(hook.ToolTypeWrite))
+			Expect(ctx.PatchFiles[1].Input.FilePath).To(Equal("b.md"))
+			Expect(ctx.PatchFiles[1].Input.Content).To(Equal("b"))
+		})
+
+		It("covers both paths of an apply_patch move", func() {
+			input := `{
+				"hook_event_name": "PreToolUse",
+				"tool_name": "apply_patch",
+				"tool_input": {
+					"command": "*** Begin Patch\n*** Update File: ok.txt\n*** Move to: protected/moved.txt\n@@\n-a\n+b\n*** End Patch\n"
+				}
+			}`
+
+			p := parser.NewJSONParser(bytes.NewReader([]byte(input)))
+			ctx, err := p.ParseWithOptions(parser.ParseOptions{
+				Provider:  hook.ProviderCodex,
+				EventName: "PreToolUse",
+			})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ctx.AffectedPaths).To(ConsistOf("ok.txt", "protected/moved.txt"))
+			Expect(ctx.PatchFiles).To(HaveLen(2))
+			Expect(ctx.PatchFiles[1].Input.FilePath).To(Equal("protected/moved.txt"))
+			Expect(ctx.PatchFiles[1].Input.NewString).To(Equal("b"))
 		})
 
 		It("keeps MCP tool names and arguments on PreToolUse", func() {
@@ -283,6 +333,16 @@ var _ = Describe("JSONParser", func() {
 			Expect(ctx.Event).To(Equal(hook.CanonicalEventBeforeTool))
 			Expect(ctx.RawToolName).To(Equal("mcp__github__create_pull_request"))
 			Expect(ctx.ToolInput.Additional).To(HaveKey("title"))
+		})
+
+		It("keeps Codex PermissionRequest distinct from PreToolUse", func() {
+			input := `{"hook_event_name": "PermissionRequest", "tool_name": "Bash", "tool_input": {"command": "ls"}}`
+
+			p := parser.NewJSONParser(bytes.NewReader([]byte(input)))
+			ctx, err := p.ParseWithOptions(parser.ParseOptions{Provider: hook.ProviderCodex})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ctx.EventName()).To(Equal("PermissionRequest"))
 		})
 
 		It("parses Stop payloads with stop-hook fields", func() {

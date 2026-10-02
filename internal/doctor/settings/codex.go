@@ -132,13 +132,21 @@ func hasCodexDispatcherCommand(groups []CodexMatcherGroup, dispatcherPath string
 	return false
 }
 
+// isCodexDispatcherHook matches a command that runs the dispatcher binary
+// itself, by full path or by name, rather than any command whose text merely
+// mentions it (such as a klaudiush-audit.sh wrapper).
 func isCodexDispatcherHook(hook CodexHookCommandConfig, dispatcherPath string) bool {
 	if hook.Type != commandHookType {
 		return false
 	}
 
-	return strings.Contains(hook.Command, dispatcherPath) ||
-		strings.Contains(hook.Command, filepath.Base(dispatcherPath))
+	dispatcherName := filepath.Base(dispatcherPath)
+
+	return slices.ContainsFunc(strings.Fields(hook.Command), func(token string) bool {
+		token = strings.Trim(token, `"'`)
+
+		return token == dispatcherPath || filepath.Base(token) == dispatcherName
+	})
 }
 
 // CodexPreToolEnforcement describes how a klaudiush PreToolUse registration

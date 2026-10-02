@@ -28,7 +28,7 @@ func BuildCodex(
 	}
 
 	capability, known := hook.ProviderEventCapability(hook.ProviderCodex, hookCtx.Event)
-	if !known {
+	if !known || hook.IsCodexAliasedEvent(hookCtx.RawEventName) {
 		return resp
 	}
 

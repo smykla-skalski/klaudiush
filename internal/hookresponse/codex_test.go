@@ -135,4 +135,20 @@ var _ = Describe("BuildCodex", func() {
 		Expect(fields).To(HaveLen(1))
 		Expect(fields).To(HaveKey("systemMessage"))
 	})
+
+	It("emits only systemMessage for Codex events aliased onto another contract", func() {
+		resp := hookresponse.BuildForContext(&hook.Context{
+			Provider:     hook.ProviderCodex,
+			Event:        hook.CanonicalEventBeforeTool,
+			RawEventName: "PermissionRequest",
+		}, codexBlocking(), nil)
+
+		data, err := json.Marshal(resp)
+		Expect(err).NotTo(HaveOccurred())
+
+		var fields map[string]any
+		Expect(json.Unmarshal(data, &fields)).To(Succeed())
+		Expect(fields).To(HaveLen(1))
+		Expect(fields).To(HaveKey("systemMessage"))
+	})
 })

@@ -139,3 +139,15 @@ func CodexPreToolCoverage() []ToolCoverage {
 func CodexUncoveredTools() []string {
 	return []string{"hosted tools (web search)"}
 }
+
+// IsCodexAliasedEvent reports whether a raw Codex event name normalizes onto a
+// canonical event whose Codex contract belongs to a different event, so a
+// response shaped for the canonical event would be invalid for it.
+func IsCodexAliasedEvent(rawEventName string) bool {
+	switch normalizeToken(rawEventName) {
+	case "permissionrequest", "subagentstart", "subagentstop", "sessionend":
+		return true
+	default:
+		return false
+	}
+}

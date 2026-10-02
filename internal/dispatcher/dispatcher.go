@@ -169,6 +169,10 @@ func (d *Dispatcher) Dispatch(ctx context.Context, hookCtx *hook.Context) []*Val
 		return nil
 	}
 
+	if len(hookCtx.PatchFiles) > 0 {
+		return d.validatePatchFiles(ctx, hookCtx)
+	}
+
 	// Run validators on the main context
 	validationErrors := d.runValidators(ctx, hookCtx)
 
@@ -347,6 +351,43 @@ func (d *Dispatcher) validateBashFileWrites(
 		// Run validators on the synthetic context
 		errors := d.runValidators(ctx, syntheticCtx)
 		allErrors = append(allErrors, errors...)
+	}
+
+	return allErrors
+}
+
+// validatePatchFiles validates each file of a multi-file patch as its own Write
+// or Edit, so path rules and content checks apply to every file rather than
+// only the first one.
+func (d *Dispatcher) validatePatchFiles(
+	ctx context.Context,
+	patchCtx *hook.Context,
+) []*ValidationError {
+	allErrors := make([]*ValidationError, 0, len(patchCtx.PatchFiles))
+
+	for _, file := range patchCtx.PatchFiles {
+		fileCtx := &hook.Context{
+			Provider:       patchCtx.Provider,
+			Event:          patchCtx.Event,
+			RawEventName:   patchCtx.EventName(),
+			EventType:      patchCtx.EventType,
+			RawToolName:    patchCtx.RawToolName,
+			ToolFamily:     file.ToolFamily,
+			ToolName:       file.ToolName,
+			ToolInput:      file.Input,
+			RawJSON:        patchCtx.RawJSON,
+			WorkingDir:     patchCtx.WorkingDir,
+			PermissionMode: patchCtx.PermissionMode,
+			Model:          patchCtx.Model,
+			SessionID:      patchCtx.SessionID,
+			ToolUseID:      patchCtx.ToolUseID,
+			TurnID:         patchCtx.TurnID,
+			AffectedPaths:  []string{file.Input.FilePath},
+		}
+
+		d.logger.Debug("validating patch file", "file", file.Input.FilePath)
+
+		allErrors = append(allErrors, d.runValidators(ctx, fileCtx)...)
 	}
 
 	return allErrors

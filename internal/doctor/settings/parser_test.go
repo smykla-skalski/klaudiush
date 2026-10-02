@@ -451,6 +451,23 @@ var _ = Describe("SettingsParser", func() {
 			Expect(enforcement.LegacyOnly).To(BeTrue())
 		})
 
+		It("does not mistake a wrapper script named after klaudiush for the dispatcher", func() {
+			Expect(os.WriteFile(
+				hooksPath,
+				[]byte(`{
+  "hooks": {
+    "PreToolUse": [{"hooks":[{"type":"command","command":"/home/u/bin/klaudiush-audit.sh --provider codex"}]}]
+  }
+}`),
+				0o600,
+			)).To(Succeed())
+
+			hasHook, err := settings.NewCodexHooksParser(hooksPath).
+				HasEventHook("PreToolUse", "/usr/local/bin/klaudiush")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(hasHook).To(BeFalse())
+		})
+
 		It("ignores async PreToolUse handlers for enforcement", func() {
 			Expect(os.WriteFile(
 				hooksPath,

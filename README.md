@@ -116,7 +116,9 @@ unregistered dispatcher.
 
 For Codex, klaudiush registers `SessionStart`, `PreToolUse` (no matcher, so
 shell, `apply_patch`, MCP, and local function tools are all checked before they
-run), and `Stop`. A pre-tool denial uses `permissionDecision: "deny"`; Codex
+run), and `Stop`. Each file in an `apply_patch` is checked on its own: an added
+file like a write of that file, a single-hunk update like an edit, and other
+updates, deletions, and move targets through their path and added lines. A pre-tool denial uses `permissionDecision: "deny"`; Codex
 reports any other field on `PreToolUse` as a hook failure and runs the tool
 anyway, so klaudiush never sends one. Hosted tools such as web search never
 reach hooks. Codex only runs new or changed hooks after you trust them in
