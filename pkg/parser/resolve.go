@@ -28,6 +28,7 @@ const (
 	unresolvedProgram = "$(...)"
 	// procSubstPrefix names the files process substitutions stand for.
 	procSubstPrefix = "/dev/fd/klaudiush-"
+	devStdin        = "/dev/stdin"
 	// lookupWords is a lookup command plus the operand it names.
 	lookupWords = 2
 )
@@ -76,6 +77,7 @@ func (w *astWalker) child(dir string, depth int) *astWalker {
 	child.scriptFiles = w.scriptFiles
 	child.state = w.state
 	child.parent = w
+	child.via = slices.Clone(w.via)
 
 	maps.Copy(child.assignments, w.assignments)
 	maps.Copy(child.aliases, w.aliases)
@@ -435,7 +437,7 @@ func (w *astWalker) unknownGitCommand(cmd Command, idx int) Command {
 	}
 
 	if !w.resolver.GitCommand(name) {
-		w.state.truncated = true
+		w.opaque(OpacityUnresolvedProgram, gitProgram+" "+safeName(name), "")
 	}
 
 	return cmd
@@ -674,7 +676,7 @@ func (w *astWalker) definitionScripts(cmd Command) []nestedScript {
 	if body, ok := w.funcs[cmd.Invoked]; ok {
 		// Positional forms that are not substituted leave the call unknown.
 		if unsupportedPositional.MatchString(body) {
-			w.state.truncated = true
+			w.opaque(OpacityUnresolvedArgs, safeName(cmd.Invoked), "")
 
 			return scripts
 		}
@@ -721,7 +723,7 @@ func (w *astWalker) follow(cmd Command, l launch, depth int) {
 	}
 
 	for _, code := range l.code {
-		w.followCode(cmd, code, depth)
+		w.followCode(cmd, code, depth, "")
 	}
 }
 
@@ -730,62 +732,74 @@ func (w *astWalker) follow(cmd Command, l launch, depth int) {
 // not captured, under an unknown directory) fails closed; a compiled program
 // is an accepted limit.
 func (w *astWalker) followFile(cmd Command, file scriptFile, depth int) {
-	text, status := w.scriptSource(file.path, cmd)
+	text, status, detail := w.scriptSource(file.path, cmd)
 
 	switch status {
 	case ScriptText:
+		label := scriptName(file.path)
 		if file.interpreter || interpreterShebang(text) {
-			w.followCode(cmd, text, depth)
+			w.followCode(cmd, text, depth, label)
 		} else {
-			w.walkScript(text, cmd, depth, scriptWalk{})
+			w.walkScript(text, cmd, depth, scriptWalk{label: label})
 		}
 	case ScriptOpaque:
 		if file.explicit {
-			w.state.truncated = true
+			w.opaque(OpacityUnreadableScript, scriptName(file.path), detail)
 		}
 	case ScriptMissing, ScriptBinary:
 	}
 }
 
-// followCode records the command lines found in program source.
-func (w *astWalker) followCode(cmd Command, code string, depth int) {
+// followCode records the command lines found in program source, naming the
+// source file by label when it came from one.
+func (w *astWalker) followCode(cmd Command, code string, depth int, label string) {
 	for _, line := range commandLines(code) {
-		w.walkScript(line, cmd, depth, scriptWalk{literal: true})
+		w.walkScript(line, cmd, depth, scriptWalk{literal: true, label: label})
 	}
 }
 
 // scriptSource returns the text of a script a command runs: stdin, a process
 // substitution, a file written earlier on the same line, or the file on disk.
-func (w *astWalker) scriptSource(path string, cmd Command) (string, ScriptStatus) {
-	if path == "-" || path == "/dev/stdin" {
+// For an opaque script it also says why.
+func (w *astWalker) scriptSource(path string, cmd Command) (string, ScriptStatus, string) {
+	if path == "-" || path == devStdin {
 		if cmd.Stdin == "" {
-			return "", ScriptMissing
+			return "", ScriptMissing, ""
 		}
 
-		return cmd.Stdin, ScriptText
+		return cmd.Stdin, ScriptText, ""
 	}
 
 	if text, ok := w.scriptFiles[path]; ok {
-		return text, ScriptText
+		return text, ScriptText, ""
 	}
 
 	path = w.expandName(path)
 
+	if HasUnresolvedVars(path) {
+		return "", ScriptOpaque, DetailScriptVariable
+	}
+
 	relative := !filepath.IsAbs(path) && !strings.HasPrefix(path, "~")
-	if HasUnresolvedVars(path) || (relative && w.dirUnknown) {
-		return "", ScriptOpaque
+	if relative && w.dirUnknown {
+		return "", ScriptOpaque, DetailScriptDirectory
 	}
 
 	target := resolvePath(cmd.WorkingDirectory, path)
 	if text, found, captured := w.lastLineWrite(target); found {
 		if !captured {
-			return "", ScriptOpaque
+			return "", ScriptOpaque, DetailScriptWritten
 		}
 
-		return text, ScriptText
+		return text, ScriptText, ""
 	}
 
-	return w.resolver.ReadScript(target)
+	text, status := w.resolver.ReadScript(target)
+	if status == ScriptOpaque {
+		return "", ScriptOpaque, DetailScriptRead
+	}
+
+	return text, status, ""
 }
 
 // scriptWalk says how walkScript treats a script.
@@ -794,6 +808,8 @@ type scriptWalk struct {
 	name string
 	// literal marks a string from interpreter code, where prose is expected.
 	literal bool
+	// label names the script in diagnostics.
+	label string
 }
 
 // walkScript records the commands of a script that parent runs. A cd inside
@@ -803,7 +819,7 @@ type scriptWalk struct {
 // are mostly prose, do not.
 func (w *astWalker) walkScript(script string, parent Command, depth int, sw scriptWalk) {
 	if !w.state.spend() {
-		w.state.truncated = true
+		w.opaque(OpacityWorkBudget, sw.operation(), "")
 
 		return
 	}
@@ -815,9 +831,16 @@ func (w *astWalker) walkScript(script string, parent Command, depth int, sw scri
 		child.expanding[sw.name] = true
 	}
 
+	if op := sw.operation(); (sw.name != "" || sw.label != "") &&
+		(len(child.via) == 0 || child.via[len(child.via)-1] != op) {
+		child.via = append(child.via, op)
+	}
+
 	for stmt, err := range syntax.NewParser().StmtsSeq(strings.NewReader(script)) {
 		if err != nil {
-			w.state.truncated = w.state.truncated || !sw.literal
+			if !sw.literal {
+				w.opaque(OpacityScriptSyntax, sw.operation(), "")
+			}
 
 			break
 		}

@@ -336,7 +336,7 @@ func stdinRecipes(cmd Command) []string {
 	for i, arg := range cmd.Args {
 		switch {
 		case makefileFlags[arg] && i+1 < len(cmd.Args):
-			fromStdin = fromStdin || cmd.Args[i+1] == "-" || cmd.Args[i+1] == "/dev/stdin"
+			fromStdin = fromStdin || cmd.Args[i+1] == "-" || cmd.Args[i+1] == devStdin
 		case arg == "-f-" || arg == "--file=-":
 			fromStdin = true
 		}

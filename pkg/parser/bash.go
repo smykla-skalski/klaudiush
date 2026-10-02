@@ -16,15 +16,21 @@ var (
 	ErrParseFailed = errors.New("failed to parse command")
 )
 
-// ParseResult contains the results of parsing a Bash command.
+// ParseResult contains the results of parsing a Bash command. Opacities keeps
+// at most MaxOpacities entries, and MoreOpacities reports that some were
+// dropped.
 type ParseResult struct {
 	Commands      []Command         // All commands found
 	FileWrites    []FileWrite       // All file write operations
 	GitOperations []Command         // Git commands only
 	Assignments   map[string]string // Literal NAME=value assignments
-	// Truncated reports that the command launches something nested deeper than
-	// the parser follows, so what it finally runs is unknown.
+	// Truncated reports that part of the command could not be inspected, so
+	// what it finally runs is unknown and it must fail closed.
 	Truncated bool
+	// Opacities explains what could not be inspected and why. It lists at
+	// most a few entries and may be empty only when Truncated is false.
+	Opacities     []Opacity
+	MoreOpacities bool
 }
 
 // BashParser parses Bash commands using mvdan.cc/sh.
@@ -85,6 +91,8 @@ func (p *BashParser) Parse(command string) (*ParseResult, error) {
 		GitOperations: gitOps,
 		Assignments:   walker.assignments,
 		Truncated:     walker.state.truncated,
+		Opacities:     walker.state.opacities,
+		MoreOpacities: walker.state.moreOpacities,
 	}, nil
 }
 

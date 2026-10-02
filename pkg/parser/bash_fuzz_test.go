@@ -1,6 +1,7 @@
 package parser_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/smykla-skalski/klaudiush/pkg/parser"
@@ -43,8 +44,16 @@ func FuzzBashParse(f *testing.F) {
 	f.Add(`git -c alias.ci=commit ci; git config alias.x '!sh -c "git push"'; git x`)
 	f.Add(`bash -c git\ commit\ -m\ x`)
 	f.Add("find . -exec git commit -m x \\; | xargs -I{} git add {}")
+	// Forms the parser cannot see through
+	f.Add(strings.Repeat("env ", 10) + "git commit -m x")
+	f.Add(`bash "$DIR/run.sh"`)
+	f.Add(`echo "$BODY" > s.sh && sudo bash s.sh`)
+	f.Add(`bash -c 'git commit -m x && ('`)
+	f.Add(`f() { git "${@:1}"; }; f commit`)
+	f.Add("HOME=/x git zz")
+	f.Add(`git -c alias.abcdefghijklmnopqrstuvwx='!git zz' abcdefghijklmnopqrstuvwx`)
 
-	f.Fuzz(func(_ *testing.T, command string) {
+	f.Fuzz(func(t *testing.T, command string) {
 		p := parser.NewBashParser()
 		result, err := p.Parse(command)
 
@@ -60,6 +69,31 @@ func FuzzBashParse(f *testing.F) {
 			_ = result.Commands
 			_ = result.FileWrites
 			_ = result.GitOperations
+
+			checkOpacities(t, result)
 		}
 	})
+}
+
+// checkOpacities fails when a truncated parse is not explained, or when an
+// explanation carries text that is not a plain name.
+func checkOpacities(t *testing.T, result *parser.ParseResult) {
+	t.Helper()
+
+	if result.Truncated != (len(result.Opacities) > 0) {
+		t.Fatalf("truncated %v with %d opacities", result.Truncated, len(result.Opacities))
+	}
+
+	for _, o := range result.Opacities {
+		names := strings.Fields(o.Operation)
+		for _, entry := range o.Origin {
+			names = append(names, strings.Fields(entry)...)
+		}
+
+		for _, name := range names {
+			if len(name) > 32 || strings.ContainsAny(name, "$`'\"/\\;|&(){}") {
+				t.Fatalf("unsafe name %q in %+v", name, o)
+			}
+		}
+	}
 }

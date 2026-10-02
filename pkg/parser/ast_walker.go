@@ -10,8 +10,10 @@ import (
 	"github.com/smykla-skalski/klaudiush/internal/xdg"
 )
 
-// astWalker walks the AST and extracts commands and file operations.
+// astWalker walks the AST and extracts commands and file operations. via
+// lists the programs that launched what it walks, outermost first.
 type astWalker struct {
+	via        []string
 	commands   []Command
 	fileWrites []FileWrite
 	// parent is the walker of the script that runs this one. What it recorded
@@ -54,7 +56,13 @@ type astWalker struct {
 }
 
 // parseState is shared by a walker and all the child walkers of one parse.
+// opacities explains why the parse is truncated, moreOpacities records that
+// some explanations were dropped, and budgetReported keeps the exhausted work
+// budget from being explained more than once.
 type parseState struct {
+	opacities      []Opacity
+	moreOpacities  bool
+	budgetReported bool
 	// work is how many more commands and scripts may be followed. Fan-out
 	// through functions, aliases or scripts would otherwise grow without
 	// bound and push the hook past its timeout, which lets the command run.
@@ -464,7 +472,7 @@ func (w *astWalker) extractCommand(call *syntax.CallExpr) {
 // or an alias would each hide a git command from every validator.
 func (w *astWalker) recordCommand(cmd Command, depth int) {
 	if !w.state.spend() {
-		w.state.truncated = true
+		w.opaque(OpacityWorkBudget, safeName(commandName(cmd.Name)), "")
 
 		return
 	}
@@ -504,10 +512,12 @@ func (w *astWalker) recordCommand(cmd Command, depth int) {
 	// Past the cap nothing more is followed, and the command fails closed:
 	// what it launches cannot be shown to be safe.
 	if depth >= maxLaunchDepth {
-		w.state.truncated = true
+		w.opaque(OpacityDepthLimit, safeName(cmd.Name), "")
 
 		return
 	}
+
+	defer w.enter(cmd)()
 
 	w.follow(cmd, l, depth+1)
 
