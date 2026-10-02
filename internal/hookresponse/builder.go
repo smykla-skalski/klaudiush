@@ -96,7 +96,7 @@ func buildForProvider(
 	switch hookCtx.Provider {
 	case hook.ProviderCodex:
 		if hookCtx.IsPermissionRequest() {
-			return BuildPermissionRequest(errs)
+			return permissionRequestWithin(errs, agentBudgetFor(hookCtx))
 		}
 
 		return BuildCodex(hookCtx, errs, patternWarnings)
@@ -158,7 +158,7 @@ func BuildGemini(
 	case hook.CanonicalEventTurnStop:
 		if len(blocking) > 0 {
 			resp.Decision = decisionDeny
-			resp.Reason = formatCompletionReason(blocking)
+			resp.Reason = formatCompletionReason(blocking, budget)
 		}
 	// Every other event is advisory: Gemini ignores flow control on
 	// SessionEnd, Notification, and PreCompress, and an unmapped event has no

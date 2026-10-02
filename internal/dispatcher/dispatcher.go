@@ -9,6 +9,7 @@ import (
 	"github.com/cockroachdb/errors"
 
 	"github.com/smykla-skalski/klaudiush/internal/validator"
+	"github.com/smykla-skalski/klaudiush/internal/validators/secrets"
 	"github.com/smykla-skalski/klaudiush/pkg/config"
 	"github.com/smykla-skalski/klaudiush/pkg/hook"
 	"github.com/smykla-skalski/klaudiush/pkg/logger"
@@ -238,12 +239,12 @@ func (d *Dispatcher) runValidators(ctx context.Context, hookCtx *hook.Context) [
 		if verr.ShouldBlock {
 			d.logger.Error("validator failed",
 				"validator", name,
-				"message", verr.Message,
+				"message", secrets.Redact(verr.Message),
 			)
 		} else {
 			d.logger.Info("validator warned",
 				"validator", name,
-				"message", verr.Message,
+				"message", secrets.Redact(verr.Message),
 			)
 		}
 	}
@@ -297,22 +298,68 @@ func (d *Dispatcher) applyExceptionChecking(
 	result := make([]*ValidationError, 0, len(errors))
 
 	for _, verr := range errors {
-		modifiedErr, bypassed := d.exceptionChecker.CheckException(hookCtx, verr)
-
-		if bypassed {
-			d.logger.Info("validation error bypassed via exception",
-				"validator", verr.Validator,
-				"reference", verr.Reference,
-			)
-		}
-
-		// Include the modified error (nil if completely bypassed, non-blocking if converted to warning)
-		if modifiedErr != nil {
-			result = append(result, modifiedErr)
-		}
+		result = append(result, d.checkException(hookCtx, verr)...)
 	}
 
 	return result
+}
+
+// checkException applies an exception to one error. An exception covers only
+// its own code: findings with other codes in the same result stay blocking
+// and are checked against the remaining tokens on their own.
+func (d *Dispatcher) checkException(
+	hookCtx *hook.Context,
+	verr *ValidationError,
+) []*ValidationError {
+	modifiedErr, bypassed := d.exceptionChecker.CheckException(hookCtx, verr)
+	if modifiedErr == nil {
+		return nil
+	}
+
+	if !bypassed {
+		return []*ValidationError{modifiedErr}
+	}
+
+	d.logger.Info("validation error bypassed via exception",
+		"validator", verr.Validator,
+		"reference", verr.Reference,
+	)
+
+	covered, rest := splitFindingsByCode(verr.Findings, verr.Reference.Code())
+	if len(rest) == 0 {
+		return []*ValidationError{modifiedErr}
+	}
+
+	waived := *modifiedErr
+	waived.Findings = covered
+
+	remaining := &ValidationError{
+		Validator:   verr.Validator,
+		Message:     rest[0].Message,
+		ShouldBlock: true,
+		Reference:   rest[0].Reference,
+		FixHint:     validator.GetSuggestion(rest[0].Reference),
+		Findings:    rest,
+		Unavailable: verr.Unavailable,
+	}
+
+	return append([]*ValidationError{&waived}, d.checkException(hookCtx, remaining)...)
+}
+
+// splitFindingsByCode separates the findings with the given code from the rest.
+func splitFindingsByCode(
+	findings []validator.Finding,
+	code string,
+) (covered, rest []validator.Finding) {
+	for _, f := range findings {
+		if f.Code() == code {
+			covered = append(covered, f)
+		} else {
+			rest = append(rest, f)
+		}
+	}
+
+	return covered, rest
 }
 
 // validateBashFileWrites validates each file a Bash command writes as a

@@ -80,6 +80,12 @@ var defaultPatterns = []Pattern{
 		Regex:       regexp.MustCompile(`ghr_[A-Za-z0-9_]{36}`),
 		Reference:   validator.RefSecretsToken,
 	},
+	{
+		Name:        "github-fine-grained-pat",
+		Description: "GitHub Fine-Grained Personal Access Token",
+		Regex:       regexp.MustCompile(`github_pat_[A-Za-z0-9_]{82}`),
+		Reference:   validator.RefSecretsToken,
+	},
 
 	// GitLab Token
 	{
@@ -271,3 +277,19 @@ func DefaultPatterns() []Pattern {
 
 	return patterns
 }
+
+// Redact masks every value the built-in patterns match, so diagnostics and
+// logs that quote input never repeat a credential.
+func Redact(s string) string {
+	if s == "" {
+		return s
+	}
+
+	for _, p := range defaultPatterns {
+		s = p.Regex.ReplaceAllLiteralString(s, redactedValue)
+	}
+
+	return s
+}
+
+const redactedValue = "[REDACTED]"

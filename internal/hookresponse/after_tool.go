@@ -30,6 +30,10 @@ const (
 
 	failedToolUserNotice = "klaudiush checked the files a failed tool may have " +
 		"partly changed. The files below need repair."
+
+	afterToolUnavailableLead = "Automated klaudiush validation check after the tool ran. " +
+		"A required check could not run, so the result was not validated. " +
+		"Do not edit files for it; tell the user what failed."
 )
 
 // formatContextFor builds additionalContext for the event the hook received.
@@ -56,10 +60,12 @@ func formatContextFor(
 	}
 
 	if len(blocking) > 0 {
+		text = strings.Replace(text, unavailableContextLead, afterToolUnavailableLead, 1)
+
 		return strings.Replace(text, blockingContextLead, afterToolLead(hookCtx), 1)
 	}
 
-	if len(warnings) == 0 {
+	if !needsRepair(warnings) {
 		return text
 	}
 
@@ -70,7 +76,7 @@ func formatContextFor(
 func formatReasonFor(hookCtx *hook.Context, blocking []*dispatcher.ValidationError) string {
 	prefix := ""
 
-	if hookCtx != nil && hookCtx.IsAfterTool() {
+	if hookCtx != nil && hookCtx.IsAfterTool() && needsRepair(blocking) {
 		prefix = afterToolReasonPrefix
 		if hookCtx.ToolFailed() {
 			prefix = failedToolReasonPrefix
@@ -103,7 +109,8 @@ func noteAfterToolRepair(
 	errs []*dispatcher.ValidationError,
 	resp any,
 ) {
-	if hookCtx == nil || !hookCtx.IsAfterTool() || !dispatcher.ShouldBlock(errs) {
+	blocking, _, _ := categorize(errs)
+	if hookCtx == nil || !hookCtx.IsAfterTool() || !needsRepair(blocking) {
 		return
 	}
 
@@ -118,4 +125,16 @@ func noteAfterToolRepair(
 	}
 
 	*p = notice + "\n\n" + *p
+}
+
+// needsRepair reports whether any finding asks for a file change. A check that
+// could not run says nothing about the files.
+func needsRepair(errs []*dispatcher.ValidationError) bool {
+	for _, e := range errs {
+		if !e.Unavailable {
+			return true
+		}
+	}
+
+	return false
 }

@@ -84,6 +84,9 @@ func SortFindings(findings []Finding, priority []Reference) []Finding {
 			cmp.Compare(a.Code(), b.Code()),
 			compareNatural(a.Location, b.Location),
 			cmp.Compare(a.Message, b.Message),
+			cmp.Compare(a.Actual, b.Actual),
+			cmp.Compare(a.Required, b.Required),
+			cmp.Compare(a.Repair, b.Repair),
 		)
 	})
 

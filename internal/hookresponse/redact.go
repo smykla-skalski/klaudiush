@@ -1,54 +1,17 @@
 package hookresponse
 
 import (
-	"regexp"
 	"strings"
-	"sync"
 	"unicode/utf8"
 
 	"github.com/smykla-skalski/klaudiush/internal/validators/secrets"
 )
 
-const (
-	redactedValue    = "[REDACTED]"
-	truncationMarker = "\n[klaudiush: output truncated to fit the hook limit]"
-)
-
-var (
-	secretPatternsOnce sync.Once
-	secretPatterns     []*regexp.Regexp
-)
-
-func loadSecretPatterns() []*regexp.Regexp {
-	secretPatternsOnce.Do(func() {
-		for _, p := range secrets.DefaultPatterns() {
-			if p.Regex != nil {
-				secretPatterns = append(secretPatterns, p.Regex)
-			}
-		}
-	})
-
-	return secretPatterns
-}
-
-// redactSecrets masks every value a built-in secret pattern matches, so
-// diagnostics that quote the input (a commit title, a forbidden match) never
-// repeat a credential to the agent, the user or a log.
-func redactSecrets(s string) string {
-	if s == "" {
-		return s
-	}
-
-	for _, re := range loadSecretPatterns() {
-		s = re.ReplaceAllLiteralString(s, redactedValue)
-	}
-
-	return s
-}
+const truncationMarker = "\n[klaudiush: output truncated to fit the hook limit]"
 
 // sanitizeText masks secrets and replaces invalid UTF-8.
 func sanitizeText(s string) string {
-	return redactSecrets(strings.ToValidUTF8(s, "�"))
+	return secrets.Redact(strings.ToValidUTF8(s, "�"))
 }
 
 // truncateUTF8 cuts s to at most maxBytes bytes without splitting a rune.
@@ -85,6 +48,10 @@ func truncateRunes(s string, n int) string {
 func fitBudget(text string, budget int) string {
 	if len(text) <= budget {
 		return text
+	}
+
+	if budget < len(truncationMarker) {
+		return truncateUTF8(text, budget)
 	}
 
 	return truncateUTF8(text, budget-len(truncationMarker)) + truncationMarker

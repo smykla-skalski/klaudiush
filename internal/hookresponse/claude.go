@@ -47,7 +47,7 @@ func BuildClaude(
 	case hook.EnforcementDenyTool:
 		return BuildWithPatterns(eventName, errs, patternWarnings)
 	case hook.EnforcementDenyPermission:
-		return BuildPermissionRequest(errs)
+		return permissionRequestWithin(errs, agentBudgetFor(hookCtx))
 	case hook.EnforcementDeclineElicitation:
 		return BuildElicitation(hookCtx, errs, patternWarnings)
 	case hook.EnforcementBlockDecision, hook.EnforcementContinueTurn:
@@ -96,7 +96,7 @@ func buildClaudeDecision(
 		resp.Reason = formatReasonFor(hookCtx, blocking)
 
 		if gate {
-			resp.Reason = formatCompletionReason(blocking)
+			resp.Reason = formatCompletionReason(blocking, agentBudgetFor(hookCtx))
 		}
 	}
 
@@ -163,6 +163,13 @@ func buildClaudeAdvisory(
 // response. Blocking findings deny the request with a message for the agent.
 // Warnings leave the decision to the user, so no decision object is sent.
 func BuildPermissionRequest(errs []*dispatcher.ValidationError) *PermissionRequestResponse {
+	return permissionRequestWithin(errs, defaultAgentBudget)
+}
+
+func permissionRequestWithin(
+	errs []*dispatcher.ValidationError,
+	budget int,
+) *PermissionRequestResponse {
 	if len(errs) == 0 {
 		return nil
 	}
@@ -178,7 +185,7 @@ func BuildPermissionRequest(errs []*dispatcher.ValidationError) *PermissionReque
 		HookEventName: permissionRequestEventName,
 		Decision: &PermissionRequestDecision{
 			Behavior: decisionDeny,
-			Message:  formatDecisionReason(blocking),
+			Message:  formatDecisionReasonWithin(blocking, budget),
 		},
 	}
 
@@ -220,6 +227,7 @@ func BuildElicitation(
 
 // formatCompletionReason builds the instruction a completion gate hands the
 // agent when it keeps the turn going.
-func formatCompletionReason(blocking []*dispatcher.ValidationError) string {
-	return completionReasonPrefix + formatDecisionReason(blocking)
+func formatCompletionReason(blocking []*dispatcher.ValidationError, budget int) string {
+	return completionReasonPrefix +
+		formatDecisionReasonWithin(blocking, budget-len(completionReasonPrefix))
 }

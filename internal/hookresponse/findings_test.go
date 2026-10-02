@@ -144,6 +144,18 @@ var _ = Describe("structured findings", func() {
 		Expect(systemText(resp)).To(ContainSubstring("Wrap line 3 at 60 characters"))
 	})
 
+	It("masks fine-grained GitHub tokens", func() {
+		pat := "github_pat_" + strings.Repeat("Ab1_", 20) + "Zz"
+		errs := []*dispatcher.ValidationError{{
+			Message: "Title has " + pat, ShouldBlock: true, Reference: validator.RefGitBadTitle,
+		}}
+
+		resp := hookresponse.BuildForContext(preToolCtx(hook.ProviderClaude), errs, nil)
+
+		Expect(agentText(resp)).NotTo(ContainSubstring("github_pat_Ab1"))
+		Expect(systemText(resp)).NotTo(ContainSubstring("github_pat_Ab1"))
+	})
+
 	It("never echoes a secret value in agent or human diagnostics", func() {
 		errs := commitErrors(nil, "feat(api): use "+fakeToken+" for the client right now please")
 
@@ -193,13 +205,96 @@ var _ = Describe("structured findings", func() {
 			}
 		})
 
-		It("cuts at a rune boundary when even repairs do not fit", func() {
+		It("redacts secrets before shortening values", func() {
+			errs := manyFindings(60, "rotate "+fakeToken+strings.Repeat(" more words", 10))
+
+			resp := hookresponse.BuildForContext(preToolCtx(hook.ProviderCodex), errs, nil)
+			text := agentText(resp)
+
+			Expect(text).NotTo(ContainSubstring("ghp_A1b2"))
+			Expect(text).To(ContainSubstring("Wrap line 62 at 72 characters"))
+		})
+
+		It("keeps findings ahead of a large table suggestion within the cap", func() {
+			table := strings.Repeat("| "+strings.Repeat("x", 700)+" |\n", 14)
+			errs := []*dispatcher.ValidationError{{
+				Message:     "Table issue",
+				ShouldBlock: true,
+				Reference:   validator.RefMarkdownLint,
+				Details:     map[string]string{"suggested_table": table},
+				Findings: []validator.Finding{{
+					Location: "line 3", Message: "Table is misaligned", Repair: "Align the columns",
+				}},
+			}}
+			ctx := &hook.Context{
+				Provider: hook.ProviderClaude, Event: hook.CanonicalEventAfterTool,
+				RawEventName: "PostToolUse", ToolExecuted: true, ToolSucceeded: true,
+			}
+
+			resp := hookresponse.BuildForContext(ctx, errs, nil)
+			out := hookSpecific(responseFields(resp))
+			context, _ := out["additionalContext"].(string)
+
+			Expect(len(context)).To(BeNumerically("<=", 9000))
+			Expect(agentText(resp)).To(ContainSubstring("Align the columns"))
+		})
+
+		It("keeps as many linter lines as fit", func() {
+			lines := make([]string, 0, 200)
+			for i := range 200 {
+				lines = append(lines, fmt.Sprintf("Line %d: SC2086 quote this variable %s", i+1,
+					strings.Repeat("v", 60)))
+			}
+
+			errs := []*dispatcher.ValidationError{{
+				Message:     "Shellcheck found issues:\n" + strings.Join(lines, "\n"),
+				ShouldBlock: true,
+				Reference:   validator.RefShellcheck,
+			}}
+
+			resp := hookresponse.BuildForContext(preToolCtx(hook.ProviderClaude), errs, nil)
+			reason, _ := hookSpecific(responseFields(resp))["permissionDecisionReason"].(string)
+
+			Expect(reason).To(ContainSubstring("Line 1: SC2086"))
+			Expect(reason).To(ContainSubstring("Line 60: SC2086"))
+			Expect(len(reason)).To(BeNumerically("<=", 9000))
+			Expect(utf8.ValidString(reason)).To(BeTrue())
+		})
+
+		It("folds findings of one kind when even repairs do not fit", func() {
 			errs := manyFindings(2000, "x")
+			errs[0].Findings = append(errs[0].Findings, validator.Finding{
+				Reference: validator.RefGitPRRef, Location: "message", Message: "PR reference",
+				Repair: "Replace '#1' with '1'",
+			})
 
 			resp := hookresponse.BuildForContext(preToolCtx(hook.ProviderCodex), errs, nil)
 			fields := hookSpecific(responseFields(resp))
 			reason, ok := fields["permissionDecisionReason"].(string)
 			Expect(ok).To(BeTrue())
+
+			Expect(utf8.ValidString(reason)).To(BeTrue())
+			Expect(len(reason)).To(BeNumerically("<=", 6000))
+			Expect(
+				reason,
+			).To(ContainSubstring("message line 3: Repair: Wrap line 3 at 72 characters"))
+			Expect(reason).To(ContainSubstring("1997 more like this at: message line 6,"))
+			Expect(reason).To(ContainSubstring("and others. Repair each the same way."))
+			Expect(reason).To(ContainSubstring("Replace '#1' with '1'"))
+		})
+
+		It("cuts at a rune boundary as a last resort", func() {
+			errs := make([]*dispatcher.ValidationError, 0, 300)
+			for i := range 300 {
+				errs = append(errs, &dispatcher.ValidationError{
+					Message:     fmt.Sprintf("Problem %d with żółć", i),
+					ShouldBlock: true,
+					FixHint:     strings.Repeat("ł", 20),
+				})
+			}
+
+			resp := hookresponse.BuildForContext(preToolCtx(hook.ProviderCodex), errs, nil)
+			reason, _ := hookSpecific(responseFields(resp))["permissionDecisionReason"].(string)
 
 			Expect(utf8.ValidString(reason)).To(BeTrue())
 			Expect(len(reason)).To(BeNumerically("<=", 6000))
@@ -247,7 +342,23 @@ var _ = Describe("structured findings", func() {
 
 			Expect(msg).To(ContainSubstring("Blocked GIT001: Missing -s flag"))
 			Expect(msg).To(ContainSubstring("Exception accepted GIT022"))
-			Expect(msg).To(ContainSubstring("Validation unavailable: Plugin error"))
+			Expect(msg).To(ContainSubstring("Blocked, validation unavailable: Plugin error"))
+		})
+
+		It("labels an advisory check that did not run as unavailable", func() {
+			msg := hookresponse.FormatSystemMessage([]*dispatcher.ValidationError{unchecked})
+
+			Expect(msg).To(ContainSubstring("Validation unavailable: linter crashed"))
+		})
+
+		It("does not ask for a retry when only unavailable checks block", func() {
+			resp := hookresponse.BuildForContext(
+				preToolCtx(hook.ProviderClaude), []*dispatcher.ValidationError{unavailable}, nil,
+			)
+			text := agentText(resp)
+
+			Expect(text).To(ContainSubstring("A required check could not run"))
+			Expect(text).NotTo(ContainSubstring("Fix ALL reported errors"))
 		})
 
 		It("labels findings after a tool as repairs for the user", func() {
@@ -259,6 +370,31 @@ var _ = Describe("structured findings", func() {
 
 			Expect(systemText(resp)).To(ContainSubstring("Repair required GIT001"))
 			Expect(systemText(resp)).NotTo(ContainSubstring("Blocked GIT001"))
+		})
+
+		It("does not ask for file repairs when a check failed after a tool", func() {
+			ctx := &hook.Context{
+				Provider: hook.ProviderClaude, Event: hook.CanonicalEventAfterTool,
+				RawEventName: "PostToolUse", ToolExecuted: true, ToolSucceeded: true,
+			}
+			resp := hookresponse.BuildForContext(
+				ctx, []*dispatcher.ValidationError{unavailable}, nil,
+			)
+
+			Expect(agentText(resp)).To(ContainSubstring("result was not validated"))
+			Expect(agentText(resp)).NotTo(ContainSubstring("Repair required"))
+			Expect(systemText(resp)).NotTo(ContainSubstring("need repair"))
+		})
+
+		It("does not frame an advisory unavailable check as a repair", func() {
+			ctx := &hook.Context{
+				Provider: hook.ProviderCodex, Event: hook.CanonicalEventAfterTool,
+				RawEventName: "PostToolUse", ToolExecuted: true, ToolSucceeded: true,
+			}
+			resp := hookresponse.BuildForContext(ctx, []*dispatcher.ValidationError{unchecked}, nil)
+
+			Expect(agentText(resp)).To(ContainSubstring("could not validate this action"))
+			Expect(agentText(resp)).NotTo(ContainSubstring("Repair every finding"))
 		})
 
 		It("tells the agent a blocking check could not run", func() {
@@ -290,6 +426,19 @@ var _ = Describe("structured findings", func() {
 			Expect(agentText(resp)).To(ContainSubstring(
 				"klaudiush warning: Not blocking. [FILE005] line too long. Fix the formatting"))
 		})
+	})
+
+	It("gives the agent combined errors kept in details", func() {
+		errs := []*dispatcher.ValidationError{{
+			Message:     "PR title exceeds 50 characters",
+			ShouldBlock: true,
+			Reference:   validator.RefGitPRValidation,
+			Details:     map[string]string{"errors": "PR body missing ## Motivation section\n"},
+		}}
+
+		resp := hookresponse.BuildForContext(preToolCtx(hook.ProviderClaude), errs, nil)
+
+		Expect(agentText(resp)).To(ContainSubstring("PR body missing ## Motivation section"))
 	})
 
 	It("lists lines a summary leaves out when there are no structured findings", func() {

@@ -101,15 +101,19 @@ func (v *CommitValidator) validateCommits(
 
 		// merge, revert, cherry-pick and tag write a message too, but none of
 		// the commit contract applies to them - only attribution does.
-		if res := v.checkCommandAIAttribution(hookCtx.GetCommand()); res != nil {
-			return res
-		}
-
+		attribution := v.checkCommandAIAttribution(hookCtx.GetCommand())
 		if !isCommit {
+			if attribution != nil {
+				return attribution
+			}
+
 			continue
 		}
 
 		res := v.validateGitCommit(ctx, gitCmd, hasGitAdd, result)
+		if attribution != nil {
+			return withAttribution(res, attribution)
+		}
 
 		switch {
 		case res.ShouldBlock:
@@ -124,6 +128,29 @@ func (v *CommitValidator) validateCommits(
 	}
 
 	return validator.Pass()
+}
+
+// withAttribution reports command-level AI attribution together with the
+// message findings, so the agent repairs every violation in one retry. A
+// result without findings (missing flags, nothing staged) still yields to the
+// attribution block as before.
+func withAttribution(res, attribution *validator.Result) *validator.Result {
+	if !res.ShouldBlock || len(res.Findings) == 0 {
+		return attribution
+	}
+
+	for _, f := range res.Findings {
+		if f.Reference == validator.RefGitClaudeAttr {
+			return res
+		}
+	}
+
+	res.Findings = validator.SortFindings(
+		append(res.Findings, attribution.Findings...),
+		referenceFixOrder,
+	)
+
+	return res
 }
 
 // otherMessageSubcommands are the git subcommands that write a commit message

@@ -64,7 +64,7 @@ func BuildCodex(
 	case hook.CanonicalEventTurnStop, hook.CanonicalEventSubagentStop:
 		if len(blocking) > 0 {
 			resp.Decision = decisionBlock
-			resp.Reason = formatCompletionReason(blocking)
+			resp.Reason = formatCompletionReason(blocking, budget)
 		}
 	case hook.CanonicalEventUserPromptSubmit:
 		if len(blocking) > 0 {

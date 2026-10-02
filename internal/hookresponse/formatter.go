@@ -37,8 +37,10 @@ func formatDecisionReasonWithin(blocking []*dispatcher.ValidationError, budget i
 		return ""
 	}
 
+	clean := sanitizeErrors(blocking)
+
 	return renderWithin(budget, func(level detail) string {
-		return agentEntries(blocking, level)
+		return agentEntries(clean, level)
 	})
 }
 
@@ -47,6 +49,12 @@ const blockingContextLead = "Automated klaudiush validation check. " +
 	"Fix ALL reported errors at once and retry. " +
 	"Fixing one issue can introduce another " +
 	"(e.g., adding a type(scope): prefix can push the title over its length limit)."
+
+// unavailableContextLead opens additionalContext when every blocking finding
+// is a check that could not run: retrying the same action cannot pass.
+const unavailableContextLead = "Automated klaudiush validation check. " +
+	"A required check could not run, so the action is blocked. " +
+	"Retrying will not help until the check works; tell the user what failed."
 
 // maxTableSuggestionLines limits how many lines of a table suggestion
 // are included in additionalContext to avoid bloating the context.
@@ -79,51 +87,23 @@ func formatAdditionalContext(
 
 // buildContext renders additionalContext: the lead, the findings the agent
 // must act on, accepted exceptions, a table suggestion and pattern warnings.
-// Findings get whatever budget the fixed parts leave.
+// Findings are rendered first and the supplementary table and pattern hints
+// get only what they leave of the budget.
 func buildContext(req contextRequest) string {
-	var lead string
-	if len(req.blocking) > 0 {
-		lead = blockingContextLead
-	}
+	req.blocking = sanitizeErrors(req.blocking)
+	req.warnings = sanitizeErrors(req.warnings)
+	req.bypassed = sanitizeErrors(req.bypassed)
 
-	exceptionOutcome := "Validation waived for this action; " +
-		"normal permission checks still apply."
-	if len(req.blocking) > 0 {
-		exceptionOutcome = "Validation waived for this finding; " +
-			"the remaining errors still block the action."
-	}
+	lead := contextLead(req.blocking)
+	exceptions := exceptionNotes(req.blocking, req.bypassed)
+	budget := max(req.budget-contextReserve, 0)
 
-	exceptions := make([]string, 0, len(req.bypassed))
-
-	for _, e := range req.bypassed {
-		code := extractCode(e.Reference)
-
-		reason := e.BypassReason
-		if reason == "" {
-			reason = "no reason provided"
-		}
-
-		exceptions = append(exceptions, sanitizeText(
-			"klaudiush: Exception EXC:"+code+" accepted (reason: "+reason+"). "+
-				exceptionOutcome))
-	}
-
-	var trailing []string
-
-	if table := firstTableSuggestion(req.blocking, req.warnings); table != "" {
-		trailing = append(trailing, table)
-	}
-
-	trailing = append(trailing, req.patternWarnings...)
-
-	fixed := len(lead) + len(strings.Join(exceptions, " ")) + len(strings.Join(trailing, " "))
-	findingsBudget := max(req.budget-contextReserve-fixed, 0)
-
-	findings := renderWithin(findingsBudget, func(level detail) string {
+	fixed := len(lead) + len(strings.Join(exceptions, " "))
+	findings := renderWithin(max(budget-fixed, 0), func(level detail) string {
 		return contextFindings(req, level)
 	})
 
-	parts := make([]string, 0, 3+len(exceptions)+len(trailing))
+	parts := make([]string, 0, 4+len(exceptions)+len(req.patternWarnings))
 	if lead != "" {
 		parts = append(parts, lead)
 	}
@@ -133,9 +113,71 @@ func buildContext(req contextRequest) string {
 	}
 
 	parts = append(parts, exceptions...)
-	parts = append(parts, trailing...)
 
-	return strings.Join(parts, " ")
+	remaining := budget - len(strings.Join(parts, " "))
+	for _, extra := range supplementaryContext(req) {
+		if len(extra)+1 > remaining {
+			continue
+		}
+
+		parts = append(parts, extra)
+		remaining -= len(extra) + 1
+	}
+
+	return fitBudget(strings.Join(parts, " "), budget)
+}
+
+func contextLead(blocking []*dispatcher.ValidationError) string {
+	if len(blocking) == 0 {
+		return ""
+	}
+
+	for _, e := range blocking {
+		if !e.Unavailable {
+			return blockingContextLead
+		}
+	}
+
+	return unavailableContextLead
+}
+
+func exceptionNotes(blocking, bypassed []*dispatcher.ValidationError) []string {
+	exceptionOutcome := "Validation waived for this action; " +
+		"normal permission checks still apply."
+	if len(blocking) > 0 {
+		exceptionOutcome = "Validation waived for this finding; " +
+			"the remaining errors still block the action."
+	}
+
+	notes := make([]string, 0, len(bypassed))
+
+	for _, e := range bypassed {
+		reason := e.BypassReason
+		if reason == "" {
+			reason = "no reason provided"
+		}
+
+		notes = append(notes, "klaudiush: Exception EXC:"+extractCode(e.Reference)+
+			" accepted (reason: "+reason+"). "+exceptionOutcome)
+	}
+
+	return notes
+}
+
+// supplementaryContext lists optional hints in priority order: the first
+// table suggestion, then pattern warnings.
+func supplementaryContext(req contextRequest) []string {
+	var extras []string
+
+	if table := firstTableSuggestion(req.blocking, req.warnings); table != "" {
+		extras = append(extras, table)
+	}
+
+	for _, w := range req.patternWarnings {
+		extras = append(extras, sanitizeText(w))
+	}
+
+	return extras
 }
 
 // contextFindings renders blocking findings (when asked) and every warning,
@@ -158,7 +200,7 @@ func warningPrefix(o outcome) string {
 	switch o {
 	case outcomeRepairRequired:
 		return "Repair required: "
-	case outcomeUnavailable:
+	case outcomeUnavailable, outcomeBlockedUnavailable:
 		return "klaudiush could not validate this action, so it was not checked: "
 	case outcomeBlocked, outcomeExceptionAccepted, outcomeWarning:
 		return "klaudiush warning: Not blocking. "
@@ -173,7 +215,7 @@ func firstTableSuggestion(blocking, warnings []*dispatcher.ValidationError) stri
 	for _, list := range [][]*dispatcher.ValidationError{blocking, warnings} {
 		for _, e := range list {
 			if suggestion, ok := e.Details["suggested_table"]; ok && suggestion != "" {
-				return sanitizeText(truncateTableSuggestion(suggestion))
+				return truncateTableSuggestion(suggestion)
 			}
 		}
 	}
@@ -206,11 +248,11 @@ func formatSystemMessageFor(hookCtx *hook.Context, errs []*dispatcher.Validation
 
 	var b strings.Builder
 
-	for _, e := range errs {
+	for _, e := range sanitizeErrors(errs) {
 		formatSingleError(&b, outcomeOf(hookCtx, e), e)
 	}
 
-	return fitBudget(sanitizeText(b.String()), humanBudget)
+	return fitBudget(b.String(), humanBudget)
 }
 
 // hiddenDetailKeys are details rendered elsewhere or kept for tooling.

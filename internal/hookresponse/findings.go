@@ -1,6 +1,7 @@
 package hookresponse
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/smykla-skalski/klaudiush/internal/dispatcher"
@@ -17,6 +18,7 @@ const (
 	outcomeRepairRequired
 	outcomeExceptionAccepted
 	outcomeUnavailable
+	outcomeBlockedUnavailable
 	outcomeWarning
 )
 
@@ -30,6 +32,8 @@ func (o outcome) label() string {
 		return "Exception accepted"
 	case outcomeUnavailable:
 		return "Validation unavailable"
+	case outcomeBlockedUnavailable:
+		return "Blocked, validation unavailable"
 	case outcomeWarning:
 		return "Warning"
 	default:
@@ -39,7 +43,7 @@ func (o outcome) label() string {
 
 func (o outcome) icon() string {
 	switch o {
-	case outcomeBlocked:
+	case outcomeBlocked, outcomeBlockedUnavailable:
 		return "❌"
 	case outcomeRepairRequired:
 		return "\U0001F527"
@@ -58,6 +62,8 @@ func outcomeOf(hookCtx *hook.Context, e *dispatcher.ValidationError) outcome {
 	switch {
 	case e.Bypassed:
 		return outcomeExceptionAccepted
+	case e.Unavailable && e.ShouldBlock && (hookCtx == nil || !hookCtx.IsAfterTool()):
+		return outcomeBlockedUnavailable
 	case e.Unavailable:
 		return outcomeUnavailable
 	case hookCtx != nil && hookCtx.IsAfterTool():
@@ -109,11 +115,14 @@ const (
 	detailNoActual
 	detailNoRequired
 	detailRepairOnly
+	detailGrouped
 )
 
 const (
-	shortActualRunes  = 40
-	shortSummaryRunes = 160
+	shortActualRunes   = 40
+	shortSummaryRunes  = 160
+	groupKeepFindings  = 3
+	groupListLocations = 12
 )
 
 // renderWithin renders at the most detailed level that fits the budget, and
@@ -121,7 +130,7 @@ const (
 func renderWithin(budget int, render func(detail) string) string {
 	var text string
 
-	for level := detailFull; level <= detailRepairOnly; level++ {
+	for level := detailFull; level <= detailGrouped; level++ {
 		text = render(level)
 		if len(text) <= budget {
 			return text
@@ -131,8 +140,47 @@ func renderWithin(budget int, render func(detail) string) string {
 	return fitBudget(text, budget)
 }
 
-// agentEntries renders errors for the model, one entry per error, each with
-// every finding and repair.
+// sanitizeErrors returns copies of errs with every rendered field redacted
+// and made valid UTF-8. It runs before any trimming: a value cut first could
+// leave part of a secret that no pattern matches any more.
+func sanitizeErrors(errs []*dispatcher.ValidationError) []*dispatcher.ValidationError {
+	clean := make([]*dispatcher.ValidationError, 0, len(errs))
+
+	for _, e := range errs {
+		c := *e
+		c.Message = sanitizeText(e.Message)
+		c.FixHint = sanitizeText(e.FixHint)
+		c.BypassReason = sanitizeText(e.BypassReason)
+
+		if e.Details != nil {
+			c.Details = make(map[string]string, len(e.Details))
+			for k, v := range e.Details {
+				c.Details[k] = sanitizeText(v)
+			}
+		}
+
+		if e.Findings != nil {
+			c.Findings = make([]validator.Finding, 0, len(e.Findings))
+			for _, f := range e.Findings {
+				c.Findings = append(c.Findings, validator.Finding{
+					Reference: f.Reference,
+					Location:  sanitizeText(f.Location),
+					Message:   sanitizeText(f.Message),
+					Actual:    sanitizeText(f.Actual),
+					Required:  sanitizeText(f.Required),
+					Repair:    sanitizeText(f.Repair),
+				})
+			}
+		}
+
+		clean = append(clean, &c)
+	}
+
+	return clean
+}
+
+// agentEntries renders sanitized errors for the model, one entry per error,
+// each with every finding and repair.
 func agentEntries(errs []*dispatcher.ValidationError, level detail) string {
 	parts := make([]string, 0, len(errs))
 
@@ -143,8 +191,9 @@ func agentEntries(errs []*dispatcher.ValidationError, level detail) string {
 	return strings.Join(parts, "\n")
 }
 
-// agentEntry renders one error: [CODE] summary, then a line per finding.
-// Without findings the fix hint is the repair.
+// agentEntry renders one sanitized error: [CODE] summary, then a line per
+// finding. Without findings the fix hint is the repair, and the lines the
+// summary leaves out (linter output, combined errors) follow it.
 func agentEntry(e *dispatcher.ValidationError, level detail) string {
 	var b strings.Builder
 
@@ -176,14 +225,22 @@ func agentEntry(e *dispatcher.ValidationError, level detail) string {
 			b.WriteString(e.FixHint)
 		}
 
-		if level < detailNoActual {
-			for _, line := range messageDetailLines(e.Message) {
-				b.WriteString("\n  ")
-				b.WriteString(line)
+		for _, line := range errorDetailLines(e) {
+			if level >= detailShortActual {
+				line = truncateRunes(line, shortSummaryRunes)
 			}
+
+			b.WriteString("\n  ")
+			b.WriteString(line)
 		}
 
-		return sanitizeText(b.String())
+		return b.String()
+	}
+
+	if level >= detailGrouped {
+		writeGroupedFindings(&b, e.Findings, code)
+
+		return b.String()
 	}
 
 	for _, f := range e.Findings {
@@ -191,7 +248,92 @@ func agentEntry(e *dispatcher.ValidationError, level detail) string {
 		b.WriteString(agentFinding(f, code, level))
 	}
 
-	return sanitizeText(b.String())
+	return b.String()
+}
+
+// writeGroupedFindings keeps the first findings of each code and folds the
+// rest into one line naming their locations, so every kind of violation
+// still reaches the agent when there are too many to list.
+func writeGroupedFindings(b *strings.Builder, findings []validator.Finding, entryCode string) {
+	type group struct {
+		first     validator.Finding
+		locations []string
+	}
+
+	var order []string
+
+	groups := make(map[string]*group)
+
+	for _, f := range findings {
+		key := f.Code() + "\x00" + string(f.Reference)
+
+		g, ok := groups[key]
+		if !ok {
+			g = &group{first: f}
+			groups[key] = g
+			order = append(order, key)
+		}
+
+		if len(g.locations) < groupKeepFindings {
+			b.WriteString("\n  - ")
+			b.WriteString(agentFinding(f, entryCode, detailRepairOnly))
+		}
+
+		g.locations = append(g.locations, f.Location)
+	}
+
+	for _, key := range order {
+		g := groups[key]
+
+		rest := g.locations[min(groupKeepFindings, len(g.locations)):]
+		if len(rest) == 0 {
+			continue
+		}
+
+		shown := rest[:min(groupListLocations, len(rest))]
+
+		b.WriteString("\n  - ")
+
+		if code := g.first.Code(); code != "" && code != entryCode {
+			b.WriteString("[" + code + "] ")
+		}
+
+		b.WriteString(strconv.Itoa(len(rest)))
+		b.WriteString(" more like this at: ")
+		b.WriteString(strings.Join(shown, ", "))
+
+		if len(rest) > len(shown) {
+			b.WriteString(" and others")
+		}
+
+		b.WriteString(". Repair each the same way.")
+	}
+}
+
+// errorDetailLines lists what an error without structured findings says
+// beyond its summary: the rest of its message, then its combined errors and
+// warnings, skipping lines the message already holds.
+func errorDetailLines(e *dispatcher.ValidationError) []string {
+	lines := messageDetailLines(e.Message)
+
+	seen := make(map[string]bool)
+	for line := range strings.SplitSeq(e.Message, "\n") {
+		seen[stripEmoji(line)] = true
+	}
+
+	for _, key := range []string{"errors", "warnings"} {
+		for line := range strings.SplitSeq(e.Details[key], "\n") {
+			line = stripEmoji(line)
+			if line == "" || seen[line] {
+				continue
+			}
+
+			seen[line] = true
+			lines = append(lines, line)
+		}
+	}
+
+	return lines
 }
 
 // agentFinding renders: [CODE] location: message (actual: ...; required:
@@ -240,7 +382,11 @@ func agentFinding(f validator.Finding, entryCode string, level detail) string {
 			b.WriteString(".")
 		}
 
-		b.WriteString(" Repair: ")
+		if !strings.HasSuffix(b.String(), " ") {
+			b.WriteString(" ")
+		}
+
+		b.WriteString("Repair: ")
 		b.WriteString(oneLine(f.Repair))
 	}
 

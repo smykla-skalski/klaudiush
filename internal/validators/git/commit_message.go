@@ -387,8 +387,9 @@ func selectPrimaryReference(results []*RuleResult) validator.Reference {
 
 // truncateLine truncates a line for display in error messages.
 func truncateLine(line string) string {
-	if len(line) > truncateErrorLineAt {
-		return line[:truncateErrorLineAt] + "..."
+	runes := []rune(line)
+	if len(runes) > truncateErrorLineAt {
+		return string(runes[:truncateErrorLineAt]) + "..."
 	}
 
 	return line

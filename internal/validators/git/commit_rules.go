@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/smykla-skalski/klaudiush/internal/validator"
 	"github.com/smykla-skalski/klaudiush/pkg/config"
@@ -367,7 +368,7 @@ func (r *BodyLineLengthRule) Validate(_ *ParsedCommit, commitMsg string) *RuleRe
 			continue
 		}
 
-		lineLen := len(line)
+		lineLen := utf8.RuneCountInString(line)
 		if lineLen > maxLenWithTolerance {
 			truncated := truncateLine(line)
 			msg := fmt.Sprintf(
@@ -386,7 +387,7 @@ func (r *BodyLineLengthRule) Validate(_ *ParsedCommit, commitMsg string) *RuleRe
 				ctx = append(ctx, msg, fmt.Sprintf("Line: '%s'", truncated))
 			}
 
-			findings = append(findings, r.finding(lineNum+1, lineLen, truncated))
+			findings = append(findings, r.finding(lineNum+1, lineLen, line))
 		}
 	}
 
@@ -482,7 +483,7 @@ func (r *ListFormattingRule) Validate(_ *ParsedCommit, message string) *RuleResu
 						Reference: validator.RefGitListFormat,
 						Location:  fmt.Sprintf("message line %d", lineNum+1),
 						Message:   "List starts without an empty line before it",
-						Actual:    truncated,
+						Actual:    line,
 						Required:  "an empty line before the first list item",
 						Repair:    fmt.Sprintf("Insert an empty line before line %d", lineNum+1),
 					}},
@@ -554,7 +555,11 @@ func (r *PRReferenceRule) Validate(_ *ParsedCommit, message string) *RuleResult 
 			ctx,
 			fmt.Sprintf("Found: 'https://%s' -> Should be: '%s'", cleanURL, prNum),
 		)
-		findings = append(findings, prRefFinding("https://"+cleanURL, prNum))
+	}
+
+	for _, loc := range r.urlRefRegex.FindAllStringIndex(message, -1) {
+		found := prURLAt(message, loc[0], loc[1])
+		findings = append(findings, prRefFinding(found, prNumberRegex.FindString(found)))
 	}
 
 	return &RuleResult{
@@ -563,6 +568,23 @@ func (r *PRReferenceRule) Validate(_ *ParsedCommit, message string) *RuleResult 
 		Context:   ctx,
 		Findings:  findings,
 	}
+}
+
+var prNumberRegex = regexp.MustCompile(`[0-9]{1,10}$`)
+
+// prURLAt returns the pull request URL as written in the message, scheme
+// included, for a match of urlRefRegex that may carry one leading anchor
+// character.
+func prURLAt(message string, start, end int) string {
+	host := start + strings.Index(message[start:end], "github.com")
+
+	for _, scheme := range []string{"https://", "http://"} {
+		if strings.HasSuffix(message[:host], scheme) {
+			return message[host-len(scheme) : end]
+		}
+	}
+
+	return message[host:end]
 }
 
 func prRefFinding(found, replacement string) validator.Finding {
@@ -598,7 +620,17 @@ func aiAttributionResult(text, subject string) *validator.Result {
 	return validator.FailWithRef(
 		validator.RefGitClaudeAttr,
 		subject+" contains AI attribution - remove any AI generation attribution",
-	)
+	).AddFinding(aiAttributionFinding())
+}
+
+func aiAttributionFinding() validator.Finding {
+	return validator.Finding{
+		Reference: validator.RefGitClaudeAttr,
+		Location:  locationMessage,
+		Message:   "AI attribution found",
+		Required:  "no AI generation credit, co-author trailer or session link",
+		Repair:    "Delete the line that credits an AI assistant",
+	}
 }
 
 func (*AIAttributionRule) Validate(_ *ParsedCommit, message string) *RuleResult {
@@ -609,13 +641,7 @@ func (*AIAttributionRule) Validate(_ *ParsedCommit, message string) *RuleResult 
 	return &RuleResult{
 		Reference: validator.RefGitClaudeAttr,
 		Message:   "Commit message contains AI attribution - remove any AI generation attribution",
-		Findings: []validator.Finding{{
-			Reference: validator.RefGitClaudeAttr,
-			Location:  locationMessage,
-			Message:   "AI attribution in commit message",
-			Required:  "no AI generation credit, co-author trailer or session link",
-			Repair:    "Delete the line that credits an AI assistant",
-		}},
+		Findings:  []validator.Finding{aiAttributionFinding()},
 	}
 }
 

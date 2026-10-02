@@ -469,6 +469,9 @@ func (e *sessionEntry) upsertFinding(
 			existing.Details = cloneDetails(item.Details)
 		}
 
+		existing.Findings = item.Findings
+		existing.Unavailable = item.Unavailable
+
 		return
 	}
 
