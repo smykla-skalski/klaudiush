@@ -11,7 +11,6 @@ import (
 func BuildNotice(hookCtx *hook.Context, msg string) any {
 	if hookCtx != nil && hookCtx.Provider == hook.ProviderCodex {
 		return &CodexCommandResponse{
-			Continue:      true,
 			SystemMessage: msg,
 		}
 	}

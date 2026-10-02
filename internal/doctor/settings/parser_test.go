@@ -371,7 +371,7 @@ var _ = Describe("SettingsParser", func() {
 				[]byte(`{
   "hooks": {
     "SessionStart": [{"hooks":[{"type":"command","command":"klaudiush --provider codex --event SessionStart","timeout":30}]}],
-    "AfterToolUse": [{"hooks":[{"type":"command","command":"klaudiush --provider codex --event AfterToolUse","timeout":30}]}],
+    "PreToolUse": [{"hooks":[{"type":"command","command":"klaudiush --provider codex --event PreToolUse","timeout":30}]}],
     "Stop": [{"hooks":[{"type":"command","command":"klaudiush --provider codex --event Stop","timeout":30}]}]
   }
 }`),
@@ -383,12 +383,12 @@ var _ = Describe("SettingsParser", func() {
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.Hooks.SessionStart).To(HaveLen(1))
-			Expect(result.Hooks.AfterToolUse).To(HaveLen(1))
+			Expect(result.Hooks.PreToolUse).To(HaveLen(1))
 			Expect(result.Hooks.Stop).To(HaveLen(1))
 			Expect(result.Hooks.SessionStart[0].Hooks[0].Command).
 				To(Equal("klaudiush --provider codex --event SessionStart"))
-			Expect(result.Hooks.AfterToolUse[0].Hooks[0].Command).
-				To(Equal("klaudiush --provider codex --event AfterToolUse"))
+			Expect(result.Hooks.PreToolUse[0].Hooks[0].Command).
+				To(Equal("klaudiush --provider codex --event PreToolUse"))
 		})
 
 		It("finds event-specific dispatcher hooks", func() {
@@ -412,7 +412,24 @@ var _ = Describe("SettingsParser", func() {
 			Expect(hasStop).To(BeFalse())
 		})
 
-		It("finds AfterToolUse hooks by canonical alias", func() {
+		It("finds PreToolUse hooks by canonical alias", func() {
+			Expect(os.WriteFile(
+				hooksPath,
+				[]byte(`{
+  "hooks": {
+    "PreToolUse": [{"hooks":[{"type":"command","command":"klaudiush --provider codex --event PreToolUse","timeout":30}]}]
+  }
+}`),
+				0o600,
+			)).To(Succeed())
+
+			parser := settings.NewCodexHooksParser(hooksPath)
+			hasHook, err := parser.HasEventHook("before_tool", "/usr/local/bin/klaudiush")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(hasHook).To(BeTrue())
+		})
+
+		It("does not treat legacy AfterToolUse as PostToolUse", func() {
 			Expect(os.WriteFile(
 				hooksPath,
 				[]byte(`{
@@ -424,9 +441,83 @@ var _ = Describe("SettingsParser", func() {
 			)).To(Succeed())
 
 			parser := settings.NewCodexHooksParser(hooksPath)
-			hasHook, err := parser.HasEventHook("after_tool", "/usr/local/bin/klaudiush")
+			hasPostTool, err := parser.HasEventHook("after_tool", "/usr/local/bin/klaudiush")
 			Expect(err).NotTo(HaveOccurred())
-			Expect(hasHook).To(BeTrue())
+			Expect(hasPostTool).To(BeFalse())
+
+			enforcement, err := parser.PreToolEnforcement("/usr/local/bin/klaudiush")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(enforcement.Registered).To(BeFalse())
+			Expect(enforcement.LegacyOnly).To(BeTrue())
+		})
+
+		It("ignores async PreToolUse handlers for enforcement", func() {
+			Expect(os.WriteFile(
+				hooksPath,
+				[]byte(`{
+  "hooks": {
+    "PreToolUse": [{"hooks":[{"type":"command","command":"klaudiush --provider codex --event PreToolUse","async":true}]}]
+  }
+}`),
+				0o600,
+			)).To(Succeed())
+
+			enforcement, err := settings.NewCodexHooksParser(hooksPath).
+				PreToolEnforcement("/usr/local/bin/klaudiush")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(enforcement.Registered).To(BeTrue())
+			Expect(enforcement.AsyncOnly).To(BeTrue())
+			Expect(enforcement.EffectiveMatcher).To(BeEmpty())
+		})
+
+		DescribeTable(
+			"matcher selection",
+			func(matcher string, toolNames []string, expected bool) {
+				Expect(settings.CodexMatcherSelects(matcher, toolNames)).To(Equal(expected))
+			},
+			Entry("empty matcher selects everything", "", []string{"Bash"}, true),
+			Entry("star selects everything", "*", []string{"mcp__x__y"}, true),
+			Entry("alternation selects Bash", "Bash|apply_patch", []string{"Bash"}, true),
+			Entry(
+				"Edit alias selects apply_patch",
+				"Edit|Write",
+				[]string{"apply_patch", "Edit"},
+				true,
+			),
+			Entry("Bash-only skips MCP", "Bash", []string{"mcp__x__y"}, false),
+			Entry(
+				"anchored: Bash does not select BashOutput",
+				"Bash",
+				[]string{"BashOutput"},
+				false,
+			),
+			Entry("MCP prefix selects MCP", "mcp__.*", []string{"mcp__x__y"}, true),
+			Entry("invalid regex selects nothing", "(", []string{"Bash"}, false),
+		)
+
+		It("reports an explicitly disabled hooks feature", func() {
+			Expect(os.WriteFile(
+				filepath.Join(filepath.Dir(hooksPath), "config.toml"),
+				[]byte("model = \"x\"\n\n[features]\nhooks = false\n"),
+				0o600,
+			)).To(Succeed())
+
+			disabled, configPath, err := settings.CodexHooksFeatureDisabled(hooksPath)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(disabled).To(BeTrue())
+			Expect(configPath).To(HaveSuffix("config.toml"))
+		})
+
+		It("treats a missing hooks feature key as enabled", func() {
+			Expect(os.WriteFile(
+				filepath.Join(filepath.Dir(hooksPath), "config.toml"),
+				[]byte("[features]\nother = true\n"),
+				0o600,
+			)).To(Succeed())
+
+			disabled, _, err := settings.CodexHooksFeatureDisabled(hooksPath)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(disabled).To(BeFalse())
 		})
 
 		It("expands tilde paths before reading hooks.json", func() {

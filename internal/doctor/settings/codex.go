@@ -1,10 +1,14 @@
 package settings
 
 import (
+	"os"
 	"path/filepath"
+	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/cockroachdb/errors"
+	"github.com/pelletier/go-toml/v2"
 )
 
 // CodexHooksParser parses Codex hooks.json files.
@@ -17,11 +21,15 @@ type CodexHooksFile struct {
 	Hooks CodexHookEvents `json:"hooks"`
 }
 
-// CodexHookEvents groups supported Codex hook events.
+// CodexHookEvents groups the Codex hook events klaudiush registers or reads.
+// AfterToolUse is a legacy key current Codex ignores; it is parsed only so
+// doctor can report and migrate stale registrations.
 type CodexHookEvents struct {
 	SessionStart []CodexMatcherGroup `json:"SessionStart,omitempty"`
-	AfterToolUse []CodexMatcherGroup `json:"AfterToolUse,omitempty"`
+	PreToolUse   []CodexMatcherGroup `json:"PreToolUse,omitempty"`
+	PostToolUse  []CodexMatcherGroup `json:"PostToolUse,omitempty"`
 	Stop         []CodexMatcherGroup `json:"Stop,omitempty"`
+	AfterToolUse []CodexMatcherGroup `json:"AfterToolUse,omitempty"`
 }
 
 // CodexMatcherGroup represents one matcher group under a Codex hook event.
@@ -61,7 +69,13 @@ func (p *CodexHooksParser) Parse() (*CodexHooksFile, error) {
 
 // IsDispatcherRegistered checks whether any supported Codex event is configured for klaudiush.
 func (p *CodexHooksParser) IsDispatcherRegistered(dispatcherPath string) (bool, error) {
-	for _, eventName := range []string{eventSessionStart, "AfterToolUse", "Stop"} {
+	for _, eventName := range []string{
+		eventSessionStart,
+		CodexEventPreToolUse,
+		CodexEventPostToolUse,
+		CodexEventStop,
+		CodexLegacyEventAfterToolUse,
+	} {
 		hasHook, err := p.HasEventHook(eventName, dispatcherPath)
 		if err != nil {
 			return false, err
@@ -93,7 +107,11 @@ func codexEventGroups(hooksFile *CodexHooksFile, eventName string) []CodexMatche
 	switch strings.ToLower(eventName) {
 	case "sessionstart", "session_start":
 		return hooksFile.Hooks.SessionStart
-	case "aftertooluse", "after_tool":
+	case "pretooluse", "before_tool":
+		return hooksFile.Hooks.PreToolUse
+	case "posttooluse", "after_tool":
+		return hooksFile.Hooks.PostToolUse
+	case "aftertooluse":
 		return hooksFile.Hooks.AfterToolUse
 	case "stop", "turn_stop":
 		return hooksFile.Hooks.Stop
@@ -103,20 +121,119 @@ func codexEventGroups(hooksFile *CodexHooksFile, eventName string) []CodexMatche
 }
 
 func hasCodexDispatcherCommand(groups []CodexMatcherGroup, dispatcherPath string) bool {
-	dispatcherName := filepath.Base(dispatcherPath)
-
 	for _, group := range groups {
 		for _, hook := range group.Hooks {
-			if hook.Type != commandHookType {
-				continue
-			}
-
-			if strings.Contains(hook.Command, dispatcherPath) ||
-				strings.Contains(hook.Command, dispatcherName) {
+			if isCodexDispatcherHook(hook, dispatcherPath) {
 				return true
 			}
 		}
 	}
 
 	return false
+}
+
+func isCodexDispatcherHook(hook CodexHookCommandConfig, dispatcherPath string) bool {
+	if hook.Type != commandHookType {
+		return false
+	}
+
+	return strings.Contains(hook.Command, dispatcherPath) ||
+		strings.Contains(hook.Command, filepath.Base(dispatcherPath))
+}
+
+// CodexPreToolEnforcement describes how a klaudiush PreToolUse registration
+// actually gates Codex tool calls.
+type CodexPreToolEnforcement struct {
+	Registered       bool
+	LegacyOnly       bool
+	AsyncOnly        bool
+	EffectiveMatcher []string
+}
+
+// PreToolEnforcement inspects the klaudiush PreToolUse handlers. Async
+// handlers cannot block, so only synchronous ones count as enforcing.
+func (p *CodexHooksParser) PreToolEnforcement(
+	dispatcherPath string,
+) (CodexPreToolEnforcement, error) {
+	var result CodexPreToolEnforcement
+
+	hooksFile, err := p.Parse()
+	if err != nil {
+		if errors.Is(err, ErrSettingsNotFound) {
+			return result, nil
+		}
+
+		return result, err
+	}
+
+	for _, group := range hooksFile.Hooks.PreToolUse {
+		for _, hook := range group.Hooks {
+			if !isCodexDispatcherHook(hook, dispatcherPath) {
+				continue
+			}
+
+			result.Registered = true
+
+			if !hook.Async {
+				result.EffectiveMatcher = append(result.EffectiveMatcher, group.Matcher)
+			}
+		}
+	}
+
+	result.AsyncOnly = result.Registered && len(result.EffectiveMatcher) == 0
+	result.LegacyOnly = !result.Registered &&
+		hasCodexDispatcherCommand(hooksFile.Hooks.AfterToolUse, dispatcherPath)
+
+	return result, nil
+}
+
+// CodexMatcherSelects reports whether a Codex matcher selects any of the tool
+// names. An empty matcher or "*" selects every tool; anything else is a regex.
+// An invalid regex selects nothing, since Codex cannot match with it either.
+func CodexMatcherSelects(matcher string, toolNames []string) bool {
+	matcher = strings.TrimSpace(matcher)
+	if matcher == "" || matcher == "*" {
+		return true
+	}
+
+	re, err := regexp.Compile("^(?:" + matcher + ")$")
+	if err != nil {
+		return false
+	}
+
+	return slices.ContainsFunc(toolNames, re.MatchString)
+}
+
+type codexFeatureConfig struct {
+	Features struct {
+		Hooks *bool `toml:"hooks"`
+	} `toml:"features"`
+}
+
+// CodexHooksFeatureDisabled reports whether the config.toml next to the hooks
+// file turns the Codex hooks feature off. A missing file or key means the
+// Codex default (enabled) applies.
+func CodexHooksFeatureDisabled(hooksPath string) (bool, string, error) {
+	resolvedHooksPath, err := resolveSettingsPath(hooksPath)
+	if err != nil {
+		return false, "", err
+	}
+
+	configPath := filepath.Clean(filepath.Join(filepath.Dir(resolvedHooksPath), "config.toml"))
+
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, configPath, nil
+		}
+
+		return false, configPath, errors.Wrap(err, "failed to read Codex config")
+	}
+
+	var cfg codexFeatureConfig
+	if err := toml.Unmarshal(data, &cfg); err != nil {
+		return false, configPath, errors.Wrap(err, "failed to parse Codex config")
+	}
+
+	return cfg.Features.Hooks != nil && !*cfg.Features.Hooks, configPath, nil
 }

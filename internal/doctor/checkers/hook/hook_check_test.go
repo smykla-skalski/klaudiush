@@ -322,7 +322,7 @@ var _ = Describe("Codex hook checkers", func() {
 			[]byte(`{
   "hooks": {
     "SessionStart": [{"hooks":[{"type":"command","command":"klaudiush --provider codex --event SessionStart","timeout":30}]}],
-    "AfterToolUse": [{"hooks":[{"type":"command","command":"klaudiush --provider codex --event AfterToolUse","timeout":30}]}],
+    "PreToolUse": [{"hooks":[{"type":"command","command":"klaudiush --provider codex --event PreToolUse","timeout":30}]}],
     "Stop": [{"hooks":[{"type":"command","command":"klaudiush --provider codex --event Stop","timeout":30}]}]
   }
 }`),
@@ -339,13 +339,20 @@ var _ = Describe("Codex hook checkers", func() {
 
 		registrationChecker := hook.NewCodexRegistrationChecker(cfg)
 		sessionStartChecker := hook.NewCodexEventChecker(cfg, "SessionStart")
-		afterToolUseChecker := hook.NewCodexEventChecker(cfg, "AfterToolUse")
+		preToolUseChecker := hook.NewCodexEventChecker(cfg, "PreToolUse")
 		stopChecker := hook.NewCodexEventChecker(cfg, "Stop")
+		enforcementChecker := hook.NewCodexEnforcementChecker(cfg)
 
 		Expect(registrationChecker.Check(ctx).Status).To(Equal(doctor.StatusPass))
 		Expect(sessionStartChecker.Check(ctx).Status).To(Equal(doctor.StatusPass))
-		Expect(afterToolUseChecker.Check(ctx).Status).To(Equal(doctor.StatusPass))
+		Expect(preToolUseChecker.Check(ctx).Status).To(Equal(doctor.StatusPass))
 		Expect(stopChecker.Check(ctx).Status).To(Equal(doctor.StatusPass))
+
+		enforcement := enforcementChecker.Check(ctx)
+		Expect(enforcement.Status).To(Equal(doctor.StatusPass))
+		Expect(enforcement.Details).To(ContainElement(
+			"Blocked before running: shell (Bash), apply_patch, MCP tools, local function tools",
+		))
 	})
 
 	It("fails when the configured Codex hooks file is missing an event", func() {
@@ -367,13 +374,79 @@ var _ = Describe("Codex hook checkers", func() {
 			HooksConfigPath: hooksPath,
 		}
 
-		afterToolUseChecker := hook.NewCodexEventChecker(cfg, "AfterToolUse")
-		result := afterToolUseChecker.Check(ctx)
+		preToolUseChecker := hook.NewCodexEventChecker(cfg, "PreToolUse")
+		result := preToolUseChecker.Check(ctx)
 
 		Expect(result.Status).To(Equal(doctor.StatusFail))
 		Expect(result.FixID).To(Equal("install_hook"))
 		Expect(result.Message).To(ContainSubstring("not configured"))
 	})
+
+	DescribeTable("Codex enforcement distinguishes registration from blocking",
+		func(hooksJSON, configTOML string, status doctor.Status, message string, fixID string) {
+			Expect(os.WriteFile(hooksPath, []byte(hooksJSON), 0o600)).To(Succeed())
+
+			if configTOML != "" {
+				Expect(os.WriteFile(
+					filepath.Join(filepath.Dir(hooksPath), "config.toml"),
+					[]byte(configTOML),
+					0o600,
+				)).To(Succeed())
+			}
+
+			enabled := true
+			experimental := true
+			result := hook.NewCodexEnforcementChecker(&pkgConfig.CodexProviderConfig{
+				Enabled:         &enabled,
+				Experimental:    &experimental,
+				HooksConfigPath: hooksPath,
+			}).Check(ctx)
+
+			Expect(result.Status).To(Equal(status))
+			Expect(result.Message).To(ContainSubstring(message))
+			Expect(result.FixID).To(Equal(fixID))
+		},
+		Entry(
+			"legacy AfterToolUse only",
+			`{"hooks":{"AfterToolUse":[{"hooks":[{"type":"command","command":"klaudiush --provider codex --event AfterToolUse"}]}]}}`,
+			"",
+			doctor.StatusFail,
+			"legacy AfterToolUse",
+			"install_hook",
+		),
+		Entry(
+			"no PreToolUse",
+			`{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"klaudiush --provider codex --event Stop"}]}]}}`,
+			"",
+			doctor.StatusFail,
+			"PreToolUse hook not registered",
+			"install_hook",
+		),
+		Entry(
+			"async PreToolUse",
+			`{"hooks":{"PreToolUse":[{"hooks":[{"type":"command","command":"klaudiush --provider codex --event PreToolUse","async":true}]}]}}`,
+			"",
+			doctor.StatusFail,
+			"async",
+			"",
+		),
+		Entry(
+			"Bash-only matcher",
+			`{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"klaudiush --provider codex --event PreToolUse"}]}]}}`,
+			"",
+			doctor.StatusFail,
+			"matcher skips",
+			"",
+		),
+		Entry(
+			"hooks feature disabled",
+			`{"hooks":{"PreToolUse":[{"hooks":[{"type":"command","command":"klaudiush --provider codex --event PreToolUse"}]}]}}`,
+			"[features]\nhooks = false\n",
+			doctor.StatusFail,
+			"feature is disabled",
+			"",
+		),
+	)
 })
 
 var _ = Describe("Gemini hook checkers", func() {

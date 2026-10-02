@@ -18,20 +18,24 @@ type HookSpecificOutput struct {
 }
 
 // CodexCommandResponse is the top-level JSON structure for Codex command hooks.
+// Every field is optional so a response carries only what the event accepts;
+// see hook.ProviderEventCapability.
 type CodexCommandResponse struct {
-	Continue           bool                     `json:"continue"`
+	Continue           *bool                    `json:"continue,omitempty"`
 	HookSpecificOutput *CodexHookSpecificOutput `json:"hookSpecificOutput,omitempty"`
 	Decision           string                   `json:"decision,omitempty"`
 	Reason             string                   `json:"reason,omitempty"`
 	StopReason         string                   `json:"stopReason,omitempty"`
-	SuppressOutput     bool                     `json:"suppressOutput,omitempty"`
 	SystemMessage      string                   `json:"systemMessage,omitempty"`
 }
 
-// CodexHookSpecificOutput carries model-facing additional context for Codex hooks.
+// CodexHookSpecificOutput carries the PreToolUse permission decision and
+// model-facing additional context for Codex hooks.
 type CodexHookSpecificOutput struct {
-	HookEventName     string `json:"hookEventName"`
-	AdditionalContext string `json:"additionalContext,omitempty"`
+	HookEventName            string `json:"hookEventName"`
+	PermissionDecision       string `json:"permissionDecision,omitempty"`
+	PermissionDecisionReason string `json:"permissionDecisionReason,omitempty"`
+	AdditionalContext        string `json:"additionalContext,omitempty"`
 }
 
 // GeminiCommandResponse is the top-level JSON structure for Gemini command hooks.

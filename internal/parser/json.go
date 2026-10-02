@@ -27,6 +27,8 @@ var patchPathPattern = regexp.MustCompile(`(?m)^\*\*\* (?:Add|Update|Delete) Fil
 const (
 	patchPathSubmatchCount = 2
 	patchPathSubmatchIndex = 1
+	patchInputKey          = "input"
+	toolApplyPatch         = "applypatch"
 )
 
 // ParseOptions controls provider-aware JSON parsing.
@@ -354,6 +356,7 @@ func parseToolInput(
 	}
 
 	applyToolInputAliases(&toolInput)
+	normalizeApplyPatchInput(rawToolName, &toolInput)
 
 	if len(toolInput.Additional) == 0 {
 		toolInput.Additional = nil
@@ -400,6 +403,51 @@ func applyToolInputAliases(toolInput *hook.ToolInput) {
 	}
 }
 
+// normalizeApplyPatchInput handles Codex apply_patch, which carries the patch
+// text in tool_input.command. A patch is not a shell command, so it moves to
+// the "input" key the path extraction reads, keeping shell-command predicates
+// from matching patch text. A single-file patch also exposes its added lines
+// as NewString so content validators can inspect the edit before it lands.
+func normalizeApplyPatchInput(rawToolName string, toolInput *hook.ToolInput) {
+	if normalizeToolName(rawToolName) != toolApplyPatch {
+		return
+	}
+
+	if toolInput.Command != "" {
+		if _, ok := toolInput.Additional[patchInputKey]; !ok {
+			encoded, err := json.Marshal(toolInput.Command)
+			if err == nil {
+				toolInput.Additional[patchInputKey] = encoded
+			}
+		}
+
+		toolInput.Command = ""
+	}
+
+	if toolInput.NewString != "" {
+		return
+	}
+
+	patchText := patchInputText(toolInput.Additional)
+	if len(patchPaths(patchText)) != 1 {
+		return
+	}
+
+	toolInput.NewString = patchAddedLines(patchText)
+}
+
+func patchAddedLines(patchText string) string {
+	var added []string
+
+	for line := range strings.SplitSeq(patchText, "\n") {
+		if after, ok := strings.CutPrefix(line, "+"); ok {
+			added = append(added, after)
+		}
+	}
+
+	return strings.Join(added, "\n")
+}
+
 func assignProviderSpecificInput(
 	toolInput *hook.ToolInput,
 	rawToolName string,
@@ -439,17 +487,29 @@ func deriveAffectedPaths(rawToolName string, toolInput hook.ToolInput) []string 
 }
 
 func patchAffectedPaths(rawToolName string, additional map[string]json.RawMessage) []string {
-	if normalizeToolName(rawToolName) != "applypatch" || additional == nil {
+	if normalizeToolName(rawToolName) != toolApplyPatch {
 		return nil
 	}
 
-	rawInput, ok := additional["input"]
+	return patchPaths(patchInputText(additional))
+}
+
+func patchInputText(additional map[string]json.RawMessage) string {
+	rawInput, ok := additional[patchInputKey]
 	if !ok {
-		return nil
+		return ""
 	}
 
 	var patchText string
 	if err := json.Unmarshal(rawInput, &patchText); err != nil {
+		return ""
+	}
+
+	return patchText
+}
+
+func patchPaths(patchText string) []string {
+	if patchText == "" {
 		return nil
 	}
 
@@ -461,10 +521,10 @@ func patchAffectedPaths(rawToolName string, additional map[string]json.RawMessag
 			continue
 		}
 
-		paths = append(paths, match[patchPathSubmatchIndex])
+		paths = append(paths, strings.TrimSpace(match[patchPathSubmatchIndex]))
 	}
 
-	return paths
+	return dedupePaths(paths)
 }
 
 func dedupePaths(paths []string) []string {

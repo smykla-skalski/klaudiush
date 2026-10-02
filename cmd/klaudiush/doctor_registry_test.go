@@ -42,7 +42,8 @@ func TestBuildDoctorRegistrySkipsClaudeHookChecksWhenProviderDisabled(t *testing
 		"Codex hooks configuration",
 		"Dispatcher registered in Codex hooks",
 		"SessionStart hook in Codex hooks",
-		"AfterToolUse hook in Codex hooks",
+		"PreToolUse hook in Codex hooks",
+		"Codex pre-tool enforcement",
 		"Stop hook in Codex hooks",
 		"Dispatcher path is valid",
 	} {

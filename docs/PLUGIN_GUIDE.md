@@ -121,7 +121,7 @@ klaudiush writes a JSON object to stdin. Fields present depend on the tool:
 |:------|:-----|:-------------|:------------|
 | `provider` | string | When known | `"claude"` or `"codex"` |
 | `event_name` | string | Always | Canonical event name such as `"before_tool"`, `"after_tool"`, `"session_start"`, or `"turn_stop"` |
-| `raw_event_name` | string | Usually | Provider-native event name such as `"PreToolUse"` or `"AfterToolUse"` |
+| `raw_event_name` | string | Usually | Provider-native event name such as `"PreToolUse"` or `"PostToolUse"` |
 | `event_type` | string | Compatibility | Legacy alias for older Claude-style plugins |
 | `tool_family` | string | When a tool is present | Canonical tool family such as `"shell"`, `"write"`, `"edit"`, or `"multiedit"` |
 | `raw_tool_name` | string | Usually | Provider-native tool name such as `"Bash"` or `"Write"` |

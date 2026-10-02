@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -22,6 +24,15 @@ const (
 // Hook event names shared across providers.
 const (
 	eventSessionStart = "SessionStart"
+)
+
+// Codex hook event names. AfterToolUse is the legacy post-tool name that
+// current Codex no longer fires.
+const (
+	CodexEventPreToolUse         = "PreToolUse"
+	CodexEventPostToolUse        = "PostToolUse"
+	CodexEventStop               = "Stop"
+	CodexLegacyEventAfterToolUse = "AfterToolUse"
 )
 
 // Gemini hook event names.
@@ -96,27 +107,32 @@ func InstallClaudeDispatcher(settingsPath, binaryPath string) (bool, error) {
 	return false, nil
 }
 
-// InstallCodexDispatcher registers klaudiush in a Codex hooks.json file.
-// Returns true when all supported Codex hooks were already present.
+// InstallCodexDispatcher registers klaudiush in a Codex hooks.json file and
+// removes its own legacy AfterToolUse entries. Unrelated hooks are kept.
+// Returns true when the file already matched and nothing was written.
 func InstallCodexDispatcher(hooksPath, binaryPath string) (bool, error) {
 	parser := NewCodexHooksParser(hooksPath)
+	missing := make(map[string]bool, len(CodexDispatcherEvents()))
 
-	hasSessionStart, err := parser.HasEventHook(eventSessionStart, binaryPath)
-	if err != nil {
-		return false, errors.Wrap(err, "failed to check SessionStart hook")
+	for _, eventName := range CodexDispatcherEvents() {
+		hasHook, err := parser.HasEventHook(eventName, binaryPath)
+		if err != nil {
+			return false, errors.Wrapf(err, "failed to check %s hook", eventName)
+		}
+
+		missing[eventName] = !hasHook
 	}
 
-	hasAfterToolUse, err := parser.HasEventHook("AfterToolUse", binaryPath)
+	hasLegacy, err := parser.HasEventHook(CodexLegacyEventAfterToolUse, binaryPath)
 	if err != nil {
-		return false, errors.Wrap(err, "failed to check AfterToolUse hook")
+		return false, errors.Wrap(err, "failed to check legacy AfterToolUse hook")
 	}
 
-	hasStop, err := parser.HasEventHook("Stop", binaryPath)
-	if err != nil {
-		return false, errors.Wrap(err, "failed to check Stop hook")
-	}
+	anyMissing := slices.ContainsFunc(CodexDispatcherEvents(), func(eventName string) bool {
+		return missing[eventName]
+	})
 
-	if hasSessionStart && hasAfterToolUse && hasStop {
+	if !hasLegacy && !anyMissing {
 		return true, nil
 	}
 
@@ -125,13 +141,22 @@ func InstallCodexDispatcher(hooksPath, binaryPath string) (bool, error) {
 		return false, err
 	}
 
-	AddCodexDispatcherHooks(raw, binaryPath, !hasSessionStart, !hasAfterToolUse, !hasStop)
+	RemoveCodexLegacyDispatcherHooks(raw, binaryPath)
+	AddCodexDispatcherHooks(raw, binaryPath, missing)
 
 	if err := writeRawJSONFile(hooksPath, raw); err != nil {
 		return false, errors.Wrap(err, "failed to write hooks config")
 	}
 
 	return false, nil
+}
+
+// CodexDispatcherEvents returns the Codex events klaudiush registers. PreToolUse
+// has no matcher so it gates shell, apply_patch, MCP, and local function tools.
+// PostToolUse is not registered: pre-tool denial already covers those calls,
+// and post-tool validation would re-report findings an exception allowed.
+func CodexDispatcherEvents() []string {
+	return []string{eventSessionStart, CodexEventPreToolUse, CodexEventStop}
 }
 
 // InstallGeminiDispatcher registers klaudiush in a Gemini settings.json file.
@@ -207,36 +232,86 @@ func AddClaudeDispatcherHooks(
 	}
 }
 
-// AddCodexDispatcherHooks appends missing Codex command hooks.
-func AddCodexDispatcherHooks(
-	raw map[string]any,
-	binaryPath string,
-	addSessionStart bool,
-	addAfterToolUse bool,
-	addStop bool,
-) {
+// AddCodexDispatcherHooks appends Codex command hooks for the missing events.
+func AddCodexDispatcherHooks(raw map[string]any, binaryPath string, missing map[string]bool) {
 	hooks := ensureHooksMap(raw)
 
-	if addSessionStart {
-		hooks[eventSessionStart] = appendEventHook(
-			hooks[eventSessionStart],
-			CodexSessionStartCommand(binaryPath),
+	for _, eventName := range CodexDispatcherEvents() {
+		if !missing[eventName] {
+			continue
+		}
+
+		hooks[eventName] = appendEventHook(
+			hooks[eventName],
+			CodexDispatcherCommand(binaryPath, eventName),
 		)
+	}
+}
+
+// RemoveCodexLegacyDispatcherHooks drops klaudiush handlers from the legacy
+// AfterToolUse event, keeping any other handlers and matcher groups there.
+func RemoveCodexLegacyDispatcherHooks(raw map[string]any, binaryPath string) {
+	hooks, ok := raw["hooks"].(map[string]any)
+	if !ok {
+		return
 	}
 
-	if addAfterToolUse {
-		hooks["AfterToolUse"] = appendEventHook(
-			hooks["AfterToolUse"],
-			CodexAfterToolUseCommand(binaryPath),
-		)
+	groups, ok := hooks[CodexLegacyEventAfterToolUse].([]any)
+	if !ok {
+		return
 	}
 
-	if addStop {
-		hooks["Stop"] = appendEventHook(
-			hooks["Stop"],
-			CodexStopCommand(binaryPath),
-		)
+	kept := make([]any, 0, len(groups))
+
+	for _, rawGroup := range groups {
+		group, isMap := rawGroup.(map[string]any)
+		if !isMap {
+			kept = append(kept, rawGroup)
+
+			continue
+		}
+
+		handlers, hasHandlers := group["hooks"].([]any)
+		if !hasHandlers {
+			kept = append(kept, rawGroup)
+
+			continue
+		}
+
+		remaining := slices.DeleteFunc(slices.Clone(handlers), func(handler any) bool {
+			return isRawCodexDispatcherHandler(handler, binaryPath)
+		})
+
+		if len(remaining) == 0 {
+			continue
+		}
+
+		group["hooks"] = remaining
+		kept = append(kept, group)
 	}
+
+	if len(kept) == 0 {
+		delete(hooks, CodexLegacyEventAfterToolUse)
+
+		return
+	}
+
+	hooks[CodexLegacyEventAfterToolUse] = kept
+}
+
+func isRawCodexDispatcherHandler(handler any, binaryPath string) bool {
+	values, ok := handler.(map[string]any)
+	if !ok {
+		return false
+	}
+
+	hookType, _ := values["type"].(string)
+	command, _ := values["command"].(string)
+
+	return isCodexDispatcherHook(
+		CodexHookCommandConfig{Type: hookType, Command: command},
+		binaryPath,
+	) && strings.Contains(command, "--provider codex")
 }
 
 // AddGeminiDispatcherHooks appends missing Gemini command hooks.
@@ -274,19 +349,9 @@ func ClaudeDispatcherCommand(binaryPath, eventName string) string {
 	return binaryPath + " --hook-type " + eventName
 }
 
-// CodexSessionStartCommand returns the Codex SessionStart command string.
-func CodexSessionStartCommand(binaryPath string) string {
-	return binaryPath + " --provider codex --event SessionStart"
-}
-
-// CodexAfterToolUseCommand returns the Codex AfterToolUse command string.
-func CodexAfterToolUseCommand(binaryPath string) string {
-	return binaryPath + " --provider codex --event AfterToolUse"
-}
-
-// CodexStopCommand returns the Codex Stop command string.
-func CodexStopCommand(binaryPath string) string {
-	return binaryPath + " --provider codex --event Stop"
+// CodexDispatcherCommand returns the Codex command string for an event.
+func CodexDispatcherCommand(binaryPath, eventName string) string {
+	return binaryPath + " --provider codex --event " + eventName
 }
 
 // GeminiBeforeToolCommand returns the Gemini BeforeTool command string.

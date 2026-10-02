@@ -114,6 +114,16 @@ Regenerate the opencode plugin after upgrading klaudiush, since it embeds the
 resolved binary path. `klaudiush doctor` reports a stale plugin as an
 unregistered dispatcher.
 
+For Codex, klaudiush registers `SessionStart`, `PreToolUse` (no matcher, so
+shell, `apply_patch`, MCP, and local function tools are all checked before they
+run), and `Stop`. A pre-tool denial uses `permissionDecision: "deny"`; Codex
+reports any other field on `PreToolUse` as a hook failure and runs the tool
+anyway, so klaudiush never sends one. Hosted tools such as web search never
+reach hooks. Codex only runs new or changed hooks after you trust them in
+`/hooks`. Re-running the install migrates entries from the retired
+`AfterToolUse` event, and `klaudiush doctor` reports which tool calls are
+actually blocked, not just whether a hook is registered.
+
 Only `tool.execute.before` can refuse a call in opencode, by aborting the tool.
 `tool.execute.after` and the compaction hook can add text the model reads;
 opencode's remaining hooks expose no such channel, so findings on those reach

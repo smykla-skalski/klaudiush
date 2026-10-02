@@ -299,7 +299,7 @@ var _ = Describe("Install", func() {
 	Describe("performCodexInstall", func() {
 		const fakeBinary = "/usr/local/bin/klaudiush"
 
-		It("creates hooks.json with SessionStart, AfterToolUse, and Stop hooks", func() {
+		It("creates hooks.json with SessionStart, PreToolUse, and Stop hooks", func() {
 			hooksPath := filepath.Join(tempDir, ".codex", "hooks.json")
 
 			err := performCodexInstall(hooksPath, fakeBinary)
@@ -314,21 +314,25 @@ var _ = Describe("Install", func() {
 
 			hooks := result["hooks"].(map[string]any)
 			sessionStart := hooks["SessionStart"].([]any)
-			afterToolUse := hooks["AfterToolUse"].([]any)
+			preToolUse := hooks["PreToolUse"].([]any)
 			stop := hooks["Stop"].([]any)
 
 			Expect(sessionStart).To(HaveLen(1))
-			Expect(afterToolUse).To(HaveLen(1))
+			Expect(preToolUse).To(HaveLen(1))
 			Expect(stop).To(HaveLen(1))
+			Expect(hooks).NotTo(HaveKey("AfterToolUse"))
+			Expect(hooks).NotTo(HaveKey("PostToolUse"))
+			Expect(preToolUse[0].(map[string]any)).NotTo(HaveKey("matcher"))
 
 			sessionStartHooks := sessionStart[0].(map[string]any)["hooks"].([]any)
-			afterToolUseHooks := afterToolUse[0].(map[string]any)["hooks"].([]any)
+			preToolUseHooks := preToolUse[0].(map[string]any)["hooks"].([]any)
 			stopHooks := stop[0].(map[string]any)["hooks"].([]any)
 
 			Expect(sessionStartHooks[0].(map[string]any)["command"]).
 				To(Equal(fakeBinary + " --provider codex --event SessionStart"))
-			Expect(afterToolUseHooks[0].(map[string]any)["command"]).
-				To(Equal(fakeBinary + " --provider codex --event AfterToolUse"))
+			Expect(preToolUseHooks[0].(map[string]any)["command"]).
+				To(Equal(fakeBinary + " --provider codex --event PreToolUse"))
+			Expect(preToolUseHooks[0].(map[string]any)).NotTo(HaveKey("async"))
 			Expect(stopHooks[0].(map[string]any)["command"]).
 				To(Equal(fakeBinary + " --provider codex --event Stop"))
 		})
@@ -368,8 +372,59 @@ var _ = Describe("Install", func() {
 
 			hooks := result["hooks"].(map[string]any)
 			Expect(hooks["SessionStart"].([]any)).To(HaveLen(1))
-			Expect(hooks["AfterToolUse"].([]any)).To(HaveLen(1))
+			Expect(hooks["PreToolUse"].([]any)).To(HaveLen(1))
 			Expect(hooks["Stop"].([]any)).To(HaveLen(1))
+		})
+
+		It("migrates legacy AfterToolUse entries and keeps unrelated hooks", func() {
+			hooksPath := filepath.Join(tempDir, ".codex", "hooks.json")
+			Expect(os.MkdirAll(filepath.Dir(hooksPath), 0o755)).To(Succeed())
+
+			const userHook = "/opt/orca/codex-hook.sh"
+
+			Expect(os.WriteFile(hooksPath, []byte(`{
+  "description": "user hooks",
+  "hooks": {
+    "PreToolUse": [{"matcher":"Bash","hooks":[{"type":"command","command":"`+userHook+`","timeout":10}]}],
+    "PermissionRequest": [{"hooks":[{"type":"command","command":"`+userHook+`"}]}],
+    "AfterToolUse": [
+      {"hooks":[
+        {"type":"command","command":"`+fakeBinary+` --provider codex --event AfterToolUse","timeout":30},
+        {"type":"command","command":"`+userHook+` after"}
+      ]},
+      {"hooks":[{"type":"command","command":"/old/path/klaudiush --provider codex --event AfterToolUse"}]}
+    ]
+  }
+}`), 0o600)).To(Succeed())
+
+			Expect(performCodexInstall(hooksPath, fakeBinary)).To(Succeed())
+
+			data, err := os.ReadFile(hooksPath)
+			Expect(err).NotTo(HaveOccurred())
+
+			var result map[string]any
+			Expect(json.Unmarshal(data, &result)).To(Succeed())
+			Expect(result).To(HaveKeyWithValue("description", "user hooks"))
+
+			hooks := result["hooks"].(map[string]any)
+			Expect(hooks["PermissionRequest"].([]any)).To(HaveLen(1))
+
+			preToolUse := hooks["PreToolUse"].([]any)
+			Expect(preToolUse).To(HaveLen(2))
+			Expect(preToolUse[0].(map[string]any)).To(HaveKeyWithValue("matcher", "Bash"))
+
+			legacy := hooks["AfterToolUse"].([]any)
+			Expect(legacy).To(HaveLen(1))
+			legacyHandlers := legacy[0].(map[string]any)["hooks"].([]any)
+			Expect(legacyHandlers).To(HaveLen(1))
+			Expect(legacyHandlers[0].(map[string]any)).
+				To(HaveKeyWithValue("command", userHook+" after"))
+
+			Expect(performCodexInstall(hooksPath, fakeBinary)).To(Succeed())
+
+			again, err := os.ReadFile(hooksPath)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(again).To(Equal(data))
 		})
 
 		It("expands tilde paths into the user home directory", func() {
