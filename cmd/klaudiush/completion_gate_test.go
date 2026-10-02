@@ -3,11 +3,13 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	"github.com/smykla-skalski/klaudiush/internal/dispatcher"
+	"github.com/smykla-skalski/klaudiush/internal/filelock"
 	"github.com/smykla-skalski/klaudiush/internal/hooksession"
 	"github.com/smykla-skalski/klaudiush/internal/validator"
 	"github.com/smykla-skalski/klaudiush/pkg/hook"
@@ -194,21 +196,50 @@ var _ = Describe("applyCompletionGate", func() {
 	})
 
 	It("releases on a continued stop when the counter cannot be stored", func() {
-		dir := GinkgoT().TempDir()
-		stateFile := filepath.Join(dir, "state.json")
-		Expect(os.WriteFile(stateFile, []byte("{not json"), 0o600)).To(Succeed())
-		broken := hooksession.NewStore(hooksession.WithStateFile(stateFile))
+		stateFile := filepath.Join(GinkgoT().TempDir(), "state.json")
+		locked := hooksession.NewStore(
+			hooksession.WithStateFile(stateFile),
+			hooksession.WithLockTimeout(10*time.Millisecond),
+		)
+
+		held, err := filelock.Acquire(stateFile+".lock", time.Second)
+		Expect(err).NotTo(HaveOccurred())
+
+		DeferCleanup(held.Release)
 
 		errs, _ := applyCompletionGate(
-			broken, gateCtx(hook.ProviderClaude, "Stop", "s", false), gateBlocking(), log,
+			locked, gateCtx(hook.ProviderClaude, "Stop", "s", false), gateBlocking(), log,
 		)
 		Expect(dispatcher.ShouldBlock(errs)).To(BeTrue())
 
 		errs, notice := applyCompletionGate(
-			broken, gateCtx(hook.ProviderClaude, "Stop", "s", true), gateBlocking(), log,
+			locked, gateCtx(hook.ProviderClaude, "Stop", "s", true), gateBlocking(), log,
 		)
 		Expect(dispatcher.ShouldBlock(errs)).To(BeFalse())
 		Expect(notice).NotTo(BeEmpty())
+	})
+
+	It("recovers from corrupt state and keeps counting", func() {
+		dir := GinkgoT().TempDir()
+		stateFile := filepath.Join(dir, "state.json")
+		Expect(os.WriteFile(stateFile, []byte("{not json"), 0o600)).To(Succeed())
+		recovered := hooksession.NewStore(hooksession.WithStateFile(stateFile))
+
+		errs, notice := applyCompletionGate(
+			recovered, gateCtx(hook.ProviderClaude, "Stop", "s", false), gateBlocking(), log,
+		)
+		Expect(dispatcher.ShouldBlock(errs)).To(BeTrue())
+		Expect(notice).To(BeEmpty())
+
+		quarantined, err := filepath.Glob(stateFile + ".corrupt-*")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(quarantined).To(HaveLen(1))
+
+		errs, notice = applyCompletionGate(
+			recovered, gateCtx(hook.ProviderClaude, "Stop", "s", true), gateBlocking(), log,
+		)
+		Expect(dispatcher.ShouldBlock(errs)).To(BeTrue(), "count 2 stays under the limit")
+		Expect(notice).To(BeEmpty())
 	})
 
 	DescribeTable("ignores events that are not completion gates",
