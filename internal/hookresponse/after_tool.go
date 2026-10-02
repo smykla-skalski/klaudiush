@@ -124,7 +124,9 @@ func noteAfterToolRepair(
 		notice = failedToolUserNotice
 	}
 
-	*p = notice + "\n\n" + *p
+	const separator = "\n\n"
+
+	*p = notice + separator + fitBudget(*p, humanBudget-len(notice)-len(separator))
 }
 
 // needsRepair reports whether any finding asks for a file change. A check that

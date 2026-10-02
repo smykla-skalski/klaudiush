@@ -309,6 +309,20 @@ var _ = Describe("structured findings", func() {
 			Expect(len(msg)).To(BeNumerically("<=", 9000))
 		})
 
+		It("keeps the after-tool human message within the cap", func() {
+			errs := manyFindings(400, strings.Repeat("ąę", 100))
+			ctx := &hook.Context{
+				Provider: hook.ProviderClaude, Event: hook.CanonicalEventAfterTool,
+				RawEventName: "PostToolUse", ToolExecuted: true, ToolSucceeded: true,
+			}
+
+			msg := systemText(hookresponse.BuildForContext(ctx, errs, nil))
+
+			Expect(msg).To(HavePrefix("klaudiush checked the result after the tool ran."))
+			Expect(utf8.ValidString(msg)).To(BeTrue())
+			Expect(len(msg)).To(BeNumerically("<=", 9000))
+		})
+
 		It("replaces invalid UTF-8 from validators", func() {
 			errs := []*dispatcher.ValidationError{{
 				Message: "bad \xff\xfe byte", ShouldBlock: true,
