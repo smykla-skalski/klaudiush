@@ -118,6 +118,9 @@ func (c *DefaultExceptionChecker) CheckException(
 		BypassReason: resp.TokenReason,
 		Findings:     verr.Findings,
 		Unavailable:  verr.Unavailable,
+
+		UnavailableReason: verr.UnavailableReason,
+		Resource:          verr.Resource,
 	}
 
 	return bypassedErr, true

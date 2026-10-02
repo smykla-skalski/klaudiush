@@ -89,7 +89,11 @@ func (v *RustValidator) Validate(
 	opts := v.buildRustfmtOptions(hook.CanonicalFilePath(hookCtx.WorkingDir, filePath))
 	result := v.checker.CheckWithOptions(lintCtx, ci.Content, opts)
 
-	inspected := ci.ToolResult && lintRan(lintCtx, result)
+	if notRun := lintUnavailable(lintCtx, "rustfmt", result); notRun != nil {
+		return notRun
+	}
+
+	inspected := ci.ToolResult
 
 	if result.Success {
 		log.Debug("rustfmt passed")

@@ -170,7 +170,15 @@ func (v *MarkdownValidator) Validate(ctx context.Context, hookCtx *hook.Context)
 	displayPath := getDisplayPath(filePath)
 
 	result := v.linter.LintWithPath(lintCtx, content, initialState, displayPath)
-	inspected := wholeFile && lintCtx.Err() == nil
+
+	if reason := validator.ReasonFromContext(lintCtx); reason != "" {
+		return validator.Unavailable(
+			reason,
+			"markdown check "+reason.Describe()+" before it finished checking this file",
+		)
+	}
+
+	inspected := wholeFile
 
 	if !result.Success {
 		return inspectedIf(inspected, v.buildBlockingResult(result))

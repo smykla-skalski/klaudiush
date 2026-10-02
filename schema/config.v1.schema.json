@@ -557,6 +557,36 @@
       "additionalProperties": false,
       "type": "object"
     },
+    "FailurePolicyConfig": {
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "warn",
+            "block"
+          ]
+        },
+        "missing_tools": {
+          "type": "string",
+          "enum": [
+            "ignore",
+            "warn",
+            "block"
+          ]
+        },
+        "critical": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "deadline": {
+          "$ref": "#/$defs/Duration"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
     "FetchValidatorConfig": {
       "properties": {
         "enabled": {
@@ -1819,6 +1849,9 @@
     },
     "output": {
       "$ref": "#/$defs/OutputConfig"
+    },
+    "failure_policy": {
+      "$ref": "#/$defs/FailurePolicyConfig"
     }
   },
   "additionalProperties": false,

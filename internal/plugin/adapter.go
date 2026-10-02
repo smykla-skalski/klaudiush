@@ -2,6 +2,9 @@ package plugin
 
 import (
 	"context"
+	"fmt"
+
+	"github.com/cockroachdb/errors"
 
 	"github.com/smykla-skalski/klaudiush/internal/validator"
 	"github.com/smykla-skalski/klaudiush/pkg/hook"
@@ -68,7 +71,7 @@ func (a *ValidatorAdapter) Validate(ctx context.Context, hookCtx *hook.Context) 
 			"error", err,
 		)
 
-		return validator.Fail("Plugin error: " + err.Error()).MarkUnavailable()
+		return pluginUnavailable(ctx, a.plugin.Info().Name, err)
 	}
 
 	// Convert plugin response to validator result
@@ -86,6 +89,31 @@ func (a *ValidatorAdapter) Validate(ctx context.Context, hookCtx *hook.Context) 
 	}
 
 	result.FixHint = resp.FixHint
+
+	return result
+}
+
+// pluginUnavailable reports a plugin that gave no verdict. It blocks unless
+// the failure policy decides otherwise, as plugins enforce rules klaudiush
+// cannot check on its own.
+func pluginUnavailable(ctx context.Context, name string, err error) *validator.Result {
+	reason := validator.ReasonError
+
+	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		reason = validator.ReasonTimeout
+	case errors.Is(err, context.Canceled):
+		reason = validator.ReasonCanceled
+	case errors.Is(err, ErrPluginBadResponse):
+		reason = validator.ReasonMalformedOutput
+	}
+
+	if ctxReason := validator.ReasonFromContext(ctx); ctxReason != "" {
+		reason = ctxReason
+	}
+
+	result := validator.Unavailable(reason, fmt.Sprintf("Plugin error (%s): %v", name, err))
+	result.ShouldBlock = true
 
 	return result
 }

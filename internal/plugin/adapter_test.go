@@ -400,6 +400,21 @@ var _ = Describe("ValidatorAdapter", func() {
 			Expect(result.ShouldBlock).To(BeTrue())
 			Expect(result.Message).To(ContainSubstring("Plugin error"))
 			Expect(result.Unavailable).To(BeTrue())
+			Expect(result.UnavailableReason).To(Equal(validator.ReasonTimeout))
+		})
+
+		It("reports a plugin call canceled with the hook", func() {
+			mockPlugin.EXPECT().
+				Validate(gomock.Any(), gomock.Any()).
+				Return(nil, context.Canceled)
+
+			canceled, cancel := context.WithCancel(ctx)
+			cancel()
+
+			result := adapter.Validate(canceled, &hook.Context{ToolName: hook.ToolTypeBash})
+
+			Expect(result.UnavailableReason).To(Equal(validator.ReasonCanceled))
+			Expect(result.ShouldBlock).To(BeTrue())
 		})
 	})
 

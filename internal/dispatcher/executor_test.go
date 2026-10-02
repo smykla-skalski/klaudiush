@@ -158,7 +158,13 @@ var _ = Describe("Executor", func() {
 				}()
 
 				result := executor.Execute(ctx, hookCtx, validators)
-				Expect(result).To(BeEmpty())
+
+				// The cut-short validator is reported unavailable, never a pass.
+				Expect(result).To(HaveLen(1))
+				Expect(result[0].Validator).To(Equal("v2"))
+				Expect(result[0].Unavailable).To(BeTrue())
+				Expect(result[0].UnavailableReason).To(Equal(validator.ReasonCanceled))
+				Expect(result[0].ShouldBlock).To(BeFalse())
 
 				// First should have started, second may or may not depending on timing
 				Expect(v1.started.Load()).To(BeTrue())
@@ -340,7 +346,12 @@ var _ = Describe("Executor", func() {
 				result := executor.Execute(ctx, hookCtx, validators)
 				elapsed := time.Since(start)
 
-				Expect(result).To(BeEmpty())
+				Expect(result).To(HaveLen(2))
+
+				for _, verr := range result {
+					Expect(verr.Unavailable).To(BeTrue())
+					Expect(verr.UnavailableReason).To(Equal(validator.ReasonCanceled))
+				}
 
 				// Should complete faster than running both validators
 				Expect(elapsed).To(BeNumerically("<", 180*time.Millisecond))

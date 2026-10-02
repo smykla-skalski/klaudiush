@@ -1,0 +1,20 @@
+env PATH=$KLAUDIUSH_TEST_BIN
+mkdir project/.klaudiush
+cp config.toml project/.klaudiush/config.toml
+mkdir .claude
+cp settings.json .claude/settings.json
+cd project
+
+! exec klaudiush doctor --category failure_policy --verbose
+stdout 'Validation deadline below hook timeout'
+stdout 'hook timeout 10s'
+stdout 'Critical validators have their tools'
+stdout 'shellscript needs shellcheck'
+
+-- config.toml --
+[failure_policy]
+critical = ["file.shellscript"]
+deadline = "20s"
+
+-- settings.json --
+{"hooks": {"PreToolUse": [{"matcher": "*", "hooks": [{"type": "command", "command": "klaudiush --hook-type PreToolUse", "timeout": 10}]}]}}

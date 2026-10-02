@@ -70,6 +70,14 @@ var _ = Describe("opencode bridge plugin", func() {
 			Expect(string(rendered)).To(ContainSubstring("console.error"))
 		})
 
+		It("refuses tool calls klaudiush cannot answer only when asked to", func() {
+			rendered, err := settings.RenderOpenCodePlugin(binaryPath)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(rendered)).To(ContainSubstring("process.env.KLAUDIUSH_FAILURE_POLICY_MODE"))
+			Expect(string(rendered)).To(ContainSubstring(`event !== "tool.execute.before"`))
+			Expect(string(rendered)).To(ContainSubstring("error?.stdout"))
+		})
+
 		// An unescaped path would emit broken source for any path containing a
 		// backslash or quote, and the bridge could not launch at all.
 		It("encodes the binary path as a valid string literal", func() {

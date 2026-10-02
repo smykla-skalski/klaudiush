@@ -1,0 +1,29 @@
+env PATH=$KLAUDIUSH_TEST_BIN
+
+stdin write.json
+exec klaudiush --hook-type PreToolUse
+! stdout .
+
+mkdir .klaudiush
+cp warn.toml .klaudiush/config.toml
+stdin write.json
+exec klaudiush --hook-type PreToolUse
+stdout 'shellcheck is not installed'
+! stdout 'permissionDecision'
+
+cp critical.toml .klaudiush/config.toml
+stdin write.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'shellcheck is not installed'
+
+-- write.json --
+{"tool_name": "Write", "tool_input": {"file_path": "script.sh", "content": "#!/bin/sh\necho hi\n"}}
+
+-- warn.toml --
+[failure_policy]
+missing_tools = "warn"
+
+-- critical.toml --
+[failure_policy]
+critical = ["file.shellscript"]

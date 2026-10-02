@@ -32,6 +32,10 @@ var (
 
 	// ErrPluginExecFailed is returned when plugin execution fails.
 	ErrPluginExecFailed = errors.New("plugin execution failed with non-zero code")
+
+	// ErrPluginBadResponse is returned when a plugin answers with output that
+	// is not a valid response.
+	ErrPluginBadResponse = errors.New("plugin returned an unreadable response")
 )
 
 // ExecLoader loads plugins as external executables that communicate via JSON.
@@ -211,19 +215,18 @@ func (a *execPluginAdapter) Validate(
 		return nil, errors.Wrap(err, "failed to marshal request to JSON")
 	}
 
-	// Apply timeout if context doesn't have one
-	execCtx := ctx
-	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
-		var cancel context.CancelFunc
-
-		execCtx, cancel = context.WithTimeout(ctx, a.timeout)
-
-		defer cancel()
-	}
+	// The plugin timeout applies even inside the hook deadline; whichever
+	// ends first stops the plugin.
+	execCtx, cancel := context.WithTimeout(ctx, a.timeout)
+	defer cancel()
 
 	// Execute the plugin with JSON input via stdin
 	stdin := bytes.NewReader(reqJSON)
 	result := a.runner.RunWithStdin(execCtx, stdin, a.path, a.args...)
+
+	if ctxErr := execCtx.Err(); ctxErr != nil {
+		return nil, errors.Wrap(ctxErr, "plugin did not answer in time")
+	}
 
 	// Check for execution errors
 	if result.Err != nil {
@@ -242,7 +245,10 @@ func (a *execPluginAdapter) Validate(
 	// Parse response JSON from stdout
 	var resp plugin.ValidateResponse
 	if err := json.Unmarshal([]byte(result.Stdout), &resp); err != nil {
-		return nil, errors.Wrap(err, "failed to parse response JSON")
+		return nil, errors.Mark(
+			errors.Wrap(err, "failed to parse response JSON"),
+			ErrPluginBadResponse,
+		)
 	}
 
 	return &resp, nil

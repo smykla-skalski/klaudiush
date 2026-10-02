@@ -36,10 +36,10 @@ func (f *PluginValidatorFactory) CreateValidators(cfg *config.Config) []Validato
 	}
 
 	// Load all plugins
+	// Plugins that fail to load stay registered as failures, so the contexts
+	// they would have checked report validation unavailable.
 	if err := f.registry.LoadPlugins(cfg.Plugins); err != nil {
 		f.logger.Error("failed to load plugins", "error", err)
-
-		return nil
 	}
 
 	// Create a single catch-all validator that delegates to the registry
@@ -81,45 +81,68 @@ func (v *PluginRegistryValidator) Validate(
 		return validator.Pass()
 	}
 
-	// Run all matching plugins and aggregate results
-	var warnings []string
-
-	var blockingResult validator.Result
-
-	var hasBlockingResult bool
+	var (
+		warnings    []string
+		blocking    *validator.Result
+		unavailable []*validator.Result
+	)
 
 	for _, p := range plugins {
 		result := p.Validate(ctx, hookCtx)
 
-		// Collect warnings
-		if !result.Passed && !result.ShouldBlock {
+		switch {
+		case result.Passed:
+		case result.Unavailable:
+			unavailable = append(unavailable, result)
+		case result.ShouldBlock:
+			if blocking == nil {
+				blocking = result
+			}
+		default:
 			warnings = append(warnings, result.Message)
-		}
-
-		// Keep first blocking result
-		if result.ShouldBlock && !hasBlockingResult {
-			blockingResult = *result
-			hasBlockingResult = true
 		}
 	}
 
-	// If any plugin blocked, return aggregated blocking result
-	if hasBlockingResult {
-		// Append any warnings to the blocking message
+	if blocking != nil {
+		merged := *blocking
+
+		for _, u := range unavailable {
+			warnings = append(warnings, u.Message)
+		}
+
 		if len(warnings) > 0 {
-			blockingResult.Message += "\n\nWarnings from other plugins:\n- " +
+			merged.Message += "\n\nWarnings from other plugins:\n- " +
 				strings.Join(warnings, "\n- ")
 		}
 
-		return &blockingResult
+		return &merged
 	}
 
-	// If only warnings, return warning result with all warnings
+	if len(unavailable) > 0 {
+		return mergeUnavailable(unavailable, warnings)
+	}
+
 	if len(warnings) > 0 {
 		return validator.Warn(strings.Join(warnings, "\n"))
 	}
 
 	return validator.Pass()
+}
+
+// mergeUnavailable combines the plugins that gave no verdict into one
+// unavailable result that blocks when any of them asked to.
+func mergeUnavailable(unavailable []*validator.Result, warnings []string) *validator.Result {
+	merged := *unavailable[0]
+
+	messages := make([]string, 0, len(unavailable)+len(warnings))
+	for _, u := range unavailable {
+		messages = append(messages, u.Message)
+		merged.ShouldBlock = merged.ShouldBlock || u.ShouldBlock
+	}
+
+	merged.Message = strings.Join(append(messages, warnings...), "\n")
+
+	return &merged
 }
 
 // Category returns the validator's workload category.

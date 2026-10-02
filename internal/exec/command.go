@@ -13,6 +13,12 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
+// pipeWaitDelay bounds how long a canceled command may keep its output pipes
+// open. Without it, a child the command started (a shell's background job)
+// holds the pipes and the run blocks until that child exits, long past the
+// deadline.
+const pipeWaitDelay = 2 * time.Second
+
 // CommandResult contains the result of a command execution.
 type CommandResult struct {
 	Stdout   string
@@ -78,6 +84,7 @@ func (*commandRunner) Run(
 
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
+	cmd.WaitDelay = pipeWaitDelay
 
 	err := cmd.Run()
 
@@ -114,6 +121,7 @@ func (*commandRunner) RunWithStdin(
 
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
+	cmd.WaitDelay = pipeWaitDelay
 
 	err := cmd.Run()
 

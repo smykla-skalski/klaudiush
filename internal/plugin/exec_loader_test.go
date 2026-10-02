@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -572,13 +573,11 @@ var _ = Describe("ExecLoader", func() {
 					ToolName:  "Bash",       //nolint:staticcheck // SA1019: verifies legacy field normalization
 				}
 
-				// Should timeout since execution takes 200ms but timeout is 100ms
-				// Note: This test depends on the mock runner respecting context cancellation
+				// An answer that arrives after the timeout is not trusted.
 				_, err = adapter2.Validate(ctx, req)
 
-				// The result depends on whether the runner respects context cancellation
-				// In our mock, we just sleep, so it will complete but take longer than timeout
-				Expect(err).NotTo(HaveOccurred())
+				Expect(err).To(HaveOccurred())
+				Expect(errors.Is(err, context.DeadlineExceeded)).To(BeTrue())
 			})
 
 			It("should respect context cancellation", func() {

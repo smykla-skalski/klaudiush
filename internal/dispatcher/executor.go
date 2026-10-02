@@ -2,8 +2,11 @@
 package dispatcher
 
 import (
+	"cmp"
 	"context"
+	"fmt"
 	"runtime"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -76,26 +79,84 @@ func (se *SequentialExecutor) Run(
 	runs := make([]ValidatorRun, 0, len(validators))
 
 	for _, v := range validators {
-		select {
-		case <-ctx.Done():
-			return runs
-		default:
-		}
-
-		start := time.Now()
-		result := v.Validate(ctx, hookCtx)
-		elapsed := time.Since(start)
-
-		se.logger.Debug("validator completed",
-			"name", v.Name(),
-			"passed", result.Passed,
-			"elapsed_ms", elapsed.Milliseconds(),
-		)
-
-		runs = append(runs, ValidatorRun{Validator: v, Result: result})
+		runs = append(runs, ValidatorRun{
+			Validator: v,
+			Result:    runValidator(ctx, hookCtx, v, se.logger),
+		})
 	}
 
 	return runs
+}
+
+// runValidator runs one validator and turns every way it can fail to answer
+// into an unavailable result: it never started because ctx ended, it
+// panicked, it returned nothing, or it passed only after ctx ended, when
+// whatever it ran may have been cut short.
+func runValidator(
+	ctx context.Context,
+	hookCtx *hook.Context,
+	v validator.Validator,
+	log logger.Logger,
+) (result *validator.Result) {
+	if reason := validator.ReasonFromContext(ctx); reason != "" {
+		return notRun(v, reason)
+	}
+
+	start := time.Now()
+
+	defer func() {
+		if r := recover(); r != nil {
+			log.Error("validator panicked",
+				"name", v.Name(),
+				"panic", fmt.Sprint(r),
+				"stack", string(debug.Stack()),
+			)
+
+			result = validator.Unavailable(
+				validator.ReasonPanic,
+				fmt.Sprintf("%s crashed: %v", shortName(v.Name()), r),
+			)
+		}
+	}()
+
+	result = v.Validate(ctx, hookCtx)
+
+	switch reason := validator.ReasonFromContext(ctx); {
+	case result == nil:
+		result = validator.Unavailable(
+			validator.ReasonError,
+			shortName(v.Name())+" returned no result",
+		)
+	case reason != "" && result.Passed:
+		result = notFinished(v, reason)
+	}
+
+	log.Debug("validator completed",
+		"name", v.Name(),
+		"passed", result.Passed,
+		"unavailable", result.Unavailable,
+		"elapsed_ms", time.Since(start).Milliseconds(),
+	)
+
+	return result
+}
+
+// notRun reports a validator skipped because the hook ran out of time or
+// was canceled.
+func notRun(v validator.Validator, reason validator.UnavailableReason) *validator.Result {
+	return validator.Unavailable(
+		reason,
+		fmt.Sprintf("%s did not run: %s before it started", shortName(v.Name()), reason.Describe()),
+	)
+}
+
+// notFinished reports a validator whose pass cannot be trusted because the
+// hook ran out of time or was canceled while it ran.
+func notFinished(v validator.Validator, reason validator.UnavailableReason) *validator.Result {
+	return validator.Unavailable(
+		reason,
+		fmt.Sprintf("%s did not finish: %s while it ran", shortName(v.Name()), reason.Describe()),
+	)
 }
 
 // ParallelExecutorConfig holds configuration for parallel execution.
@@ -173,17 +234,8 @@ func (e *ParallelExecutor) Run(
 	// For a single validator, run directly without goroutine overhead
 	if len(validators) == 1 {
 		v := validators[0]
-		start := time.Now()
-		result := v.Validate(ctx, hookCtx)
-		elapsed := time.Since(start)
 
-		e.logger.Debug("validator completed",
-			"name", v.Name(),
-			"passed", result.Passed,
-			"elapsed_ms", elapsed.Milliseconds(),
-		)
-
-		return []ValidatorRun{{Validator: v, Result: result}}
+		return []ValidatorRun{{Validator: v, Result: runValidator(ctx, hookCtx, v, e.logger)}}
 	}
 
 	var (
@@ -198,35 +250,24 @@ func (e *ParallelExecutor) Run(
 		go func(v validator.Validator) {
 			defer wg.Done()
 
-			// Acquire semaphore for the appropriate pool
+			var result *validator.Result
+
 			pool := e.poolFor(v.Category())
 			if err := pool.Acquire(ctx, 1); err != nil {
-				// Context cancelled
-				return
+				result = notRun(
+					v,
+					cmp.Or(validator.ReasonFromContext(ctx), validator.ReasonCanceled),
+				)
+			} else {
+				e.logger.Debug("running validator",
+					"validator", v.Name(),
+					"category", v.Category().String(),
+				)
+
+				result = runValidator(ctx, hookCtx, v, e.logger)
+
+				pool.Release(1)
 			}
-			defer pool.Release(1)
-
-			// Check context before running
-			select {
-			case <-ctx.Done():
-				return
-			default:
-			}
-
-			e.logger.Debug("running validator",
-				"validator", v.Name(),
-				"category", v.Category().String(),
-			)
-
-			start := time.Now()
-			result := v.Validate(ctx, hookCtx)
-			elapsed := time.Since(start)
-
-			e.logger.Debug("validator completed",
-				"name", v.Name(),
-				"passed", result.Passed,
-				"elapsed_ms", elapsed.Milliseconds(),
-			)
 
 			mu.Lock()
 
@@ -264,5 +305,7 @@ func toValidationError(v validator.Validator, result *validator.Result) *Validat
 		FixHint:     result.FixHint,
 		Findings:    result.Findings,
 		Unavailable: result.Unavailable,
+
+		UnavailableReason: result.ReasonOf(),
 	}
 }

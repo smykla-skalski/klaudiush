@@ -89,7 +89,11 @@ func (v *JavaScriptValidator) Validate(
 	opts := v.buildOxlintOptions(ci.IsFragment)
 	result := v.checker.CheckWithOptions(lintCtx, ci.Content, opts)
 
-	inspected := ci.ToolResult && lintRan(lintCtx, result)
+	if notRun := lintUnavailable(lintCtx, "oxlint", result); notRun != nil {
+		return notRun
+	}
+
+	inspected := ci.ToolResult
 
 	if result.Success {
 		log.Debug("oxlint passed")

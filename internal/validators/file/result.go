@@ -3,6 +3,7 @@ package file
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -25,10 +26,39 @@ func inspectedIf(inspected bool, result *validator.Result) *validator.Result {
 	return result
 }
 
-// lintRan reports whether a linter really checked the content: the tool was
-// installed and finished before lintCtx ran out.
-func lintRan(lintCtx context.Context, result *linters.LintResult) bool {
-	return result != nil && !result.Skipped && lintCtx.Err() == nil
+// lintUnavailable reports why a linter run checked nothing: the tool is not
+// installed, ran out of time, was canceled, or failed without reporting
+// anything. It returns nil when the run's verdict can be trusted.
+func lintUnavailable(
+	lintCtx context.Context,
+	tool string,
+	result *linters.LintResult,
+) *validator.Result {
+	switch {
+	case result == nil:
+		return validator.Unavailable(validator.ReasonError, tool+" returned no result")
+	case result.Skipped:
+		return validator.Unavailable(
+			validator.ReasonMissingTool,
+			tool+" is not installed, so this file was not checked",
+		)
+	}
+
+	if reason := validator.ReasonFromContext(lintCtx); reason != "" {
+		return validator.Unavailable(
+			reason,
+			fmt.Sprintf("%s %s before it finished checking this file", tool, reason.Describe()),
+		)
+	}
+
+	if !result.Success && len(result.Findings) == 0 && strings.TrimSpace(result.RawOut) == "" {
+		return validator.Unavailable(
+			validator.ReasonError,
+			fmt.Sprintf("%s failed without reporting a finding: %v", tool, result.Err),
+		)
+	}
+
+	return nil
 }
 
 // readToolResult reads a file as the tool left it. Once a tool ran, the file

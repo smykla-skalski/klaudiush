@@ -47,6 +47,9 @@ type Config struct {
 
 	// Output controls user-facing messages and the agent block summary.
 	Output *OutputConfig `json:"output,omitempty" koanf:"output" toml:"output,omitempty"`
+
+	// FailurePolicy decides what happens when validation cannot run.
+	FailurePolicy *FailurePolicyConfig `json:"failure_policy,omitempty" koanf:"failure_policy" toml:"failure_policy,omitempty"`
 }
 
 // ValidatorsConfig groups all validator configurations by category.

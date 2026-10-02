@@ -23,6 +23,7 @@ const (
 type Registry struct {
 	loaders map[config.PluginType]Loader
 	plugins []*PluginEntry
+	failed  []*loadFailure
 	logger  logger.Logger
 }
 
@@ -77,6 +78,8 @@ func (r *Registry) LoadPlugins(cfg *config.PluginConfig) error {
 				"type", pluginCfg.Type,
 				"error", err,
 			)
+
+			r.failed = append(r.failed, newLoadFailure(pluginCfg, err, r.logger))
 
 			// Collect error but continue loading other plugins
 			if loadErrors == nil {
@@ -145,6 +148,12 @@ func (r *Registry) GetValidators(hookCtx *hook.Context) []validator.Validator {
 	for _, entry := range r.plugins {
 		if entry.Predicate.Matches(hookCtx) {
 			validators = append(validators, entry.Validator)
+		}
+	}
+
+	for _, failure := range r.failed {
+		if failure.predicate == nil || failure.predicate.Matches(hookCtx) {
+			validators = append(validators, failure)
 		}
 	}
 

@@ -22,6 +22,13 @@ const BINARY = {{ .BinaryLiteral }}
 const TIMEOUT_MS = {{ .TimeoutMs }}
 const MAX_OUTPUT_BYTES = 8 * 1024 * 1024
 
+// klaudiush answers every failure it can catch itself. When it cannot answer
+// at all (binary missing, killed at the timeout, unreadable output) this
+// plugin decides: KLAUDIUSH_FAILURE_POLICY_MODE=block refuses the tool call,
+// anything else lets it through with a warning on stderr. The config file
+// cannot decide this, because reading it is klaudiush's job.
+const FAIL_CLOSED = (process.env.KLAUDIUSH_FAILURE_POLICY_MODE ?? "").trim().toLowerCase() === "block"
+
 // opencode walks every export of a plugin file and calls each one *as a plugin*:
 // a non-function export throws, and an exported helper runs with the plugin
 // input. Everything below therefore stays module-local except the single plugin
@@ -48,9 +55,11 @@ type Payload = Record<string, unknown>
 // completes, and the session hangs with no error. execFileSync is what the other
 // klaudiush-adjacent plugins on this machine use for the same reason.
 //
-// Every failure path fails *open*. A validator that cannot answer must never be
-// able to wedge an editing session, so a missing binary, a timeout, a crash exit
-// (code 3), or unparseable output all resolve to "no opinion".
+// Every failure path fails *open* unless FAIL_CLOSED is set, and then only
+// for tool.execute.before, the one hook that can refuse anything. A missing
+// binary, a timeout, a crash, or unparseable output resolve to "no opinion".
+// klaudiush itself exits 0 with a response for the failures it catches, so a
+// non-zero exit that still printed a response is honored as written.
 function invoke(event: string, cwd: string, payload: Payload): KlaudiushResponse | null {
   let stdout: string
 
@@ -68,13 +77,18 @@ function invoke(event: string, cwd: string, payload: Payload): KlaudiushResponse
       // wrong repository whenever the session runs in another worktree.
       ...(cwd ? { cwd } : {}),
     })
-  } catch (error) {
+  } catch (error: any) {
+    const answered = parseResponse(typeof error?.stdout === "string" ? error.stdout : "")
+    if (answered) {
+      return answered
+    }
+
     // Loud on stderr, which opencode captures, because a silent fail-open is
     // indistinguishable from "everything passed": a moved or deleted binary
     // would otherwise disable validation for the whole session with no signal.
-    console.error(`klaudiush: ${event} hook failed, skipping validation:`, error)
+    console.error(`klaudiush: ${event} hook failed:`, error)
 
-    return null
+    return unavailable(event, "klaudiush did not answer: " + (error?.message ?? String(error)))
   }
 
   const trimmed = stdout.trim()
@@ -83,13 +97,36 @@ function invoke(event: string, cwd: string, payload: Payload): KlaudiushResponse
     return null
   }
 
+  const parsed = parseResponse(trimmed)
+  if (!parsed) {
+    console.error(`klaudiush: ${event} hook returned unparseable output`)
+
+    return unavailable(event, "klaudiush returned unreadable output")
+  }
+
+  return parsed
+}
+
+function parseResponse(text: string): KlaudiushResponse | null {
+  const trimmed = text.trim()
+  if (!trimmed.startsWith("{")) return null
+
   try {
     return JSON.parse(trimmed) as KlaudiushResponse
-  } catch (error) {
-    console.error(`klaudiush: ${event} hook returned unparseable output:`, error)
-
+  } catch {
     return null
   }
+}
+
+// unavailable answers for klaudiush when it could not answer itself.
+function unavailable(event: string, detail: string): KlaudiushResponse | null {
+  if (!FAIL_CLOSED || event !== "tool.execute.before") {
+    return null
+  }
+
+  const reason = `Validation unavailable: ${detail}. KLAUDIUSH_FAILURE_POLICY_MODE=block refuses tool calls klaudiush cannot check; ask the user to run 'klaudiush doctor'.`
+
+  return { decision: "deny", reason, systemMessage: reason }
 }
 
 // isBlocked reports whether klaudiush refused the operation. "deny" comes from

@@ -8,6 +8,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 
+	"github.com/smykla-skalski/klaudiush/internal/failpolicy"
 	"github.com/smykla-skalski/klaudiush/internal/validator"
 	"github.com/smykla-skalski/klaudiush/internal/validators/secrets"
 	"github.com/smykla-skalski/klaudiush/pkg/config"
@@ -58,6 +59,9 @@ type ValidationError struct {
 	// Unavailable reports that the check could not run.
 	Unavailable bool
 
+	// UnavailableReason says why an unavailable check could not run.
+	UnavailableReason validator.UnavailableReason
+
 	// Resource identifies what the validator checked (see hook.Context.Resource).
 	Resource string
 }
@@ -106,6 +110,7 @@ type Dispatcher struct {
 	overrides        *config.OverridesConfig
 	bypassPolicy     BypassPolicy
 	pathResolver     parser.Resolver
+	failurePolicy    *failpolicy.Policy
 }
 
 // NewDispatcher creates a new Dispatcher with sequential execution.
@@ -166,6 +171,14 @@ func WithPathResolver(resolver parser.Resolver) DispatcherOption {
 		if resolver != nil {
 			d.pathResolver = resolver
 		}
+	}
+}
+
+// WithFailurePolicy sets what checks that could not run do to the action.
+// Without one, each check keeps its own choice and missing tools are ignored.
+func WithFailurePolicy(policy *failpolicy.Policy) DispatcherOption {
+	return func(d *Dispatcher) {
+		d.failurePolicy = policy
 	}
 }
 
@@ -265,7 +278,7 @@ func (d *Dispatcher) runValidators(
 
 	// Use executor to run validators (sequential or parallel)
 	runs := d.executor.Run(ctx, hookCtx, validators)
-	validationErrors := failures(runs)
+	validationErrors := d.applyFailurePolicy(failures(runs))
 
 	resource := hookCtx.Resource()
 
@@ -299,6 +312,41 @@ func (d *Dispatcher) runValidators(
 	}
 
 	return validationErrors
+}
+
+// applyFailurePolicy decides what each check that could not run does to the
+// action: dropped, reported as a warning, or blocking.
+func (d *Dispatcher) applyFailurePolicy(errs []*ValidationError) []*ValidationError {
+	result := make([]*ValidationError, 0, len(errs))
+
+	for _, verr := range errs {
+		if !verr.Unavailable {
+			result = append(result, verr)
+
+			continue
+		}
+
+		if verr.UnavailableReason == "" {
+			verr.UnavailableReason = validator.ReasonError
+		}
+
+		action := d.failurePolicy.Resolve(verr.Validator, verr.UnavailableReason, verr.ShouldBlock)
+
+		d.logger.Info("validation unavailable",
+			"validator", shortName(verr.Validator),
+			"reason", string(verr.UnavailableReason),
+			"action", action.String(),
+		)
+
+		if action == failpolicy.ActionIgnore {
+			continue
+		}
+
+		verr.ShouldBlock = action == failpolicy.ActionBlock
+		result = append(result, verr)
+	}
+
+	return result
 }
 
 // applyOverrides filters out validation errors whose error codes are disabled via overrides.
@@ -488,6 +536,8 @@ func errorFromFindings(verr *ValidationError, findings []validator.Finding) *Val
 		FixHint:     validator.GetSuggestion(findings[0].Reference),
 		Findings:    findings,
 		Unavailable: verr.Unavailable,
+
+		UnavailableReason: verr.UnavailableReason,
 	}
 }
 
@@ -647,7 +697,7 @@ func recordChecks(
 	isFile := strings.HasPrefix(resource, hook.ResourceFilePrefix)
 
 	for _, run := range runs {
-		if isFile && (!run.Result.Inspected || run.Result.Unavailable) {
+		if run.Result.Unavailable || (isFile && !run.Result.Inspected) {
 			continue
 		}
 
