@@ -1,0 +1,148 @@
+package parser
+
+import (
+	"path/filepath"
+	"regexp"
+	"slices"
+	"strings"
+)
+
+// OpacityCause says why part of a command could not be inspected.
+type OpacityCause string
+
+// OpacityDepthLimit means launchers, scripts or aliases nest deeper than the
+// parser follows.
+const OpacityDepthLimit OpacityCause = "depth-limit"
+
+// OpacityWorkBudget means the command fans out into more commands and scripts
+// than one parse follows.
+const OpacityWorkBudget OpacityCause = "work-budget"
+
+// OpacityUnreadableScript means a script file the command runs cannot be read
+// in full.
+const OpacityUnreadableScript OpacityCause = "unreadable-script"
+
+// OpacityScriptSyntax means a script the command runs does not parse.
+const OpacityScriptSyntax OpacityCause = "script-syntax"
+
+// OpacityUnresolvedProgram means a git subcommand is neither built in,
+// installed, nor an alias the parser can see.
+const OpacityUnresolvedProgram OpacityCause = "unresolved-program"
+
+// OpacityUnresolvedArgs means a function forwards its arguments in a form the
+// parser does not substitute.
+const OpacityUnresolvedArgs OpacityCause = "unresolved-args"
+
+// Opacity describes one operation the parser could not see through: why
+// (Cause), what (Operation), the programs that led to it, outermost first
+// (Origin), and for some causes a fixed explanation (Detail). It names
+// programs, scripts and subcommands only, never their arguments, so it is
+// safe to show.
+type Opacity struct {
+	Cause     OpacityCause
+	Operation string
+	Origin    []string
+	Detail    string
+}
+
+// maxOpacities bounds the opacities one parse keeps.
+const maxOpacities = 8
+
+// maxShownNameLen bounds a name shown in an opacity.
+const maxShownNameLen = 32
+
+// hiddenName stands in for a name that is not safe to show.
+const hiddenName = "<hidden>"
+
+// Fixed reasons, set as Opacity.Detail, that a script file is opaque.
+const (
+	DetailScriptVariable  = "its path depends on a variable klaudiush cannot resolve"
+	DetailScriptDirectory = "it is a relative path after a cd to a directory klaudiush cannot resolve"
+	DetailScriptWritten   = "it is written earlier on the line with content klaudiush cannot see"
+	DetailScriptRead      = "the file cannot be read in full (too large, unreadable or not a regular file)"
+)
+
+// shownName matches a name plain enough to show: no expansions, quotes,
+// spaces or path separators.
+var shownName = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_.+@-]*$`)
+
+// safeName returns name when it is plain and short enough to show, and a
+// placeholder otherwise, so a diagnostic never carries command text.
+func safeName(name string) string {
+	if len(name) > maxShownNameLen || !shownName.MatchString(name) {
+		return hiddenName
+	}
+
+	return name
+}
+
+// scriptName returns the shown name of a script file.
+func scriptName(path string) string {
+	return safeName(filepath.Base(path))
+}
+
+// opaque records that something could not be inspected, so the parse fails
+// closed. Only the first opacities are kept; the parse is marked truncated
+// regardless.
+func (w *astWalker) opaque(cause OpacityCause, operation, detail string) {
+	w.state.truncated = true
+
+	if cause == OpacityWorkBudget {
+		if w.state.budgetReported {
+			return
+		}
+
+		w.state.budgetReported = true
+	}
+
+	o := Opacity{
+		Cause:     cause,
+		Operation: operation,
+		Origin:    slices.Clone(w.via),
+		Detail:    detail,
+	}
+
+	if len(w.state.opacities) >= maxOpacities ||
+		slices.ContainsFunc(w.state.opacities, o.equal) {
+		return
+	}
+
+	w.state.opacities = append(w.state.opacities, o)
+}
+
+func (o Opacity) equal(other Opacity) bool {
+	return o.Cause == other.Cause && o.Operation == other.Operation &&
+		o.Detail == other.Detail && slices.Equal(o.Origin, other.Origin)
+}
+
+// enter adds cmd to the origin of what it launches until the returned
+// function runs.
+func (w *astWalker) enter(cmd Command) func() {
+	w.via = append(w.via, safeName(cmd.Name))
+
+	return func() { w.via = w.via[:len(w.via)-1] }
+}
+
+// operation names the script sw walks.
+func (sw scriptWalk) operation() string {
+	switch {
+	case sw.label != "":
+		return sw.label
+	case strings.HasPrefix(sw.name, "git:"):
+		return "git alias " + safeName(strings.TrimPrefix(sw.name, "git:"))
+	case sw.name != "":
+		return safeName(sw.name)
+	default:
+		return "inline script"
+	}
+}
+
+// MaxLaunchDepth is how many launchers, scripts and aliases the parser follows
+// from one command.
+const MaxLaunchDepth = maxLaunchDepth
+
+// MaxParseWork is how many commands and scripts one parse follows.
+const MaxParseWork = maxParseWork
+
+// MaxScriptBytes is the largest script file the parser reads.
+const MaxScriptBytes = maxScriptBytes
