@@ -267,7 +267,7 @@ var _ = Describe("Build", func() {
 
 		resp := hookresponse.BuildForContext(&hook.Context{
 			Provider:     hook.ProviderGemini,
-			Event:        hook.CanonicalEventTurnStop,
+			Event:        hook.CanonicalEventSessionEnd,
 			RawEventName: "SessionEnd",
 		}, errs, nil)
 

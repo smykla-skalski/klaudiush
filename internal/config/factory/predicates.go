@@ -38,6 +38,9 @@ func lifecycleEventPredicate() validator.Predicate {
 	return validator.Or(
 		validator.EventIs(hook.CanonicalEventSessionStart),
 		validator.EventIs(hook.CanonicalEventTurnStop),
+		validator.EventIs(hook.CanonicalEventSubagentStop),
+		validator.EventIs(hook.CanonicalEventSessionEnd),
+		validator.EventIs(hook.CanonicalEventStopFailure),
 		validator.EventIs(hook.CanonicalEventPreCompress),
 		validator.EventIs(hook.CanonicalEventPostCompact),
 		validator.EventIs(hook.CanonicalEventUserPromptSubmit),

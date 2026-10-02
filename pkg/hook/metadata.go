@@ -62,6 +62,16 @@ const (
 
 	// CanonicalEventUserPromptSubmit is a user-prompt submission event.
 	CanonicalEventUserPromptSubmit CanonicalEvent = "user_prompt_submit"
+
+	// CanonicalEventSubagentStop is a subagent completion gate.
+	CanonicalEventSubagentStop CanonicalEvent = "subagent_stop"
+
+	// CanonicalEventSessionEnd is an observational session-end event.
+	CanonicalEventSessionEnd CanonicalEvent = "session_end"
+
+	// CanonicalEventStopFailure is an observational turn-failure event (the
+	// turn ended on an API or runtime error).
+	CanonicalEventStopFailure CanonicalEvent = "stop_failure"
 )
 
 // ToolFamily represents the normalized cross-provider tool family.
@@ -99,17 +109,27 @@ const (
 	displayElicitationResult = "ElicitationResult"
 	displayPostCompact       = "PostCompact"
 
-	eventNameSessionStart     = "SessionStart"
-	eventNameStop             = "Stop"
-	eventNameUserPromptSubmit = "UserPromptSubmit"
-	codexEventPreToolUse      = "PreToolUse"
-	codexEventPostToolUse     = "PostToolUse"
+	eventNameSessionStart      = "SessionStart"
+	eventNameSessionEnd        = "SessionEnd"
+	eventNameStop              = "Stop"
+	eventNameSubagentStop      = "SubagentStop"
+	eventNameStopFailure       = "StopFailure"
+	eventNamePermissionRequest = "PermissionRequest"
+	geminiEventBeforeTool      = "BeforeTool"
+	geminiEventAfterTool       = "AfterTool"
+	geminiEventAfterAgent      = "AfterAgent"
+	geminiEventPreCompress     = "PreCompress"
+	eventNameUserPromptSubmit  = "UserPromptSubmit"
+	codexEventPreToolUse       = "PreToolUse"
+	codexEventPostToolUse      = "PostToolUse"
 )
 
 // Normalized event-name tokens accepted by NormalizeEventName.
 const (
-	tokenElicitation  = "elicitation"
-	tokenPostCompress = "postcompress"
+	tokenElicitation       = "elicitation"
+	tokenPostCompress      = "postcompress"
+	tokenPermissionRequest = "permissionrequest"
+	tokenSubagentStart     = "subagentstart"
 )
 
 // opencode hook identifiers. These are the plugin hook names opencode itself
@@ -168,18 +188,28 @@ func NormalizeEventName(name string) CanonicalEvent {
 	// An approval request carries the tool and its arguments, so it normalizes
 	// onto before_tool: a hand-written plugin that forwards it still gets every
 	// pre-execution validator. klaudiush's own bridge does not forward it, to
-	// avoid validating the same call twice — see OpenCodeEventNames.
+	// avoid validating the same call twice — see OpenCodeEventNames. Claude and
+	// Codex PermissionRequest keep their raw name (KeepsRawEventName) so the
+	// response uses the PermissionRequest decision object.
 	case "beforetool", "pretooluse", "toolexecutebefore", "permissionask",
-		"permissionrequest":
+		tokenPermissionRequest:
 		return CanonicalEventBeforeTool
 	case "aftertool", "posttooluse", "aftertooluse", "toolexecuteafter",
 		"posttoolusefailure":
 		return CanonicalEventAfterTool
-	case "sessionstart", "sessioncreated", "subagentstart":
+	case "sessionstart", "sessioncreated", tokenSubagentStart:
 		return CanonicalEventSessionStart
-	case "turnstop", "stop", "sessionend", "sessionidle", "sessionerror",
-		"stopfailure", "subagentstop":
+	// Only events that can keep the agent working are completion gates.
+	// Session end and turn failure are observational, and a subagent stop
+	// gates the subagent, not the session.
+	case "turnstop", "stop", "sessionidle", "afteragent":
 		return CanonicalEventTurnStop
+	case "subagentstop":
+		return CanonicalEventSubagentStop
+	case "sessionend":
+		return CanonicalEventSessionEnd
+	case "stopfailure", "sessionerror":
+		return CanonicalEventStopFailure
 	// A pending approval means the session is waiting on the user, which is what
 	// a Claude Notification reports. opencode has renamed this event across
 	// versions, so both spellings are accepted.
@@ -211,7 +241,8 @@ func ResolveLegacyEventType(
 	switch canonical {
 	case CanonicalEventUnknown, CanonicalEventSessionStart, CanonicalEventTurnStop,
 		CanonicalEventPreCompress, CanonicalEventElicitation, CanonicalEventElicitationResult,
-		CanonicalEventPostCompact, CanonicalEventUserPromptSubmit:
+		CanonicalEventPostCompact, CanonicalEventUserPromptSubmit,
+		CanonicalEventSubagentStop, CanonicalEventSessionEnd, CanonicalEventStopFailure:
 	case CanonicalEventBeforeTool:
 		return EventTypePreToolUse
 	case CanonicalEventAfterTool:
@@ -291,20 +322,13 @@ func displayGeminiEvent(canonical CanonicalEvent) string {
 		return displayElicitationResult
 	case CanonicalEventPostCompact:
 		return displayPostCompact
-	case CanonicalEventBeforeTool:
-		return "BeforeTool"
-	case CanonicalEventAfterTool:
-		return "AfterTool"
-	case CanonicalEventSessionStart:
-		return "SessionStart"
-	case CanonicalEventTurnStop:
-		return "SessionEnd"
-	case CanonicalEventNotification:
-		return "Notification"
-	case CanonicalEventPreCompress:
-		return "PreCompress"
 	default:
-		return ""
+		capability, ok := geminiCapabilities[canonical]
+		if !ok {
+			return ""
+		}
+
+		return capability.NativeName
 	}
 }
 
@@ -336,20 +360,12 @@ func displayOpenCodeEvent(canonical CanonicalEvent) string {
 }
 
 func displayClaudeEvent(canonical CanonicalEvent) string {
-	switch canonical {
-	case CanonicalEventElicitation:
-		return displayElicitation
-	case CanonicalEventElicitationResult:
-		return displayElicitationResult
-	case CanonicalEventBeforeTool:
-		return EventTypePreToolUse.String()
-	case CanonicalEventAfterTool:
-		return EventTypePostToolUse.String()
-	case CanonicalEventNotification:
-		return EventTypeNotification.String()
-	default:
+	capability, ok := claudeCapabilities[canonical]
+	if !ok {
 		return ""
 	}
+
+	return capability.NativeName
 }
 
 // ResolveToolMetadata maps a raw tool name onto the legacy enum and canonical family.

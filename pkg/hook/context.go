@@ -175,6 +175,9 @@ type Context struct {
 	// StopHookActive indicates whether a stop hook is already active.
 	StopHookActive bool
 
+	// AgentID identifies the subagent on subagent events (Claude, Codex).
+	AgentID string
+
 	// TurnID identifies the provider turn when available.
 	TurnID string
 
@@ -295,6 +298,12 @@ func (c *Context) IsFileTool() bool {
 		c.ToolFamily == ToolFamilyMultiEdit
 }
 
+// IsPermissionRequest reports whether the hook answers an approval prompt
+// (Claude or Codex PermissionRequest) rather than gating a tool call.
+func (c *Context) IsPermissionRequest() bool {
+	return IsPermissionRequestEvent(c.RawEventName)
+}
+
 // IsElicitationEvent returns true if this is an Elicitation or ElicitationResult event.
 func (c *Context) IsElicitationEvent() bool {
 	return c.Event == CanonicalEventElicitation || c.Event == CanonicalEventElicitationResult
@@ -365,6 +374,12 @@ func (c *Context) EventNames() []string {
 	case CanonicalEventPostCompact:
 		names = appendUniqueFold(names, displayPostCompact)
 		names = appendUniqueFold(names, "PostCompress")
+	case CanonicalEventSubagentStop:
+		names = appendUniqueFold(names, eventNameSubagentStop)
+	case CanonicalEventSessionEnd:
+		names = appendUniqueFold(names, eventNameSessionEnd)
+	case CanonicalEventStopFailure:
+		names = appendUniqueFold(names, eventNameStopFailure)
 	}
 
 	return names

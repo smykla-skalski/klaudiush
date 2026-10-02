@@ -14,6 +14,14 @@ const (
 	ResponseFieldDecision           ResponseField = "decision"
 	ResponseFieldPermissionDecision ResponseField = "permissionDecision"
 	ResponseFieldAdditionalContext  ResponseField = "additionalContext"
+
+	// ResponseFieldPermissionBehavior is hookSpecificOutput.decision, the
+	// PermissionRequest object carrying behavior and message.
+	ResponseFieldPermissionBehavior ResponseField = "decision.behavior"
+
+	// ResponseFieldElicitationAction is hookSpecificOutput.action, the
+	// accept/decline/cancel answer to an MCP elicitation.
+	ResponseFieldElicitationAction ResponseField = "action"
 )
 
 // Enforcement is the strongest effect a blocking finding can have on an event.
@@ -24,6 +32,16 @@ const (
 	EnforcementDenyTool      Enforcement = "deny_tool"
 	EnforcementBlockDecision Enforcement = "block_decision"
 	EnforcementStop          Enforcement = "stop"
+
+	// EnforcementContinueTurn marks a completion gate: a block keeps the agent
+	// working and hands it the reason as its next instruction.
+	EnforcementContinueTurn Enforcement = "continue_turn"
+
+	// EnforcementDenyPermission denies an approval request on the user's behalf.
+	EnforcementDenyPermission Enforcement = "deny_permission"
+
+	// EnforcementDeclineElicitation declines an MCP elicitation.
+	EnforcementDeclineElicitation Enforcement = "decline_elicitation"
 )
 
 // EventCapability lists what a provider accepts in a response to one event.
@@ -89,7 +107,23 @@ var codexCapabilities = map[CanonicalEvent]EventCapability{
 			ResponseFieldContinue,
 			ResponseFieldSystemMessage,
 		},
-		Enforcement: EnforcementBlockDecision,
+		Enforcement: EnforcementContinueTurn,
+	},
+	CanonicalEventSubagentStop: {
+		NativeName: eventNameSubagentStop,
+		Fields: []ResponseField{
+			ResponseFieldDecision,
+			ResponseFieldContinue,
+			ResponseFieldStopReason,
+			ResponseFieldSystemMessage,
+		},
+		Enforcement: EnforcementContinueTurn,
+	},
+	// SessionEnd is advisory and its accepted output is not documented
+	// consistently, so nothing is emitted for it.
+	CanonicalEventSessionEnd: {
+		NativeName:  eventNameSessionEnd,
+		Enforcement: EnforcementNone,
 	},
 	CanonicalEventPostCompact: {
 		NativeName: displayPostCompact,
@@ -102,19 +136,263 @@ var codexCapabilities = map[CanonicalEvent]EventCapability{
 	},
 }
 
+// codexPermissionRequest is keyed by raw name: PermissionRequest shares
+// before_tool with PreToolUse so the pre-tool validators run for it, but its
+// response is a decision object, not a permissionDecision.
+var codexPermissionRequest = EventCapability{
+	NativeName: eventNamePermissionRequest,
+	Fields: []ResponseField{
+		ResponseFieldSystemMessage,
+		ResponseFieldPermissionBehavior,
+	},
+	Enforcement: EnforcementDenyPermission,
+}
+
+// Source: https://code.claude.com/docs/en/hooks.
+var claudeCapabilities = map[CanonicalEvent]EventCapability{
+	CanonicalEventBeforeTool: {
+		NativeName: codexEventPreToolUse,
+		Fields: []ResponseField{
+			ResponseFieldContinue,
+			ResponseFieldStopReason,
+			ResponseFieldSystemMessage,
+			ResponseFieldPermissionDecision,
+			ResponseFieldAdditionalContext,
+		},
+		Enforcement: EnforcementDenyTool,
+	},
+	CanonicalEventAfterTool: {
+		NativeName: codexEventPostToolUse,
+		Fields: []ResponseField{
+			ResponseFieldSystemMessage,
+			ResponseFieldDecision,
+			ResponseFieldAdditionalContext,
+		},
+		Enforcement: EnforcementBlockDecision,
+	},
+	CanonicalEventUserPromptSubmit: {
+		NativeName: eventNameUserPromptSubmit,
+		Fields: []ResponseField{
+			ResponseFieldSystemMessage,
+			ResponseFieldDecision,
+			ResponseFieldAdditionalContext,
+		},
+		Enforcement: EnforcementBlockDecision,
+	},
+	CanonicalEventTurnStop: {
+		NativeName: eventNameStop,
+		Fields: []ResponseField{
+			ResponseFieldSystemMessage,
+			ResponseFieldDecision,
+			ResponseFieldAdditionalContext,
+		},
+		Enforcement: EnforcementContinueTurn,
+	},
+	CanonicalEventSubagentStop: {
+		NativeName: eventNameSubagentStop,
+		Fields: []ResponseField{
+			ResponseFieldSystemMessage,
+			ResponseFieldDecision,
+			ResponseFieldAdditionalContext,
+		},
+		Enforcement: EnforcementContinueTurn,
+	},
+	CanonicalEventSessionStart: {
+		NativeName: eventNameSessionStart,
+		Fields: []ResponseField{
+			ResponseFieldSystemMessage,
+			ResponseFieldAdditionalContext,
+		},
+		Enforcement: EnforcementNone,
+	},
+	CanonicalEventNotification: {
+		NativeName:  EventTypeNotification.String(),
+		Fields:      []ResponseField{ResponseFieldSystemMessage},
+		Enforcement: EnforcementNone,
+	},
+	CanonicalEventPostCompact: {
+		NativeName:  displayPostCompact,
+		Fields:      []ResponseField{ResponseFieldSystemMessage},
+		Enforcement: EnforcementNone,
+	},
+	// Claude discards every output field of these two events.
+	CanonicalEventSessionEnd: {
+		NativeName:  eventNameSessionEnd,
+		Enforcement: EnforcementNone,
+	},
+	CanonicalEventStopFailure: {
+		NativeName:  eventNameStopFailure,
+		Enforcement: EnforcementNone,
+	},
+	// Claude declines on a top-level decision:block (2.1.284+) or on
+	// hookSpecificOutput.action:decline, and drops systemMessage.
+	CanonicalEventElicitation: {
+		NativeName:  displayElicitation,
+		Fields:      []ResponseField{ResponseFieldDecision, ResponseFieldElicitationAction},
+		Enforcement: EnforcementDeclineElicitation,
+	},
+	CanonicalEventElicitationResult: {
+		NativeName:  displayElicitationResult,
+		Fields:      []ResponseField{ResponseFieldDecision, ResponseFieldElicitationAction},
+		Enforcement: EnforcementDeclineElicitation,
+	},
+}
+
+var claudePermissionRequest = EventCapability{
+	NativeName: eventNamePermissionRequest,
+	Fields: []ResponseField{
+		ResponseFieldSystemMessage,
+		ResponseFieldPermissionBehavior,
+	},
+	Enforcement: EnforcementDenyPermission,
+}
+
+// Source: https://geminicli.com/docs/hooks/reference/. AfterAgent is the
+// completion gate; SessionEnd, Notification, and PreCompress ignore every
+// flow-control field.
+var geminiCapabilities = map[CanonicalEvent]EventCapability{
+	CanonicalEventBeforeTool: {
+		NativeName: geminiEventBeforeTool,
+		Fields: []ResponseField{
+			ResponseFieldContinue,
+			ResponseFieldStopReason,
+			ResponseFieldSystemMessage,
+			ResponseFieldDecision,
+		},
+		Enforcement: EnforcementDenyTool,
+	},
+	CanonicalEventAfterTool: {
+		NativeName: geminiEventAfterTool,
+		Fields: []ResponseField{
+			ResponseFieldContinue,
+			ResponseFieldStopReason,
+			ResponseFieldSystemMessage,
+			ResponseFieldDecision,
+			ResponseFieldAdditionalContext,
+		},
+		Enforcement: EnforcementBlockDecision,
+	},
+	CanonicalEventTurnStop: {
+		NativeName: geminiEventAfterAgent,
+		Fields: []ResponseField{
+			ResponseFieldContinue,
+			ResponseFieldStopReason,
+			ResponseFieldSystemMessage,
+			ResponseFieldDecision,
+		},
+		Enforcement: EnforcementContinueTurn,
+	},
+	CanonicalEventSessionStart: {
+		NativeName: eventNameSessionStart,
+		Fields: []ResponseField{
+			ResponseFieldSystemMessage,
+			ResponseFieldAdditionalContext,
+		},
+		Enforcement: EnforcementNone,
+	},
+	CanonicalEventSessionEnd: {
+		NativeName:  eventNameSessionEnd,
+		Fields:      []ResponseField{ResponseFieldSystemMessage},
+		Enforcement: EnforcementNone,
+	},
+	CanonicalEventNotification: {
+		NativeName:  EventTypeNotification.String(),
+		Fields:      []ResponseField{ResponseFieldSystemMessage},
+		Enforcement: EnforcementNone,
+	},
+	CanonicalEventPreCompress: {
+		NativeName:  geminiEventPreCompress,
+		Fields:      []ResponseField{ResponseFieldSystemMessage},
+		Enforcement: EnforcementNone,
+	},
+}
+
 // ProviderEventCapability returns the documented response contract for a
 // provider/event pair. It returns false when no contract is recorded; callers
 // should then emit nothing beyond a systemMessage.
 func ProviderEventCapability(provider Provider, event CanonicalEvent) (EventCapability, bool) {
+	var table map[CanonicalEvent]EventCapability
+
 	switch provider {
 	case ProviderCodex:
-		capability, ok := codexCapabilities[event]
-
-		return capability, ok
-	case ProviderUnknown, ProviderClaude, ProviderGemini, ProviderOpenCode:
+		table = codexCapabilities
+	case ProviderClaude:
+		table = claudeCapabilities
+	case ProviderGemini:
+		table = geminiCapabilities
+	case ProviderUnknown, ProviderOpenCode:
 		return EventCapability{}, false
 	default:
 		return EventCapability{}, false
+	}
+
+	capability, ok := table[event]
+
+	return capability, ok
+}
+
+// ResolveEventCapability returns the response contract for the native event a
+// hook actually received. Raw names that share a canonical event with another
+// native event (PermissionRequest, Codex SubagentStart) resolve to their own
+// contract, or to none, instead of the canonical event's.
+func ResolveEventCapability(
+	provider Provider,
+	event CanonicalEvent,
+	rawEventName string,
+) (EventCapability, bool) {
+	if IsPermissionRequestEvent(rawEventName) {
+		switch provider {
+		case ProviderClaude:
+			return claudePermissionRequest, true
+		case ProviderCodex:
+			return codexPermissionRequest, true
+		case ProviderUnknown, ProviderGemini, ProviderOpenCode:
+			return EventCapability{}, false
+		default:
+			return EventCapability{}, false
+		}
+	}
+
+	if provider == ProviderCodex && IsCodexAliasedEvent(rawEventName) {
+		return EventCapability{}, false
+	}
+
+	return ProviderEventCapability(provider, event)
+}
+
+// IsCompletionGate reports whether a blocking finding on this event keeps the
+// agent working instead of letting the turn end.
+func IsCompletionGate(provider Provider, event CanonicalEvent, rawEventName string) bool {
+	capability, ok := ResolveEventCapability(provider, event, rawEventName)
+
+	return ok && capability.Enforcement == EnforcementContinueTurn
+}
+
+// IsPermissionRequestEvent reports whether a raw event name is a Claude or
+// Codex PermissionRequest (an approval prompt, not a tool gate).
+func IsPermissionRequestEvent(rawEventName string) bool {
+	return normalizeToken(rawEventName) == tokenPermissionRequest
+}
+
+// KeepsRawEventName reports whether a raw event name must survive parsing
+// because its canonical event's display name belongs to a different native
+// event, which the response must echo in hookEventName or answer with a
+// different contract.
+func KeepsRawEventName(provider Provider, rawEventName string) bool {
+	switch provider {
+	case ProviderCodex:
+		return IsCodexAliasedEvent(rawEventName)
+	case ProviderClaude:
+		switch normalizeToken(rawEventName) {
+		case tokenPermissionRequest, tokenSubagentStart, "posttoolusefailure":
+			return true
+		default:
+			return false
+		}
+	case ProviderUnknown, ProviderGemini, ProviderOpenCode:
+		return false
+	default:
+		return false
 	}
 }
 
@@ -157,7 +435,7 @@ func CodexUncoveredTools() []string {
 // response shaped for the canonical event would be invalid for it.
 func IsCodexAliasedEvent(rawEventName string) bool {
 	switch normalizeToken(rawEventName) {
-	case "permissionrequest", "subagentstart", "subagentstop", "sessionend":
+	case tokenPermissionRequest, tokenSubagentStart:
 		return true
 	default:
 		return false

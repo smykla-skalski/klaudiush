@@ -245,12 +245,10 @@ func registerGeminiHookCheckers(
 ) {
 	registry.RegisterChecker(hook.NewGeminiConfigChecker(cfg))
 	registry.RegisterChecker(hook.NewGeminiRegistrationChecker(cfg))
-	registry.RegisterChecker(hook.NewGeminiEventChecker(cfg, "BeforeTool"))
-	registry.RegisterChecker(hook.NewGeminiEventChecker(cfg, "AfterTool"))
-	registry.RegisterChecker(hook.NewGeminiEventChecker(cfg, "SessionStart"))
-	registry.RegisterChecker(hook.NewGeminiEventChecker(cfg, "SessionEnd"))
-	registry.RegisterChecker(hook.NewGeminiEventChecker(cfg, "Notification"))
-	registry.RegisterChecker(hook.NewGeminiEventChecker(cfg, "PreCompress"))
+
+	for _, eventName := range settings.GeminiDispatcherEvents() {
+		registry.RegisterChecker(hook.NewGeminiEventChecker(cfg, eventName))
+	}
 }
 
 // registerFixers registers all available fixers.

@@ -59,6 +59,7 @@ type JSONInput struct {
 	TranscriptPath   string          `json:"transcript_path,omitempty"`
 	LastAssistant    *string         `json:"last_assistant_message,omitempty"`
 	StopHookActive   bool            `json:"stop_hook_active,omitempty"`
+	AgentID          string          `json:"agent_id,omitempty"`
 	HookEvent        json.RawMessage `json:"hook_event,omitempty"`
 	MCPServerName    string          `json:"mcp_server_name,omitempty"`
 	Mode             string          `json:"mode,omitempty"`
@@ -162,19 +163,20 @@ func (p *JSONParser) ParseWithOptions(opts ParseOptions) (*hook.Context, error) 
 	}
 
 	ctx.StopHookActive = input.StopHookActive
+	ctx.AgentID = input.AgentID
 
 	return ctx, nil
 }
 
-// displayEventName keeps a raw Codex event name that shares a canonical event
-// with a different Codex event, so the response builder can tell them apart.
+// displayEventName keeps a raw event name that shares a canonical event with a
+// different native event, so the response builder can tell them apart.
 func displayEventName(
 	provider hook.Provider,
 	rawEventName string,
 	canonical hook.CanonicalEvent,
 	eventType hook.EventType,
 ) string {
-	if provider == hook.ProviderCodex && hook.IsCodexAliasedEvent(rawEventName) {
+	if hook.KeepsRawEventName(provider, rawEventName) {
 		return rawEventName
 	}
 
@@ -303,12 +305,12 @@ func inferProvider(eventName string, input JSONInput) hook.Provider {
 	}
 
 	switch hook.NormalizeEventName(eventName) {
-	case hook.CanonicalEventPreCompress:
+	case hook.CanonicalEventPreCompress, hook.CanonicalEventSessionEnd:
 		return hook.ProviderGemini
 	case hook.CanonicalEventSessionStart, hook.CanonicalEventTurnStop,
-		hook.CanonicalEventAfterTool:
+		hook.CanonicalEventAfterTool, hook.CanonicalEventSubagentStop:
 		normalizedEventName := normalizeToolName(eventName)
-		if normalizedEventName == "sessionend" || normalizedEventName == "aftertool" {
+		if normalizedEventName == "afteragent" || normalizedEventName == "aftertool" {
 			return hook.ProviderGemini
 		}
 

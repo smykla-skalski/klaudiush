@@ -79,10 +79,21 @@ var _ = Describe("Notice", func() {
 			Expect(resp.SystemMessage).To(Equal("existing\n\n" + msg))
 		})
 
-		It("appends to ElicitationHookResponse", func() {
-			resp := &hookresponse.ElicitationHookResponse{SystemMessage: "existing"}
+		It("appends to PermissionRequestResponse", func() {
+			resp := &hookresponse.PermissionRequestResponse{SystemMessage: "existing"}
 			hookresponse.AppendNotice(resp, msg)
 			Expect(resp.SystemMessage).To(Equal("existing\n\n" + msg))
+		})
+
+		It("leaves ElicitationHookResponse untouched, Claude drops systemMessage there", func() {
+			resp := &hookresponse.ElicitationHookResponse{
+				HookSpecificOutput: &hookresponse.ElicitationOutput{Action: "decline"},
+			}
+			hookresponse.AppendNotice(resp, msg)
+
+			data, err := json.Marshal(resp)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(data)).NotTo(ContainSubstring("systemMessage"))
 		})
 
 		It("skips the separator when there is no existing message", func() {
@@ -111,12 +122,9 @@ var _ = Describe("Notice", func() {
 			codex := &hookresponse.CodexCommandResponse{SystemMessage: "x", Decision: "block"}
 			gemini := &hookresponse.GeminiCommandResponse{SystemMessage: "x", Decision: "deny"}
 			opencode := &hookresponse.OpenCodeCommandResponse{SystemMessage: "x"}
-			elicitation := &hookresponse.ElicitationHookResponse{
-				SystemMessage: "x",
-				Action:        "decline",
-			}
+			permission := &hookresponse.PermissionRequestResponse{SystemMessage: "x"}
 
-			for _, resp := range []any{codex, gemini, opencode, elicitation} {
+			for _, resp := range []any{codex, gemini, opencode, permission} {
 				hookresponse.ClearSystemMessage(resp)
 			}
 
@@ -125,8 +133,7 @@ var _ = Describe("Notice", func() {
 			Expect(gemini.SystemMessage).To(BeEmpty())
 			Expect(gemini.Decision).To(Equal("deny"))
 			Expect(opencode.SystemMessage).To(BeEmpty())
-			Expect(elicitation.SystemMessage).To(BeEmpty())
-			Expect(elicitation.Action).To(Equal("decline"))
+			Expect(permission.SystemMessage).To(BeEmpty())
 		})
 
 		It("ignores a nil response", func() {
@@ -196,12 +203,14 @@ var _ = Describe("Notice", func() {
 				codex       *hookresponse.CodexCommandResponse
 				gemini      *hookresponse.GeminiCommandResponse
 				elicitation *hookresponse.ElicitationHookResponse
+				permission  *hookresponse.PermissionRequestResponse
 			)
 
 			Expect(hookresponse.IsEmpty(claude)).To(BeTrue())
 			Expect(hookresponse.IsEmpty(codex)).To(BeTrue())
 			Expect(hookresponse.IsEmpty(gemini)).To(BeTrue())
 			Expect(hookresponse.IsEmpty(elicitation)).To(BeTrue())
+			Expect(hookresponse.IsEmpty(permission)).To(BeTrue())
 		})
 
 		It("reports built responses as non-empty", func() {

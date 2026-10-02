@@ -384,6 +384,67 @@ var _ = Describe("JSONParser", func() {
 			Expect(ctx.EventName()).To(Equal("PermissionRequest"))
 		})
 
+		It("keeps Claude PermissionRequest distinct from PreToolUse", func() {
+			input := `{"hook_event_name": "PermissionRequest", "tool_name": "Bash", "tool_input": {"command": "ls"}}`
+
+			p := parser.NewJSONParser(bytes.NewReader([]byte(input)))
+			ctx, err := p.ParseWithOptions(parser.ParseOptions{Provider: hook.ProviderClaude})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ctx.Event).To(Equal(hook.CanonicalEventBeforeTool))
+			Expect(ctx.EventName()).To(Equal("PermissionRequest"))
+			Expect(ctx.IsPermissionRequest()).To(BeTrue())
+		})
+
+		It("echoes Claude SubagentStart and PostToolUseFailure by name", func() {
+			for _, raw := range []string{"SubagentStart", "PostToolUseFailure"} {
+				input := `{"hook_event_name": "` + raw + `", "session_id": "s", "agent_id": "a1"}`
+
+				p := parser.NewJSONParser(bytes.NewReader([]byte(input)))
+				ctx, err := p.ParseWithOptions(parser.ParseOptions{Provider: hook.ProviderClaude})
+
+				Expect(err).NotTo(HaveOccurred())
+				Expect(ctx.EventName()).To(Equal(raw))
+				Expect(ctx.AgentID).To(Equal("a1"))
+			}
+		})
+
+		It("names Claude Stop and SubagentStop by their native events", func() {
+			for _, raw := range []string{"Stop", "SubagentStop", "SessionEnd", "StopFailure"} {
+				input := `{"hook_event_name": "` + raw + `", "session_id": "s", "stop_hook_active": true}`
+
+				p := parser.NewJSONParser(bytes.NewReader([]byte(input)))
+				ctx, err := p.ParseWithOptions(parser.ParseOptions{Provider: hook.ProviderClaude})
+
+				Expect(err).NotTo(HaveOccurred())
+				Expect(ctx.EventName()).To(Equal(raw))
+				Expect(ctx.StopHookActive).To(BeTrue())
+			}
+		})
+
+		It("infers Gemini for an AfterAgent payload", func() {
+			input := `{"prompt_response": "done", "stop_hook_active": false}`
+
+			p := parser.NewJSONParser(bytes.NewReader([]byte(input)))
+			ctx, err := p.ParseWithOptions(parser.ParseOptions{EventName: "AfterAgent"})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ctx.Provider).To(Equal(hook.ProviderGemini))
+			Expect(ctx.Event).To(Equal(hook.CanonicalEventTurnStop))
+			Expect(ctx.EventName()).To(Equal("AfterAgent"))
+		})
+
+		It("infers Gemini for a SessionEnd payload", func() {
+			input := `{"reason": "exit"}`
+
+			p := parser.NewJSONParser(bytes.NewReader([]byte(input)))
+			ctx, err := p.ParseWithOptions(parser.ParseOptions{EventName: "SessionEnd"})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ctx.Provider).To(Equal(hook.ProviderGemini))
+			Expect(ctx.Event).To(Equal(hook.CanonicalEventSessionEnd))
+		})
+
 		It("parses Stop payloads with stop-hook fields", func() {
 			input := `{
 				"session_id": "sess-123",
@@ -479,7 +540,7 @@ var _ = Describe("JSONParser", func() {
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(sessionEndCtx.Provider).To(Equal(hook.ProviderGemini))
-			Expect(sessionEndCtx.Event).To(Equal(hook.CanonicalEventTurnStop))
+			Expect(sessionEndCtx.Event).To(Equal(hook.CanonicalEventSessionEnd))
 			Expect(sessionEndCtx.EventName()).To(Equal("SessionEnd"))
 
 			preCompressInput := `{

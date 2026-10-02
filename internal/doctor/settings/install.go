@@ -39,6 +39,7 @@ const (
 	geminiEventBeforeTool   = "BeforeTool"
 	geminiEventAfterTool    = "AfterTool"
 	geminiEventSessionStart = eventSessionStart
+	geminiEventAfterAgent   = "AfterAgent"
 	geminiEventSessionEnd   = "SessionEnd"
 	geminiEventNotification = "Notification"
 	geminiEventPreCompress  = "PreCompress"
@@ -173,19 +174,26 @@ func CodexDispatcherEvents() []string {
 	return []string{eventSessionStart, CodexEventPreToolUse, CodexEventStop}
 }
 
-// InstallGeminiDispatcher registers klaudiush in a Gemini settings.json file.
-// Returns true when all supported Gemini hooks were already present.
-func InstallGeminiDispatcher(settingsPath, binaryPath string) (bool, error) {
-	parser := NewGeminiSettingsParser(settingsPath)
-
-	allEvents := []string{
+// GeminiDispatcherEvents lists the Gemini events klaudiush registers for.
+// AfterAgent is the completion gate; SessionEnd is observational only.
+func GeminiDispatcherEvents() []string {
+	return []string{
 		geminiEventBeforeTool,
 		geminiEventAfterTool,
+		geminiEventAfterAgent,
 		geminiEventSessionStart,
 		geminiEventSessionEnd,
 		geminiEventNotification,
 		geminiEventPreCompress,
 	}
+}
+
+// InstallGeminiDispatcher registers klaudiush in a Gemini settings.json file.
+// Returns true when all supported Gemini hooks were already present.
+func InstallGeminiDispatcher(settingsPath, binaryPath string) (bool, error) {
+	parser := NewGeminiSettingsParser(settingsPath)
+
+	allEvents := GeminiDispatcherEvents()
 
 	missing := make(map[string]bool, len(allEvents))
 	allPresent := true
@@ -332,14 +340,7 @@ func isRawCodexDispatcherHandler(handler any, binaryPath string) bool {
 func AddGeminiDispatcherHooks(raw map[string]any, binaryPath string, missing map[string]bool) {
 	hooks := ensureHooksMap(raw)
 
-	for _, eventName := range []string{
-		geminiEventBeforeTool,
-		geminiEventAfterTool,
-		geminiEventSessionStart,
-		geminiEventSessionEnd,
-		geminiEventNotification,
-		geminiEventPreCompress,
-	} {
+	for _, eventName := range GeminiDispatcherEvents() {
 		if !missing[eventName] {
 			continue
 		}
@@ -381,6 +382,11 @@ func GeminiAfterToolCommand(binaryPath string) string {
 // GeminiSessionStartCommand returns the Gemini SessionStart command string.
 func GeminiSessionStartCommand(binaryPath string) string {
 	return geminiDispatcherEventCommand(binaryPath, geminiEventSessionStart)
+}
+
+// GeminiAfterAgentCommand returns the Gemini AfterAgent command string.
+func GeminiAfterAgentCommand(binaryPath string) string {
+	return geminiDispatcherEventCommand(binaryPath, geminiEventAfterAgent)
 }
 
 // GeminiSessionEndCommand returns the Gemini SessionEnd command string.

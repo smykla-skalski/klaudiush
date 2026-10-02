@@ -34,6 +34,9 @@ type sessionEntry struct {
 	StartedAt time.Time  `json:"started_at"`
 	UpdatedAt time.Time  `json:"updated_at"`
 	Findings  []*finding `json:"findings,omitempty"`
+
+	// CompletionBlocks counts consecutive completion-gate blocks per gate.
+	CompletionBlocks map[string]int `json:"completion_blocks,omitempty"`
 }
 
 type finding struct {
@@ -107,7 +110,9 @@ func NewStore(opts ...Option) *Store {
 	return store
 }
 
-// Start initializes or resets a provider/session entry.
+// Start initializes or resets a provider/session entry. Completion-gate
+// counters survive, since subagent starts and resumed or compacted sessions
+// also report as a session start.
 func (s *Store) Start(provider hook.Provider, sessionID string) error {
 	if provider == hook.ProviderUnknown || sessionID == "" {
 		return nil
@@ -121,12 +126,19 @@ func (s *Store) Start(provider hook.Provider, sessionID string) error {
 	s.cleanupExpired(st)
 
 	now := s.now()
-	st.Sessions[sessionKey(provider, sessionID)] = &sessionEntry{
+	key := sessionKey(provider, sessionID)
+	entry := &sessionEntry{
 		Provider:  string(provider),
 		SessionID: sessionID,
 		StartedAt: now,
 		UpdatedAt: now,
 	}
+
+	if previous := st.Sessions[key]; previous != nil {
+		entry.CompletionBlocks = previous.CompletionBlocks
+	}
+
+	st.Sessions[key] = entry
 
 	return s.saveState(st)
 }
@@ -230,6 +242,93 @@ func (s *Store) CombinedErrors(
 	}
 
 	return combined, nil
+}
+
+// ClearFindings drops the recorded findings of a provider/session entry but
+// keeps the entry, so completion-gate counters survive the turn.
+func (s *Store) ClearFindings(provider hook.Provider, sessionID string) error {
+	return s.updateEntry(provider, sessionID, false, func(entry *sessionEntry) {
+		entry.Findings = nil
+	})
+}
+
+// RecordCompletionBlock counts a completion-gate block and returns how many
+// consecutive blocks the gate has issued. A gate the provider did not reach
+// through a previous block (continued is false) starts a new streak.
+func (s *Store) RecordCompletionBlock(
+	provider hook.Provider,
+	sessionID string,
+	gate string,
+	continued bool,
+) (int, error) {
+	count := 0
+
+	err := s.updateEntry(provider, sessionID, true, func(entry *sessionEntry) {
+		if entry.CompletionBlocks == nil {
+			entry.CompletionBlocks = make(map[string]int)
+		}
+
+		if !continued {
+			entry.CompletionBlocks[gate] = 0
+		}
+
+		entry.CompletionBlocks[gate]++
+		count = entry.CompletionBlocks[gate]
+	})
+
+	return count, err
+}
+
+// ResetCompletionBlocks clears a gate's consecutive-block counter.
+func (s *Store) ResetCompletionBlocks(provider hook.Provider, sessionID, gate string) error {
+	return s.updateEntry(provider, sessionID, false, func(entry *sessionEntry) {
+		delete(entry.CompletionBlocks, gate)
+	})
+}
+
+// updateEntry applies fn to a provider/session entry and saves the state. A
+// missing entry is created only when create is true; otherwise fn is skipped.
+func (s *Store) updateEntry(
+	provider hook.Provider,
+	sessionID string,
+	create bool,
+	fn func(*sessionEntry),
+) error {
+	if provider == hook.ProviderUnknown || sessionID == "" {
+		return nil
+	}
+
+	st, err := s.loadState()
+	if err != nil {
+		return err
+	}
+
+	changed := s.cleanupExpired(st)
+	key := sessionKey(provider, sessionID)
+	now := s.now()
+
+	entry := st.Sessions[key]
+	if entry == nil && create {
+		entry = &sessionEntry{
+			Provider:  string(provider),
+			SessionID: sessionID,
+			StartedAt: now,
+		}
+		st.Sessions[key] = entry
+	}
+
+	if entry != nil {
+		fn(entry)
+
+		entry.UpdatedAt = now
+		changed = true
+	}
+
+	if !changed {
+		return nil
+	}
+
+	return s.saveState(st)
 }
 
 // Clear removes a provider/session entry.

@@ -80,7 +80,7 @@ func systemMessage(resp any) *string {
 		return &r.SystemMessage
 	case *OpenCodeCommandResponse:
 		return &r.SystemMessage
-	case *ElicitationHookResponse:
+	case *PermissionRequestResponse:
 		return &r.SystemMessage
 	default:
 		return nil
@@ -103,6 +103,8 @@ func IsEmpty(resp any) bool {
 	case *OpenCodeCommandResponse:
 		return r == nil
 	case *ElicitationHookResponse:
+		return r == nil
+	case *PermissionRequestResponse:
 		return r == nil
 	default:
 		return false

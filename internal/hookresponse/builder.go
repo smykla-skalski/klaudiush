@@ -65,8 +65,9 @@ func BuildWithPatterns(
 	return resp
 }
 
-// BuildForContext constructs a provider-specific hook response.
-// Returns nil when there are no errors (clean pass, no output needed).
+// BuildForContext constructs a provider-specific hook response shaped for the
+// native event the hook received. Returns nil when there are no errors (clean
+// pass, no output needed).
 func BuildForContext(
 	hookCtx *hook.Context,
 	errs []*dispatcher.ValidationError,
@@ -76,65 +77,26 @@ func BuildForContext(
 		return nil
 	}
 
-	if hookCtx != nil && hookCtx.Provider == hook.ProviderCodex {
-		return BuildCodex(hookCtx, errs, patternWarnings)
+	if hookCtx == nil {
+		return BuildWithPatterns("", errs, patternWarnings)
 	}
 
-	if hookCtx != nil && hookCtx.Provider == hook.ProviderGemini {
-		return BuildGemini(hookCtx, errs, patternWarnings)
-	}
-
-	if hookCtx != nil && hookCtx.Provider == hook.ProviderOpenCode {
-		return BuildOpenCode(hookCtx, errs, patternWarnings)
-	}
-
-	if hookCtx != nil && hookCtx.IsElicitationEvent() {
-		return BuildElicitation(hookCtx, errs, patternWarnings)
-	}
-
-	if hookCtx != nil &&
-		hookCtx.Provider == hook.ProviderClaude &&
-		hookCtx.Event == hook.CanonicalEventAfterTool {
-		return BuildClaudeAfterTool(hookCtx, errs, patternWarnings)
-	}
-
-	eventName := ""
-	if hookCtx != nil {
-		eventName = hookCtx.EventName()
-	}
-
-	return BuildWithPatterns(eventName, errs, patternWarnings)
-}
-
-// BuildClaudeAfterTool constructs a Claude PostToolUse response.
-func BuildClaudeAfterTool(
-	hookCtx *hook.Context,
-	errs []*dispatcher.ValidationError,
-	patternWarnings []string,
-) *HookResponse {
-	if len(errs) == 0 {
-		return nil
-	}
-
-	blocking, warnings, bypassed := categorize(errs)
-	additionalContext := formatAdditionalContext(blocking, warnings, bypassed, patternWarnings)
-	resp := &HookResponse{
-		SystemMessage: FormatSystemMessage(errs),
-	}
-
-	if len(blocking) > 0 {
-		resp.Decision = decisionBlock
-		resp.Reason = formatDecisionReason(blocking)
-	}
-
-	if additionalContext != "" {
-		resp.HookSpecificOutput = &HookSpecificOutput{
-			HookEventName:     hookCtx.EventName(),
-			AdditionalContext: additionalContext,
+	switch hookCtx.Provider {
+	case hook.ProviderCodex:
+		if hookCtx.IsPermissionRequest() {
+			return BuildPermissionRequest(errs)
 		}
-	}
 
-	return resp
+		return BuildCodex(hookCtx, errs, patternWarnings)
+	case hook.ProviderGemini:
+		return BuildGemini(hookCtx, errs, patternWarnings)
+	case hook.ProviderOpenCode:
+		return BuildOpenCode(hookCtx, errs, patternWarnings)
+	case hook.ProviderUnknown, hook.ProviderClaude:
+		return BuildClaude(hookCtx, errs, patternWarnings)
+	default:
+		return BuildClaude(hookCtx, errs, patternWarnings)
+	}
 }
 
 // BuildGemini constructs a Gemini command-hook response.
@@ -176,22 +138,17 @@ func BuildGemini(
 				AdditionalContext: additionalContext,
 			}
 		}
-	case hook.CanonicalEventTurnStop, hook.CanonicalEventNotification,
-		hook.CanonicalEventPreCompress, hook.CanonicalEventPostCompact:
-	default:
+	// AfterAgent: deny rejects the response and sends reason back to the
+	// agent as a correction prompt. AfterAgent has no additionalContext.
+	case hook.CanonicalEventTurnStop:
 		if len(blocking) > 0 {
 			resp.Decision = decisionDeny
-			resp.Reason = formatDecisionReason(blocking)
-
-			return resp
+			resp.Reason = formatCompletionReason(blocking)
 		}
-
-		if additionalContext != "" {
-			resp.HookSpecificOutput = &GeminiHookSpecificOutput{
-				HookEventName:     hookCtx.EventName(),
-				AdditionalContext: additionalContext,
-			}
-		}
+	// Every other event is advisory: Gemini ignores flow control on
+	// SessionEnd, Notification, and PreCompress, and an unmapped event has no
+	// contract that would make a deny safe to promise.
+	default:
 	}
 
 	return resp
@@ -223,15 +180,13 @@ func BuildOpenCode(
 
 			return resp
 		}
-	case hook.CanonicalEventTurnStop:
-		if len(blocking) > 0 {
-			resp.Decision = decisionBlock
-			resp.Reason = formatDecisionReason(blocking)
-		}
 	// A submitted prompt cannot be refused: opencode's chat.message hook
 	// returns void and exposes no decision channel, so findings here are
-	// reported to the user rather than enforced.
+	// reported to the user rather than enforced. session.idle is a bus event
+	// the bridge only reports, so it cannot keep the agent working either.
 	case hook.CanonicalEventUserPromptSubmit, hook.CanonicalEventAfterTool,
+		hook.CanonicalEventTurnStop, hook.CanonicalEventSubagentStop,
+		hook.CanonicalEventSessionEnd, hook.CanonicalEventStopFailure,
 		hook.CanonicalEventSessionStart, hook.CanonicalEventNotification,
 		hook.CanonicalEventPreCompress, hook.CanonicalEventPostCompact:
 	default:
@@ -263,28 +218,6 @@ func BuildOpenCode(
 // reach the user through systemMessage.
 func openCodeConsumesContext(event hook.CanonicalEvent) bool {
 	return event == hook.CanonicalEventAfterTool || event == hook.CanonicalEventPreCompress
-}
-
-// BuildElicitation constructs an ElicitationHookResponse.
-// Returns nil when there are no blocking errors (warnings are allowed through).
-func BuildElicitation(
-	_ *hook.Context,
-	errs []*dispatcher.ValidationError,
-	_ []string,
-) *ElicitationHookResponse {
-	if len(errs) == 0 {
-		return nil
-	}
-
-	blocking, _, _ := categorize(errs)
-	if len(blocking) == 0 {
-		return nil
-	}
-
-	return &ElicitationHookResponse{
-		Action:        "decline",
-		SystemMessage: FormatSystemMessage(errs),
-	}
 }
 
 // categorize splits errors into blocking, warnings, and bypassed.

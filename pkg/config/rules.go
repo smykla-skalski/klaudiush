@@ -14,9 +14,10 @@ var (
 	ValidEventTypes = []string{
 		"before_tool", "after_tool", "session_start", "turn_stop", "notification",
 		"pre_compress", "post_compact", "user_prompt_submit",
+		"subagent_stop", "session_end", "stop_failure",
 		"PreToolUse", "PostToolUse", "Notification", "SessionStart", "Stop", "AfterToolUse",
-		"BeforeTool", "AfterTool", "SessionEnd", "PreCompress",
-		"UserPromptSubmit",
+		"BeforeTool", "AfterTool", "AfterAgent", "SessionEnd", "PreCompress",
+		"UserPromptSubmit", "SubagentStop", "StopFailure", "PermissionRequest",
 		"tool.execute.before", "tool.execute.after", "chat.message",
 		"session.created", "session.idle", "session.compacting", "session.compacted",
 		"permission.asked",
