@@ -98,6 +98,12 @@ const (
 	displayElicitation       = "Elicitation"
 	displayElicitationResult = "ElicitationResult"
 	displayPostCompact       = "PostCompact"
+
+	eventNameSessionStart     = "SessionStart"
+	eventNameStop             = "Stop"
+	eventNameUserPromptSubmit = "UserPromptSubmit"
+	codexEventPreToolUse      = "PreToolUse"
+	codexEventPostToolUse     = "PostToolUse"
 )
 
 // Normalized event-name tokens accepted by NormalizeEventName.
@@ -269,24 +275,12 @@ func DisplayEventName(provider Provider, canonical CanonicalEvent, fallback Even
 }
 
 func displayCodexEvent(canonical CanonicalEvent) string {
-	switch canonical {
-	case CanonicalEventElicitation:
-		return displayElicitation
-	case CanonicalEventElicitationResult:
-		return displayElicitationResult
-	case CanonicalEventSessionStart:
-		return "SessionStart"
-	case CanonicalEventTurnStop:
-		return "Stop"
-	case CanonicalEventAfterTool:
-		return "AfterToolUse"
-	case CanonicalEventNotification:
-		return "Notification"
-	case CanonicalEventBeforeTool:
-		return "BeforeToolUse"
-	default:
+	capability, ok := codexCapabilities[canonical]
+	if !ok {
 		return ""
 	}
+
+	return capability.NativeName
 }
 
 func displayGeminiEvent(canonical CanonicalEvent) string {

@@ -4,6 +4,8 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -322,7 +324,7 @@ var _ = Describe("Codex hook checkers", func() {
 			[]byte(`{
   "hooks": {
     "SessionStart": [{"hooks":[{"type":"command","command":"klaudiush --provider codex --event SessionStart","timeout":30}]}],
-    "AfterToolUse": [{"hooks":[{"type":"command","command":"klaudiush --provider codex --event AfterToolUse","timeout":30}]}],
+    "PreToolUse": [{"hooks":[{"type":"command","command":"klaudiush --provider codex --event PreToolUse","timeout":30}]}],
     "Stop": [{"hooks":[{"type":"command","command":"klaudiush --provider codex --event Stop","timeout":30}]}]
   }
 }`),
@@ -339,13 +341,20 @@ var _ = Describe("Codex hook checkers", func() {
 
 		registrationChecker := hook.NewCodexRegistrationChecker(cfg)
 		sessionStartChecker := hook.NewCodexEventChecker(cfg, "SessionStart")
-		afterToolUseChecker := hook.NewCodexEventChecker(cfg, "AfterToolUse")
+		preToolUseChecker := hook.NewCodexEventChecker(cfg, "PreToolUse")
 		stopChecker := hook.NewCodexEventChecker(cfg, "Stop")
+		enforcementChecker := hook.NewCodexEnforcementChecker(cfg)
 
 		Expect(registrationChecker.Check(ctx).Status).To(Equal(doctor.StatusPass))
 		Expect(sessionStartChecker.Check(ctx).Status).To(Equal(doctor.StatusPass))
-		Expect(afterToolUseChecker.Check(ctx).Status).To(Equal(doctor.StatusPass))
+		Expect(preToolUseChecker.Check(ctx).Status).To(Equal(doctor.StatusPass))
 		Expect(stopChecker.Check(ctx).Status).To(Equal(doctor.StatusPass))
+
+		enforcement := enforcementChecker.Check(ctx)
+		Expect(enforcement.Status).To(Equal(doctor.StatusPass))
+		Expect(enforcement.Details).To(ContainElement(
+			"Blocked before running: shell (Bash), apply_patch, MCP tools, local function tools",
+		))
 	})
 
 	It("fails when the configured Codex hooks file is missing an event", func() {
@@ -367,12 +376,203 @@ var _ = Describe("Codex hook checkers", func() {
 			HooksConfigPath: hooksPath,
 		}
 
-		afterToolUseChecker := hook.NewCodexEventChecker(cfg, "AfterToolUse")
-		result := afterToolUseChecker.Check(ctx)
+		preToolUseChecker := hook.NewCodexEventChecker(cfg, "PreToolUse")
+		result := preToolUseChecker.Check(ctx)
 
 		Expect(result.Status).To(Equal(doctor.StatusFail))
 		Expect(result.FixID).To(Equal("install_hook"))
 		Expect(result.Message).To(ContainSubstring("not configured"))
+	})
+
+	DescribeTable("Codex enforcement distinguishes registration from blocking",
+		func(hooksJSON, configTOML string, status doctor.Status, message string, fixID string) {
+			Expect(os.WriteFile(hooksPath, []byte(hooksJSON), 0o600)).To(Succeed())
+
+			if configTOML != "" {
+				Expect(os.WriteFile(
+					filepath.Join(filepath.Dir(hooksPath), "config.toml"),
+					[]byte(configTOML),
+					0o600,
+				)).To(Succeed())
+			}
+
+			enabled := true
+			experimental := true
+			result := hook.NewCodexEnforcementChecker(&pkgConfig.CodexProviderConfig{
+				Enabled:         &enabled,
+				Experimental:    &experimental,
+				HooksConfigPath: hooksPath,
+			}).Check(ctx)
+
+			Expect(result.Status).To(Equal(status))
+			Expect(result.Message).To(ContainSubstring(message))
+			Expect(result.FixID).To(Equal(fixID))
+		},
+		Entry(
+			"legacy AfterToolUse only",
+			`{"hooks":{"AfterToolUse":[{"hooks":[{"type":"command","command":"klaudiush --provider codex --event AfterToolUse"}]}]}}`,
+			"",
+			doctor.StatusFail,
+			"legacy AfterToolUse",
+			"install_hook",
+		),
+		Entry(
+			"no PreToolUse",
+			`{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"klaudiush --provider codex --event Stop"}]}]}}`,
+			"",
+			doctor.StatusFail,
+			"PreToolUse hook not registered",
+			"install_hook",
+		),
+		Entry(
+			"async PreToolUse",
+			`{"hooks":{"PreToolUse":[{"hooks":[{"type":"command","command":"klaudiush --provider codex --event PreToolUse","async":true}]}]}}`,
+			"",
+			doctor.StatusFail,
+			"async",
+			"install_hook",
+		),
+		Entry(
+			"Bash-only matcher",
+			`{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"klaudiush --provider codex --event PreToolUse"}]}]}}`,
+			"",
+			doctor.StatusFail,
+			"matcher skips",
+			"install_hook",
+		),
+		Entry(
+			"hooks feature disabled",
+			`{"hooks":{"PreToolUse":[{"hooks":[{"type":"command","command":"klaudiush --provider codex --event PreToolUse"}]}]}}`,
+			"[features]\nhooks = false\n",
+			doctor.StatusFail,
+			"feature is disabled",
+			"",
+		),
+	)
+})
+
+var _ = Describe("Codex enforcement coverage", func() {
+	var (
+		ctx       context.Context
+		hooksPath string
+	)
+
+	BeforeEach(func() {
+		ctx = context.Background()
+		tempDir := GinkgoT().TempDir()
+		hooksPath = filepath.Join(tempDir, "hooks.json")
+		binDir := filepath.Join(tempDir, "bin")
+		Expect(os.MkdirAll(binDir, 0o755)).To(Succeed())
+		Expect(os.WriteFile(
+			filepath.Join(binDir, "klaudiush"),
+			[]byte("#!/bin/sh\nexit 0\n"),
+			0o755,
+		)).To(Succeed())
+		GinkgoT().Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	})
+
+	check := func(matchers ...string) doctor.CheckResult {
+		groups := make([]string, 0, len(matchers))
+		for _, matcher := range matchers {
+			groups = append(groups, `{"matcher":`+strconv.Quote(matcher)+
+				`,"hooks":[{"type":"command","command":"klaudiush --provider codex --event PreToolUse"}]}`)
+		}
+
+		Expect(os.WriteFile(
+			hooksPath,
+			[]byte(`{"hooks":{"PreToolUse":[`+strings.Join(groups, ",")+`]}}`),
+			0o600,
+		)).To(Succeed())
+
+		enabled := true
+		experimental := true
+
+		return hook.NewCodexEnforcementChecker(&pkgConfig.CodexProviderConfig{
+			Enabled:         &enabled,
+			Experimental:    &experimental,
+			HooksConfigPath: hooksPath,
+		}).Check(ctx)
+	}
+
+	DescribeTable("reports family coverage from the matcher",
+		func(matchers []string, status doctor.Status, details []string) {
+			result := check(matchers...)
+
+			Expect(result.Status).To(Equal(status))
+
+			for _, detail := range details {
+				Expect(result.Details).To(ContainElement(detail))
+			}
+		},
+		Entry(
+			"exact representative names are not whole-family coverage",
+			[]string{"Bash|apply_patch|mcp__server__tool|update_plan"},
+			doctor.StatusFail,
+			[]string{
+				"Blocked before running: shell (Bash), apply_patch",
+				"Only tools the matcher names: MCP tools, local function tools",
+				"Not enforced: hosted tools (web search)",
+			},
+		),
+		Entry(
+			"one MCP server pattern misses the representative",
+			[]string{"Bash|apply_patch", "mcp__github__.*"},
+			doctor.StatusFail,
+			[]string{
+				"Blocked before running: shell (Bash), apply_patch",
+				"Not enforced: MCP tools, local function tools, hosted tools (web search)",
+			},
+		),
+		Entry(
+			"family patterns across groups cover everything",
+			[]string{"Bash|apply_patch", "mcp__.*", "[a-z_0-9]+"},
+			doctor.StatusPass,
+			[]string{
+				"Blocked before running: shell (Bash), apply_patch, MCP tools, local function tools",
+				"Not enforced: hosted tools (web search)",
+			},
+		),
+		Entry(
+			"dot-star covers everything",
+			[]string{".*"},
+			doctor.StatusPass,
+			[]string{
+				"Blocked before running: shell (Bash), apply_patch, MCP tools, local function tools",
+			},
+		),
+	)
+
+	It("skips when the binary is not on PATH", func() {
+		GinkgoT().Setenv("PATH", GinkgoT().TempDir())
+
+		result := check("")
+
+		Expect(result.Status).To(Equal(doctor.StatusSkipped))
+	})
+
+	It("warns when Codex feature flags cannot be read", func() {
+		Expect(os.WriteFile(
+			filepath.Join(filepath.Dir(hooksPath), "config.toml"),
+			[]byte("[features\n"),
+			0o600,
+		)).To(Succeed())
+
+		result := check("")
+
+		Expect(result.Status).To(Equal(doctor.StatusFail))
+		Expect(result.Severity).To(Equal(doctor.SeverityWarning))
+		Expect(result.Message).To(ContainSubstring("Cannot read Codex feature flags"))
+	})
+
+	It("never lists a partial family as blocked", func() {
+		result := check("mcp__server__tool")
+
+		Expect(result.Status).To(Equal(doctor.StatusFail))
+		Expect(result.FixID).To(Equal("install_hook"))
+		Expect(result.Details).To(ContainElements(
+			"Blocked before running: none",
+			"Only tools the matcher names: MCP tools",
+		))
 	})
 })
 

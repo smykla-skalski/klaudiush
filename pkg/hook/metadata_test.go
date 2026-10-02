@@ -144,22 +144,34 @@ func TestDisplayEventName_NewEvents(t *testing.T) {
 		},
 		// Codex
 		{
-			name:      "codex elicitation",
+			name:      "codex pre tool",
+			provider:  ProviderCodex,
+			canonical: CanonicalEventBeforeTool,
+			expected:  "PreToolUse",
+		},
+		{
+			name:      "codex post tool",
+			provider:  ProviderCodex,
+			canonical: CanonicalEventAfterTool,
+			expected:  "PostToolUse",
+		},
+		{
+			name:      "codex user prompt submit",
+			provider:  ProviderCodex,
+			canonical: CanonicalEventUserPromptSubmit,
+			expected:  "UserPromptSubmit",
+		},
+		{
+			name:      "codex has no elicitation event",
 			provider:  ProviderCodex,
 			canonical: CanonicalEventElicitation,
-			expected:  "Elicitation",
+			expected:  "",
 		},
 		{
-			name:      "codex elicitation result",
-			provider:  ProviderCodex,
-			canonical: CanonicalEventElicitationResult,
-			expected:  "ElicitationResult",
-		},
-		{
-			name:      "codex post compact returns empty",
+			name:      "codex post compact",
 			provider:  ProviderCodex,
 			canonical: CanonicalEventPostCompact,
-			expected:  "",
+			expected:  "PostCompact",
 		},
 		// Gemini
 		{

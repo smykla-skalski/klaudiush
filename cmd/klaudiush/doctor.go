@@ -232,9 +232,11 @@ func registerOpenCodeHookCheckers(
 func registerCodexHookCheckers(registry *doctor.Registry, cfg *pkgConfig.CodexProviderConfig) {
 	registry.RegisterChecker(hook.NewCodexConfigChecker(cfg))
 	registry.RegisterChecker(hook.NewCodexRegistrationChecker(cfg))
-	registry.RegisterChecker(hook.NewCodexEventChecker(cfg, "SessionStart"))
-	registry.RegisterChecker(hook.NewCodexEventChecker(cfg, "AfterToolUse"))
-	registry.RegisterChecker(hook.NewCodexEventChecker(cfg, "Stop"))
+	registry.RegisterChecker(hook.NewCodexEnforcementChecker(cfg))
+
+	for _, eventName := range settings.CodexDispatcherEvents() {
+		registry.RegisterChecker(hook.NewCodexEventChecker(cfg, eventName))
+	}
 }
 
 func registerGeminiHookCheckers(

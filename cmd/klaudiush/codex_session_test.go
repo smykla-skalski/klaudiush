@@ -15,7 +15,7 @@ import (
 )
 
 var _ = Describe("applyHookSessionLifecycle", func() {
-	It("records blocking AfterToolUse findings and blocks them only at Stop", func() {
+	It("records blocking PostToolUse findings and blocks them only at Stop", func() {
 		tempDir := GinkgoT().TempDir()
 		currentTime := time.Date(2026, 3, 11, 12, 0, 0, 0, time.UTC)
 		store := hooksession.NewStore(
@@ -44,7 +44,7 @@ var _ = Describe("applyHookSessionLifecycle", func() {
 		recordedErrs, cleanup := applyHookSessionLifecycle(store, &hook.Context{
 			Provider:     hook.ProviderCodex,
 			Event:        hook.CanonicalEventAfterTool,
-			RawEventName: "AfterToolUse",
+			RawEventName: "PostToolUse",
 			SessionID:    "sess-1",
 			ToolName:     hook.ToolTypeBash,
 			ToolFamily:   hook.ToolFamilyShell,

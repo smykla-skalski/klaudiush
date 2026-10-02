@@ -152,7 +152,7 @@ func (f *FallbackUI) promptCodexHooksPath(result *InitFormResult) error {
 	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 	fmt.Println("Experimental Codex Hooks")
 	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-	fmt.Println("Optionally configure Codex SessionStart/AfterToolUse/Stop hook installation.")
+	fmt.Println("Optionally configure Codex SessionStart/PreToolUse/Stop hook installation.")
 	fmt.Println("Leave empty to skip Codex support for now.")
 	fmt.Println()
 

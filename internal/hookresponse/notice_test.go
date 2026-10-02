@@ -1,6 +1,8 @@
 package hookresponse_test
 
 import (
+	"encoding/json"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -29,7 +31,15 @@ var _ = Describe("Notice", func() {
 			cr, ok := resp.(*hookresponse.CodexCommandResponse)
 			Expect(ok).To(BeTrue())
 			Expect(cr.SystemMessage).To(Equal(msg))
-			Expect(cr.Continue).To(BeTrue())
+			Expect(cr.Continue).To(BeNil())
+
+			data, err := json.Marshal(cr)
+			Expect(err).NotTo(HaveOccurred())
+
+			var fields map[string]any
+			Expect(json.Unmarshal(data, &fields)).To(Succeed())
+			Expect(fields).To(HaveLen(1))
+			Expect(fields).To(HaveKeyWithValue("systemMessage", msg))
 		})
 
 		It("builds GeminiCommandResponse for Gemini provider", func() {
@@ -98,7 +108,7 @@ var _ = Describe("Notice", func() {
 		})
 
 		It("clears every provider response type", func() {
-			codex := &hookresponse.CodexCommandResponse{SystemMessage: "x", Continue: true}
+			codex := &hookresponse.CodexCommandResponse{SystemMessage: "x", Decision: "block"}
 			gemini := &hookresponse.GeminiCommandResponse{SystemMessage: "x", Decision: "deny"}
 			opencode := &hookresponse.OpenCodeCommandResponse{SystemMessage: "x"}
 			elicitation := &hookresponse.ElicitationHookResponse{
@@ -111,7 +121,7 @@ var _ = Describe("Notice", func() {
 			}
 
 			Expect(codex.SystemMessage).To(BeEmpty())
-			Expect(codex.Continue).To(BeTrue())
+			Expect(codex.Decision).To(Equal("block"))
 			Expect(gemini.SystemMessage).To(BeEmpty())
 			Expect(gemini.Decision).To(Equal("deny"))
 			Expect(opencode.SystemMessage).To(BeEmpty())

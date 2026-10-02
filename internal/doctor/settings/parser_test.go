@@ -371,7 +371,7 @@ var _ = Describe("SettingsParser", func() {
 				[]byte(`{
   "hooks": {
     "SessionStart": [{"hooks":[{"type":"command","command":"klaudiush --provider codex --event SessionStart","timeout":30}]}],
-    "AfterToolUse": [{"hooks":[{"type":"command","command":"klaudiush --provider codex --event AfterToolUse","timeout":30}]}],
+    "PreToolUse": [{"hooks":[{"type":"command","command":"klaudiush --provider codex --event PreToolUse","timeout":30}]}],
     "Stop": [{"hooks":[{"type":"command","command":"klaudiush --provider codex --event Stop","timeout":30}]}]
   }
 }`),
@@ -383,12 +383,12 @@ var _ = Describe("SettingsParser", func() {
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.Hooks.SessionStart).To(HaveLen(1))
-			Expect(result.Hooks.AfterToolUse).To(HaveLen(1))
+			Expect(result.Hooks.PreToolUse).To(HaveLen(1))
 			Expect(result.Hooks.Stop).To(HaveLen(1))
 			Expect(result.Hooks.SessionStart[0].Hooks[0].Command).
 				To(Equal("klaudiush --provider codex --event SessionStart"))
-			Expect(result.Hooks.AfterToolUse[0].Hooks[0].Command).
-				To(Equal("klaudiush --provider codex --event AfterToolUse"))
+			Expect(result.Hooks.PreToolUse[0].Hooks[0].Command).
+				To(Equal("klaudiush --provider codex --event PreToolUse"))
 		})
 
 		It("finds event-specific dispatcher hooks", func() {
@@ -412,7 +412,24 @@ var _ = Describe("SettingsParser", func() {
 			Expect(hasStop).To(BeFalse())
 		})
 
-		It("finds AfterToolUse hooks by canonical alias", func() {
+		It("finds PreToolUse hooks by canonical alias", func() {
+			Expect(os.WriteFile(
+				hooksPath,
+				[]byte(`{
+  "hooks": {
+    "PreToolUse": [{"hooks":[{"type":"command","command":"klaudiush --provider codex --event PreToolUse","timeout":30}]}]
+  }
+}`),
+				0o600,
+			)).To(Succeed())
+
+			parser := settings.NewCodexHooksParser(hooksPath)
+			hasHook, err := parser.HasEventHook("before_tool", "/usr/local/bin/klaudiush")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(hasHook).To(BeTrue())
+		})
+
+		It("does not treat legacy AfterToolUse as PostToolUse", func() {
 			Expect(os.WriteFile(
 				hooksPath,
 				[]byte(`{
@@ -424,9 +441,323 @@ var _ = Describe("SettingsParser", func() {
 			)).To(Succeed())
 
 			parser := settings.NewCodexHooksParser(hooksPath)
-			hasHook, err := parser.HasEventHook("after_tool", "/usr/local/bin/klaudiush")
+			hasPostTool, err := parser.HasEventHook("after_tool", "/usr/local/bin/klaudiush")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(hasPostTool).To(BeFalse())
+
+			enforcement, err := parser.PreToolEnforcement("/usr/local/bin/klaudiush")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(enforcement.Registered).To(BeFalse())
+			Expect(enforcement.LegacyOnly).To(BeTrue())
+		})
+
+		It("does not mistake a wrapper script named after klaudiush for the dispatcher", func() {
+			Expect(os.WriteFile(
+				hooksPath,
+				[]byte(`{
+  "hooks": {
+    "PreToolUse": [
+      {"hooks":[{"type":"command","command":"/home/u/bin/klaudiush-audit.sh --provider codex"}]},
+      {"hooks":[{"type":"command","command":"logger -t klaudiush pre-tool-seen"}]}
+    ]
+  }
+}`),
+				0o600,
+			)).To(Succeed())
+
+			hasHook, err := settings.NewCodexHooksParser(hooksPath).
+				HasEventHook("PreToolUse", "/usr/local/bin/klaudiush")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(hasHook).To(BeFalse())
+		})
+
+		It("matches the dispatcher behind env assignments", func() {
+			Expect(os.WriteFile(
+				hooksPath,
+				[]byte(`{
+  "hooks": {
+    "PreToolUse": [{"hooks":[{
+      "type": "command",
+      "command": "env KLAUDIUSH_DEBUG=1 /opt/bin/klaudiush --provider codex --event PreToolUse"
+    }]}]
+  }
+}`),
+				0o600,
+			)).To(Succeed())
+
+			hasHook, err := settings.NewCodexHooksParser(hooksPath).
+				HasEventHook("PreToolUse", "/usr/local/bin/klaudiush")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(hasHook).To(BeTrue())
+		})
+
+		It("ignores async PreToolUse handlers for enforcement", func() {
+			Expect(os.WriteFile(
+				hooksPath,
+				[]byte(`{
+  "hooks": {
+    "PreToolUse": [{"hooks":[{"type":"command","command":"klaudiush --provider codex --event PreToolUse","async":true}]}]
+  }
+}`),
+				0o600,
+			)).To(Succeed())
+
+			enforcement, err := settings.NewCodexHooksParser(hooksPath).
+				PreToolEnforcement("/usr/local/bin/klaudiush")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(enforcement.Registered).To(BeTrue())
+			Expect(enforcement.AsyncOnly).To(BeTrue())
+			Expect(enforcement.EffectiveMatcher).To(BeEmpty())
+		})
+
+		DescribeTable(
+			"matcher selection",
+			func(matcher string, toolNames []string, expected bool) {
+				Expect(settings.CodexMatcherSelects(matcher, toolNames)).To(Equal(expected))
+			},
+			Entry("empty matcher selects everything", "", []string{"Bash"}, true),
+			Entry("star selects everything", "*", []string{"mcp__x__y"}, true),
+			Entry("alternation selects Bash", "Bash|apply_patch", []string{"Bash"}, true),
+			Entry(
+				"Edit alias selects apply_patch",
+				"Edit|Write",
+				[]string{"apply_patch", "Edit"},
+				true,
+			),
+			Entry("Bash-only skips MCP", "Bash", []string{"mcp__x__y"}, false),
+			Entry(
+				"anchored: Bash does not select BashOutput",
+				"Bash",
+				[]string{"BashOutput"},
+				false,
+			),
+			Entry("MCP prefix selects MCP", "mcp__.*", []string{"mcp__x__y"}, true),
+			Entry("invalid regex selects nothing", "(", []string{"Bash"}, false),
+		)
+
+		DescribeTable("SelectsEveryTool needs a sync match-all handler",
+			func(hooksJSON string, expected bool) {
+				Expect(os.WriteFile(hooksPath, []byte(hooksJSON), 0o600)).To(Succeed())
+
+				enforcement, err := settings.NewCodexHooksParser(hooksPath).
+					PreToolEnforcement("/usr/local/bin/klaudiush")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(enforcement.SelectsEveryTool()).To(Equal(expected))
+			},
+			Entry(
+				"matcherless",
+				`{"hooks":{"PreToolUse":[{"hooks":[{"type":"command","command":"klaudiush --provider codex --event PreToolUse"}]}]}}`,
+				true,
+			),
+			Entry(
+				"star matcher",
+				`{"hooks":{"PreToolUse":[{"matcher":" * ","hooks":[{"type":"command","command":"klaudiush --provider codex --event PreToolUse"}]}]}}`,
+				true,
+			),
+			Entry(
+				"restrictive matcher",
+				`{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"klaudiush --provider codex --event PreToolUse"}]}]}}`,
+				false,
+			),
+			Entry(
+				"async matcherless",
+				`{"hooks":{"PreToolUse":[{"hooks":[{"type":"command","command":"klaudiush --provider codex --event PreToolUse","async":true}]}]}}`,
+				false,
+			),
+			Entry("empty file", ``, false),
+		)
+
+		DescribeTable("InstallCodexDispatcher adds a sync matcherless PreToolUse handler",
+			func(preToolUse string, wantGroups int) {
+				const binary = "/usr/local/bin/klaudiush"
+
+				Expect(os.WriteFile(hooksPath, []byte(`{"hooks":{
+  "SessionStart":[{"hooks":[{"type":"command","command":"klaudiush --provider codex --event SessionStart"}]}],
+  "Stop":[{"hooks":[{"type":"command","command":"klaudiush --provider codex --event Stop"}]}],
+  "PreToolUse":[`+preToolUse+`]
+}}`), 0o600)).To(Succeed())
+
+				unchanged, err := settings.InstallCodexDispatcher(hooksPath, binary)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(unchanged).To(BeFalse())
+
+				parser := settings.NewCodexHooksParser(hooksPath)
+				enforcement, err := parser.PreToolEnforcement(binary)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(enforcement.SelectsEveryTool()).To(BeTrue())
+
+				parsed, err := parser.Parse()
+				Expect(err).NotTo(HaveOccurred())
+				Expect(parsed.Hooks.PreToolUse).To(HaveLen(wantGroups))
+				Expect(parsed.Hooks.SessionStart).To(HaveLen(1))
+				Expect(parsed.Hooks.Stop).To(HaveLen(1))
+
+				added := parsed.Hooks.PreToolUse[wantGroups-1]
+				Expect(added.Matcher).To(BeEmpty())
+				Expect(added.Hooks).To(HaveLen(1))
+				Expect(added.Hooks[0].Async).To(BeFalse())
+				Expect(added.Hooks[0].Command).
+					To(Equal(binary + " --provider codex --event PreToolUse"))
+
+				written, err := os.ReadFile(hooksPath)
+				Expect(err).NotTo(HaveOccurred())
+
+				unchanged, err = settings.InstallCodexDispatcher(hooksPath, binary)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(unchanged).To(BeTrue())
+
+				again, err := os.ReadFile(hooksPath)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(again).To(Equal(written))
+			},
+			Entry(
+				"async only",
+				`{"hooks":[{"type":"command","command":"klaudiush --provider codex --event PreToolUse","async":true}]}`,
+				2,
+			),
+			Entry(
+				"restrictive matcher only",
+				`{"matcher":"Bash","hooks":[{"type":"command","command":"klaudiush --provider codex --event PreToolUse"}]}`,
+				2,
+			),
+			Entry("no PreToolUse handler", ``, 1),
+		)
+
+		It("leaves a complete Codex registration untouched", func() {
+			const binary = "/usr/local/bin/klaudiush"
+
+			content := []byte(`{"hooks":{
+  "SessionStart":[{"hooks":[{"type":"command","command":"klaudiush --provider codex --event SessionStart"}]}],
+  "Stop":[{"hooks":[{"type":"command","command":"klaudiush --provider codex --event Stop"}]}],
+  "PreToolUse":[
+    {"matcher":"Bash","hooks":[{"type":"command","command":"klaudiush --provider codex --event PreToolUse"}]},
+    {"matcher":"*","hooks":[{"type":"command","command":"klaudiush --provider codex --event PreToolUse"}]}
+  ]
+}}`)
+			Expect(os.WriteFile(hooksPath, content, 0o600)).To(Succeed())
+
+			unchanged, err := settings.InstallCodexDispatcher(hooksPath, binary)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(unchanged).To(BeTrue())
+
+			after, err := os.ReadFile(hooksPath)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(after).To(Equal(content))
+		})
+
+		It("rejects malformed hooks.json in enforcement and install", func() {
+			Expect(os.WriteFile(hooksPath, []byte(`{"hooks":`), 0o600)).To(Succeed())
+
+			_, err := settings.NewCodexHooksParser(hooksPath).
+				PreToolEnforcement("/usr/local/bin/klaudiush")
+			Expect(err).To(HaveOccurred())
+
+			_, err = settings.InstallCodexDispatcher(hooksPath, "/usr/local/bin/klaudiush")
+			Expect(err).To(HaveOccurred())
+		})
+
+		It("only counts command handlers whose program is the dispatcher", func() {
+			Expect(os.WriteFile(hooksPath, []byte(`{"hooks":{"PreToolUse":[
+  {"hooks":[{"type":"prompt","command":"klaudiush --provider codex --event PreToolUse"}]},
+  {"hooks":[{"type":"command","command":"FOO=1"}]}
+]}}`), 0o600)).To(Succeed())
+
+			enforcement, err := settings.NewCodexHooksParser(hooksPath).
+				PreToolEnforcement("/usr/local/bin/klaudiush")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(enforcement.Registered).To(BeFalse())
+		})
+
+		It("fails on an unparsable Codex config.toml", func() {
+			Expect(os.WriteFile(
+				filepath.Join(filepath.Dir(hooksPath), "config.toml"),
+				[]byte("[features\n"),
+				0o600,
+			)).To(Succeed())
+
+			_, _, err := settings.CodexHooksFeatureDisabled(hooksPath)
+			Expect(err).To(MatchError(ContainSubstring("parse Codex config")))
+		})
+
+		It("fails when config.toml cannot be read", func() {
+			Expect(os.Mkdir(filepath.Join(filepath.Dir(hooksPath), "config.toml"), 0o755)).
+				To(Succeed())
+
+			_, _, err := settings.CodexHooksFeatureDisabled(hooksPath)
+			Expect(err).To(MatchError(ContainSubstring("read Codex config")))
+		})
+
+		Describe("RemoveCodexLegacyDispatcherHooks", func() {
+			const binary = "/usr/local/bin/klaudiush"
+
+			dispatcher := func() map[string]any {
+				return map[string]any{
+					"type":    "command",
+					"command": binary + " --provider codex --event AfterToolUse",
+				}
+			}
+
+			It("ignores configs without hooks or AfterToolUse groups", func() {
+				raw := map[string]any{"other": true}
+				settings.RemoveCodexLegacyDispatcherHooks(raw, binary)
+				Expect(raw).To(Equal(map[string]any{"other": true}))
+
+				raw = map[string]any{"hooks": map[string]any{"AfterToolUse": "bad"}}
+				settings.RemoveCodexLegacyDispatcherHooks(raw, binary)
+				Expect(raw["hooks"]).To(HaveKeyWithValue("AfterToolUse", "bad"))
+			})
+
+			It("keeps malformed groups and unrelated handlers", func() {
+				raw := map[string]any{"hooks": map[string]any{"AfterToolUse": []any{
+					"not-a-group",
+					map[string]any{"matcher": "x"},
+					map[string]any{"hooks": []any{"not-a-handler", dispatcher()}},
+					map[string]any{"hooks": []any{dispatcher()}},
+				}}}
+
+				settings.RemoveCodexLegacyDispatcherHooks(raw, binary)
+
+				kept := raw["hooks"].(map[string]any)["AfterToolUse"].([]any)
+				Expect(kept).To(HaveLen(3))
+				Expect(kept[0]).To(Equal("not-a-group"))
+				Expect(kept[1]).To(Equal(map[string]any{"matcher": "x"}))
+				Expect(kept[2].(map[string]any)["hooks"]).To(Equal([]any{"not-a-handler"}))
+			})
+
+			It("drops the event once only dispatcher handlers were there", func() {
+				raw := map[string]any{"hooks": map[string]any{"AfterToolUse": []any{
+					map[string]any{"hooks": []any{dispatcher()}},
+				}}}
+
+				settings.RemoveCodexLegacyDispatcherHooks(raw, binary)
+
+				Expect(raw["hooks"]).NotTo(HaveKey("AfterToolUse"))
+			})
+		})
+
+		It("reports an explicitly disabled hooks feature", func() {
+			Expect(os.WriteFile(
+				filepath.Join(filepath.Dir(hooksPath), "config.toml"),
+				[]byte("model = \"x\"\n\n[features]\nhooks = false\n"),
+				0o600,
+			)).To(Succeed())
+
+			disabled, configPath, err := settings.CodexHooksFeatureDisabled(hooksPath)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(disabled).To(BeTrue())
+			Expect(configPath).To(HaveSuffix("config.toml"))
+		})
+
+		It("treats a missing hooks feature key as enabled", func() {
+			Expect(os.WriteFile(
+				filepath.Join(filepath.Dir(hooksPath), "config.toml"),
+				[]byte("[features]\nother = true\n"),
+				0o600,
+			)).To(Succeed())
+
+			disabled, _, err := settings.CodexHooksFeatureDisabled(hooksPath)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(disabled).To(BeFalse())
 		})
 
 		It("expands tilde paths before reading hooks.json", func() {

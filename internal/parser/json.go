@@ -22,11 +22,15 @@ var (
 	ErrInvalidJSON = errors.New("invalid JSON")
 )
 
-var patchPathPattern = regexp.MustCompile(`(?m)^\*\*\* (?:Add|Update|Delete) File: (.+)$`)
+var patchPathPattern = regexp.MustCompile(
+	`(?m)^\*\*\* (?:(?:Add|Update|Delete) File|Move to): (.+)$`,
+)
 
 const (
 	patchPathSubmatchCount = 2
 	patchPathSubmatchIndex = 1
+	patchInputKey          = "input"
+	toolApplyPatch         = "applypatch"
 )
 
 // ParseOptions controls provider-aware JSON parsing.
@@ -112,12 +116,19 @@ func (p *JSONParser) ParseWithOptions(opts ParseOptions) (*hook.Context, error) 
 	canonicalEvent := hook.NormalizeEventName(rawEventName)
 	toolName, toolInputRaw, toolUseID := extractToolInvocation(input, afterTool)
 	toolInput := parseToolInput(toolName, toolInputRaw, input.Command)
+
 	parsedToolType, toolFamily := hook.ResolveToolMetadata(toolName)
+	patchFiles := applyPatchFiles(toolName, &toolInput)
+
+	if len(patchFiles) == 1 {
+		parsedToolType, toolFamily = patchFiles[0].ToolName, patchFiles[0].ToolFamily
+		patchFiles = nil
+	}
 
 	ctx := &hook.Context{
 		Provider:         provider,
 		Event:            canonicalEvent,
-		RawEventName:     hook.DisplayEventName(provider, canonicalEvent, eventType),
+		RawEventName:     displayEventName(provider, rawEventName, canonicalEvent, eventType),
 		EventType:        eventType,
 		RawToolName:      toolName,
 		ToolFamily:       toolFamily,
@@ -133,6 +144,7 @@ func (p *JSONParser) ParseWithOptions(opts ParseOptions) (*hook.Context, error) 
 		ToolUseID:        toolUseID,
 		TranscriptPath:   input.TranscriptPath,
 		AffectedPaths:    deriveAffectedPaths(toolName, toolInput),
+		PatchFiles:       patchFiles,
 	}
 
 	populateElicitationFields(ctx, input, canonicalEvent)
@@ -152,6 +164,21 @@ func (p *JSONParser) ParseWithOptions(opts ParseOptions) (*hook.Context, error) 
 	ctx.StopHookActive = input.StopHookActive
 
 	return ctx, nil
+}
+
+// displayEventName keeps a raw Codex event name that shares a canonical event
+// with a different Codex event, so the response builder can tell them apart.
+func displayEventName(
+	provider hook.Provider,
+	rawEventName string,
+	canonical hook.CanonicalEvent,
+	eventType hook.EventType,
+) string {
+	if provider == hook.ProviderCodex && hook.IsCodexAliasedEvent(rawEventName) {
+		return rawEventName
+	}
+
+	return hook.DisplayEventName(provider, canonical, eventType)
 }
 
 func (p *JSONParser) readInput(opts ParseOptions) ([]byte, JSONInput, error) {
@@ -354,6 +381,7 @@ func parseToolInput(
 	}
 
 	applyToolInputAliases(&toolInput)
+	moveApplyPatchText(rawToolName, &toolInput)
 
 	if len(toolInput.Additional) == 0 {
 		toolInput.Additional = nil
@@ -439,17 +467,29 @@ func deriveAffectedPaths(rawToolName string, toolInput hook.ToolInput) []string 
 }
 
 func patchAffectedPaths(rawToolName string, additional map[string]json.RawMessage) []string {
-	if normalizeToolName(rawToolName) != "applypatch" || additional == nil {
+	if normalizeToolName(rawToolName) != toolApplyPatch {
 		return nil
 	}
 
-	rawInput, ok := additional["input"]
+	return patchPaths(patchInputText(additional))
+}
+
+func patchInputText(additional map[string]json.RawMessage) string {
+	rawInput, ok := additional[patchInputKey]
 	if !ok {
-		return nil
+		return ""
 	}
 
 	var patchText string
 	if err := json.Unmarshal(rawInput, &patchText); err != nil {
+		return ""
+	}
+
+	return patchText
+}
+
+func patchPaths(patchText string) []string {
+	if patchText == "" {
 		return nil
 	}
 
@@ -461,10 +501,10 @@ func patchAffectedPaths(rawToolName string, additional map[string]json.RawMessag
 			continue
 		}
 
-		paths = append(paths, match[patchPathSubmatchIndex])
+		paths = append(paths, strings.TrimSpace(match[patchPathSubmatchIndex]))
 	}
 
-	return paths
+	return dedupePaths(paths)
 }
 
 func dedupePaths(paths []string) []string {

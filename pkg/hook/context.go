@@ -190,6 +190,11 @@ type Context struct {
 	// AffectedPaths contains provider-derived file paths affected by the tool.
 	AffectedPaths []string
 
+	// PatchFiles holds one entry per file of a multi-file patch. Validators see
+	// each file as its own Write or Edit; a single-file patch is mapped onto
+	// ToolInput directly and leaves this empty.
+	PatchFiles []PatchFile
+
 	// Elicitation contains MCP elicitation event data (nil for non-elicitation events).
 	Elicitation *ElicitationInput
 
@@ -215,6 +220,13 @@ func (c *Context) ParsedCommand() (*parser.ParseResult, error) {
 	})
 
 	return c.parsed, c.parseErr
+}
+
+// PatchFile is one file a patch writes, shaped as a Write or Edit.
+type PatchFile struct {
+	ToolName   ToolType
+	ToolFamily ToolFamily
+	Input      ToolInput
 }
 
 // Permission mode values that turn off interactive approval prompts.
@@ -332,6 +344,7 @@ func (c *Context) EventNames() []string {
 	case CanonicalEventUnknown:
 	case CanonicalEventBeforeTool:
 		names = appendUniqueFold(names, "PreToolUse")
+		names = appendUniqueFold(names, "BeforeToolUse")
 	case CanonicalEventAfterTool:
 		names = appendUniqueFold(names, "PostToolUse")
 		names = appendUniqueFold(names, "AfterToolUse")
