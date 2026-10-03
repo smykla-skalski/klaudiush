@@ -171,6 +171,8 @@ func causeSummary(cause parser.OpacityCause) string {
 		return "it calls a function whose arguments klaudiush cannot follow"
 	case parser.OpacityUnresolvedWord:
 		return "it runs eval, git or gh with a word klaudiush cannot resolve"
+	case parser.OpacityStartupFile:
+		return "it starts a shell whose startup file klaudiush cannot read"
 	default:
 		return "part of it is opaque"
 	}
@@ -232,6 +234,10 @@ func opacityFinding(o parser.Opacity) validator.Finding {
 			`arguments with plain "$@"`
 	case parser.OpacityUnresolvedWord:
 		f.Message, f.Required, f.Repair = unresolvedWordFinding(o)
+	case parser.OpacityStartupFile:
+		f.Message = "the startup file " + o.Operation + " names cannot be inspected: " + o.Detail
+		f.Required = "a literal path to a readable file, or no startup file"
+		f.Repair = startupFileRepair(o)
 	default:
 		f.Message = o.Operation + " cannot be inspected"
 		f.Repair = validator.GetSuggestion(validator.RefShellNesting)
@@ -290,6 +296,21 @@ var evalSetupRepairs = map[string]string{
 	"zoxide": "Drop the eval: run zoxide query <keywords> to print the directory, " +
 		"then cd to that path literally",
 	"fnm": "Run the command with fnm's Node instead: fnm exec --using=<version> <command>",
+}
+
+func startupFileRepair(o parser.Opacity) string {
+	switch o.Detail {
+	case parser.DetailStartupValue, parser.DetailScriptVariable, parser.DetailStartupExpansion:
+		return "Set " + o.Operation + " to a literal file path, or unset it, before " +
+			"starting the shell"
+	case parser.DetailScriptDirectory:
+		return "Use an absolute path for " + o.Operation + ", or cd to a literal directory first"
+	case parser.DetailScriptWritten:
+		return "Write the startup file in a separate command before starting the shell"
+	default:
+		return "Keep the startup file a readable regular file within the size limit, " +
+			"or run its commands directly"
+	}
 }
 
 func unreadableScriptRepair(detail string) string {

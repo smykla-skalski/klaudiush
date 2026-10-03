@@ -67,6 +67,10 @@ type astWalker struct {
 	// scopeDynamic is the dynamicVersion it was taken at.
 	scope        *VarScope
 	scopeDynamic int
+
+	startupUnset   map[string]bool
+	loopStartup    map[string]bool
+	startupPending map[string]syntax.Pos
 }
 
 // parseState is shared by a walker and all the child walkers of one parse.
@@ -99,6 +103,9 @@ type parseState struct {
 	// evalSetups names the setup tool whose output an eval call runs, by
 	// the call's seq.
 	evalSetups map[int]string
+
+	namesUnknown  bool
+	startupWalked map[string]bool
 }
 
 // spend takes one unit of work, reporting false once the budget is gone.
@@ -496,6 +503,7 @@ func (w *astWalker) extractCommand(call *syntax.CallExpr) {
 		Dynamic:          anyWordDynamic(call.Args),
 		Stdin:            w.stdinByCall[call],
 		StdinFile:        w.stdinFileByCall[call],
+		startup:          prefixStartup(call),
 	}, w.depth)
 }
 
@@ -547,8 +555,9 @@ func (w *astWalker) recordCommand(cmd Command, depth int) {
 	l.scripts = append(l.scripts, w.gitEnvScripts(cmd)...)
 	l.files = append(l.files, w.pathScripts(cmd, l)...)
 	nested = append(nested, w.definitionScripts(followed)...)
+	startup := w.startupScripts(cmd)
 
-	if l.empty() && len(nested) == 0 {
+	if l.empty() && len(nested) == 0 && len(startup) == 0 {
 		return
 	}
 
@@ -562,7 +571,7 @@ func (w *astWalker) recordCommand(cmd Command, depth int) {
 
 	defer w.enter(cmd)()
 
-	w.follow(cmd, l, depth+1)
+	w.follow(cmd, l, depth+1, startup)
 
 	for _, script := range nested {
 		w.walkScript(script.text, cmd, depth+1, scriptWalk{name: script.name})
@@ -714,6 +723,7 @@ func (w *astWalker) noteDynamic(assign *syntax.Assign) {
 
 	if assign.Append || (assign.Value != nil && wordDynamic(assign.Value)) {
 		w.state.dynamicVars[assign.Name.Value] = true
+		w.noteStartupPending(assign)
 
 		return
 	}
@@ -727,6 +737,7 @@ func (w *astWalker) assign(name, value string) {
 	w.scope = nil
 
 	delete(w.unknownVars, name)
+	delete(w.startupUnset, name)
 
 	if w.parent != nil {
 		w.parent.forget(name)
@@ -990,7 +1001,13 @@ func copiesStdinVerbatim(call *syntax.CallExpr) bool {
 // (NAME+=value) and naked assignments carry no complete value, so they are
 // skipped rather than recorded with a partial one.
 func (w *astWalker) extractAssigns(call *syntax.CallExpr) {
+	commandOnly := len(call.Args) > 0 && !w.keepsPrefix(commandWord(call.Args[0]))
+
 	for _, assign := range call.Assigns {
+		if commandOnly && assign.Name != nil && startupVars[assign.Name.Value] {
+			continue
+		}
+
 		w.noteDynamic(assign)
 
 		if assign.Name == nil || assign.Append || assign.Naked {

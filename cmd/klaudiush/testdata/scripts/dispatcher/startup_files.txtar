@@ -1,0 +1,104 @@
+exec git init --initial-branch=main
+exec git config user.email "test@test.com"
+exec git config user.name "Test User"
+
+cp file.go staged.go
+exec git add staged.go
+
+stdin bash-env-prefix.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+! stdout 'SHELL002'
+
+stdin bash-env-env.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+! stdout 'SHELL002'
+
+stdin bash-env-export.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+! stdout 'SHELL002'
+
+stdin bash-env-git.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+! stdout 'SHELL002'
+
+stdin env-interactive.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+! stdout 'SHELL002'
+
+stdin bash-env-output.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+stdout 'startup file BASH_ENV names cannot be inspected'
+
+stdin bash-env-variable.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+stdout 'its path depends on a variable'
+! stdout 'KLAUDIUSH_TEST_SECRET'
+
+stdin bash-env-expansion.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+stdout 'expands its value when it starts'
+
+stdin bash-env-benign.json
+exec klaudiush --hook-type PreToolUse
+! stdout .
+
+stdin bash-env-missing.json
+exec klaudiush --hook-type PreToolUse
+! stdout .
+
+stdin bash-env-no-shell.json
+exec klaudiush --hook-type PreToolUse
+! stdout .
+
+-- file.go --
+package main
+
+-- env.sh --
+git commit -m 'bad title'
+
+-- benign.sh --
+echo hello
+
+-- bash-env-prefix.json --
+{"tool_name": "Bash", "tool_input": {"command": "BASH_ENV=./env.sh bash -c true"}}
+
+-- bash-env-env.json --
+{"tool_name": "Bash", "tool_input": {"command": "env BASH_ENV=./env.sh sh -c true"}}
+
+-- bash-env-export.json --
+{"tool_name": "Bash", "tool_input": {"command": "export BASH_ENV=./env.sh; echo true | bash"}}
+
+-- bash-env-git.json --
+{"tool_name": "Bash", "tool_input": {"command": "BASH_ENV=./env.sh git status"}}
+
+-- env-interactive.json --
+{"tool_name": "Bash", "tool_input": {"command": "ENV=./env.sh sh -i -c true"}}
+
+-- bash-env-output.json --
+{"tool_name": "Bash", "tool_input": {"command": "BASH_ENV=$(mktemp) bash -c true"}}
+
+-- bash-env-variable.json --
+{"tool_name": "Bash", "tool_input": {"command": "BASH_ENV=$KLAUDIUSH_TEST_SECRET bash -c true"}}
+
+-- bash-env-expansion.json --
+{"tool_name": "Bash", "tool_input": {"command": "BASH_ENV='$(echo ./env.sh)' bash -c true"}}
+
+-- bash-env-benign.json --
+{"tool_name": "Bash", "tool_input": {"command": "BASH_ENV=./benign.sh bash -c true"}}
+
+-- bash-env-missing.json --
+{"tool_name": "Bash", "tool_input": {"command": "BASH_ENV=./missing.sh bash -c true"}}
+
+-- bash-env-no-shell.json --
+{"tool_name": "Bash", "tool_input": {"command": "BASH_ENV=$(mktemp) echo hi"}}
