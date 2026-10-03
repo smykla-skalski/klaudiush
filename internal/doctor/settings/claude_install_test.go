@@ -52,6 +52,40 @@ var _ = Describe("InstallClaudeDispatcher", func() {
 		Expect(string(data)).To(ContainSubstring(userHook))
 	})
 
+	DescribeTable(
+		"recognizes the dispatcher behind wrappers",
+		func(command string, want bool) {
+			path := filepath.Join(GinkgoT().TempDir(), "settings.json")
+			raw, err := json.Marshal(map[string]any{"hooks": map[string]any{"PreToolUse": []any{
+				map[string]any{
+					"hooks": []any{map[string]any{"type": "command", "command": command}},
+				},
+			}}})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(os.WriteFile(path, raw, 0o600)).To(Succeed())
+
+			Expect(
+				settings.NewSettingsParser(path).
+					HasEventHookCommand(settings.ClaudeEventPreToolUse, binary),
+			).
+				To(Equal(want))
+		},
+		Entry("sh -c", `sh -c 'klaudiush --hook-type PreToolUse'`, true),
+		Entry(
+			"bash -lc",
+			`bash -l -c "exec /usr/local/bin/klaudiush --hook-type PreToolUse"`,
+			true,
+		),
+		Entry("mise exec", "mise exec go@1 -- klaudiush --hook-type PreToolUse", true),
+		Entry("nice", "nice -n 5 klaudiush --hook-type PreToolUse", true),
+		Entry("timeout", "timeout -k 2 30 klaudiush --hook-type PreToolUse", true),
+		Entry("env unset", "env -u DEBUG FOO=1 klaudiush --hook-type PreToolUse", true),
+		Entry("quoted path with spaces", `"/opt/my tools/klaudiush" --hook-type PreToolUse`, true),
+		Entry("script mentioning klaudiush", "sh -c 'notify --tag klaudiush'", false),
+		Entry("argument mentioning klaudiush", "nice notify klaudiush", false),
+		Entry("unparsable command", "klaudiush 'unterminated", true),
+	)
+
 	It("recognizes the dispatcher by program name with env assignments", func() {
 		path := filepath.Join(GinkgoT().TempDir(), "settings.json")
 		seed := `{"hooks":{"PreToolUse":[{"hooks":[{"type":"command",` +
