@@ -31,8 +31,6 @@ type astWalker struct {
 	stdinByCall map[*syntax.CallExpr]string
 	// stdinFileByCall maps a CallExpr to the file redirected to its stdin (<).
 	stdinFileByCall map[*syntax.CallExpr]string
-	capturedCalls   map[*syntax.CallExpr]bool
-	outputCaptured  bool
 	// assignments records literal NAME=value assignments, both standalone and
 	// as a prefix on a command, so consumers can resolve a variable used later
 	// in the same command line.
@@ -120,6 +118,7 @@ type parseState struct {
 	// table, so a bare name may no longer run what it runs outside it.
 	pathChanged   bool
 	untrusted     bool
+	outputRouted  bool
 	arrays        map[string]bool
 	expandedWords map[string]bool
 	// evalSetups names the setup tool whose output an eval call runs, by
@@ -179,11 +178,11 @@ func (w *astWalker) visit(node syntax.Node) bool {
 	case *syntax.BinaryCmd:
 		w.extractPipedStdin(n)
 
-		if n.Op == syntax.Pipe || n.Op == syntax.PipeAll {
-			w.markCaptured(n.X)
+		if (n.Op == syntax.Pipe || n.Op == syntax.PipeAll) && !pipeFilter(n.Y) {
+			w.noteOutputRoute()
 		}
 	case *syntax.CmdSubst, *syntax.ProcSubst:
-		w.markCaptured(n)
+		w.noteOutputRoute()
 	case *syntax.CallExpr:
 		w.extractCommand(n)
 	case *syntax.FuncDecl:
@@ -202,7 +201,7 @@ func (w *astWalker) visit(node syntax.Node) bool {
 		}
 	case *syntax.Stmt:
 		w.extractRedirect(n)
-		w.markRedirectedOutput(n)
+		w.noteRedirectedOutput(n)
 
 		if form := numericGlobQualifier(n); form != "" {
 			w.opaque(OpacityZshGlobQualifier, form, "")
@@ -227,42 +226,49 @@ func (w *astWalker) recordStdin(call *syntax.CallExpr, content string) {
 	w.stdinByCall[call] = content
 }
 
-// markRedirectedOutput treats output sent to a process substitution
-// (cmd > >(sh)) as captured. An exec doing so, or a coprocess, can hand any
-// later command's output to a program, so everything after it is captured.
-func (w *astWalker) markRedirectedOutput(stmt *syntax.Stmt) {
-	if _, coproc := stmt.Cmd.(*syntax.CoprocClause); coproc || stmt.Coprocess {
-		w.outputCaptured = true
-	}
+// noteRedirectedOutput notes a statement that may send output to a program:
+// a redirect to a process substitution (cmd > >(sh)), an exec that redirects
+// the shell's descriptors, or a coprocess. Its redirects are walked after the
+// command itself, so they are checked here first.
+func (w *astWalker) noteRedirectedOutput(stmt *syntax.Stmt) {
+	_, coproc := stmt.Cmd.(*syntax.CoprocClause)
+	execRedirect := len(stmt.Redirs) > 0 && isCommand(callExprOf(stmt), "exec")
 
-	if !slices.ContainsFunc(stmt.Redirs, func(r *syntax.Redirect) bool {
-		return r.Word != nil && slices.ContainsFunc(r.Word.Parts, func(part syntax.WordPart) bool {
-			_, ok := part.(*syntax.ProcSubst)
+	if coproc || stmt.Coprocess || execRedirect ||
+		slices.ContainsFunc(stmt.Redirs, func(r *syntax.Redirect) bool {
+			return r.Word != nil &&
+				slices.ContainsFunc(r.Word.Parts, func(part syntax.WordPart) bool {
+					_, ok := part.(*syntax.ProcSubst)
 
-			return ok
-		})
-	}) {
-		return
-	}
-
-	w.markCaptured(stmt)
-
-	if isCommand(callExprOf(stmt), "exec") {
-		w.outputCaptured = true
+					return ok
+				})
+		}) {
+		w.noteOutputRoute()
 	}
 }
 
-// markCaptured records the commands under node whose output another command
-// reads (a pipe, a command or process substitution). Text such a program
-// prints may run, so none of it counts as prose.
-func (w *astWalker) markCaptured(node syntax.Node) {
-	syntax.Walk(node, func(n syntax.Node) bool {
-		if call, ok := n.(*syntax.CallExpr); ok {
-			w.capturedCalls[call] = true
-		}
+// noteOutputRoute records that the line hands some command's output to
+// another (a pipe, a substitution, a redirect into a program). Text an
+// interpreter prints may then run, so none of it counts as prose for the
+// rest of the parse. A string found in interpreter code runs in a shell of
+// its own and routes nothing of the interpreter's.
+func (w *astWalker) noteOutputRoute() {
+	if !w.literal {
+		w.state.outputRouted = true
+	}
+}
 
-		return true
-	})
+// pipeFilters only read and print their input; none runs any of it. sort
+// (--compress-program) and rg (--pre) are left out: they can.
+var pipeFilters = nameSet("head tail jq grep egrep fgrep wc uniq cut tr column nl cat")
+
+// pipeFilter reports whether a pipeline stage is one of pipeFilters, written
+// literally, so what flows into it is displayed rather than run.
+func pipeFilter(stmt *syntax.Stmt) bool {
+	call := callExprOf(stmt)
+
+	return call != nil && len(call.Assigns) == 0 && len(call.Args) > 0 &&
+		isLiteralWord(call.Args[0]) && pipeFilters[wordToString(call.Args[0])]
 }
 
 // extractPipedStdin handles "producer | consumer" pipelines, capturing the
@@ -615,7 +621,6 @@ func (w *astWalker) extractCommand(call *syntax.CallExpr) {
 		StdinFile:        w.stdinFileByCall[call],
 		startup:          prefixStartup(call),
 		dynamicWords:     dynamicArgs(call.Args[1:]),
-		outputCaptured:   w.outputCaptured || w.capturedCalls[call],
 	}, w.depth, view)
 }
 

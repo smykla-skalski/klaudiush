@@ -10,6 +10,7 @@ import (
 var _ = Describe("Git words in interpreter prose", func() {
 	resolver := fakeResolver{
 		files: map[string]string{
+			"./tool.py": "#!/usr/bin/env python3\nfail(\"git zz is not set up\")\n",
 			"hotspots.py": `#!/usr/bin/env python3
 """Rank hotspots from git history.
 
@@ -199,7 +200,7 @@ def run_git(args):
 			"python3 -c '# tool\n\"\"\"git zz helper.\"\"\"\n'",
 		),
 		Entry("a console message", `node -e 'console.log("git zz is not set up")'`),
-		Entry("a perl die", `perl -e 'die("git zz is not set up")'`),
+		Entry("a script run by its shebang", "./tool.py"),
 		Entry(
 			"a message beside output reads",
 			`python3 -c 'import sys; out = r.stdout; sys.stdout.write(out); fail("git zz failed")'`,
@@ -249,6 +250,53 @@ def run_git(args):
 		Entry(
 			"output after a coprocess",
 			`coproc sh; python3 -c 'print("git zz")' >&"${COPROC[1]}"`,
+		),
+		Entry(
+			"a message in a language without prose rules",
+			`perl -e 'die("git zz is not set up")'`,
+		),
+		Entry("gawk printing to a coprocess", `gawk 'BEGIN { print("git zz") |& "sh" }'`),
+		Entry("awk piping to a variable", `awk 'BEGIN { c = "sh"; print("git zz") | c }'`),
+		Entry("php buffering into system", `php -r 'ob_start("system"); echo("git zz");'`),
+		Entry("perl reopening stdout", `perl -e 'open(STDOUT, q{|sh}); print("git zz")'`),
+		Entry("python duplicating a pipe onto stdout",
+			`python3 -c 'import os; r, w = os.pipe(); os.dup2(w, 1); print("git zz")'`),
+		Entry(
+			"a wrapped interpreter piped to a shell",
+			`timeout 5 python3 -c 'print("git zz")' | sh`,
+		),
+		Entry(
+			"env before an interpreter piped to a shell",
+			`env python3 -c 'print("git zz")' | bash`,
+		),
+		Entry("xargs running an interpreter piped to a shell",
+			`echo x | xargs python3 -c 'print("git zz")' | sh`),
+		Entry("output after exec inside a function",
+			`f() { exec > >(sh); }; f; python3 -c 'print("git zz")'`),
+		Entry(
+			"output after a sourced exec",
+			`source <(echo 'exec > >(sh)'); python3 -c 'print("git zz")'`,
+		),
+	)
+
+	DescribeTable("still reads prose when the output is only displayed",
+		func(command string) {
+			Expect(parse(command).Truncated).To(BeFalse(), "truncated: %q", command)
+		},
+		Entry("no pipe", `python3 -c 'print("git zz is not set up")'; echo done`),
+		Entry("a pipe into head", `python3 -c 'print("git zz is not set up")' | head -5`),
+		Entry("a pipe into jq and grep", `python3 hotspots.py | jq -c . | grep x`),
+	)
+
+	DescribeTable(
+		"treats a filter chain ending in a program as captured",
+		func(command string) {
+			Expect(parse(command).Truncated).To(BeTrue(), "not truncated: %q", command)
+		},
+		Entry("head then a shell", `python3 -c 'print("git zz")' | head | sh`),
+		Entry(
+			"sort, which can run a program",
+			`python3 -c 'print("git zz")' | sort --compress-program=sh`,
 		),
 	)
 })

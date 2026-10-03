@@ -59,7 +59,6 @@ func newAstWalker(resolver Resolver) *astWalker {
 		fileWrites:      make([]FileWrite, 0),
 		stdinByCall:     make(map[*syntax.CallExpr]string),
 		stdinFileByCall: make(map[*syntax.CallExpr]string),
-		capturedCalls:   make(map[*syntax.CallExpr]bool),
 		assignments:     make(map[string]string),
 		unknownVars:     make(map[string]bool),
 		safeAssigns:     make(map[*syntax.Assign]bool),
@@ -917,14 +916,45 @@ func (w *astWalker) followFile(
 }
 
 // followCode records the command lines found in program source, walking
-// each as sw describes.
+// each as sw describes. Prose is read only in Python and JavaScript, whose
+// print and log calls cannot pipe their own output into a program, and only
+// when nothing on the line routes output to another command.
 func (w *astWalker) followCode(cmd Command, code string, depth int, sw scriptWalk) {
+	proseAllowed := !w.state.outputRouted && proseLanguage(cmd, code)
+
 	for _, line := range commandLines(code) {
 		lineWalk := sw
-		lineWalk.prose = line.prose && !w.outputCaptured && !cmd.outputCaptured
+		lineWalk.prose = proseAllowed && line.prose
 
 		w.walkScript(line.text, cmd, depth, lineWalk)
 	}
+}
+
+// proseLanguage reports whether program source is Python or JavaScript, by
+// the interpreter running it or its shebang.
+func proseLanguage(cmd Command, code string) bool {
+	if proseInterpreter(commandName(cmd.Name)) {
+		return true
+	}
+
+	line, _, _ := strings.Cut(code, "\n")
+	if !strings.HasPrefix(line, "#!") {
+		return false
+	}
+
+	return slices.ContainsFunc(
+		strings.Fields(strings.TrimPrefix(line, "#!")),
+		func(word string) bool {
+			return proseInterpreter(commandName(word))
+		},
+	)
+}
+
+// proseInterpreter reports whether an interpreter name runs Python or
+// JavaScript.
+func proseInterpreter(name string) bool {
+	return strings.HasPrefix(name, "python") || name == "node" || name == "nodejs" ||
+		name == "deno" || name == "bun"
 }
 
 // scriptSource returns the text of a script a command runs: stdin, a process
@@ -1009,7 +1039,6 @@ func (w *astWalker) walkScript(script string, parent Command, depth int, sw scri
 	child := w.child(parent.WorkingDirectory, depth)
 	child.literal = sw.literal
 	child.prose = sw.prose
-	child.outputCaptured = w.outputCaptured || parent.outputCaptured
 	child.distrust = w.distrust || !runsInShell(parent, sw)
 	child.scriptRun = w.childRun(parent, sw)
 	child.launchSeq = parent.Location.Seq
