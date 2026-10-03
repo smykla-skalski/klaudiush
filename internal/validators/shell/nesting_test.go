@@ -61,8 +61,8 @@ var _ = Describe("NestingValidator", func() {
 		Expect(result.Message).To(ContainSubstring("parses commands as bash, not zsh"))
 		Expect(result.Findings).To(ConsistOf(SatisfyAll(
 			HaveField("Location", MatchRegexp(`^line 1, column \d+$`)),
-			HaveField("Repair", ContainSubstring("Fix the shell syntax")),
-			HaveField("Repair", ContainSubstring("rewrite zsh-only syntax in bash")),
+			HaveField("Repair", ContainSubstring("fix it")),
+			HaveField("Repair", ContainSubstring("rewrite zsh syntax in bash")),
 		)))
 	})
 
@@ -156,9 +156,9 @@ var _ = Describe("NestingValidator", func() {
 		),
 		Entry("a nested script that does not parse",
 			`env bash -c 'git status && ('`,
-			"runs a script that does not parse as shell",
+			"runs a script that does not parse as bash",
 			"via env > bash",
-			"inline script does not parse as shell",
+			"inline script does not parse as bash",
 			"Fix the syntax of the nested script",
 		),
 		Entry("an unknown git subcommand",

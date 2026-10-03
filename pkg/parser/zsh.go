@@ -56,6 +56,12 @@ func parseFailure(command string, err error) error {
 		return errors.Wrap(ErrParseFailed, err.Error())
 	}
 
+	// The zsh grammar of mvdan.cc/sh reads foreach as a plain call, so a
+	// foreach without its end parses although zsh rejects it.
+	if hasZshCall(file, "foreach") && !hasZshCall(file, "end") {
+		return errors.Wrap(ErrParseFailed, err.Error())
+	}
+
 	construct := zshFeature(err)
 	if construct == "" {
 		construct = zshConstruct(file)
@@ -72,6 +78,22 @@ func zshFeature(err error) string {
 	}
 
 	return ""
+}
+
+// hasZshCall reports whether a call in the file starts with the word name.
+func hasZshCall(file *syntax.File, name string) bool {
+	found := false
+
+	syntax.Walk(file, func(node syntax.Node) bool {
+		if call, ok := node.(*syntax.CallExpr); ok && len(call.Args) > 0 &&
+			call.Args[0].Lit() == name {
+			found = true
+		}
+
+		return !found
+	})
+
+	return found
 }
 
 // zshConstruct names the first zsh-only construct in a file parsed as zsh,
@@ -107,15 +129,30 @@ func zshNodeConstruct(node syntax.Node) string {
 	case *syntax.ParamExp:
 		return zshParamConstruct(n)
 	case *syntax.Word:
-		// Only unquoted text: zsh glob qualifiers like *.go(N) stay literal.
-		for _, part := range n.Parts {
-			if lit, ok := part.(*syntax.Lit); ok && strings.Contains(lit.Value, "(") {
-				return "glob qualifiers"
-			}
+		if zshGlobQualifier.MatchString(unquotedText(n)) {
+			return "glob qualifiers"
 		}
 	}
 
 	return ""
+}
+
+// zshGlobQualifier matches a glob ending in a qualifier, as in *.go(N): a
+// glob character, then an unescaped parenthesized suffix at the end.
+var zshGlobQualifier = regexp.MustCompile(`[*?\]](?:[^\\()]|\\.)*\([^()]*\)$`)
+
+// unquotedText joins the literal parts of a word, which the zsh grammar keeps
+// glob qualifiers in.
+func unquotedText(word *syntax.Word) string {
+	var sb strings.Builder
+
+	for _, part := range word.Parts {
+		if lit, ok := part.(*syntax.Lit); ok {
+			sb.WriteString(lit.Value)
+		}
+	}
+
+	return sb.String()
 }
 
 func zshParamConstruct(pe *syntax.ParamExp) string {

@@ -89,8 +89,8 @@ func parseFailedFinding(err error) validator.Finding {
 		Location:  location,
 		Message:   "command does not parse as bash",
 		Required:  "valid bash syntax",
-		Repair: "Fix the shell syntax at that position (unclosed quote, bracket or heredoc). " +
-			"Commands are parsed as bash, so rewrite zsh-only syntax in bash",
+		Repair: "If the syntax at that position is broken (unclosed quote, bracket or " +
+			"heredoc), fix it. Commands are parsed as bash, not zsh, so rewrite zsh syntax in bash",
 	}
 }
 
@@ -164,7 +164,7 @@ func causeSummary(cause parser.OpacityCause) string {
 	case parser.OpacityUnreadableScript:
 		return "it runs a script klaudiush cannot read"
 	case parser.OpacityScriptSyntax:
-		return "it runs a script that does not parse as shell"
+		return "it runs a script that does not parse as bash"
 	case parser.OpacityUnresolvedProgram:
 		return "it runs a git subcommand klaudiush cannot resolve"
 	case parser.OpacityUnresolvedArgs:
@@ -214,9 +214,10 @@ func opacityFinding(o parser.Opacity) validator.Finding {
 		)
 		f.Repair = unreadableScriptRepair(o.Detail)
 	case parser.OpacityScriptSyntax:
-		f.Message = o.Operation + " does not parse as shell, so what follows the error is unknown"
-		f.Required = "valid shell syntax in every nested script"
-		f.Repair = "Fix the syntax of the nested script, or run its commands directly"
+		f.Message = o.Operation + " does not parse as bash, so what follows the error is unknown"
+		f.Required = "valid bash syntax in every nested script"
+		f.Repair = "Fix the syntax of the nested script if it is broken, rewrite zsh syntax " +
+			"in it in bash (scripts are parsed as bash, not zsh), or run its commands directly"
 	case parser.OpacityUnresolvedProgram:
 		f.Message = o.Operation + " is not a git builtin, an installed git command " +
 			"or an alias klaudiush can see"
