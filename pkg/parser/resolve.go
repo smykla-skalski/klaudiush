@@ -770,21 +770,44 @@ func (w *astWalker) definitionScripts(cmd Command) []nestedScript {
 }
 
 // substitutePositional puts a call's arguments in place of the positional
-// parameters a function body uses.
+// parameters a function body uses. An unquoted reference splits its value
+// into words and an empty one leaves none, so f() { $1 git push; }; f ""
+// runs git push.
 func substitutePositional(body string, args []string) string {
 	return positionalParam.ReplaceAllStringFunc(body, func(ref string) string {
 		param := strings.Trim(ref, `"${}`)
+		quoted := strings.HasPrefix(ref, `"`) || strings.HasSuffix(ref, `"`)
 
-		if param == "@" || param == "*" {
-			return quoteArgs(args)
+		var values []string
+
+		switch n := int(param[0] - '0'); {
+		case param == "@" || param == "*":
+			values = args
+		case n <= len(args):
+			values = args[n-1 : n]
+		case quoted:
+			return "''"
+		default:
+			return ""
 		}
 
-		if n := int(param[0] - '0'); n <= len(args) {
-			return shellQuote(args[n-1])
+		if quoted {
+			return quoteArgs(values)
 		}
 
-		return "''"
+		return quoteArgs(splitFields(values))
 	})
+}
+
+// splitFields splits values into the words an unquoted expansion gives.
+func splitFields(values []string) []string {
+	fields := make([]string, 0, len(values))
+
+	for _, value := range values {
+		fields = append(fields, strings.Fields(value)...)
+	}
+
+	return fields
 }
 
 // follow records everything a command launches. A shell, or a script run

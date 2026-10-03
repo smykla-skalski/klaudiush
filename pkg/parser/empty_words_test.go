@@ -87,6 +87,44 @@ var _ = Describe("Empty words", func() {
 		Entry("empty variable as program", `X=; $X git push`, "push"),
 		Entry("empty variable in a script", `bash -c 'X=; $X git push'`, "push"),
 		Entry("unquoted empty positional", `bash -c 'git $1 push' _ ""`, "push"),
+		Entry("function $@ as program", `f() { $@ git push --force; }; f ""`, "push"),
+		Entry("function $* as program", `f() { $* git push --force; }; f ""`, "push"),
+		Entry("function $1 as program", `f() { $1 $2 push --force; }; f "" git`, "push"),
+		Entry("function missing $1", `f() { $1 git push --force; }; f`, "push"),
+		Entry("function braced $1", `f() { ${1} git push --force; }; f ""`, "push"),
+		Entry("function splits $1", `f() { $1 push --force; }; f " git "`, "push"),
+	)
+
+	DescribeTable("function arguments match bash word splitting",
+		func(command string, want []string) {
+			result, err := p.Parse(command)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.Truncated).To(BeFalse())
+			Expect(gitArgs(command)).To(ContainElement(Equal(want)))
+		},
+		Entry("unquoted empty $1", `f() { git $1 push --force; }; f ""`,
+			[]string{"push", "--force"}),
+		Entry("unquoted empty $@", `f() { git $@ push --force; }; f ""`,
+			[]string{"push", "--force"}),
+		Entry("quoted empty $1", `f() { git -C "$1" push; }; f ""`,
+			[]string{"-C", "", "push"}),
+		Entry("quoted missing $1", `f() { git -C "$1" push; }; f`,
+			[]string{"-C", "", "push"}),
+		Entry("unquoted $1 with spaces", `f() { git $1; }; f "push --force"`,
+			[]string{"push", "--force"}),
+	)
+
+	DescribeTable("keeps the directory on an empty cd operand",
+		func(command, dir string) {
+			result, err := p.Parse(command)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.GitOperations).NotTo(BeEmpty())
+			Expect(result.GitOperations[0].WorkingDirectory).To(Equal(dir))
+		},
+		Entry("cd empty", `cd /repo && cd "" && git push origin main`, "/repo"),
+		Entry("cd -- empty", `cd /repo && cd -- '' && git push origin main`, "/repo"),
+		Entry("pushd empty", `cd /repo && pushd "" && git push origin main`, "/repo"),
+		Entry("cd with no operand", `cd /repo && cd && git push origin main`, "~"),
 	)
 
 	It("does not run an empty program word", func() {

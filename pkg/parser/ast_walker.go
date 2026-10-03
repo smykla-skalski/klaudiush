@@ -689,11 +689,11 @@ func (w *astWalker) trackShellState(cmd Command) {
 		w.trackPositional(cmd)
 	case "cd":
 		w.dirComputed = w.dirComputed || cmd.Dynamic
-		w.changeDir(firstOperand(cmd.Args))
+		w.changeDirTo(cmd.Args)
 	case "pushd":
 		w.dirComputed = w.dirComputed || cmd.Dynamic
 		w.dirStack = append(w.dirStack, w.currentDir)
-		w.changeDir(firstOperand(cmd.Args))
+		w.changeDirTo(cmd.Args)
 	case "popd":
 		if n := len(w.dirStack); n > 0 {
 			w.currentDir, w.dirStack = w.dirStack[n-1], w.dirStack[:n-1]
@@ -727,15 +727,35 @@ func (w *astWalker) changeDir(target string) {
 	}
 }
 
+// changeDirTo moves the walker's directory to the operand of cd or pushd.
+// An empty operand (cd "") leaves the shell where it is; no operand goes
+// home.
+func (w *astWalker) changeDirTo(args []string) {
+	target, ok := operand(args)
+	if ok && target == "" {
+		return
+	}
+
+	w.changeDir(target)
+}
+
 // firstOperand returns the first argument that is not an option.
 func firstOperand(args []string) string {
+	arg, _ := operand(args)
+
+	return arg
+}
+
+// operand returns the first argument that is not an option and whether
+// there is one.
+func operand(args []string) (string, bool) {
 	for _, arg := range args {
 		if arg == "-" || !strings.HasPrefix(arg, "-") {
-			return arg
+			return arg, true
 		}
 	}
 
-	return ""
+	return "", false
 }
 
 // gitCommandVars are environment variables whose value git runs as a
