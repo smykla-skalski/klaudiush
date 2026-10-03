@@ -2,7 +2,6 @@ package file
 
 import (
 	"context"
-	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -127,182 +126,6 @@ var aiDocDecl = regexp.MustCompile(
 		`)`,
 )
 
-// stringState is the multi-line string literal a line starts inside of.
-// Single and double quoted strings are line-local and not tracked here.
-type stringState uint8
-
-const (
-	stateCode stringState = iota
-	stateBacktick
-	stateTripleDouble
-	stateTripleSingle
-)
-
-// tripleQuoteTail is how many bytes of a triple quote follow its first byte.
-const tripleQuoteTail = 2
-
-// tripleKind says whether a language has a triple-quoted string delimiter and
-// whether a backslash escapes the next byte inside it.
-type tripleKind uint8
-
-const (
-	tripleNone tripleKind = iota
-	tripleEscaped
-	tripleRaw
-)
-
-// tripleQuotes holds the triple-quoted multi-line string delimiters a file's
-// language recognizes. Elsewhere `"""` is an empty string plus a quote.
-type tripleQuotes struct {
-	double tripleKind
-	single tripleKind
-}
-
-var (
-	bothTripleQuotes   = tripleQuotes{double: tripleEscaped, single: tripleEscaped}
-	doubleTripleQuotes = tripleQuotes{double: tripleEscaped}
-	rawTripleQuotes    = tripleQuotes{double: tripleRaw}
-)
-
-// tripleQuoteLanguages maps file extensions to the triple-quoted string
-// delimiters their language supports.
-var tripleQuoteLanguages = map[string]tripleQuotes{
-	".py":     bothTripleQuotes,
-	".pyi":    bothTripleQuotes,
-	".pyw":    bothTripleQuotes,
-	".toml":   {double: tripleEscaped, single: tripleRaw},
-	".groovy": bothTripleQuotes,
-	".gradle": bothTripleQuotes,
-	".dart":   bothTripleQuotes,
-	".swift":  doubleTripleQuotes,
-	".jl":     doubleTripleQuotes,
-	".java":   doubleTripleQuotes,
-	".ex":     doubleTripleQuotes,
-	".exs":    doubleTripleQuotes,
-	".kt":     rawTripleQuotes,
-	".kts":    rawTripleQuotes,
-	".scala":  rawTripleQuotes,
-	".sc":     rawTripleQuotes,
-}
-
-// tripleQuotesForPath returns the triple-quoted delimiters recognized for path.
-func tripleQuotesForPath(path string) tripleQuotes {
-	return tripleQuoteLanguages[strings.ToLower(filepath.Ext(path))]
-}
-
-// hasTripleQuote reports whether line holds three q bytes starting at i.
-func hasTripleQuote(line string, i int, q byte) bool {
-	return i+tripleQuoteTail < len(line) &&
-		line[i] == q && line[i+1] == q && line[i+tripleQuoteTail] == q
-}
-
-// opensTripleQuote returns the state entered when a triple-quoted string
-// enabled by triple opens at line[i], or stateCode when none opens there.
-func opensTripleQuote(line string, i int, triple tripleQuotes) stringState {
-	switch {
-	case triple.double != tripleNone && hasTripleQuote(line, i, '"'):
-		return stateTripleDouble
-	case triple.single != tripleNone && hasTripleQuote(line, i, '\''):
-		return stateTripleSingle
-	default:
-		return stateCode
-	}
-}
-
-// scanMultiLineString advances over line[i] while inside a multi-line string
-// and returns the index of the last byte consumed and the resulting state.
-func scanMultiLineString(
-	line string,
-	i int,
-	state stringState,
-	triple tripleQuotes,
-) (int, stringState) {
-	c := line[i]
-
-	if state == stateBacktick {
-		if c == '`' {
-			return i, stateCode
-		}
-
-		return i, state
-	}
-
-	q, kind := byte('"'), triple.double
-	if state == stateTripleSingle {
-		q, kind = '\'', triple.single
-	}
-
-	switch {
-	case c == '\\' && kind == tripleEscaped:
-		return i + 1, state
-	case hasTripleQuote(line, i, q):
-		return i + tripleQuoteTail, stateCode
-	default:
-		return i, state
-	}
-}
-
-// isCommentMarker reports whether a // or # comment marker starts at line[i]
-// at line start or after whitespace.
-func isCommentMarker(line string, i int) bool {
-	if i > 0 && line[i-1] != ' ' && line[i-1] != '\t' {
-		return false
-	}
-
-	return line[i] == '#' || (line[i] == '/' && i+1 < len(line) && line[i+1] == '/')
-}
-
-// findCommentStart returns the byte index of the first line-comment marker
-// (// or #) that is a real code-level comment, or -1 if the line has none. It
-// tracks string state so a marker inside a string or URL literal (the "//" in
-// "https://…", a " //" inside "a // b", a "## Heading" inside a Python
-// triple-quoted string) is ignored. state is the multi-line string state
-// carried in from the previous line (Go raw strings, JS template literals and
-// the triple-quoted strings enabled by triple span lines); the updated state is
-// returned so the caller can thread it. Single/double quotes are line-local.
-func findCommentStart(
-	line string,
-	state stringState,
-	triple tripleQuotes,
-) (idx int, endState stringState) {
-	var quote byte
-
-	for i := 0; i < len(line); i++ {
-		if state != stateCode {
-			i, state = scanMultiLineString(line, i, state, triple)
-
-			continue
-		}
-
-		c := line[i]
-
-		opened := stateCode
-		if quote == 0 {
-			opened = opensTripleQuote(line, i, triple)
-		}
-
-		switch {
-		case quote != 0:
-			switch c {
-			case '\\':
-				i++
-			case quote:
-				quote = 0
-			}
-		case c == '`':
-			state = stateBacktick
-		case opened != stateCode:
-			state, i = opened, i+tripleQuoteTail
-		case c == '\'' || c == '"':
-			quote = c
-		case isCommentMarker(line, i):
-			return i, state
-		}
-	}
-
-	return -1, state
-}
-
 // isShebangOrDocMarker reports whether the comment body (marker stripped, not
 // trimmed) is a shebang (#!), a Rust doc comment (///) or a Rust inner doc
 // comment (//!). These sit flush against the marker, so a leading space (an
@@ -379,15 +202,12 @@ func (v *AICommentValidator) Validate(
 
 	cov := fileCoverage(hookCtx, false)
 
-	triple := tripleQuotesForPath(path)
-
 	violations := findAICommentViolations(
 		content,
 		v.patterns,
 		strict,
 		allowTestPhaseMarkers,
-		triple,
-		editStartState(hookCtx, triple),
+		newCommentScan(hookCtx),
 	)
 	if len(violations) == 0 {
 		return cov.mark(validator.Pass())
@@ -402,35 +222,6 @@ func (v *AICommentValidator) Validate(
 		validator.RefAIComments,
 		formatPatternViolations(header, violations),
 	))
-}
-
-// editStartState returns the multi-line string state at the point an Edit's
-// old_string sits in the file on disk, so a new_string fragment that begins
-// inside (or closes) a docstring or raw string is scanned in the right state.
-// It returns stateCode when the call is not a fragment edit or the edited text
-// cannot be located.
-func editStartState(hookCtx *hook.Context, triple tripleQuotes) stringState {
-	old := hookCtx.ToolInput.OldString
-	if hookCtx.ToolName != hook.ToolTypeEdit || hookCtx.ToolInput.Content != "" || old == "" {
-		return stateCode
-	}
-
-	data, err := os.ReadFile(filepath.Clean(hookCtx.GetFilePath()))
-	if err != nil {
-		return stateCode
-	}
-
-	idx := strings.Index(string(data), old)
-	if idx < 0 {
-		return stateCode
-	}
-
-	state := stateCode
-	for line := range strings.SplitSeq(string(data[:idx]), "\n") {
-		_, state = findCommentStart(line, state, triple)
-	}
-
-	return state
 }
 
 // strictForPath reports whether the strict block-all policy applies to the given
@@ -473,19 +264,20 @@ func findAICommentViolations(
 	patterns []*regexp.Regexp,
 	strict bool,
 	allowTestPhaseMarkers bool,
-	triple tripleQuotes,
-	start stringState,
+	scan commentScan,
 ) []violation {
 	var violations []violation
 
 	lines := strings.Split(content, "\n")
 
-	state := start
+	state := scan.start
 
 	for i, line := range lines {
 		var idx int
 
-		idx, state = findCommentStart(line, state, triple)
+		idx, state = findCommentStart(line, state, scan.syntax)
+		state = scan.lineStart(state)
+
 		if idx < 0 {
 			continue
 		}

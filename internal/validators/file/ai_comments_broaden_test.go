@@ -2,6 +2,7 @@ package file_test
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 
@@ -425,6 +426,26 @@ var _ = Describe("AICommentValidator multi-line string literals", func() {
 			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
 		})
 
+		It("does not carry string state between joined patch hunks", func() {
+			ctx.ToolInput.FilePath = writeSource(
+				"def total():\n    \"\"\"Old summary.\"\"\"\n    x = 1\n    return x\n",
+			)
+			ctx.ToolInput.NewString = "    \"\"\"New summary.\n    # add tax before rounding"
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
+		})
+
+		It("falls back to code state when replaced occurrences disagree", func() {
+			ctx.ToolInput.FilePath = writeSource(
+				"DOC = \"\"\"\nfoo\n\"\"\"\nfoo\n",
+			)
+			ctx.ToolInput.OldString = "foo"
+			ctx.ToolInput.NewString = "# holds the total\nfoo"
+			ctx.ToolInput.Additional = map[string]json.RawMessage{
+				"replace_all": json.RawMessage("true"),
+			}
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
+		})
+
 		It("scans from code state when the file cannot be read", func() {
 			ctx.ToolInput.FilePath = filepath.Join(dir, "missing.py")
 			ctx.ToolInput.OldString = "x = 1"
@@ -432,6 +453,27 @@ var _ = Describe("AICommentValidator multi-line string literals", func() {
 			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
 		})
 	})
+
+	DescribeTable(
+		"uses the comment marker of the file's language",
+		func(path, content string, passes bool) {
+			ctx.ToolInput.FilePath = path
+			ctx.ToolInput.Content = content
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(Equal(passes))
+		},
+		Entry("python hash comment without leading space", "/repo/gen.py",
+			"x = 1#\"\"\"\ny = 2", false),
+		Entry("triple quote inside a comment does not open a string", "/repo/gen.py",
+			"x = 1  # EXC:FILE011:keep \"\"\"\ny = 2\n# add tax before rounding", false),
+		Entry("python floor division is not a comment", "/repo/calc.py",
+			"half = total // 2", true),
+		Entry("java slash comment without leading space", "/repo/Main.java",
+			"int x = 1;//\"\"\"\nint y = 2;", false),
+		Entry("swift raw multi-line string", "/repo/main.swift",
+			"let s = #\"\"\"\n## Problem\n\"\"\"#", true),
+		Entry("kotlin raw string ending in a quote", "/repo/Main.kt",
+			"val s = \"\"\"say \"hi\"\"\"\"  // holds the text", false),
+	)
 
 	It("treats triple quotes as plain quotes in languages without them", func() {
 		ctx.ToolInput.FilePath = "/repo/main.go"
