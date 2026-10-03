@@ -34,7 +34,7 @@ func NewNestingValidator(log logger.Logger) *NestingValidator {
 const (
 	locationCommand = "command"
 	originSeparator = " > "
-	parseFailedText = "Command does not parse as shell, so what it runs cannot be inspected"
+	parseFailedText = "Command does not parse as bash, so what it runs cannot be inspected"
 	truncatedText   = "Command cannot be fully inspected, so what it runs is unknown"
 	kibibyte        = 1 << 10
 )
@@ -86,8 +86,8 @@ func parseFailedFinding(err error) validator.Finding {
 	return validator.Finding{
 		Reference: validator.RefShellNesting,
 		Location:  location,
-		Message:   "command does not parse as shell",
-		Required:  "valid shell syntax",
+		Message:   "command does not parse as bash",
+		Required:  "valid bash syntax",
 		Repair: "Fix the shell syntax at that position (unclosed quote, bracket or heredoc). " +
 			"Commands are parsed as bash, so rewrite zsh-only syntax in bash",
 	}
@@ -101,7 +101,8 @@ func zshSummary(zshErr *parser.ZshSyntaxError) string {
 		return "Command does not parse as bash and uses zsh syntax (" + zshErr.Construct +
 			") klaudiush cannot inspect"
 	case zshErr.Construct == "":
-		return "Command uses zsh syntax that bash does not parse, so klaudiush cannot inspect it"
+		return "Command does not parse as bash and may use zsh syntax, " +
+			"so klaudiush cannot inspect it"
 	default:
 		return "Command uses zsh syntax (" + zshErr.Construct + ") that bash does not parse, " +
 			"so klaudiush cannot inspect it"
@@ -110,7 +111,6 @@ func zshSummary(zshErr *parser.ZshSyntaxError) string {
 
 func zshSyntaxFinding(err error, zshErr *parser.ZshSyntaxError) validator.Finding {
 	f := parseFailedFinding(err)
-	f.Required = "bash syntax"
 
 	if zshErr.Possible {
 		f.Message = "command does not parse as bash; " + zshErr.Construct +
@@ -121,13 +121,13 @@ func zshSyntaxFinding(err error, zshErr *parser.ZshSyntaxError) validator.Findin
 		return f
 	}
 
-	construct := zshErr.Construct
-	if construct == "" {
-		construct = "this syntax"
+	if zshErr.Construct == "" {
+		f.Message = "command does not parse as bash, though the zsh grammar accepts it"
+	} else {
+		f.Message = zshErr.Construct + " is zsh syntax bash does not parse, and " +
+			"klaudiush inspects commands as bash"
 	}
 
-	f.Message = construct + " is zsh syntax bash does not parse, and klaudiush " +
-		"inspects commands as bash"
 	f.Repair = "Rewrite the command in bash syntax, fixing any syntax error at that " +
 		"position; klaudiush parses every command as bash, whatever the login shell"
 

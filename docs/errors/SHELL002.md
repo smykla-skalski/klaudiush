@@ -2,7 +2,7 @@
 
 ## Error
 
-Klaudiush cannot see what the command finally runs. The command does not parse as shell, runs another command through more layers of launchers, scripts, aliases or functions than klaudiush follows, runs a script klaudiush cannot read, runs a git subcommand that is neither built in, installed, nor an alias klaudiush can see, or takes eval's command line or a git or gh command word from a variable or command output klaudiush cannot resolve.
+Klaudiush cannot see what the command finally runs. The command does not parse as bash, runs another command through more layers of launchers, scripts, aliases or functions than klaudiush follows, runs a script klaudiush cannot read, runs a git subcommand that is neither built in, installed, nor an alias klaudiush can see, or takes eval's command line or a git or gh command word from a variable or command output klaudiush cannot resolve.
 
 ## Why this matters
 
@@ -18,7 +18,7 @@ Each finding names the operation klaudiush could not see through, the programs t
 
 | Cause                                 | Example                                         | Repair                                                    |
 |:--------------------------------------|:------------------------------------------------|:----------------------------------------------------------|
-| Command does not parse                | `git commit -m "x" && (`                        | Fix the syntax at the reported line and column            |
+| Command does not parse as bash        | `git commit -m "x" && (`                        | Fix the syntax at the reported line and column            |
 | zsh syntax bash does not parse        | `for x in ${(s:,:)list}; do echo $x; done`      | Rewrite it in bash syntax                                 |
 | Nesting past eight levels             | nine `env` wrappers around `git commit`         | Run the inner command directly                            |
 | Inspection budget spent               | a function fanning out to thousands of calls    | Split the work, call programs directly                    |
