@@ -21,3 +21,10 @@ stdout '"unresolved": 0'
 
 -- good.json --
 {"session_id":"file-session","tool_name":"Write","tool_input":{"file_path":"a.py","content":"x = 1\n"}}
+
+-- .klaudiush/config.toml --
+[validators.file.linter_ignore]
+enabled = true
+
+[validators.file.python]
+enabled = false

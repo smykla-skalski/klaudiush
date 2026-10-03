@@ -160,6 +160,7 @@ var _ = Describe("hook metrics", func() {
 		h.metrics.Store(&config.MetricsConfig{})
 		h.outcome.Store(&dispatcher.Outcome{
 			Checks:  []dispatcher.Check{{Validator: "validate-commit", Resource: "command"}},
+			Ran:     []dispatcher.Check{{Validator: "validate-commit", Resource: "command"}},
 			Timings: []dispatcher.Timing{{Validator: "validate-commit", Elapsed: time.Millisecond}},
 		})
 
