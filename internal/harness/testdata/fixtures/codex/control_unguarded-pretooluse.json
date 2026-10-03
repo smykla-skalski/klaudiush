@@ -14,9 +14,9 @@
   "expect": "pass",
   "config": "[protection]\nenabled = false\n\n[providers.claude]\nenabled = false\n\n[providers.codex]\nenabled = true\nexperimental = true\nhooks_config_path = \"{{HOME}}/.codex/hooks.json\"\n",
   "payload": {
-    "session_id": "01a10158-ba1a-7800-8318-09c4e7a0f94c",
-    "turn_id": "01a10158-ba38-75f0-b3c5-8f350f731dc1",
-    "transcript_path": "{{HOME}}/.codex/sessions/2026/10/03/rollout-2026-10-03T12-39-14-01a10158-ba1a-7800-8318-09c4e7a0f94c.jsonl",
+    "session_id": "01a10167-7627-7941-bbe4-a73f02bc6638",
+    "turn_id": "01a10167-764d-72d0-951d-a2025673d262",
+    "transcript_path": "{{HOME}}/.codex/sessions/2026/10/03/rollout-2026-10-03T12-55-20-01a10167-7627-7941-bbe4-a73f02bc6638.jsonl",
     "cwd": "{{WORK}}",
     "hook_event_name": "PreToolUse",
     "model": "klaudiush-scripted",

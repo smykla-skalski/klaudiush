@@ -165,6 +165,8 @@ run = """
 set -euo pipefail
 export KLAUDIUSH_HARNESS_LIVE=1
 export KLAUDIUSH_HARNESS_UPDATE_FIXTURES=1
+# Live fixtures are rewritten from scratch; Gemini docs fixtures are kept.
+rm -rf internal/harness/testdata/fixtures/claude internal/harness/testdata/fixtures/codex internal/harness/testdata/fixtures/opencode
 export KLAUDIUSH_HARNESS_BINARY="$PWD/bin/klaudiush"
 go test -count=1 -v ./internal/harness -run TestHarness -ginkgo.label-filter=live -ginkgo.v
 """

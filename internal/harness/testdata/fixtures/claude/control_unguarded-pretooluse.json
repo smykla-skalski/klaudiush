@@ -12,10 +12,10 @@
   "expect": "pass",
   "config": "[protection]\nenabled = false\n\n[providers.claude]\nenabled = true\n",
   "payload": {
-    "session_id": "56fcd153-8fb5-43c9-a1c2-b3ca758c3c26",
-    "transcript_path": "{{HOME}}/.claude/projects/{{WORK_SLUG}}/56fcd153-8fb5-43c9-a1c2-b3ca758c3c26.jsonl",
+    "session_id": "a10895ec-77cf-4c63-af90-d2a6e12bf430",
+    "transcript_path": "{{HOME}}/.claude/projects/{{WORK_SLUG}}/a10895ec-77cf-4c63-af90-d2a6e12bf430.jsonl",
     "cwd": "{{WORK}}",
-    "prompt_id": "a4d9668e-a0cb-435d-af82-19181b79881b",
+    "prompt_id": "66b9c2ab-42cd-426b-b266-7e2153f55fb7",
     "permission_mode": "default",
     "hook_event_name": "PreToolUse",
     "tool_name": "Bash",

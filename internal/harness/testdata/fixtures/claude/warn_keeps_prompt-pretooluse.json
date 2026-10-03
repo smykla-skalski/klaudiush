@@ -12,10 +12,10 @@
   "expect": "advise",
   "config": "[protection]\nenabled = true\npaths = [\"guarded/**\"]\n\n[validators.git.commit]\nseverity = \"warning\"\n\n[providers.claude]\nenabled = true\n",
   "payload": {
-    "session_id": "5bbc54c9-10cc-4868-97d2-23d817286848",
-    "transcript_path": "{{HOME}}/.claude/projects/{{WORK_SLUG}}/5bbc54c9-10cc-4868-97d2-23d817286848.jsonl",
+    "session_id": "4580fda0-5216-41f9-9ccb-1ae9944e21a1",
+    "transcript_path": "{{HOME}}/.claude/projects/{{WORK_SLUG}}/4580fda0-5216-41f9-9ccb-1ae9944e21a1.jsonl",
     "cwd": "{{WORK}}",
-    "prompt_id": "76f53b68-0ab3-4ab8-b3ab-020d7da81cd7",
+    "prompt_id": "55f65ead-039a-4652-b882-5eff86d91e82",
     "permission_mode": "default",
     "hook_event_name": "PreToolUse",
     "tool_name": "Bash",

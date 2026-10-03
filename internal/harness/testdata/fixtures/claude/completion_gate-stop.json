@@ -15,10 +15,10 @@
   "config": "[protection]\nenabled = true\npaths = [\"guarded/**\"]\n\n[evidence]\nenabled = true\n\n[[evidence.checks]]\nname = \"tests\"\ncommands = [\"./check.sh\"]\npaths = [\"src/**\"]\n\n[providers.claude]\nenabled = true\n",
   "replay_skip": "the gate compares against a baseline that earlier hooks of the session recorded",
   "payload": {
-    "session_id": "9dde3914-239e-4842-99b3-e7daacb1fd9d",
-    "transcript_path": "{{HOME}}/.claude/projects/{{WORK_SLUG}}/9dde3914-239e-4842-99b3-e7daacb1fd9d.jsonl",
+    "session_id": "50f241bf-fba1-41fb-a300-13ece7af8b22",
+    "transcript_path": "{{HOME}}/.claude/projects/{{WORK_SLUG}}/50f241bf-fba1-41fb-a300-13ece7af8b22.jsonl",
     "cwd": "{{WORK}}",
-    "prompt_id": "d41d1067-fed2-4ed3-8eb8-0e23a1812432",
+    "prompt_id": "4e86b8a4-23dc-47ef-8d70-ae419649b30f",
     "permission_mode": "default",
     "hook_event_name": "Stop",
     "stop_hook_active": false,

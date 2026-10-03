@@ -15,10 +15,10 @@
     "notes.md": "# T\n### Skip\ntext\n"
   },
   "payload": {
-    "session_id": "0e58e104-7ecf-416f-8f06-015a551cfbcc",
-    "transcript_path": "{{HOME}}/.claude/projects/{{WORK_SLUG}}/0e58e104-7ecf-416f-8f06-015a551cfbcc.jsonl",
+    "session_id": "927a84f9-3078-4650-bc28-7cca503d7a4d",
+    "transcript_path": "{{HOME}}/.claude/projects/{{WORK_SLUG}}/927a84f9-3078-4650-bc28-7cca503d7a4d.jsonl",
     "cwd": "{{WORK}}",
-    "prompt_id": "8f345eae-31e9-4544-beb8-273a091cb063",
+    "prompt_id": "27e03c05-9c8b-453b-b835-9ca35a7ad158",
     "permission_mode": "default",
     "hook_event_name": "PostToolUse",
     "tool_name": "Bash",
@@ -34,7 +34,7 @@
       "noOutputExpected": false
     },
     "tool_use_id": "toolu_0001",
-    "duration_ms": 62
+    "duration_ms": 56
   },
   "response": {
     "hookSpecificOutput": {

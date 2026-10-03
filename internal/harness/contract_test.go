@@ -228,3 +228,20 @@ var _ = Describe("committed fixtures", func() {
 		}
 	})
 })
+
+var _ = Describe("events klaudiush init registers", func() {
+	DescribeTable("are all events the provider fires today",
+		func(provider hook.Provider) {
+			registered := harness.RegisteredEvents(provider)
+			Expect(registered).NotTo(BeEmpty())
+
+			for _, event := range registered {
+				Expect(harness.CheckEvent(provider, event)).To(Succeed(), event)
+			}
+		},
+		Entry("claude", hook.ProviderClaude),
+		Entry("codex", hook.ProviderCodex),
+		Entry("gemini", hook.ProviderGemini),
+		Entry("opencode", hook.ProviderOpenCode),
+	)
+})

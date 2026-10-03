@@ -15,9 +15,9 @@
   "config": "[protection]\nenabled = true\npaths = [\"guarded/**\"]\n\n[evidence]\nenabled = true\n\n[[evidence.checks]]\nname = \"tests\"\ncommands = [\"./check.sh\"]\npaths = [\"src/**\"]\n\n[providers.claude]\nenabled = false\n\n[providers.codex]\nenabled = true\nexperimental = true\nhooks_config_path = \"{{HOME}}/.codex/hooks.json\"\n",
   "replay_skip": "the gate compares against a baseline that earlier hooks of the session recorded",
   "payload": {
-    "session_id": "01a10158-cf2c-7170-801d-edca1fb1b901",
-    "turn_id": "01a10158-cf47-74a0-8809-2ad2439291a1",
-    "transcript_path": "{{HOME}}/.codex/sessions/2026/10/03/rollout-2026-10-03T12-39-19-01a10158-cf2c-7170-801d-edca1fb1b901.jsonl",
+    "session_id": "01a10167-9054-77a2-9d8a-7d45d51faf4f",
+    "turn_id": "01a10167-906f-77e3-959d-2622d500e0a2",
+    "transcript_path": "{{HOME}}/.codex/sessions/2026/10/03/rollout-2026-10-03T12-55-26-01a10167-9054-77a2-9d8a-7d45d51faf4f.jsonl",
     "cwd": "{{WORK}}",
     "hook_event_name": "Stop",
     "model": "klaudiush-scripted",

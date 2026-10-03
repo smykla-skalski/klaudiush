@@ -54,7 +54,6 @@ type Sandbox struct {
 	Bin      string
 	Captures string
 
-	pathDirs []string
 	extraEnv map[string]string
 	aliases  []string
 	redact   map[string]string
@@ -120,17 +119,9 @@ func (s *Sandbox) SetEnv(key, value string) {
 	s.extraEnv[key] = value
 }
 
-// AddPath puts a directory on the sandbox PATH after the sandbox bin.
-func (s *Sandbox) AddPath(dir string) {
-	if dir != "" && !slices.Contains(s.pathDirs, dir) {
-		s.pathDirs = append(s.pathDirs, dir)
-	}
-}
-
 // Env is the complete environment for processes run in the sandbox.
 func (s *Sandbox) Env() []string {
-	path := append([]string{s.Bin}, s.pathDirs...)
-	path = append(path, systemPath...)
+	path := append([]string{s.Bin}, systemPath...)
 	tmp := filepath.Join(s.Root, "tmp")
 
 	// Claude Code keeps per-project task files under /tmp/claude-<uid>

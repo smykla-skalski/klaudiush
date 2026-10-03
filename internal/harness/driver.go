@@ -85,7 +85,7 @@ func ResolveBinary(envVar, name string) string {
 
 const decimalBase = 10
 
-var versionPattern = regexp.MustCompile(`\d+\.\d+\.\d+`)
+var versionPattern = regexp.MustCompile(`\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?`)
 
 // Version runs `<binary> --version` in the sandbox and returns the version
 // number it prints.

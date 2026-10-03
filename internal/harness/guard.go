@@ -11,20 +11,17 @@ import (
 )
 
 // guardedFiles are the real-home files a leaking harness run would touch:
-// hook registrations, harness and klaudiush configuration, and credentials.
-// Files that a running agent session rewrites on its own (~/.claude.json,
-// transcripts, the klaudiush log) are left out so the guard does not report
-// the caller's own activity.
+// hook registrations and harness and klaudiush configuration. Files that a
+// running agent session rewrites on its own (~/.claude.json, credential
+// files a token refresh rewrites, transcripts, the klaudiush log) are left
+// out so the guard does not report the caller's own activity.
 var guardedFiles = []string{
 	".claude/settings.json",
 	".claude/settings.local.json",
-	".claude/.credentials.json",
 	".codex/config.toml",
 	".codex/hooks.json",
-	".codex/auth.json",
 	".klaudiush/config.toml",
 	".gemini/settings.json",
-	".local/share/opencode/auth.json",
 }
 
 // guardedConfigFiles live under XDG_CONFIG_HOME.
@@ -43,7 +40,7 @@ type fileStamp struct {
 
 // HomeGuard detects changes to the real home directory's harness and
 // klaudiush configuration across a live run. It compares file metadata
-// only and never opens the files, so credentials are not read.
+// only and never opens the files.
 type HomeGuard struct {
 	stamps map[string]fileStamp
 }

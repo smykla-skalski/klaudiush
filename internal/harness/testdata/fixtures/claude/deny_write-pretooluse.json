@@ -12,10 +12,10 @@
   "expect": "deny",
   "config": "[protection]\nenabled = true\npaths = [\"guarded/**\"]\n\n[providers.claude]\nenabled = true\n",
   "payload": {
-    "session_id": "ead5a504-8f41-4d60-bba9-d8f24a64e1db",
-    "transcript_path": "{{HOME}}/.claude/projects/{{WORK_SLUG}}/ead5a504-8f41-4d60-bba9-d8f24a64e1db.jsonl",
+    "session_id": "909db1d5-6881-478d-9633-ec10146690e2",
+    "transcript_path": "{{HOME}}/.claude/projects/{{WORK_SLUG}}/909db1d5-6881-478d-9633-ec10146690e2.jsonl",
     "cwd": "{{WORK}}",
-    "prompt_id": "f3ab33f1-5dd4-47e7-8893-981694e687d8",
+    "prompt_id": "572809c9-c423-441a-b40a-5216a7f84e70",
     "permission_mode": "default",
     "hook_event_name": "PreToolUse",
     "tool_name": "Write",

@@ -12,15 +12,15 @@
     "PreToolUse"
   ],
   "expect": "deny",
-  "config": "[protection]\nenabled = true\npaths = [\"guarded/**\"]\n\n[providers.claude]\nenabled = false\n\n[providers.codex]\nenabled = true\nexperimental = true\nhooks_config_path = \"{{HOME}}/.codex/hooks.json\"\n",
+  "config": "[validators.git.commit\nbroken\n",
   "workspace": {
     ".klaudiush/config.toml": "[validators.git.commit\nbroken\n",
     "{{HOME}}/.config/klaudiush/config.toml": "[failure_policy]\nmode = \"block\"\n"
   },
   "payload": {
-    "session_id": "01a10158-d50e-7623-81f3-dbc3683cb73d",
-    "turn_id": "01a10158-d52d-7281-8f7b-6af3c0a5bdf4",
-    "transcript_path": "{{HOME}}/.codex/sessions/2026/10/03/rollout-2026-10-03T12-39-21-01a10158-d50e-7623-81f3-dbc3683cb73d.jsonl",
+    "session_id": "01a10167-95ec-7dd2-8e01-d415e3b219b9",
+    "turn_id": "01a10167-9606-77c3-af20-38fca099ef91",
+    "transcript_path": "{{HOME}}/.codex/sessions/2026/10/03/rollout-2026-10-03T12-55-28-01a10167-95ec-7dd2-8e01-d415e3b219b9.jsonl",
     "cwd": "{{WORK}}",
     "hook_event_name": "PreToolUse",
     "model": "klaudiush-scripted",

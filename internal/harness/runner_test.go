@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -33,6 +34,7 @@ esac
 // calls the hook did not deny, the way a real harness does.
 type miniHarness struct {
 	model *harness.ScriptedModel
+	hooks string
 }
 
 func (*miniHarness) Name() string            { return "mini" }
@@ -56,10 +58,15 @@ func (*miniHarness) AfterInstall(_ context.Context, _ *harness.Sandbox, _ []harn
 	return nil
 }
 
-func (m *miniHarness) Prepare(_ *harness.Sandbox, model *harness.ScriptedModel) error {
+func (m *miniHarness) Prepare(sb *harness.Sandbox, model *harness.ScriptedModel) error {
 	m.model = model
 
-	return nil
+	hooks := m.hooks
+	if hooks == "" {
+		hooks = `{"hooks":{"PreToolUse":[]}}`
+	}
+
+	return sb.WriteFile(m.HookFile(sb), hooks, 0o600)
 }
 
 func (*miniHarness) ShellCall(command string) harness.Call {
@@ -79,6 +86,10 @@ func (m *miniHarness) Run(
 	prompt string,
 	_ harness.RunOptions,
 ) ([]byte, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	messages := []map[string]any{{"role": "user", "content": prompt}}
 
 	for range 5 {
@@ -111,8 +122,8 @@ func (m *miniHarness) Run(
 			hookCmd.Env = sb.Env()
 			hookCmd.Stdin = strings.NewReader(payload)
 
-			out, err := hookCmd.Output()
-			Expect(err).NotTo(HaveOccurred())
+			// A hook that exits non-zero does not block, as in Claude and Codex.
+			out, _ := hookCmd.Output()
 
 			result := string(out)
 			if !strings.Contains(result, `"deny"`) {
@@ -206,7 +217,7 @@ var _ = Describe("Runner", func() {
 
 	It("proves a denied call left no side effect and keeps its capture as a fixture", func() {
 		result := run("deny_shell")
-		Expect(result.Scenario.Check(result)).To(BeEmpty())
+		Expect(result.Problems()).To(BeEmpty())
 
 		fixtures, err := result.Fixtures()
 		Expect(err).NotTo(HaveOccurred())
@@ -218,7 +229,7 @@ var _ = Describe("Runner", func() {
 
 	It("lets the unguarded control change the file", func() {
 		result := run("control_unguarded")
-		Expect(result.Scenario.Check(result)).To(BeEmpty())
+		Expect(result.Problems()).To(BeEmpty())
 	})
 
 	It(
@@ -227,7 +238,7 @@ var _ = Describe("Runner", func() {
 			Expect(writeExecutable(runner.Binary, "#!/bin/sh\ncat > /dev/null\n")).To(Succeed())
 
 			result := run("deny_shell")
-			problems := result.Scenario.Check(result)
+			problems := result.Problems()
 			Expect(problems).To(ContainElement(ContainSubstring("side effect happened")))
 			Expect(
 				problems,
@@ -238,6 +249,46 @@ var _ = Describe("Runner", func() {
 			Expect(err).To(MatchError(ContainSubstring("no before_tool capture")))
 		},
 	)
+
+	It("flags crashing hooks, unsupported response fields and stale installed events", func() {
+		Expect(writeExecutable(
+			runner.Binary,
+			"#!/bin/sh\n[ \"$1\" = init ] && exit 0\ncat > /dev/null\necho '{\"verdict\":\"x\"}'\nexit 3\n",
+		)).
+			To(Succeed())
+
+		result, cleanup, err := runner.Run(
+			context.Background(),
+			&miniHarness{
+				hooks: `{"hooks":{"AfterToolUse":[]}}`,
+			},
+			"1.0.0",
+			scenarioNamed("control_unguarded"),
+		)
+		DeferCleanup(cleanup)
+		Expect(err).NotTo(HaveOccurred())
+
+		problems := result.Problems()
+		Expect(problems).To(ContainElement(ContainSubstring("hook exited 3")))
+		Expect(problems).To(ContainElement(ContainSubstring("unsupported field verdict")))
+		Expect(problems).To(ContainElement(ContainSubstring("installed hook")))
+	})
+
+	It("confirms a known gap only when the denied call ran unchecked", func() {
+		Expect(run("deny_shell").GapConfirmed()).To(BeFalse())
+
+		Expect(writeExecutable(runner.Binary, "#!/bin/sh\ncat > /dev/null\n")).To(Succeed())
+		Expect(run("deny_shell").GapConfirmed()).To(BeTrue())
+	})
+
+	It("reports a harness that ran past the timeout", func() {
+		runner.Timeout = time.Nanosecond
+
+		result := run("deny_shell")
+		Expect(result.TimedOut).To(BeTrue())
+		Expect(result.Problems()).To(ContainElement(ContainSubstring("did not finish")))
+		Expect(result.GapConfirmed()).To(BeFalse())
+	})
 
 	It("fails setup when klaudiush init fails", func() {
 		Expect(writeExecutable(runner.Binary, "#!/bin/sh\necho broken; exit 1\n")).To(Succeed())

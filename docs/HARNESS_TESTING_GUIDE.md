@@ -53,7 +53,7 @@ A harness that is not installed, or whose `--version` does not run in the sandbo
 
 ## What each scenario proves
 
-Every denial scenario checks the file system, not only the hook response: the file the call would have created must not exist.
+Every denial scenario checks the file system, not only the hook response: the file the call would have created must not exist. Every scenario also requires that the harness finished before the timeout, every hook exited 0, every captured payload and response passes the contract checks below, and every event in the installed hook file is one the provider fires.
 
 | Scenario | Claude | Codex | Proves |
 |:--|:--|:--|:--|
@@ -78,7 +78,10 @@ Each scenario gets its own sandbox with `home/`, `work/`, `bin/` and `captures/`
 - opencode runs with `--standalone`. Without it, opencode 2.x attaches to the user's background service, which runs with the real configuration.
 - Codex hooks are trusted the way `/hooks` does: the suite asks `codex app-server` for the hook hashes and records them in the sandbox `config.toml`. The trust bypass flag is not used.
 - No credentials are read or copied. The scripted model accepts a fixed placeholder key.
-- Before the run the suite records the size, mode and modification time of the real harness and klaudiush configuration and credential files (never their contents), and fails if any changed afterwards.
+- Claude Code keeps per-project task files under `/tmp/claude-<uid>` whatever `TMPDIR` says, so `CLAUDE_CODE_TMPDIR` points into the sandbox too.
+- Before the run the suite records the size, mode and modification time of the real harness hook and configuration files and the klaudiush configuration (never their contents), and fails if any changed afterwards. Credential files are left out: an agent session running elsewhere may refresh its token mid-run.
+- opencode loads its OpenAI-compatible provider package from npm on first use, so its run needs network access to the registry. Nothing is written outside the sandbox.
+- A harness killed at the run timeout can leave child processes behind; they write only into the removed sandbox.
 
 ## Contract checks in CI
 
@@ -105,4 +108,4 @@ Run `mise run test:harness:fixtures` after a harness upgrade or a response chang
 
 ## Known gaps
 
-- **opencode 2.x does not load the bridge plugin.** opencode 2.0 accepts only a module whose default export is `{id, setup}` or `{id, effect}` and registers tool hooks through `ctx.tool.hook("execute.before", ...)`. The generated plugin uses the 1.x API (named plugin functions returning `tool.execute.before`), so opencode logs a warning, skips it, and runs every tool unchecked. The live suite confirms the gap with `deny_shell` (the denied file is created) and reports it as `known_gap`. When the bridge supports 2.x the scenario starts passing and the suite fails until the gap entry in `internal/harness/driver_opencode.go` is removed.
+- **opencode 2.x does not load the bridge plugin.** opencode 2.0 accepts only a module whose default export is `{id, setup}` or `{id, effect}` and registers tool hooks through `ctx.tool.hook("execute.before", ...)`. The generated plugin uses the 1.x API (named plugin functions returning `tool.execute.before`), so opencode logs a warning, skips it, and runs every tool unchecked. The live suite confirms the gap with `deny_shell`: it counts as confirmed only when the denied file was created and no hook denied the call, and any other result fails. It is reported as `known_gap`. When the bridge supports 2.x the scenario starts passing and the suite fails until the gap entry in `internal/harness/driver_opencode.go` is removed.

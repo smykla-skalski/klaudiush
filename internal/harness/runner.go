@@ -30,6 +30,7 @@ type Result struct {
 	Config   string
 	Output   []byte
 	RunErr   error
+	TimedOut bool
 	Captures []Capture
 }
 
@@ -88,6 +89,7 @@ func (r Runner) Run(
 	defer cancel()
 
 	result.Output, result.RunErr = d.Run(runCtx, sb, prompt, opts)
+	result.TimedOut = errors.Is(runCtx.Err(), context.DeadlineExceeded)
 
 	captures, err := sb.ReadCaptures()
 	result.Captures = captures
@@ -125,13 +127,13 @@ func (r Runner) setup(ctx context.Context, d Driver, sc Scenario, result *Result
 		}
 	}
 
-	result.Config = sc.ProjectConfig(d, sb)
+	projectConfig := sc.ProjectConfig(d, sb)
 
 	steps := []func() error{
 		func() error {
 			return sb.WriteFile(
 				filepath.Join(sb.Work, ".klaudiush", "config.toml"),
-				result.Config,
+				projectConfig,
 				filePerm,
 			)
 		},
@@ -165,7 +167,85 @@ func (r Runner) setup(ctx context.Context, d Driver, sc Scenario, result *Result
 		}
 	}
 
-	return nil
+	config, err := readFile(filepath.Join(sb.Work, ".klaudiush", "config.toml"))
+	result.Config = string(config)
+
+	return err
+}
+
+// Problems runs the checks every scenario shares, then the scenario's own:
+// the harness finished in time, every hook exited cleanly, every payload
+// and response matches the provider contract, and every event klaudiush
+// registered is one the provider fires.
+func (res *Result) Problems() []string {
+	var problems []string
+
+	if res.TimedOut {
+		problems = append(problems, "the harness did not finish before the run timeout")
+	}
+
+	provider := res.Driver.Provider()
+
+	for _, capture := range res.Captures {
+		event := capture.Event()
+
+		if capture.Status != 0 {
+			problems = append(problems, event+" hook exited "+itoa(capture.Status)+": "+
+				strings.TrimSpace(string(capture.Stderr)))
+		}
+
+		if err := CheckPayload(provider, event, capture.Input); err != nil {
+			problems = append(problems, err.Error())
+		}
+
+		if err := CheckResponse(provider, event, capture.Output); err != nil {
+			problems = append(problems, err.Error())
+		}
+	}
+
+	problems = append(problems, res.checkRegisteredEvents()...)
+
+	return append(problems, res.Scenario.Check(res)...)
+}
+
+// checkRegisteredEvents checks the event names in the installed JSON hook
+// file. opencode registers through a plugin, not a JSON file.
+func (res *Result) checkRegisteredEvents() []string {
+	if res.Driver.Provider() == hook.ProviderOpenCode {
+		return nil
+	}
+
+	data, err := readFile(res.Driver.HookFile(res.Sandbox))
+	if err != nil {
+		return []string{err.Error()}
+	}
+
+	var file struct {
+		Hooks map[string]json.RawMessage `json:"hooks"`
+	}
+
+	if err := json.Unmarshal(data, &file); err != nil {
+		return []string{"installed hook file is not JSON: " + err.Error()}
+	}
+
+	var problems []string
+
+	for event := range file.Hooks {
+		if err := CheckEvent(res.Driver.Provider(), event); err != nil {
+			problems = append(problems, "installed hook: "+err.Error())
+		}
+	}
+
+	return problems
+}
+
+// GapConfirmed reports whether a known gap reproduced exactly: the denied
+// shell call ran and no hook denied it.
+func (res *Result) GapConfirmed() bool {
+	_, denied := res.find(hook.CanonicalEventBeforeTool, OutcomeDeny)
+
+	return !res.TimedOut && !denied &&
+		fileExists(filepath.Join(res.Sandbox.Work, "guarded", "shell.txt"))
 }
 
 // Fixtures turns the scenario's recorded captures into redacted fixtures.

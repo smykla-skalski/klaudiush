@@ -172,12 +172,13 @@ func runScenario(
 		Fail(err.Error())
 	}
 
-	problems := scenario.Check(result)
+	problems := result.Problems()
 
 	if gap != "" {
-		if len(problems) == 0 {
-			record(harness.StatusFailed, "known gap no longer reproduces")
-			Fail(driver.Name() + " " + version + " now enforces: drop the known gap")
+		if !result.GapConfirmed() {
+			detail := "known gap did not reproduce as recorded: " + strings.Join(problems, "; ")
+			record(harness.StatusFailed, detail)
+			Fail(driver.Name() + " " + version + ": " + detail)
 		}
 
 		record(harness.StatusKnownGap, gap)

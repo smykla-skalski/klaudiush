@@ -1,6 +1,7 @@
 package harness
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -172,6 +173,14 @@ func parallelScenario() Scenario {
 		Check: func(r *Result) []string {
 			problems := r.expectAbsent("guarded/parallel.txt")
 			problems = append(problems, r.expectFiles("parallel-ok.txt")...)
+			problems = append(
+				problems,
+				r.expectCapture(hook.CanonicalEventBeforeTool, OutcomeDeny, "POL001")...)
+
+			if capture, ok := r.find(hook.CanonicalEventBeforeTool, OutcomeDeny); ok &&
+				!strings.Contains(string(capture.Input), "guarded/parallel.txt") {
+				problems = append(problems, "the denied call is not the guarded one")
+			}
 
 			if n := r.count(hook.CanonicalEventBeforeTool); n < minParallelHooks {
 				problems = append(problems, "want at least 2 before-tool hooks, got "+itoa(n))
@@ -199,8 +208,7 @@ func warnPromptsScenario() Scenario {
 				r.expectCapture(hook.CanonicalEventBeforeTool, OutcomeAdvise, "GIT010")...)
 			problems = append(problems, r.expectNoPermissionDecision()...)
 
-			if !strings.Contains(string(r.Output), "permission_denials") ||
-				strings.Contains(string(r.Output), `"permission_denials":[]`) {
+			if !deniedByHarness(r.Output) {
 				problems = append(
 					problems,
 					"the harness did not deny the unapproved command itself",
@@ -338,6 +346,16 @@ func subagentScenario() Scenario {
 		},
 		Records: []Record{{hook.CanonicalEventBeforeTool, OutcomeDeny}},
 	}
+}
+
+// deniedByHarness reports whether Claude's print-mode result lists a
+// permission denial of its own.
+func deniedByHarness(output []byte) bool {
+	var result struct {
+		PermissionDenials []json.RawMessage `json:"permission_denials"`
+	}
+
+	return json.Unmarshal(output, &result) == nil && len(result.PermissionDenials) > 0
 }
 
 // writeGlobal writes the sandbox global klaudiush configuration.
