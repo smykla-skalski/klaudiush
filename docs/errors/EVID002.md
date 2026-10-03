@@ -16,7 +16,7 @@ Run the verifier for each prerequisite through the shell, as its own command:
 klaudiush evidence run plan
 ```
 
-While the phase is restricted the shell accepts only this command (or `klaudiush evidence status`), run from the session's directory without `cd` or `dir_path`, and `write_file` and `replace` may change only the paths in `writable_paths`, never configuration or the scripts a prerequisite runs. Once every prerequisite passed, Gemini is offered every tool again on the next model call. Changing the files a prerequisite covers withholds the tools again until it passes on the new content.
+While the phase is restricted the shell accepts only this command (or `klaudiush evidence status`), run from the session's directory without `cd` or `dir_path`, and `write_file` and `replace` may change only the paths in `writable_paths`, never klaudiush or harness configuration or the script a prerequisite command names. Once every prerequisite passed, Gemini is offered every tool again on the next model call. Changing the files a prerequisite covers withholds the tools again until it passes on the new content.
 
 If the check fails, fix what it reports first. `klaudiush evidence status` shows whether the phase is restricted and each check's latest result.
 

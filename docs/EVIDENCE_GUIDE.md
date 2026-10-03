@@ -170,7 +170,7 @@ writable_paths = ["PLAN.md"]
 
 Choose prerequisites that cover only what the phase produces, such as a plan file. A prerequisite covering the code under work closes the phase again on the first edit, and one whose fix needs a withheld tool (failing tests over `src/**`) can never pass.
 
-`writable_paths` never opens, in any directory and in any letter case, `.klaudiush/`, `klaudiush.toml`, `.git/`, `.gemini/`, `.claude/`, `.codex/` or `.mcp.json`, nor the program or interpreter script a prerequisite command runs (`./scripts/check.sh`, `sh scripts/check.sh`). A nested configuration would change what the verifier runs. Files a check only reads, such as the plan it tests, stay writable.
+`writable_paths` never opens, in any directory and in any letter case, `.klaudiush/`, `klaudiush.toml`, `.git/`, `.gemini/`, `.claude/`, `.codex/` or `.mcp.json`, nor the program a prerequisite command names or the script a shell or language interpreter is given directly (`./scripts/check.sh`, `sh scripts/check.sh`). A nested configuration would change what the verifier runs. Files a check only reads, such as the plan it tests, stay writable, and klaudiush cannot tell them apart from files a check runs indirectly (`env sh x.sh`, `python3 -m pkg`, a `Makefile`, sourced scripts). Keep everything a prerequisite runs out of `writable_paths`.
 
 While a prerequisite has no passing result:
 
