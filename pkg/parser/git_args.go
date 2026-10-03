@@ -157,7 +157,6 @@ type writtenArg struct {
 	view    string
 	literal bool
 	tilde   bool
-	splits  bool
 	lookup  string
 }
 
@@ -369,7 +368,8 @@ func (w *astWalker) forwardAt(cmd Command, indexes []int) map[string]writtenArg 
 
 // forwardPositional records how a function body passes on the arguments of
 // cmd. A positional parameter the body leaves unquoted ($1, $@) is split
-// and globbed again, so the argument it holds counts as unquoted text.
+// (substitutePositional passes on its fields) and globbed again, so each
+// field counts as unquoted text.
 func (w *astWalker) forwardPositional(cmd Command, body string) map[string]writtenArg {
 	var quoted []int
 
@@ -389,20 +389,22 @@ func (w *astWalker) forwardPositional(cmd Command, body string) map[string]writt
 		}
 
 		for i := first; i < last; i++ {
-			if len(ref) > 1 && strings.HasPrefix(ref, `"`) && strings.HasSuffix(ref, `"`) {
+			if strings.HasPrefix(ref, `"`) || strings.HasSuffix(ref, `"`) {
 				quoted = append(quoted, i)
-			} else {
-				unquoted[cmd.Args[i]] = true
+
+				continue
+			}
+
+			for field := range strings.FieldsSeq(cmd.Args[i]) {
+				unquoted[field] = true
 			}
 		}
 	}
 
 	forward := w.forwardAt(cmd, quoted)
 
-	for arg := range unquoted {
-		split := unknownArg(arg)
-		split.splits = true
-		forward[arg] = split
+	for field := range unquoted {
+		forward[field] = unknownArg(field)
 	}
 
 	return forward
@@ -543,10 +545,6 @@ func (w *astWalker) gitArg(
 	expanded, detail := w.splitView(written.view)
 	if detail != "" {
 		return arg, true, detail
-	}
-
-	if written.splits && strings.ContainsAny(arg, ifsBlanks) {
-		return arg, true, DetailWordSplit
 	}
 
 	flag, isValue := values[i]

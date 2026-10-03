@@ -80,6 +80,31 @@ type Command struct {
 	startup      map[string]startupValue
 	dynamicWords map[string]bool
 	written      map[string][]writtenArg
+	quoting      map[string]wordQuoting
+}
+
+// wordQuoting records how the words that rendered to one argument were
+// written: an expansion quoted that way stays a word when it is empty.
+type wordQuoting uint8
+
+const (
+	quotedWord wordQuoting = 1 << iota
+	unquotedWord
+)
+
+// argQuoting maps each rendered argument to how its words were quoted.
+func argQuoting(words []*syntax.Word) map[string]wordQuoting {
+	quoting := make(map[string]wordQuoting, len(words))
+
+	for _, word := range words {
+		if keepsEmptyWord(word) {
+			quoting[argWord(word)] |= quotedWord
+		} else {
+			quoting[argWord(word)] |= unquotedWord
+		}
+	}
+
+	return quoting
 }
 
 // anyWordDynamic reports whether any word takes part of its value from
@@ -322,17 +347,33 @@ func extractHeredocFromCmdSubst(cmdSubst *syntax.CmdSubst) string {
 	return ""
 }
 
-// wordsToStrings converts a slice of syntax.Word to string slice.
+// wordsToStrings converts a slice of syntax.Word to string slice, keeping
+// the empty words the shell keeps.
 func wordsToStrings(words []*syntax.Word) []string {
 	result := make([]string, 0, len(words))
 
 	for _, word := range words {
-		if s := wordToString(word); s != "" {
+		if s := wordToString(word); s != "" || keepsEmptyWord(word) {
 			result = append(result, s)
 		}
 	}
 
 	return result
+}
+
+// keepsEmptyWord reports a word the shell passes as an argument even when
+// it is empty: any single- or double-quoted part keeps the word, so sudo -u
+// "" git push gives -u an empty value. An unquoted word that expands to
+// nothing disappears, as with x=; $x git push.
+func keepsEmptyWord(word *syntax.Word) bool {
+	return word != nil && slices.ContainsFunc(word.Parts, func(part syntax.WordPart) bool {
+		switch part.(type) {
+		case *syntax.SglQuoted, *syntax.DblQuoted:
+			return true
+		default:
+			return false
+		}
+	})
 }
 
 // hasDoubleQuotedBackticks checks if a word contains backticks within double quotes.

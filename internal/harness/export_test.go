@@ -1,6 +1,7 @@
 package harness
 
 import (
+	"io"
 	"syscall"
 	"time"
 )
@@ -19,6 +20,21 @@ const CodexCatalog = codexCatalog
 
 // SessionCount returns how many session ids the sandbox still records.
 func (s *Sandbox) SessionCount() int { return len(s.trackedSessions()) }
+
+// KeeperPID returns the pid of the sandbox keeper, or 0 before one runs.
+func (s *Sandbox) KeeperPID() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.keeper == nil {
+		return 0
+	}
+
+	return s.keeper.pid
+}
+
+// KeeperMain runs the keeper loop on r and returns its exit code.
+func KeeperMain(r io.Reader) int { return runKeeper(r) }
 
 // StartOf returns the start identity of a live process.
 func StartOf(pid int) (int64, bool) { return processStart(pid) }
