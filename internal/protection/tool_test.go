@@ -71,7 +71,7 @@ var _ = Describe("ToolTargets", func() {
 	})
 
 	It("ignores read-only tools", func() {
-		for _, name := range []string{"Read", "Grep", "Glob", "mcp__fs__read_file", "mcp__fs__listDirectory", "WebFetch", "TodoWrite"} {
+		for _, name := range []string{"Read", "Grep", "Glob", "read_file", "listDirectory", "WebFetch", "TodoWrite"} {
 			ctx := toolContext(
 				name,
 				map[string]any{"path": ".claude/settings.json", "file_path": "x/y"},
@@ -112,7 +112,7 @@ var _ = Describe("PolicyCommand", func() {
 			_, ok := protection.PolicyCommand(commandNamed("klaudiush", args...))
 			Expect(ok).To(BeFalse())
 		},
-		Entry("hook mode", "--provider", "codex", "--event", "PreToolUse"),
+		Entry("help", "--help"),
 		Entry("version", "version"),
 		Entry("evidence run", "evidence", "run", "tests"),
 		Entry("doctor", "doctor", "--category", "protection"),
@@ -122,4 +122,52 @@ var _ = Describe("PolicyCommand", func() {
 		Entry("bypass status", "bypass", "status"),
 		Entry("backup list", "backup", "list"),
 	)
+})
+
+var _ = Describe("ToolTargets for MCP and opencode", func() {
+	It("checks MCP tools whatever their name says", func() {
+		for _, name := range []string{"mcp__x__find_and_replace", "mcp__x__get_and_write", "mcp__fs__read_file"} {
+			ctx := toolContext(name, map[string]any{"path": ".claude/settings.json"})
+			Expect(protection.ToolTargets(ctx)).To(ContainElement(".claude/settings.json"), name)
+		}
+	})
+
+	It("reads opencode patchText and paths with spaces", func() {
+		ctx := toolContext("apply_patch", map[string]any{
+			"patchText": "*** Begin Patch\n*** Update File: .claude/settings.json\n*** End Patch",
+		})
+		Expect(protection.ToolTargets(ctx)).To(ContainElement(".claude/settings.json"))
+
+		ctx = toolContext("mcp__fs__write", map[string]any{
+			"target":  "/Library/Application Support/ClaudeCode/managed-settings.json",
+			"comment": "not a path at all",
+			"nested": map[string]any{
+				"a": map[string]any{
+					"b": map[string]any{"c": map[string]any{"d": []any{"~/.codex/hooks.json"}}},
+				},
+			},
+		})
+		targets := protection.ToolTargets(ctx)
+		Expect(targets).To(ContainElements(
+			"/Library/Application Support/ClaudeCode/managed-settings.json", "~/.codex/hooks.json",
+		))
+		Expect(targets).NotTo(ContainElement("not a path at all"))
+	})
+})
+
+var _ = Describe("PolicyCommand flags", func() {
+	It("blocks hook mode and doctor --fix in any spelling", func() {
+		for _, args := range [][]string{
+			{"--event", "SessionStart"},
+			{"doctor", "--fix=true"},
+			{"doctor", "--fix=1"},
+			{"doctor", "--fix=maybe"},
+		} {
+			_, ok := protection.PolicyCommand(commandNamed("klaudiush", args...))
+			Expect(ok).To(BeTrue(), "%v", args)
+		}
+
+		_, ok := protection.PolicyCommand(commandNamed("klaudiush", "doctor", "--fix=false"))
+		Expect(ok).To(BeFalse())
+	})
 })

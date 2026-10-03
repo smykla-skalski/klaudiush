@@ -333,6 +333,76 @@ func policyGuards(cfg *config.Config) []string {
 	return names
 }
 
+// projectDirEnv are the variables harnesses set to the session's project
+// directory in the hook environment.
+var projectDirEnv = []string{"CLAUDE_PROJECT_DIR", "GEMINI_PROJECT_DIR"}
+
+// policyConfigDirs lists the other directories whose project configuration
+// can turn the policy guards on: the hook's working directory and the
+// harness project directory, when they differ from the directory the
+// configuration was loaded for (a cd target).
+func policyConfigDirs(hookCtx *hook.Context, workDir string) []string {
+	candidates := []string{hookCtx.GetWorkingDir()}
+
+	for _, name := range projectDirEnv {
+		candidates = append(candidates, os.Getenv(name))
+	}
+
+	if cwd, err := os.Getwd(); err == nil {
+		candidates = append(candidates, cwd)
+	}
+
+	loaded := workDir
+	if loaded == "" {
+		loaded, _ = os.Getwd()
+	}
+
+	var dirs []string
+
+	for _, dir := range candidates {
+		if dir == "" || !filepath.IsAbs(dir) || filepath.Clean(dir) == filepath.Clean(loaded) ||
+			slices.Contains(dirs, filepath.Clean(dir)) {
+			continue
+		}
+
+		dirs = append(dirs, filepath.Clean(dir))
+	}
+
+	return dirs
+}
+
+// inheritPolicyGuards turns on protection and MCP trust when the project
+// configuration of any of dirs enables them. Loading configuration from a
+// cd target must not drop the guards of the project the agent works in:
+// "cd /tmp && git status; rm .klaudiush/config.toml" would otherwise run
+// under /tmp's configuration.
+func inheritPolicyGuards(cfg *config.Config, dirs []string, log logger.Logger) {
+	if cfg == nil {
+		return
+	}
+
+	for _, dir := range dirs {
+		if cfg.Protection.IsEnabled() && cfg.MCPTrust.IsEnabled() {
+			return
+		}
+
+		other, err := loadConfig(log, dir)
+		if err != nil {
+			log.Info("cannot read policy guards", "dir", dir, "error", err)
+
+			continue
+		}
+
+		if !cfg.Protection.IsEnabled() && other.Protection.IsEnabled() {
+			cfg.Protection = other.Protection
+		}
+
+		if !cfg.MCPTrust.IsEnabled() && other.MCPTrust.IsEnabled() {
+			cfg.MCPTrust = other.MCPTrust
+		}
+	}
+}
+
 // fallbackPolicy finds the failure mode when the configuration cannot be
 // loaded: the flag, then the environment, then whatever the configuration
 // says once validation is skipped, then the global configuration alone.

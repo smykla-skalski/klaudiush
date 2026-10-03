@@ -142,6 +142,39 @@ var _ = Describe("ProtectionValidator", func() {
 		Expect(result.Passed).To(BeTrue())
 	})
 
+	It("resolves shell commands in the directory the tool call names", func() {
+		Expect(os.MkdirAll(filepath.Join(root, "project", ".gemini"), 0o755)).To(Succeed())
+
+		for _, key := range []string{"dir_path", "directory"} {
+			result := validate(
+				hook.ProviderGemini,
+				"BeforeTool",
+				`{"hook_event_name":"BeforeTool","tool_name":"run_shell_command","tool_input":{"command":"rm settings.json","`+
+					key+`":".gemini"}}`,
+			)
+			Expect(result.ShouldBlock).To(BeTrue(), key)
+		}
+
+		result := validate(
+			hook.ProviderCodex,
+			"PreToolUse",
+			`{"hook_event_name":"PreToolUse","tool_name":"exec_command","tool_input":{"cmd":"x","command":"rm config.toml","workdir":"`+
+				filepath.Join(
+					root,
+					"project",
+					".klaudiush",
+				)+`"}}`,
+		)
+		Expect(result.ShouldBlock).To(BeTrue())
+
+		result = validate(
+			hook.ProviderGemini,
+			"BeforeTool",
+			`{"hook_event_name":"BeforeTool","tool_name":"run_shell_command","tool_input":{"command":"rm settings.json","dir_path":"src"}}`,
+		)
+		Expect(result.Passed).To(BeTrue())
+	})
+
 	It("fails closed on commands it cannot inspect", func() {
 		result := validate(
 			hook.ProviderClaude,

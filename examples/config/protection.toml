@@ -13,4 +13,4 @@ paths = ["scripts/ci/**", "Makefile"]
 allow = [".claude/settings.local.json"]
 
 # Claude ConfigChange sources kept from applying mid-session
-config_change_sources = ["user_settings", "project_settings", "local_settings"]
+config_change_sources = ["user_settings", "project_settings"]

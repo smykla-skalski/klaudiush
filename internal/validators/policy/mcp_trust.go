@@ -2,6 +2,7 @@ package policy
 
 import (
 	"context"
+	"net/url"
 	"path"
 	"slices"
 	"strings"
@@ -139,13 +140,20 @@ func entryMatches(entry *config.MCPTrustedServer, server *hook.MCPProvenance, to
 		{entry.Name, server.Name},
 		{entry.Source, server.Source},
 		{entry.Command, server.Command},
-		{entry.URL, server.URL},
 	}
 
 	for _, field := range fields {
 		if field.pattern != "" && !globMatch(field.pattern, field.value) {
 			return false
 		}
+	}
+
+	if entry.URL != "" && !urlMatch(entry.URL, server.URL) {
+		return false
+	}
+
+	if entry.Args != nil && !argsMatch(entry.Args, server.Args) {
+		return false
 	}
 
 	if len(entry.Tools) == 0 {
@@ -175,6 +183,52 @@ func globMatch(pattern, value string) bool {
 	matched, err := path.Match(pattern, value)
 
 	return err == nil && matched
+}
+
+// urlMatch compares an endpoint with a URL pattern part by part, so a glob
+// in the host cannot reach into the path or query: https://*.example.com/*
+// does not match https://evil.com?.example.com/x.
+func urlMatch(pattern, value string) bool {
+	want, err := url.Parse(pattern)
+	if err != nil || want.Host == "" {
+		return false
+	}
+
+	got, err := url.Parse(value)
+	if err != nil || got.Host == "" || got.User != nil {
+		return false
+	}
+
+	if !strings.EqualFold(want.Scheme, got.Scheme) ||
+		!globMatch(strings.ToLower(want.Host), strings.ToLower(got.Host)) {
+		return false
+	}
+
+	wantPath, gotPath := want.Path, got.Path
+	if wantPath == "" {
+		wantPath = "/"
+	}
+
+	if gotPath == "" {
+		gotPath = "/"
+	}
+
+	return globMatch(wantPath, gotPath)
+}
+
+// argsMatch compares stdio arguments one glob per argument.
+func argsMatch(patterns, args []string) bool {
+	if len(patterns) != len(args) {
+		return false
+	}
+
+	for i, pattern := range patterns {
+		if pattern != args[i] && !globMatch(pattern, args[i]) {
+			return false
+		}
+	}
+
+	return true
 }
 
 func (v *MCPTrustValidator) requirement() string {

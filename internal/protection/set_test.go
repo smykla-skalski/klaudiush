@@ -266,6 +266,29 @@ var _ = Describe("Set", func() {
 		Expect(m.Reason).To(Equal(protection.ReasonHookScript))
 	})
 
+	It("protects hook scripts named with quotes, variables and in TOML", func() {
+		quoted := e.write("project/scripts/hook.sh", "")
+		inHome := e.write("home/bin/guard.sh", "")
+		inCodex := e.write("project/tools/codex-hook.sh", "")
+		e.write(
+			"project/.claude/settings.json",
+			`{"hooks":{"PreToolUse":[{"hooks":[{"type":"command","command":"\"$CLAUDE_PROJECT_DIR\"/scripts/hook.sh"},`+
+				`{"type":"command","command":"${HOME}/bin/guard.sh --x"}]}]}}`,
+		)
+		e.write(
+			"project/.codex/config.toml",
+			"[[hooks.PreToolUse]]\n[[hooks.PreToolUse.hooks]]\ntype = \"command\"\ncommand = \"./tools/codex-hook.sh\"\n",
+		)
+
+		set := e.set()
+
+		for _, path := range []string{quoted, inHome, inCodex} {
+			m, ok := set.Check(path)
+			Expect(ok).To(BeTrue(), path)
+			Expect(m.Reason).To(Equal(protection.ReasonHookScript))
+		}
+	})
+
 	It("protects configured hook files, plugins and CODEX_HOME", func() {
 		codexHome := filepath.Join(e.root, "codex")
 		e.opts.LookupEnv = func(name string) (string, bool) {
@@ -312,5 +335,16 @@ var _ = Describe("Validate", func() {
 		})
 		Expect(err).To(MatchError(ContainSubstring("team_settings")))
 		Expect(err).To(MatchError(ContainSubstring("empty pattern")))
+	})
+})
+
+var _ = Describe("missing hook scripts", func() {
+	It("protects a hook script that does not exist yet", func() {
+		e := newEnv(GinkgoT().TempDir(), "linux", nil)
+		e.write("project/.claude/settings.json",
+			`{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"./hooks/missing.sh"}]}]}}`)
+
+		_, ok := e.set().Check(filepath.Join(e.project, "hooks", "missing.sh"))
+		Expect(ok).To(BeTrue())
 	})
 })

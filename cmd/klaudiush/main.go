@@ -346,6 +346,8 @@ func (h *hookRun) loadPolicyAndRegistry(
 
 	h.output.Store(cfg.Output)
 
+	inheritPolicyGuards(cfg, policyConfigDirs(hookCtx, workDir), h.log)
+
 	policy, policyErr := buildPolicy(cfg)
 	h.setPolicy(policy)
 

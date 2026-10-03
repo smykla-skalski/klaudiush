@@ -2,7 +2,9 @@ package policy
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/smykla-skalski/klaudiush/internal/protection"
@@ -50,12 +52,20 @@ func (*ProtectionValidator) Category() validator.ValidatorCategory {
 }
 
 // Validate checks the hook against the protected set.
-func (v *ProtectionValidator) Validate(_ context.Context, hookCtx *hook.Context) *validator.Result {
+func (v *ProtectionValidator) Validate(
+	ctx context.Context,
+	hookCtx *hook.Context,
+) *validator.Result {
 	if hookCtx.Event == hook.CanonicalEventConfigChange {
 		return v.validateConfigChange(hookCtx)
 	}
 
-	set, err := protection.NewSet(v.locator(hookCtx))
+	opts := v.locator(hookCtx)
+	if dir := shellDir(hookCtx, opts.WorkDir); dir != "" {
+		opts.WorkDir = dir
+	}
+
+	set, err := protection.NewSet(opts)
 	if err != nil {
 		return validator.FailWithRef(
 			validator.RefProtectedFile,
@@ -68,7 +78,7 @@ func (v *ProtectionValidator) Validate(_ context.Context, hookCtx *hook.Context)
 	case hookCtx.IsAfterTool():
 		return v.validateChanged(set, hookCtx)
 	case hookCtx.IsBashTool():
-		return v.validateCommand(set, hookCtx)
+		return v.validateCommand(ctx, set, hookCtx)
 	default:
 		return v.validateTool(set, hookCtx)
 	}
@@ -109,6 +119,7 @@ func (v *ProtectionValidator) validateConfigChange(hookCtx *hook.Context) *valid
 }
 
 func (*ProtectionValidator) validateCommand(
+	ctx context.Context,
 	set *protection.Set,
 	hookCtx *hook.Context,
 ) *validator.Result {
@@ -125,7 +136,7 @@ func (*ProtectionValidator) validateCommand(
 		})
 	}
 
-	violations := set.CheckCommand(parsed, hookCtx.GetCommand())
+	violations := set.CheckCommand(ctx, parsed, hookCtx.GetCommand())
 	if len(violations) == 0 {
 		return validator.Pass()
 	}
@@ -259,4 +270,37 @@ func (*ProtectionValidator) validateChanged(
 		validator.RefProtectedFile,
 		"Command changed protected policy files: "+strings.Join(names, ", "),
 	).AddFinding(findings...)
+}
+
+// shellDirKeys are the shell tool arguments that set the directory a
+// command runs in: Gemini run_shell_command dir_path (directory in older
+// releases) and Codex exec_command workdir.
+var shellDirKeys = []string{"dir_path", "directory", "workdir", "cwd"}
+
+// shellDir returns the directory a shell tool call runs its command in when
+// the call names one, resolved against workDir.
+func shellDir(hookCtx *hook.Context, workDir string) string {
+	if !hookCtx.IsBashTool() {
+		return ""
+	}
+
+	for _, key := range shellDirKeys {
+		raw, ok := hookCtx.ToolInput.Additional[key]
+		if !ok {
+			continue
+		}
+
+		var dir string
+		if json.Unmarshal(raw, &dir) != nil || dir == "" {
+			continue
+		}
+
+		if !filepath.IsAbs(dir) {
+			dir = filepath.Join(workDir, dir)
+		}
+
+		return filepath.Clean(dir)
+	}
+
+	return ""
 }

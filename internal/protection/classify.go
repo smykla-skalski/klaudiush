@@ -20,8 +20,20 @@ const (
 
 // Program names checked by name.
 const (
-	programFind = "find"
-	programGit  = "git"
+	programFind      = "find"
+	programGit       = "git"
+	programDitto     = "ditto"
+	programPatch     = "patch"
+	programKlaudiush = "klaudiush"
+)
+
+// Option spellings shared by several programs.
+const (
+	optDir       = "-C"
+	optEndOfOpts = "--"
+	optTargetDir = "--target-directory"
+	optTarget    = "-t"
+	gitSubApply  = "apply"
 )
 
 // readOnlyPrograms only read the files they name. Their output goes to
@@ -48,7 +60,7 @@ var readOnlyPrograms = map[string]bool{
 // takes in the protected files below.
 var broadPrograms = map[string]bool{
 	"chattr": true, "chflags": true, "chgrp": true, "chmod": true, "chown": true,
-	"cp": true, "cpio": true, "dd": true, "ditto": true, programFind: true, programGit: true,
+	"cp": true, "cpio": true, "dd": true, programDitto: true, programFind: true, programGit: true,
 	"install": true, "ln": true, "mv": true, "perl": true, "rm": true, "rmdir": true,
 	"rsync": true, "sed": true, "setfacl": true, "shred": true, "srm": true,
 	"tar": true, "touch": true, "trash": true, "truncate": true, "unlink": true,
@@ -58,20 +70,20 @@ var broadPrograms = map[string]bool{
 // destOnlyPrograms copy from their sources into a destination: only the
 // destination changes, unless they link or remove the sources.
 var destOnlyPrograms = map[string]bool{
-	"cp": true, "ditto": true, "install": true, "rsync": true, "scp": true,
+	"cp": true, programDitto: true, "install": true, "rsync": true, "scp": true,
 }
 
 // gitPathCommands are git subcommands that change the working tree files
 // they name.
 var gitPathCommands = map[string]bool{
-	"am": true, "apply": true, "checkout": true, "checkout-index": true, "clean": true,
+	"am": true, gitSubApply: true, "checkout": true, "checkout-index": true, "clean": true,
 	"config": true, "mv": true, "read-tree": true, "reset": true, "restore": true,
 	"rm": true, "stash": true, "switch": true, "update-index": true, "worktree": true,
 }
 
 // gitOptionsWithValue are git global options that take the next word.
 var gitOptionsWithValue = map[string]bool{
-	"-C": true, "-c": true, "--git-dir": true, "--work-tree": true, "--namespace": true,
+	optDir: true, "-c": true, "--git-dir": true, "--work-tree": true, "--namespace": true,
 	"--exec-path": true, "--super-prefix": true, "--config-env": true,
 }
 
@@ -202,7 +214,7 @@ func gitSubcommand(args []string) string {
 // gitDir returns the directory git -C moves to, relative to dir.
 func gitDir(args []string, dir string) string {
 	for i := 0; i+1 < len(args); i++ {
-		if args[i] == "-C" {
+		if args[i] == optDir {
 			next := args[i+1]
 			if filepath.IsAbs(next) {
 				dir = next
@@ -226,15 +238,17 @@ func destinations(args []string) []string {
 		arg := args[i]
 
 		switch {
-		case arg == "-t" || arg == "--target-directory":
+		case arg == optTarget || arg == optTargetDir:
 			if i+1 < len(args) {
 				return []string{args[i+1]}
 			}
-		case strings.HasPrefix(arg, "--target-directory="):
-			return []string{strings.TrimPrefix(arg, "--target-directory=")}
-		case arg == "--":
+		case strings.HasPrefix(arg, optTargetDir+"="):
+			return []string{strings.TrimPrefix(arg, optTargetDir+"=")}
+		case arg == optEndOfOpts:
 			operands = append(operands, args[i+1:]...)
 			i = len(args)
+		case copyValueOptions[arg]:
+			i++
 		case strings.HasPrefix(arg, "-"):
 		default:
 			operands = append(operands, arg)
@@ -248,14 +262,43 @@ func destinations(args []string) []string {
 	return operands[len(operands)-1:]
 }
 
-// sources returns every operand of a copy but the destination.
+// copyValueOptions are copy options that take the next word.
+var copyValueOptions = map[string]bool{
+	"-m": true, "-o": true, "-g": true, "-S": true, optTarget: true, "--mode": true,
+	"--owner": true, "--group": true, "--suffix": true, optTargetDir: true,
+}
+
+// sources returns every operand of a copy but the destination: all of them
+// when -t names the destination.
 func sources(args []string) []string {
 	var operands []string
 
-	for _, arg := range args {
-		if !strings.HasPrefix(arg, "-") {
+	target := false
+
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+
+		switch {
+		case arg == optTarget || arg == optTargetDir ||
+			strings.HasPrefix(arg, optTargetDir+"="):
+			target = true
+
+			if !strings.Contains(arg, "=") {
+				i++
+			}
+		case copyValueOptions[arg]:
+			i++
+		case arg == optEndOfOpts:
+			operands = append(operands, args[i+1:]...)
+			i = len(args)
+		case strings.HasPrefix(arg, "-"):
+		default:
 			operands = append(operands, arg)
 		}
+	}
+
+	if target {
+		return operands
 	}
 
 	if len(operands) <= 1 {

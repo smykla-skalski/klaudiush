@@ -1,6 +1,7 @@
 package protection_test
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 
@@ -16,7 +17,7 @@ func checkCommand(set *protection.Set, command string) []protection.Violation {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(result.Truncated).To(BeFalse(), command)
 
-	return set.CheckCommand(result, command)
+	return set.CheckCommand(context.Background(), result, command)
 }
 
 var _ = Describe("CheckCommand", func() {
@@ -118,6 +119,28 @@ var _ = Describe("CheckCommand", func() {
 		Entry("new config in subdirectory", `echo '[protection]' > sub/klaudiush.toml`),
 		Entry("state file", `rm `+"~/.local/state/klaudiush/hook_sessions/state.json"),
 		Entry("binary", `cp /tmp/fake ~/bin/klaudiush`),
+		Entry("cp target directory", `cp -t .claude settings.json`),
+		Entry("cp long target directory", `cp --target-directory .claude settings.json`),
+		Entry("install target directory", `install -m 644 -t .claude settings.json`),
+		Entry("mv target directory", `mv -t .claude settings.json`),
+		Entry("ditto contents", `ditto /tmp/evil .claude`),
+		Entry("rsync contents", `rsync /tmp/evil/ .claude`),
+		Entry("find protected name", `find /tmp/elsewhere -name settings.json -delete`),
+		Entry("find protected dir name", `find . -name '.klau*' -exec rm -rf {} +`),
+		Entry("suggest output", `klaudiush suggest --output .klaudiush/config.toml`),
+		Entry("suggest output equals", `klaudiush suggest --output=.claude/settings.json`),
+		Entry("hook mode", `echo '{}' | klaudiush --event SessionStart`),
+		Entry("escaped redirect target", `echo x > .klaudiu\sh/config.toml`),
+		Entry("escaped dot", `echo x > \.mcp.json`),
+		Entry("escaped directory", `rm -rf .klaudiu\sh`),
+		Entry("trailing backslash", "echo x > .claude/settings.json\\"),
+		Entry("escaped path", `echo x > /etc/claude\-code/managed\ settings.json`),
+		Entry("ANSI-C quoting", `rm $'\x2eclaude/settings.json'`),
+		Entry("ANSI-C octal", `rm $'\056klaudiush/config.toml'`),
+		Entry("variable from substitution", `d=$(echo .claude) && echo x > "$d/settings.json"`),
+		Entry("appended variable", `d=.cl; d+=aude; rm "$d/settings.json"`),
+		Entry("ln relative target", `ln -sf settings.json .claude/settings.local.json`),
+		Entry("ln into directory", `ln -s ../.klaudiush/config.toml build`),
 	)
 
 	DescribeTable("lets other commands through",
@@ -144,6 +167,9 @@ var _ = Describe("CheckCommand", func() {
 		Entry("gh body mentioning a path", `gh pr create --body "edits .klaudiush/config.toml"`),
 		Entry("mkdir", `mkdir -p .claude/agents`),
 		Entry("klaudiush evidence", `klaudiush evidence run tests`),
+		Entry("klaudiush suggest", `klaudiush suggest --output KLAUDIUSH.md`),
+		Entry("cp file into agents dir", `cp agent.md .claude/agents/`),
+		Entry("find other name", `find . -name '*.orig' -delete`),
 		Entry("klaudiush doctor", `klaudiush doctor --verbose`),
 		Entry("devnull", `make 2>/dev/null >/dev/null`),
 		Entry("descriptor duplicate", `make >&2`),
@@ -198,5 +224,39 @@ var _ = Describe("CheckCommand", func() {
 		)).To(Succeed())
 
 		Expect(checkCommand(e.set(), `echo x > cfg`)).NotTo(BeEmpty())
+	})
+})
+
+var _ = Describe("CheckCommand after an unresolved cd", func() {
+	It("matches relative names in any directory", func() {
+		set := newEnv(GinkgoT().TempDir(), "linux", nil).set()
+
+		Expect(checkCommand(set, `cd "$DIR" && rm settings.json`)).NotTo(BeEmpty())
+		Expect(checkCommand(set, `cd "$DIR" && echo x > notes.txt`)).To(BeEmpty())
+		Expect(checkCommand(set, `cd "$DIR" && echo x > .klaudiush/config.toml`)).NotTo(BeEmpty())
+		Expect(checkCommand(set, `cd "$DIR" && find . -name '*.tmp' -delete`)).To(BeEmpty())
+		Expect(
+			checkCommand(set, `cd "$DIR" && git -C .claude checkout settings.json`),
+		).NotTo(BeEmpty())
+		Expect(checkCommand(set, `cd "$DIR" && rm -rf build`)).To(BeEmpty())
+	})
+})
+
+var _ = Describe("CheckCommand with a renamed klaudiush", func() {
+	It("recognizes a copy of the binary", func() {
+		e := newEnv(GinkgoT().TempDir(), "linux", nil)
+		binary := e.write("home/bin/klaudiush", "#!/bin/sh\necho klaudiush\n")
+		copied := e.write("project/k", "#!/bin/sh\necho klaudiush\n")
+		Expect(os.Link(binary, filepath.Join(e.project, "k2"))).To(Succeed())
+		e.write("project/other", "#!/bin/sh\necho other\n")
+
+		set := e.set()
+
+		violations := checkCommand(set, copied+" bypass skip")
+		Expect(violations).To(HaveLen(1))
+		Expect(violations[0].Command).To(Equal("bypass skip"))
+		Expect(checkCommand(set, "./k2 disable x")).NotTo(BeEmpty())
+		Expect(checkCommand(set, "./other bypass skip")).To(BeEmpty())
+		Expect(checkCommand(set, "./k version")).To(BeEmpty())
 	})
 })

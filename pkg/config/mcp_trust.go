@@ -61,7 +61,14 @@ type MCPTrustedServer struct {
 	// Command matches the stdio command Gemini reports in mcp_context.
 	Command string `json:"command,omitempty" koanf:"command" toml:"command,omitempty"`
 
+	// Args matches the stdio arguments Gemini reports, one glob per
+	// argument. Set it with a generic command such as npx, uvx or docker,
+	// which run whatever their arguments name.
+	Args []string `json:"args,omitempty" koanf:"args" toml:"args,omitempty"`
+
 	// URL matches the HTTP or SSE endpoint Gemini reports in mcp_context.
+	// Scheme, host and path are compared separately; the host and path
+	// accept globs.
 	URL string `json:"url,omitempty" koanf:"url" toml:"url,omitempty"`
 
 	// Tools limits the trust to these tool names (globs). Default: all.

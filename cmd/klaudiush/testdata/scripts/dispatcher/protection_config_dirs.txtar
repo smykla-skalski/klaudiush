@@ -1,0 +1,24 @@
+cd project
+
+stdin $WORK/cd-away.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'POL001'
+
+env CLAUDE_PROJECT_DIR=$WORK/project
+stdin $WORK/write-elsewhere.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+
+-- project/.klaudiush/config.toml --
+[protection]
+enabled = true
+
+-- project/.git/HEAD --
+ref: refs/heads/main
+
+-- cd-away.json --
+{"session_id":"s1","hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"cd .. && git status; rm project/.mcp.json"}}
+
+-- write-elsewhere.json --
+{"session_id":"s1","hook_event_name":"PreToolUse","cwd":"/","tool_name":"Write","tool_input":{"file_path":"/x/.mcp.json","content":"{}"}}

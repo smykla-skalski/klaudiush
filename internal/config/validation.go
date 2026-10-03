@@ -3,6 +3,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"path"
 	"regexp"
 	"slices"
@@ -188,10 +189,19 @@ func validateTrustedServer(server *config.MCPTrustedServer) error {
 				"configuration and can be reused by any server")
 	}
 
-	patterns := append(
-		[]string{server.Name, server.Source, server.Command, server.URL},
-		server.Tools...,
+	patterns := slices.Concat(
+		[]string{server.Name, server.Source, server.Command},
+		server.Args,
+		server.Tools,
 	)
+
+	if server.URL != "" {
+		parsed, err := url.Parse(server.URL)
+		if err != nil || parsed.Host == "" {
+			return errors.Wrapf(ErrInvalidOption, "url %q needs a scheme and host", server.URL)
+		}
+	}
+
 	for _, pattern := range patterns {
 		if _, err := path.Match(pattern, ""); err != nil {
 			return errors.Wrapf(ErrInvalidOption, "invalid pattern %q", pattern)

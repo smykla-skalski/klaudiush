@@ -58,6 +58,9 @@ var _ = Describe("policy section validation", func() {
 		Entry("name only", &config.MCPTrustConfig{
 			Servers: []*config.MCPTrustedServer{{Name: "github"}},
 		}, "must set source, command or url"),
+		Entry("url without host", &config.MCPTrustConfig{
+			Servers: []*config.MCPTrustedServer{{URL: "example.com/*"}},
+		}, "needs a scheme and host"),
 		Entry("bad pattern", &config.MCPTrustConfig{
 			Servers: []*config.MCPTrustedServer{{Source: "user", Tools: []string{"["}}},
 		}, "invalid pattern"),

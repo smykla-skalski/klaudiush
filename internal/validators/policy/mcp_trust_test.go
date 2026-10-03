@@ -31,6 +31,8 @@ var _ = Describe("MCPTrustValidator", func() {
 				{Name: "docs", Source: "project", Tools: []string{"search*"}},
 				{Name: "plugin:tools:*", Source: "plugin"},
 				{Command: "/opt/mcp/*"},
+				{URL: "https://*.example.com/mcp/*"},
+				{Command: "npx", Args: []string{"-y", "@acme/server@*"}},
 				{Name: "ignored"},
 			},
 		}

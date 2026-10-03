@@ -1,8 +1,10 @@
 package protection
 
 import (
+	"context"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/smykla-skalski/klaudiush/pkg/parser"
@@ -29,6 +31,7 @@ var wordBreaks = " \t\n\r\"'`()[]{},;|&<>=:$"
 
 // commandCheck holds what one shell command check needs.
 type commandCheck struct {
+	git       func(dir string, args ...string) string
 	set       *Set
 	result    *parser.ParseResult
 	raw       string
@@ -41,8 +44,18 @@ type commandCheck struct {
 // protected file or klaudiush policy. raw is the command as written; a
 // write whose target is only known when the command runs counts when raw
 // names a protected path anywhere.
-func (s *Set) CheckCommand(result *parser.ParseResult, raw string) []Violation {
-	c := &commandCheck{set: s, result: result, raw: raw, seen: make(map[string]bool)}
+func (s *Set) CheckCommand(
+	ctx context.Context,
+	result *parser.ParseResult,
+	raw string,
+) []Violation {
+	c := &commandCheck{
+		git:    func(dir string, args ...string) string { return gitOutput(ctx, dir, args...) },
+		set:    s,
+		result: result,
+		raw:    raw,
+		seen:   make(map[string]bool),
+	}
 
 	for _, fw := range result.FileWrites {
 		c.checkWrite(fw)
@@ -70,7 +83,7 @@ func (c *commandCheck) add(v Violation) {
 }
 
 func (c *commandCheck) checkWrite(fw parser.FileWrite) {
-	dir := c.dir(fw.WorkingDirectory)
+	dir := c.dir(fw.WorkingDirectory, fw.DirUnknown)
 	target := fw.Path
 
 	if fw.Dynamic {
@@ -84,34 +97,23 @@ func (c *commandCheck) checkWrite(fw parser.FileWrite) {
 }
 
 func (c *commandCheck) checkCommand(cmd parser.Command) {
-	if sub, ok := PolicyCommand(cmd); ok {
-		c.add(Violation{Program: "klaudiush", Command: sub})
+	dir := c.dir(cmd.WorkingDirectory, cmd.DirUnknown)
 
-		return
-	}
+	if isKlaudiush(cmd) || c.set.runsKlaudiushBinary(cmd, dir) {
+		c.checkKlaudiush(cmd, dir)
 
-	eff := commandEffect(cmd)
-	if eff == effectNone {
 		return
 	}
 
 	program := programName(cmd)
-	dir := c.dir(cmd.WorkingDirectory)
-
 	if program == programGit {
 		dir = gitDir(cmd.Args, dir)
 	}
 
-	for _, cand := range candidates(cmd, eff) {
-		if m, ok := c.checkWord(cand.word, dir, cand.tree, program); ok {
-			c.add(Violation{Match: m, Program: program, Target: cand.word})
-		}
+	c.checkRewrites(cmd, program, dir)
 
-		if cmd.Dynamic && strings.HasPrefix(cand.word, "/") {
-			if m, ok := c.checkWord(unknownPart+cand.word, dir, cand.tree, program); ok {
-				c.add(Violation{Match: m, Program: program, Target: cand.word})
-			}
-		}
+	if eff := commandEffect(cmd); eff != effectNone {
+		c.checkCandidates(cmd, eff, program, dir)
 	}
 
 	if program == programFind {
@@ -125,6 +127,82 @@ func (c *commandCheck) checkCommand(cmd parser.Command) {
 	}
 }
 
+// checkRewrites checks git commands and patch, which change files they do
+// not name.
+func (c *commandCheck) checkRewrites(cmd parser.Command, program, dir string) {
+	var (
+		m  Match
+		ok bool
+	)
+
+	switch program {
+	case programGit:
+		m, ok = c.checkGitRewrite(cmd, dir)
+	case programPatch:
+		m, ok = c.checkPatchCommand(cmd, dir)
+	default:
+		return
+	}
+
+	if ok {
+		c.add(Violation{Match: m, Program: program, Target: strings.Join(cmd.Args, " ")})
+	}
+}
+
+func (c *commandCheck) checkCandidates(cmd parser.Command, eff effect, program, dir string) {
+	for _, cand := range candidates(cmd, eff) {
+		if program == programGit {
+			cand.word = c.gitPathspec(cand.word, dir)
+		}
+
+		if m, ok := c.checkWord(cand.word, dir, cand.tree, program); ok {
+			c.add(Violation{Match: m, Program: program, Target: cand.word})
+		}
+
+		if cmd.Dynamic && strings.HasPrefix(cand.word, "/") {
+			if m, ok := c.checkWord(unknownPart+cand.word, dir, cand.tree, program); ok {
+				c.add(Violation{Match: m, Program: program, Target: cand.word})
+			}
+		}
+	}
+}
+
+// checkKlaudiush blocks klaudiush commands that change policy and files
+// a read-only one writes by flag, such as suggest --output.
+func (c *commandCheck) checkKlaudiush(cmd parser.Command, dir string) {
+	if sub, ok := policySubcommand(cmd); ok {
+		c.add(Violation{Program: programKlaudiush, Command: sub})
+
+		return
+	}
+
+	for _, path := range outputPaths(cmd.Args) {
+		if m, ok := c.checkWord(path, dir, false, programKlaudiush); ok {
+			c.add(Violation{Match: m, Program: programKlaudiush, Target: path})
+		}
+	}
+}
+
+// gitPathspec turns a pathspec relative to the repository root (":/x")
+// into a path.
+func (c *commandCheck) gitPathspec(word, dir string) string {
+	if !strings.HasPrefix(word, ":/") {
+		return word
+	}
+
+	rest, ok := strings.CutPrefix(word, ":/")
+	if !ok || strings.HasPrefix(dir, unknownPart) {
+		return word
+	}
+
+	top := strings.TrimSpace(c.git(dir, "rev-parse", "--show-toplevel"))
+	if top == "" {
+		return unknownPart + "/" + rest
+	}
+
+	return filepath.Join(top, rest)
+}
+
 // candidate is a word that may name a file a command changes; tree says
 // the command changes what is below it too.
 type candidate struct {
@@ -135,7 +213,7 @@ type candidate struct {
 // candidates returns the words of cmd that may name a file it changes.
 func candidates(cmd parser.Command, eff effect) []candidate {
 	if eff == effectDest {
-		tree := copiesTrees(cmd.Args)
+		tree := programName(cmd) == programDitto || copiesTrees(cmd.Args)
 
 		dests := destinations(cmd.Args)
 		srcs := sources(cmd.Args)
@@ -165,6 +243,8 @@ func candidates(cmd parser.Command, eff effect) []candidate {
 		}
 	}
 
+	words = append(words, linkTargets(cmd)...)
+
 	for word := range strings.FieldsSeq(cmd.Stdin) {
 		words = append(words, candidate{word: word, tree: true})
 	}
@@ -176,9 +256,56 @@ func candidates(cmd parser.Command, eff effect) []candidate {
 	return words
 }
 
-// copiesTrees reports whether a copy is recursive or deletes extra files
-// in the destination, so it changes what is below the destination.
+// minLinkOperands is the fewest operands of an ln that names a target.
+const minLinkOperands = 2
+
+// linkTargets returns the targets of ln as the link will resolve them: a
+// relative target is relative to the directory the link is created in,
+// which is the last operand itself when that is a directory.
+func linkTargets(cmd parser.Command) []candidate {
+	if programName(cmd) != "ln" {
+		return nil
+	}
+
+	var operands []string
+
+	for _, arg := range cmd.Args {
+		if !strings.HasPrefix(arg, "-") {
+			operands = append(operands, arg)
+		}
+	}
+
+	if len(operands) < minLinkOperands {
+		return nil
+	}
+
+	last := operands[len(operands)-1]
+	words := make([]candidate, 0, minLinkOperands*(len(operands)-1))
+
+	for _, target := range operands[:len(operands)-1] {
+		if filepath.IsAbs(target) || strings.HasPrefix(target, "~") {
+			continue
+		}
+
+		words = append(words,
+			candidate{word: filepath.Join(filepath.Dir(last), target), tree: true},
+			candidate{word: filepath.Join(last, target), tree: true},
+		)
+	}
+
+	return words
+}
+
+// copiesTrees reports whether a copy is recursive, copies a directory's
+// contents (a source ending in / or /.), or deletes extra files in the
+// destination, so it changes what is below the destination.
 func copiesTrees(args []string) bool {
+	for _, src := range sources(args) {
+		if strings.HasSuffix(src, "/") || strings.HasSuffix(src, "/.") {
+			return true
+		}
+	}
+
 	for _, arg := range args {
 		switch {
 		case arg == "--recursive", arg == "--archive", strings.HasPrefix(arg, "--delete"):
@@ -220,7 +347,11 @@ func splitTokens(text string) []string {
 }
 
 // dir resolves a command's working directory against the hook's.
-func (c *commandCheck) dir(workingDirectory string) string {
+func (c *commandCheck) dir(workingDirectory string, unknown bool) string {
+	if unknown {
+		return unknownPart
+	}
+
 	if workingDirectory == "" {
 		return c.set.workDir
 	}
@@ -236,9 +367,23 @@ func (c *commandCheck) dir(workingDirectory string) string {
 // expand substitutes known variables and ~ into word. Unknown variables
 // become unknownPart.
 func (c *commandCheck) expand(word string) string {
-	expanded := c.result.ExpandVars(word)
+	expanded := varRef.ReplaceAllStringFunc(word, func(ref string) string {
+		if c.result.DynamicVars[varName(ref)] {
+			return unknownPart
+		}
+
+		return ref
+	})
+	expanded = c.result.ExpandVars(expanded)
 	expanded = varRef.ReplaceAllStringFunc(expanded, func(ref string) string {
-		name := strings.TrimSuffix(strings.TrimPrefix(ref, "${"), "}")
+		if c.result.DynamicVars[varName(ref)] {
+			return unknownPart
+		}
+
+		return ref
+	})
+	expanded = varRef.ReplaceAllStringFunc(expanded, func(ref string) string {
+		name := varName(ref)
 		if value, ok := c.set.lookupEnv(name); ok && value != "" && !strings.Contains(value, "${") {
 			return value
 		}
@@ -253,6 +398,18 @@ func (c *commandCheck) expand(word string) string {
 	return expanded
 }
 
+// varName returns the variable a ${NAME...} reference names.
+func varName(ref string) string {
+	name := strings.TrimSuffix(strings.TrimPrefix(ref, "${"), "}")
+	if i := strings.IndexFunc(name, func(r rune) bool {
+		return r != '_' && (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9')
+	}); i >= 0 {
+		return name[:i]
+	}
+
+	return name
+}
+
 // checkWord reports the protected path a word names. tree says the
 // operation changes what is below a directory too; program decides
 // whether the working directory and its ancestors count.
@@ -260,6 +417,11 @@ func (c *commandCheck) checkWord(word, dir string, tree bool, program string) (M
 	expanded := c.expand(word)
 	if expanded == "" {
 		return Match{}, false
+	}
+
+	if strings.HasPrefix(dir, unknownPart) && !filepath.IsAbs(expanded) &&
+		!strings.HasPrefix(expanded, unknownPart) {
+		expanded = dir + "/" + expanded
 	}
 
 	if hasGlobMeta(expanded) {
@@ -425,7 +587,7 @@ var (
 // -path tests. Without such tests every file below counts.
 func (c *commandCheck) checkFind(cmd parser.Command, dir string) (Match, bool) {
 	starts, names, paths, opaque := findParts(cmd.Args)
-	if len(names) == 0 && len(paths) == 0 || opaque {
+	if len(names) == 0 && len(paths) == 0 || opaque || strings.HasPrefix(dir, unknownPart) {
 		for _, start := range starts {
 			if m, ok := c.checkWord(start, dir, true, programFind); ok {
 				return m, true
@@ -433,6 +595,10 @@ func (c *commandCheck) checkFind(cmd parser.Command, dir string) (Match, bool) {
 		}
 
 		return Match{}, false
+	}
+
+	if m, ok := c.findNamesProtected(names); ok {
+		return m, true
 	}
 
 	for _, start := range starts {
@@ -446,6 +612,26 @@ func (c *commandCheck) checkFind(cmd parser.Command, dir string) (Match, bool) {
 
 			if c.findTestsMatch(e, rootKey, start, names, paths) {
 				return Match{Path: e.path, Reason: e.reason}, true
+			}
+		}
+	}
+
+	return Match{}, false
+}
+
+// findNamesProtected reports a -name test that matches a name protected
+// wherever it appears, such as settings.json or .klaudiush: find reaches
+// copies in subdirectories the protected set does not list.
+func (c *commandCheck) findNamesProtected(names []string) (Match, bool) {
+	for _, name := range names {
+		re := c.findRegexp(name)
+		if re == nil {
+			continue
+		}
+
+		for _, r := range c.set.rules {
+			if r.kind == ruleSuffix && slices.ContainsFunc(r.comps, re.MatchString) {
+				return Match{Path: strings.Join(r.names, "/"), Reason: r.reason}, true
 			}
 		}
 	}

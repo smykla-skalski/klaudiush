@@ -936,6 +936,12 @@
         "command": {
           "type": "string"
         },
+        "args": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "url": {
           "type": "string"
         },

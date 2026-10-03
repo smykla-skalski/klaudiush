@@ -42,7 +42,7 @@ With `[protection] enabled = true`, these are protected:
 | Gemini CLI | any `.gemini/settings.json`, the system settings and defaults files (`/Library/Application Support/GeminiCli/`, `/etc/gemini-cli/`, or the paths in `GEMINI_CLI_SYSTEM_SETTINGS_PATH` and `GEMINI_CLI_SYSTEM_DEFAULTS_PATH`) |
 | opencode | the klaudiush bridge plugin (`$XDG_CONFIG_HOME/opencode/plugin/klaudiush.ts`, or `providers.opencode.plugin_path`) |
 | Configured hook files | `providers.codex.hooks_config_path`, `providers.gemini.settings_path` |
-| Hook scripts | files named by the hook commands registered in the Claude, Codex and Gemini settings above |
+| Hook scripts | files named by the hook commands registered in the Claude, Codex (`hooks.json`, `config.toml`, `requirements.toml`) and Gemini settings above, with `$CLAUDE_PROJECT_DIR`, `$HOME` and other variables expanded and quotes removed, including scripts that do not exist yet |
 | Evidence check scripts | files named by `evidence.checks.commands`, such as `./scripts/test.sh` |
 | klaudiush plugins | `plugins.plugins.path` |
 | Extra paths | `protection.paths` |
@@ -65,7 +65,7 @@ paths = ["scripts/ci/**", "Makefile"]
 allow = [".claude/settings.local.json"]
 
 # Claude ConfigChange sources blocked mid-session (default shown)
-config_change_sources = ["user_settings", "project_settings", "local_settings"]
+config_change_sources = ["user_settings", "project_settings"]
 ```
 
 | Field | Meaning | Default |
@@ -73,22 +73,26 @@ config_change_sources = ["user_settings", "project_settings", "local_settings"]
 | `enabled` | Turn protection on | `false` |
 | `paths` | Extra protected paths or patterns. Entries protect what is below them | none |
 | `allow` | Paths or patterns exempt from protection, in the same form | none |
-| `config_change_sources` | Claude `ConfigChange` sources whose changes are kept from taking effect. `policy_settings` cannot be blocked. An empty list blocks none | user, project and local settings |
+| `config_change_sources` | Claude `ConfigChange` sources whose changes are kept from taking effect. `policy_settings` cannot be blocked. An empty list blocks none. `local_settings` is not in the default because Claude Code writes "don't ask again" permission rules to `.claude/settings.local.json`; add it to block those too, at the cost of repeated prompts | user and project settings |
 
 Turn protection on or off for one shell with `KLAUDIUSH_PROTECTION_ENABLED=true` or `false`. The agent cannot set the environment of the hook process.
 
+klaudiush loads the project configuration of the directory a command `cd`s into before running git, so that commits follow that project's rules. Protection and MCP trust stay on when they are enabled in the configuration of that directory, of the hook's working directory, or of the harness project directory (`CLAUDE_PROJECT_DIR`, `GEMINI_PROJECT_DIR`). Enable them in the global configuration to protect every project the agent can reach.
+
 ## What counts as a change
 
-File tools: `Write`, `Edit`, `MultiEdit`, `NotebookEdit`, Codex `apply_patch` (every `Add`, `Update`, `Delete` and `Move to` file of the patch, however it is spaced), Gemini `write_file` and `replace`, opencode `write` and `edit`, and tools of any other kind, including MCP tools, through every path-like string in their input. Tools whose own name says they only read (`read_*`, `list_*`, `get_*`, `search_*`, ...) are not checked.
+File tools: `Write`, `Edit`, `MultiEdit`, `NotebookEdit`, Codex `apply_patch` (every `Add`, `Update`, `Delete` and `Move to` file of the patch, however it is spaced), Gemini `write_file` and `replace`, opencode `write` and `edit`, and tools of any other kind, including MCP tools, through every path-like string in their input. Built-in tools whose name says they only read (`read_file`, `list_directory`, ...) are not checked; MCP tools are always checked, since a server names its own tools. Patch bodies in any input field (including opencode `patchText`) are read for their file lines, and strings with spaces count when they start like a path.
 
 Shell commands, through the parser that every other validator uses, including commands run by launchers (`env`, `sudo`, `xargs`, `find -exec`), shells (`bash -c`, `eval`, scripts on `PATH` under `$HOME`) and interpreters:
 
 - Output redirects of every kind: `>`, `>>`, `>|`, `&>`, `&>>`, `<>`, `>&file`, heredocs and `tee`.
 - Programs that change the files they name: `rm`, `mv`, `ln`, `touch`, `truncate`, `chmod`, `chown`, `dd of=`, `curl -o`, editors, interpreters (`python -c`, `node -e`, `perl -pi`), and any program klaudiush does not know to be read-only. Words inside interpreter code count.
 - `cp`, `install`, `rsync`, `scp` and `ditto` change only their destination, including `destination/<source name>`, unless they link (`cp -l`, `cp -s`) or remove sources.
-- `sed`, `sort`, `yq`, `awk` and `find` count only with in-place, output, write or delete options; `git` only for subcommands that rewrite working tree files (`checkout`, `restore`, `rm`, `mv`, `clean`, `reset`, `stash`, `apply`, `config -f`, ...).
+- `cp`, `install` and `mv` with `-t`/`--target-directory` treat every operand as a source. `ditto`, recursive copies and sources ending in `/` or `/.` change everything below the destination.
+- `sed`, `sort`, `yq`, `awk` and `find` count only with in-place, output, write or delete options; a `find -name` test that matches a protected name, such as `settings.json` or `.klaudiush`, counts wherever it runs. `git` counts for subcommands that take paths (`checkout`, `restore`, `rm`, `mv`, `clean`, `config -f`, ...) when a path argument (including a `:/` root pathspec) names a protected file or a directory holding one.
+- Git commands that rewrite the working tree without naming paths are checked against the repository: `git clean` (untracked, and ignored with `-x`/`-X`), `git stash` (changed files, untracked with `-u`/`-a`), `git stash pop`/`apply` (what the stash holds), `git reset --hard`/`--merge`/`--keep`, `git checkout`/`switch` to another revision, `git merge`, `git rebase`, `git cherry-pick` and `git revert` (the files that differ), and `git apply`, `git am` and `patch` (the files the patch names). Each counts when it would change a protected file, so switching to a branch whose `.klaudiush/config.toml` differs is blocked; ask the user to do it.
 - Directories: removing, moving or changing permissions of a directory that holds a protected file counts, including the working directory itself (`rm -rf .`, `git checkout .`, `chmod -R 777 .`). Other programs naming the working directory (`pytest .`) do not.
-- Paths are resolved against the hook's working directory and earlier `cd` commands, with `~`, `$HOME`, variables assigned on the same line, `..`, globs (`*`, `?`, `[...]`, `**`) and brace lists (`{a,b}`) expanded. A part klaudiush cannot know before the command runs (an unset variable, `$(...)`) matches anything there: `rm "$(echo .claude)/settings.json"` is blocked because `*/settings.json` can be a protected file. A target known only when the command runs (`> "$f"`, `> "$(cmd)"`) counts when the command names a protected path anywhere, such as in a `for` list.
+- Paths are resolved against the hook's working directory, the directory a shell tool call names (Gemini `dir_path`, Codex `workdir`) and earlier `cd` commands (after a `cd` to a directory klaudiush cannot resolve, a relative name matches in any directory), with backslash escapes and `$'...'` strings decoded as the shell does, with `~`, `$HOME`, variables assigned on the same line, `..`, globs (`*`, `?`, `[...]`, `**`) and brace lists (`{a,b}`) expanded. A part klaudiush cannot know before the command runs (an unset variable, `$(...)`) matches anything there: `rm "$(echo .claude)/settings.json"` is blocked because `*/settings.json` can be a protected file. A target known only when the command runs (`> "$f"`, `> "$(cmd)"`) counts when the command names a protected path anywhere, such as in a `for` list.
 - Read-only programs (`cat`, `grep`, `rg`, `jq`, `diff`, `ls`, `gh`, `git log`, ...) never count, and commands that only mention a path, such as `git commit -m "update .claude/settings.json"`, pass.
 
 After a Claude shell command ran, PostToolUse reports protected files listed in `tool_response.bashEditDiff` (when Claude Code records it), asking the agent to restore them. That catches what the command text did not show; it cannot undo the change.
@@ -113,7 +117,7 @@ klaudiush does not register `ConfigChange` itself. Add it to the settings that r
 
 ## klaudiush commands
 
-The agent can run read-only klaudiush commands: hook mode, `evidence`, `doctor` without `--fix`, `debug` (but not `debug crash clean`), `audit list` and `stats`, `backup list`, `status` and `audit`, `bypass status`, `patterns list` and `stats`, `suggest`, `version`. Everything else changes configuration, overrides, state, backups or the binary (`init`, `disable`, `enable`, `bypass skip`, `backup restore`, `doctor --fix`, `update`, ...) and is blocked with POL003. Run those yourself.
+klaudiush is recognized by its name, the `dispatcher` name the installer uses, or by being the same file as (or a byte-identical copy of) the running binary. The agent can run read-only klaudiush commands: `--help`, `--version`, `evidence`, `doctor` without `--fix`, `debug` (but not `debug crash clean`), `audit list` and `stats`, `backup list`, `status` and `audit`, `bypass status`, `patterns list` and `stats`, `suggest`, `version`. Everything else changes configuration, overrides, state, backups or the binary (`init`, `disable`, `enable`, `bypass skip`, `backup restore`, `doctor --fix`, `update`, ...) and is blocked with POL003, and so is hook mode (`klaudiush --event ...` with a payload on stdin), since a forged payload can reset session state or record check runs that never happened. `suggest --output` is checked like any other write. Run those yourself.
 
 ## Authorized maintenance
 
@@ -163,7 +167,7 @@ url = "https://mcp.example.com/*"
 |:--|:--|:--|
 | `enabled` | Turn MCP trust checks on | `false` |
 | `trusted_sources` | Claude `mcp_server.source` values trusted for any server. An unknown source is trusted only when listed exactly | none |
-| `servers` | Trusted servers by `name`, `source`, `command`, `url` (globs) and optionally `tools`. A name alone is rejected when the configuration loads | none |
+| `servers` | Trusted servers by `name`, `source`, `command`, `args`, `url` and optionally `tools`, all globs. `url` is compared by scheme, host and path separately. Set `args` with generic commands such as `npx`, `uvx` or `docker`, which run whatever their arguments name. A name alone is rejected when the configuration loads | none |
 | `untrusted` | `block` or `warn` for calls from untrusted servers | `block` |
 | `unknown_provenance` | `block`, `warn` or `allow` for calls whose payload names no server: Codex, opencode, Claude before 2.1.274, Gemini without a transport | `block` |
 
@@ -191,6 +195,8 @@ A user, unlike the agent, can always remove hooks they registered. To make klaud
 
 ## What protection cannot prevent
 
+- `git pull`, and `git rebase` or `git merge` of a branch fetched in the same command: what they bring in is known only after the fetch.
+- Interpreter code that assembles a path at run time, such as `open('.cl' + 'aude/settings.json', 'w')`.
 - A program that writes files it does not name: a script file, a compiled program, a build tool, a formatter run over the whole tree (`prettier --write .`), or an archive extracted in place. Claude's `bashEditDiff`, when recorded, reports such changes afterwards.
 - A command whose target comes from a file or a program klaudiush cannot see (`rm $(cat list)`), when the command names no protected path.
 - Tools that do not reach klaudiush: Claude tools outside the matcher, Codex hosted tools, and anything outside the agent.

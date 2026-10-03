@@ -1,6 +1,7 @@
 package protection
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -87,18 +88,15 @@ func variants(path string) []string {
 
 // Check reports whether changing the file at path (absolute) changes a
 // protected file: the path, or the file it resolves to through symlinks or
-// shares through a hard link, is protected and not allowed.
+// shares through a hard link, is protected and not allowed. An allowed
+// path that leads to a protected file still counts.
 func (s *Set) Check(path string) (Match, bool) {
 	for _, variant := range variants(path) {
 		key := s.key(variant)
 
 		r, ok := s.matchRule(key)
-		if !ok {
+		if !ok || s.allowedKey(key) {
 			continue
-		}
-
-		if s.allowedKey(key) {
-			return Match{}, false
 		}
 
 		return Match{Path: variant, Reason: r.reason}, true
@@ -110,7 +108,9 @@ func (s *Set) Check(path string) (Match, bool) {
 // checkHardLink catches a second name for a protected file: writing through
 // it changes the protected file's content.
 func (s *Set) checkHardLink(path string) (Match, bool) {
-	info, err := os.Stat(path)
+	clean := filepath.Clean(path)
+
+	info, err := fs.Stat(os.DirFS(filepath.Dir(clean)), filepath.Base(clean))
 	if err != nil || !info.Mode().IsRegular() || !hasOtherNames(info) {
 		return Match{}, false
 	}

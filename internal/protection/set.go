@@ -107,6 +107,7 @@ type Set struct {
 	workDir     string
 	projectRoot string
 	home        string
+	executables []string
 	lookupEnv   func(string) (string, bool)
 }
 
@@ -143,7 +144,7 @@ func NewSet(opts Options) (*Set, error) {
 			return nil, err
 		}
 
-		s.rules = append(s.rules, r)
+		s.rules = append(s.rules, s.withCanonical(r)...)
 	}
 
 	for _, pattern := range opts.Config.GetAllow() {
@@ -152,7 +153,7 @@ func NewSet(opts Options) (*Set, error) {
 			return nil, err
 		}
 
-		s.allow = append(s.allow, r)
+		s.allow = append(s.allow, s.withCanonical(r)...)
 	}
 
 	s.materialize()
@@ -230,6 +231,10 @@ func (s *Set) addBuiltins(opts Options) {
 
 	for _, exe := range opts.Executables {
 		s.addAbs(exe, false, ReasonKlaudiushBinary)
+
+		if filepath.IsAbs(exe) {
+			s.executables = append(s.executables, exe)
+		}
 	}
 
 	for _, file := range opts.HookFiles {
@@ -416,6 +421,25 @@ func (s *Set) compileUserPattern(pattern, reason string) (rule, error) {
 	return rule{kind: ruleGlob, glob: re, tree: true, reason: reason}, nil
 }
 
+// withCanonical returns r, and for an absolute rule also the rule for the
+// path with symlinks resolved, so both spellings match.
+func (s *Set) withCanonical(r rule) []rule {
+	if r.kind != ruleAbs {
+		return []rule{r}
+	}
+
+	canon := canonical(r.display)
+	if canon == r.display {
+		return []rule{r}
+	}
+
+	resolved := r
+	resolved.display = canon
+	resolved.path = s.key(canon)
+
+	return []rule{r, resolved}
+}
+
 // materialize lists concrete protected paths: absolute rules, the
 // anywhere-rules placed in the project root, working directory and home,
 // and the files inside protected directories.
@@ -507,7 +531,11 @@ func (s *Set) enumerate(trees []string, add func(path, reason string)) {
 
 		reason := s.reasonFor(tree)
 		_ = filepath.WalkDir(tree, func(path string, d os.DirEntry, err error) error {
-			if err != nil || budget <= 0 {
+			if budget <= 0 {
+				return filepath.SkipAll
+			}
+
+			if err != nil {
 				return filepath.SkipDir
 			}
 

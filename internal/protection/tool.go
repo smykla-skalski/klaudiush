@@ -2,6 +2,7 @@ package protection
 
 import (
 	"encoding/json"
+	"net/url"
 	"regexp"
 	"strings"
 
@@ -9,7 +10,7 @@ import (
 )
 
 // maxInputDepth bounds how deep tool input is searched for paths.
-const maxInputDepth = 4
+const maxInputDepth = 16
 
 // patchHeader matches the file lines of an apply_patch body, leniently:
 // any spacing and case the patch tool might accept.
@@ -50,8 +51,8 @@ func ToolTargets(ctx *hook.Context) []string {
 	case hook.ToolFamilyShell, hook.ToolFamilyUnknown:
 	}
 
-	name := toolOwnName(ctx.RawToolName)
-	if nonFileTools[normalizeName(ctx.RawToolName)] || readsOnly(name) {
+	if nonFileTools[normalizeName(ctx.RawToolName)] ||
+		(!ctx.IsMCPTool() && readsOnly(toolOwnName(ctx.RawToolName))) {
 		return nil
 	}
 
@@ -99,26 +100,36 @@ func fileToolTargets(ctx *hook.Context) []string {
 func patchTargets(ctx *hook.Context) []string {
 	texts := []string{ctx.ToolInput.Command, ctx.ToolInput.Content}
 
-	for _, key := range []string{"input", "patch", "command"} {
+	for _, key := range []string{"input", "patch", "patchText", "patch_text", "command"} {
 		var text string
 		if raw, ok := ctx.ToolInput.Additional[key]; ok && json.Unmarshal(raw, &text) == nil {
 			texts = append(texts, text)
 		}
 	}
 
-	var targets []string
+	targets := make([]string, 0, len(texts))
 
 	for _, text := range texts {
-		for _, m := range patchHeader.FindAllStringSubmatch(text, -1) {
-			targets = append(targets, m[1])
-		}
+		targets = append(targets, patchFiles(text)...)
 	}
 
 	return targets
 }
 
+func patchFiles(text string) []string {
+	matches := patchHeader.FindAllStringSubmatch(text, -1)
+	files := make([]string, 0, len(matches))
+
+	for _, m := range matches {
+		files = append(files, m[1])
+	}
+
+	return files
+}
+
 // pathStrings returns the strings in a JSON value that look like paths:
-// no whitespace, not a URL, and a slash or a dot in them.
+// not a URL, a slash or a dot in them, and no spaces unless they start like
+// a path. Patch bodies in any field are read for their file lines too.
 func pathStrings(raw json.RawMessage, depth int) []string {
 	if depth > maxInputDepth {
 		return nil
@@ -126,11 +137,14 @@ func pathStrings(raw json.RawMessage, depth int) []string {
 
 	var text string
 	if json.Unmarshal(raw, &text) == nil {
-		if looksLikePath(text) {
-			return []string{text}
+		found := patchFiles(text)
+		if path := fileURIPath(text); path != "" {
+			found = append(found, path)
+		} else if looksLikePath(text) {
+			found = append(found, text)
 		}
 
-		return nil
+		return found
 	}
 
 	var list []json.RawMessage
@@ -156,8 +170,27 @@ func pathStrings(raw json.RawMessage, depth int) []string {
 	return nil
 }
 
+// fileURIPath returns the path of a file:// URI, or "".
+func fileURIPath(text string) string {
+	rest, ok := strings.CutPrefix(text, "file://")
+	if !ok {
+		return ""
+	}
+
+	if parsed, err := url.Parse(text); err == nil && parsed.Path != "" {
+		return parsed.Path
+	}
+
+	return rest
+}
+
 func looksLikePath(text string) bool {
-	if text == "" || strings.ContainsAny(text, " \t\n\r") || strings.Contains(text, "://") {
+	if text == "" || strings.ContainsAny(text, "\n\r") || strings.Contains(text, "://") {
+		return false
+	}
+
+	if strings.ContainsAny(text, " \t") && !strings.HasPrefix(text, "/") &&
+		!strings.HasPrefix(text, "~") && !strings.HasPrefix(text, ".") {
 		return false
 	}
 

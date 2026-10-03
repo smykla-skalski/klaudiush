@@ -38,8 +38,9 @@ type ProtectionConfig struct {
 
 	// ConfigChangeSources lists the Claude ConfigChange sources whose
 	// changes are blocked from taking effect mid-session. Default:
-	// user_settings, project_settings, local_settings. An empty list blocks
-	// none. policy_settings cannot be blocked.
+	// user_settings, project_settings. local_settings is left out because
+	// Claude Code writes "don't ask again" permissions there. An empty list
+	// blocks none. policy_settings cannot be blocked.
 	ConfigChangeSources []string `json:"config_change_sources,omitempty" jsonschema:"enum=user_settings,enum=project_settings,enum=local_settings,enum=policy_settings,enum=skills" koanf:"config_change_sources" toml:"config_change_sources,omitempty"`
 }
 
@@ -71,12 +72,12 @@ func (p *ProtectionConfig) GetAllow() []string {
 }
 
 // DefaultConfigChangeSources returns the ConfigChange sources blocked by
-// default: every settings file that can register or disable hooks.
+// default: the shared settings files that register hooks. Local settings
+// are left out because Claude Code itself writes permission rules there.
 func DefaultConfigChangeSources() []string {
 	return []string{
 		ConfigSourceUserSettings,
 		ConfigSourceProjectSettings,
-		ConfigSourceLocalSettings,
 	}
 }
 
