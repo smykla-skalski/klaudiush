@@ -13,6 +13,9 @@ const (
 	sourceBuiltin  = "source"
 	dotBuiltin     = "."
 	getoptsBuiltin = "getopts"
+	builtinCommand = "builtin"
+	commandBuiltin = "command"
+	execBuiltin    = "exec"
 )
 
 // nameSet builds a set from a space-separated list of names.

@@ -968,6 +968,7 @@ func (w *astWalker) walkScript(script string, parent Command, depth int, sw scri
 	child.distrust = w.distrust || !runsInShell(parent, sw)
 	child.scriptRun = w.childRun(parent, sw)
 	child.launchSeq = parent.Location.Seq
+	child.stdinFed = w.feedsStdin(parent)
 	child.seedStartup(parent)
 	child.walkPrelude(sw.prelude)
 
@@ -1036,12 +1037,8 @@ func (w *astWalker) argStrings(words []*syntax.Word) []string {
 // procSubstOutput returns what an input process substitution produces when
 // it is a literal echo, printf or cat heredoc.
 func procSubstOutput(word *syntax.Word) (string, bool) {
-	if len(word.Parts) != 1 {
-		return "", false
-	}
-
-	sub, ok := word.Parts[0].(*syntax.ProcSubst)
-	if !ok || sub.Op != syntax.CmdIn || len(sub.Stmts) != 1 {
+	sub := soleProcSubst(word)
+	if sub == nil || len(sub.Stmts) != 1 {
 		return "", false
 	}
 

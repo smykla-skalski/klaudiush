@@ -489,6 +489,12 @@ func (w *astWalker) callWords(words []*syntax.Word) (string, []string, string) {
 			continue
 		}
 
+		if path, ok := w.sourcedFile(name, args, word); ok {
+			args = append(args, path)
+
+			continue
+		}
+
 		args = append(args, w.argStrings([]*syntax.Word{word})...)
 	}
 
