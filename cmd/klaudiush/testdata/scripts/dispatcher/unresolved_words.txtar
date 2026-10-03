@@ -40,6 +40,32 @@ exec klaudiush --hook-type PreToolUse
 stdout '"permissionDecision":"deny"'
 stdout 'SHELL002'
 
+stdin eval-ssh-agent.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+stdout 'shell setup ssh-agent prints'
+stdout 'instead: ssh-agent '
+
+stdin eval-mise.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'shell setup mise prints'
+stdout 'instead: mise exec -- '
+! stdout 'KLAUDIUSH_TEST_SECRET'
+
+stdin eval-direnv.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'shell setup direnv prints'
+stdout 'instead: direnv exec [.] '
+
+stdin eval-lookalike.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'Run the commands directly instead of through eval'
+! stdout 'shell setup'
+
 stdin padded-subcommand.json
 exec klaudiush --hook-type PreToolUse
 stdout '"permissionDecision":"deny"'
@@ -87,6 +113,18 @@ package main
 
 -- eval-output.json --
 {"tool_name": "Bash", "tool_input": {"command": "eval \"$(echo git commit -m x)\""}}
+
+-- eval-ssh-agent.json --
+{"tool_name": "Bash", "tool_input": {"command": "eval \"$(ssh-agent -s)\""}}
+
+-- eval-mise.json --
+{"tool_name": "Bash", "tool_input": {"command": "eval \"$(mise activate KLAUDIUSH_TEST_SECRET)\""}}
+
+-- eval-direnv.json --
+{"tool_name": "Bash", "tool_input": {"command": "eval \"$(direnv export bash)\""}}
+
+-- eval-lookalike.json --
+{"tool_name": "Bash", "tool_input": {"command": "eval \"$(evil-mise activate bash)\""}}
 
 -- padded-subcommand.json --
 {"tool_name": "Bash", "tool_input": {"command": "git -c help.autocorrect=immediate 'commit ' -m 'bad title'"}}

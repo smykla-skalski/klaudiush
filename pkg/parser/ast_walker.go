@@ -103,6 +103,9 @@ type parseState struct {
 	pathChanged   bool
 	untrusted     bool
 	expandedWords map[string]bool
+	// evalSetups names the setup tool whose output an eval call runs, by
+	// the call's seq.
+	evalSetups map[int]string
 	// distinct holds every distinct command recorded so far, so a pass that
 	// confirms a script's repeat can tell whether it found anything new.
 	distinct map[string]bool
@@ -491,13 +494,16 @@ func (w *astWalker) extractCommand(call *syntax.CallExpr) {
 		return
 	}
 
+	seq := w.state.nextSeq()
+	w.noteEvalSetup(call, seq)
+
 	w.recordCommand(Command{
 		Name: name,
 		Args: args,
 		Location: Location{
 			Line:   call.Pos().Line(),
 			Column: call.Pos().Col(),
-			Seq:    w.state.nextSeq(),
+			Seq:    seq,
 		},
 		Type:             CmdTypeSimple,
 		WorkingDirectory: w.currentDir,
