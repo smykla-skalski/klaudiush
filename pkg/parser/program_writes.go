@@ -21,7 +21,7 @@ type programWrite struct {
 type optionSpec struct {
 	short    string
 	attached string
-	long     []string
+	long     string
 	abbrev   bool
 }
 
@@ -53,7 +53,7 @@ func scanLong(args []string, i int, spec optionSpec, onOpt func(name, value stri
 	name, value, hasValue := strings.Cut(args[i], "=")
 	name = spec.longName(name)
 
-	if !hasValue && slices.Contains(spec.long, name) && i+1 < len(args) {
+	if !hasValue && slices.Contains(strings.Fields(spec.long), name) && i+1 < len(args) {
 		value = args[i+1]
 		i++
 	}
@@ -65,13 +65,13 @@ func scanLong(args []string, i int, spec optionSpec, onOpt func(name, value stri
 
 // longName resolves an abbreviated long option to the one it stands for.
 func (spec optionSpec) longName(name string) string {
-	if !spec.abbrev || slices.Contains(spec.long, name) {
+	if !spec.abbrev || slices.Contains(strings.Fields(spec.long), name) {
 		return name
 	}
 
 	match := ""
 
-	for _, long := range spec.long {
+	for long := range strings.FieldsSeq(spec.long) {
 		if strings.HasPrefix(long, name) {
 			if match != "" {
 				return name
@@ -121,34 +121,40 @@ func scanShort(args []string, i int, spec optionSpec, onOpt func(name, value str
 var (
 	copySpec = optionSpec{
 		short:  "St",
-		long:   []string{"--suffix", "--target-directory"},
+		long:   "--suffix --target-directory",
 		abbrev: true,
 	}
 	installSpec = optionSpec{
-		short: "gmoSt",
-		long: []string{
-			"--group", "--mode", "--owner", "--suffix", "--target-directory",
-			"--strip-program",
-		},
+		short:  "gmoSt",
+		long:   "--group --mode --owner --suffix --target-directory --strip-program",
 		abbrev: true,
 	}
 	sedSpec = optionSpec{
 		short:    "efl",
 		attached: "iI",
-		long:     []string{"--expression", "--file", "--line-length"},
+		long:     "--expression --file --line-length",
 		abbrev:   true,
 	}
 	curlSpec = optionSpec{
 		short: "AbcCdDeEFHKmoPQrtTuUwxXyYz",
-		long: []string{
-			"--output", "--dump-header", "--cookie-jar", "--trace", "--trace-ascii",
-			"--libcurl", "--etag-save", "--stderr", "--output-dir", "--config", "--hsts",
-			"--alt-svc", "--data", "--data-raw", "--data-binary", "--data-urlencode",
-			"--header", "--user", "--request", "--user-agent", "--referer", "--cookie",
-			"--form", "--upload-file", "--write-out", "--proxy", "--range", "--max-time",
-			"--connect-timeout", "--url", "--cacert", "--cert", "--key", "--retry",
-		},
+		long: `--output --dump-header --cookie-jar --trace --trace-ascii --libcurl
+			--etag-save --stderr --output-dir --config --hsts --alt-svc --data --data-raw
+			--data-binary --data-urlencode --header --user --request --user-agent --referer
+			--cookie --form --upload-file --write-out --proxy --range --max-time
+			--connect-timeout --url --cacert --cert --key --retry`,
 	}
+)
+
+// Options that name what a write program does or where it writes.
+var (
+	targetDirOpts   = nameSet("-t --target-directory")
+	makeDirOpts     = nameSet("-d --directory")
+	sedInPlaceOpts  = nameSet("-i -I --in-place")
+	sedScriptOpts   = nameSet("-e -f --expression --file")
+	curlRemoteOpts  = nameSet("-O --remote-name --remote-name-all")
+	curlUnknownOpts = nameSet("-J --remote-header-name -K --config")
+	curlDirOpts     = nameSet("--output-dir")
+	curlURLOpts     = nameSet("--url")
 )
 
 // minDestOperands is the fewest operands of a copy that names a destination.
@@ -196,7 +202,7 @@ func destination(args []string, spec optionSpec) []string {
 	var dirs []string
 
 	operands := scanArgs(args, spec, func(name, value string) {
-		if name == "-t" || name == "--target-directory" {
+		if targetDirOpts[name] {
 			dirs = append(dirs, value)
 		}
 	})
@@ -238,7 +244,7 @@ func installDestination(args []string) []string {
 	creates := false
 
 	operands := scanArgs(args, installSpec, func(name, _ string) {
-		if name == "-d" || name == "--directory" {
+		if makeDirOpts[name] {
 			creates = true
 		}
 	})
@@ -270,12 +276,8 @@ func sedInPlaceFiles(args []string) []string {
 	inPlace, scripted := false, false
 
 	operands := scanArgs(args, sedSpec, func(name, _ string) {
-		switch name {
-		case "-i", "-I", "--in-place":
-			inPlace = true
-		case "-e", "-f", "--expression", "--file":
-			scripted = true
-		}
+		inPlace = inPlace || sedInPlaceOpts[name]
+		scripted = scripted || sedScriptOpts[name]
 	})
 
 	if !inPlace {
@@ -302,13 +304,13 @@ func curlWrites(args []string) programWrite {
 		switch {
 		case curlOutputs[name] && value != "-":
 			write.targets = append(write.targets, value)
-		case name == "-O" || name == "--remote-name" || name == "--remote-name-all":
+		case curlRemoteOpts[name]:
 			remote = true
-		case name == "-J" || name == "--remote-header-name" || name == "-K" || name == "--config":
+		case curlUnknownOpts[name]:
 			write.unknown = true
-		case name == "--output-dir":
+		case curlDirOpts[name]:
 			dir = value
-		case name == "--url":
+		case curlURLOpts[name]:
 			urls = append(urls, value)
 		}
 	})

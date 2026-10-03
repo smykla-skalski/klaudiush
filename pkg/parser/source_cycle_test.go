@@ -206,10 +206,25 @@ def main():
 		Expect(result.Truncated).To(BeTrue())
 	})
 
-	It("still allows a script run after a cd to a computed directory", func() {
-		result := parse(`cd "$(git rev-parse --show-toplevel)" && python3 tools/x.py`)
+	It("still allows a script run after a cd to a looked-up directory", func() {
+		lookup := fakeResolver{
+			files:   map[string]string{"/repo/tools/x.sh": "echo ok\n"},
+			outputs: map[string]string{"git rev-parse --show-toplevel": "/repo"},
+		}
+
+		result, err := parser.NewBashParserWithResolver(lookup).
+			Parse(`cd "$(git rev-parse --show-toplevel)" && bash tools/x.sh`)
+		Expect(err).NotTo(HaveOccurred())
 
 		Expect(result.Truncated).To(BeFalse(), "opacities: %v", result.Opacities)
+		Expect(result.Commands[len(result.Commands)-1].WorkingDirectory).To(Equal("/repo"))
+	})
+
+	It("blocks a relative script after a cd to a computed directory", func() {
+		result := parse(`cd "$(mktemp -d)" && bash tools/x.sh`)
+
+		Expect(result.Truncated).To(BeTrue())
+		Expect(result.Opacities[0].Detail).To(Equal(parser.DetailScriptDirectory))
 	})
 
 	It("keeps following scripts cheap with large definitions in scope", func() {

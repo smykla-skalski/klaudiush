@@ -80,6 +80,7 @@ type Command struct {
 	startup      map[string]startupValue
 	dynamicWords map[string]bool
 	quoting      map[string]wordQuoting
+	lookedUpDir  string
 }
 
 // wordQuoting records how the words that rendered to one argument were

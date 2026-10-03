@@ -74,6 +74,9 @@ type astWalker struct {
 	dirComputed bool
 	// dirStack holds the directories pushd saved.
 	dirStack []string
+	// dirSynced records that a cd set PWD, which then no longer holds a
+	// value assigned on the line.
+	dirSynced bool
 	// scope caches the variable snapshot until an assignment changes it;
 	// scopeDynamic is the dynamicVersion it was taken at.
 	scope        *VarScope
@@ -569,6 +572,7 @@ func (w *astWalker) extractCommand(call *syntax.CallExpr) {
 		startup:          prefixStartup(call),
 		dynamicWords:     dynamicArgs(call.Args[1:]),
 		quoting:          argQuoting(call.Args[1:]),
+		lookedUpDir:      w.lookupDir(name, words),
 	}, w.depth, view)
 }
 
@@ -703,9 +707,11 @@ func (w *astWalker) trackShellState(cmd Command) {
 		w.trackPositional(cmd)
 	case "cd":
 		defer w.syncDirVars()()
+
 		w.moveDir(cmd)
 	case "pushd":
 		defer w.syncDirVars()()
+
 		w.dirStack = append(w.dirStack, w.currentDir)
 		w.moveDir(cmd)
 	case "popd":

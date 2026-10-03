@@ -15,6 +15,12 @@ const (
 // from a variable holding it, is unknown: the walker cannot see the output,
 // and rendering it partially would send relative paths to the wrong place.
 func (w *astWalker) moveDir(cmd Command) {
+	if cmd.lookedUpDir != "" {
+		w.changeDir(cmd.lookedUpDir)
+
+		return
+	}
+
 	if cmd.Dynamic || slices.ContainsFunc(cmd.Args, w.namesDynamicVar) {
 		w.dirComputed, w.dirUnknown = true, true
 
@@ -44,6 +50,7 @@ func (w *astWalker) syncDirVars() func() {
 
 	return func() {
 		w.setDirVar(oldPWDVar, old, oldKnown)
+		w.dirSynced = true
 
 		pwd, known := w.pwdValue()
 		w.setDirVar(pwdVar, pwd, known)
@@ -63,7 +70,7 @@ func (w *astWalker) pwdValue() (string, bool) {
 			return "", false
 		}
 
-		if value, ok := w.assignments[pwdVar]; ok {
+		if value, ok := w.assignments[pwdVar]; ok && !w.dirSynced {
 			return value, true
 		}
 

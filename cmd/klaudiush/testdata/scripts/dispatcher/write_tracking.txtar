@@ -1,0 +1,92 @@
+exec git init --initial-branch=main
+exec git config user.email "test@test.com"
+exec git config user.name "Test User"
+
+cp file.go staged.go
+exec git add staged.go
+
+stdin sed-script.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+stdout 'written earlier on the line'
+
+stdin unzip-script.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+stdout 'cannot place'
+
+stdin stash-script.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+stdout 'cannot place'
+
+stdin soft-reset-script.json
+exec klaudiush --hook-type PreToolUse
+! stdout .
+
+stdin computed-cd-script.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+stdout 'relative path after a cd'
+
+stdin pwd-script.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+! stdout 'SHELL002'
+
+stdin ln-message.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+stdout 'written earlier in the command'
+
+stdin unzip-message.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+stdout 'whose name klaudiush cannot see'
+
+-- file.go --
+package main
+
+func main() {}
+
+-- script.sh --
+true
+
+-- sub/run.sh --
+git commit -m 'bad'
+
+-- good.txt --
+fix(parser): track more writes
+
+-- bad.txt --
+bad message
+
+-- sed-script.json --
+{"tool_name": "Bash", "tool_input": {"command": "sed -i 's/true/git push --force/' script.sh && bash script.sh"}}
+
+-- unzip-script.json --
+{"tool_name": "Bash", "tool_input": {"command": "unzip -o x.zip && bash script.sh"}}
+
+-- stash-script.json --
+{"tool_name": "Bash", "tool_input": {"command": "git stash pop && bash script.sh"}}
+
+-- soft-reset-script.json --
+{"tool_name": "Bash", "tool_input": {"command": "git reset --soft HEAD && bash script.sh"}}
+
+-- computed-cd-script.json --
+{"tool_name": "Bash", "tool_input": {"command": "cd \"$(mktemp -d)\" && bash script.sh"}}
+
+-- pwd-script.json --
+{"tool_name": "Bash", "tool_input": {"command": "cd sub && bash \"$PWD/run.sh\""}}
+
+-- ln-message.json --
+{"tool_name": "Bash", "tool_input": {"command": "ln -sf bad.txt good.txt && git commit -sS -F good.txt"}}
+
+-- unzip-message.json --
+{"tool_name": "Bash", "tool_input": {"command": "unzip -o x.zip && git commit -sS -F good.txt"}}
