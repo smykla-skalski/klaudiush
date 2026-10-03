@@ -79,6 +79,8 @@ func FuzzBashParse(f *testing.F) {
 	f.Add(`docker run --entrypoint '' --hosts-file /x --name -w --entrypoint git i push`)
 	f.Add(`docker run $OPTS {--entrypoint,git} "$IMG"; podman-compose run --ent=git s; "$D" run`)
 	f.Add(`docker run --entrypoint docker run --entrypoint docker run --entrypoint docker run x`)
+	f.Add(`sudo -u "" git push --force; docker run --entrypoint git --name '' i push; "" git`)
+	f.Add(`git -C "" -c '' push $'' ""''; X=; $X git push; env -u "" "$X" git push`)
 
 	f.Fuzz(func(t *testing.T, command string) {
 		p := parser.NewBashParser()

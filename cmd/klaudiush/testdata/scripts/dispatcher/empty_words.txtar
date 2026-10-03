@@ -1,0 +1,58 @@
+exec git init --initial-branch=main
+exec git config user.email "test@test.com"
+exec git config user.name "Test User"
+
+cp file.go staged.go
+exec git add staged.go
+
+stdin sudo-empty.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'GIT010'
+
+stdin sudo-single-quoted.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'GIT010'
+
+stdin docker-name-empty.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'GIT010'
+
+stdin git-dir-empty.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'GIT010'
+
+stdin unquoted-empty-program.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'GIT010'
+
+stdin sudo-empty-valid.json
+exec klaudiush --hook-type PreToolUse
+! stdout .
+
+-- file.go --
+package main
+
+func main() {}
+
+-- sudo-empty.json --
+{"tool_name": "Bash", "tool_input": {"command": "sudo -u \"\" git commit -S -m 'feat(api): add user endpoint'"}}
+
+-- sudo-single-quoted.json --
+{"tool_name": "Bash", "tool_input": {"command": "sudo -u '' git commit -S -m 'feat(api): add user endpoint'"}}
+
+-- docker-name-empty.json --
+{"tool_name": "Bash", "tool_input": {"command": "docker run --entrypoint git --name \"\" alpine commit -S -m 'feat(api): add user endpoint'"}}
+
+-- git-dir-empty.json --
+{"tool_name": "Bash", "tool_input": {"command": "git -C \"\" commit -S -m 'feat(api): add user endpoint'"}}
+
+-- unquoted-empty-program.json --
+{"tool_name": "Bash", "tool_input": {"command": "X=; $X git commit -S -m 'feat(api): add user endpoint'"}}
+
+-- sudo-empty-valid.json --
+{"tool_name": "Bash", "tool_input": {"command": "sudo -u \"\" git commit -sS -m 'feat(api): add user endpoint'"}}

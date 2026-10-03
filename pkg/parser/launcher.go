@@ -943,5 +943,6 @@ func childCommand(parent Command, name string, args []string) Command {
 		dynamicWords:     parent.dynamicWords,
 		argTexts:         parent.argTexts,
 		stdinText:        parent.stdinText,
+		quoting:          parent.quoting,
 	}
 }
