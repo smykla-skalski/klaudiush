@@ -90,9 +90,10 @@ var _ = Describe("Container exec", func() {
 		Entry("options from the line", `X="-u root"; docker exec $X c git push`, "git push"),
 		Entry("a variable splitting into container and program", "docker exec $SPLIT push",
 			"git push"),
-		Entry("an empty option value the parser drops", `docker exec -e "" c git push`,
-			"git push"),
-		Entry("an empty user the parser drops", `docker exec -u '' root git push`, "git push"),
+		Entry("an empty option value", `docker exec -e "" c git push --force`,
+			"git push --force"),
+		Entry("an empty user", `docker exec -u '' c git push --force`, "git push --force"),
+		Entry("an empty workdir", `docker exec --workdir '' c git push`, "git push"),
 	)
 
 	DescribeTable("follows only the program exec runs",
@@ -113,6 +114,8 @@ var _ = Describe("Container exec", func() {
 		Entry("podman --latest", "podman exec --latest echo git push", "echo"),
 		Entry("nerdctl", "nerdctl exec c echo git push", "echo"),
 		Entry("a container named git", "docker exec git echo push", "echo"),
+		Entry("a container named git after a valued option",
+			"docker exec -u root git echo push", "echo"),
 		Entry("a container named exec", "docker exec 'exec' echo git push", "echo"),
 		Entry("under an unknown runner", "foo docker exec c echo git push", "echo"),
 		Entry("a container from the line", "C=web; docker exec $C echo git push", "echo"),

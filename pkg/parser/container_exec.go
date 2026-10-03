@@ -118,19 +118,18 @@ func globalShortCluster(arg string) (takesNext, known bool) {
 
 // execReader reads exec options up to the container and the program after
 // it. Where an option may or may not take the next argument (an option it
-// does not know, a value the parser dropped as an empty word, a value
-// starting with -), it follows both readings, so the one the runner uses is
-// among them. A reading is started once per place, so readings that meet
-// again cost nothing; past maxContainerReadings it stops and reports
-// exhausted. A word in the place of an option or the container that comes
-// from a variable, command output, a glob or a brace expansion may stand
-// for any options or for the container and the program, so it is reported
-// as dynamic. programs holds the index in args of each program found.
+// does not know, a value starting with -), it follows both readings, so the
+// one the runner uses is among them. A reading is started once per place,
+// so readings that meet again cost nothing; past maxContainerReadings it
+// stops and reports exhausted. A word in the place of an option or the
+// container that comes from a variable, command output, a glob or a brace
+// expansion may stand for any options or for the container and the
+// program, so it is reported as dynamic. programs holds the index in args
+// of each program found.
 type execReader struct {
 	args      []string
 	programs  []int
 	started   map[execStart]bool
-	exec      int
 	readings  int
 	exhausted bool
 	dynamic   string
@@ -151,7 +150,7 @@ func containerExecs(args []string) (*execReader, bool) {
 		return nil, false
 	}
 
-	r := &execReader{args: args, started: make(map[execStart]bool), exec: at}
+	r := &execReader{args: args, started: make(map[execStart]bool)}
 	r.fork(at+1, false)
 
 	return r, true
@@ -278,30 +277,7 @@ func (r *execReader) operands(i int, latest bool) {
 		return
 	}
 
-	// The parser drops a quoted empty value (-u ""), which makes the
-	// program look like the option's value and the container.
-	if r.afterSeparateValue(i) && launchesTracked(r.args[i], r.args[i+1:]) {
-		r.program(i)
-	}
-
 	r.program(i + 1)
-}
-
-// afterSeparateValue reports a word at i read as the container right after
-// an option that took the word before it as its value.
-func (r *execReader) afterSeparateValue(i int) bool {
-	if i-2 <= r.exec || strings.HasPrefix(r.args[i-1], "-") {
-		return false
-	}
-
-	option := r.args[i-2]
-	if strings.HasPrefix(option, "--") {
-		return containerExecValueFlags[option]
-	}
-
-	takes, _, _ := execShortCluster(option)
-
-	return strings.HasPrefix(option, "-") && takes
 }
 
 // splitRisk says why a word before the program may split into several
