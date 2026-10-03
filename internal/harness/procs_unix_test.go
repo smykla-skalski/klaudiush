@@ -9,11 +9,13 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"golang.org/x/sys/unix"
@@ -26,9 +28,12 @@ const (
 	orphanHelper = "harness-test-orphan"
 )
 
-// detachLinger keeps the detaching parent alive long enough for a few
-// sandbox listings to see its child.
-const detachLinger = 500 * time.Millisecond
+// The detach helper writes its child's pid to detachPIDFile and exits once
+// detachRelease exists, so the spec decides when the parent goes away.
+const (
+	detachPIDFile = "detached.pid"
+	detachRelease = "release"
+)
 
 // owner is a sandbox process as the orphan helper reports it.
 type owner struct {
@@ -47,7 +52,8 @@ func init() {
 }
 
 // runDetach starts a sleeper in a new session with none of the sandbox
-// environment, prints its pid and exits, the way a daemon detaches.
+// environment, reports its pid and exits when released, the way a daemon
+// detaches.
 func runDetach([]string) int {
 	self, err := os.Executable()
 	if err != nil {
@@ -62,10 +68,19 @@ func runDetach([]string) int {
 		return 1
 	}
 
-	fmt.Println(child.Process.Pid)
-	time.Sleep(detachLinger)
+	if os.WriteFile(detachPIDFile, []byte(strconv.Itoa(child.Process.Pid)), 0o600) != nil {
+		return 1
+	}
 
-	return 0
+	for deadline := time.Now().Add(time.Minute); time.Now().Before(deadline); {
+		if _, err := os.Stat(detachRelease); err == nil {
+			return 0
+		}
+
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	return 1
 }
 
 // runOrphan holds a sandbox with a running harness and lingering children,
@@ -110,6 +125,24 @@ func runOrphan(args []string) int {
 	return 0
 }
 
+// startDetachedBlocker starts the test binary as a sleeper leading its own
+// session, with none of the sandbox environment.
+func startDetachedBlocker() *exec.Cmd {
+	self, err := os.Executable()
+	Expect(err).NotTo(HaveOccurred())
+
+	cmd := exec.Command(self)
+	cmd.Env = []string{blockEnv + "=1"}
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	Expect(cmd.Start()).To(Succeed())
+	DeferCleanup(func() {
+		_ = cmd.Process.Kill()
+		_, _ = cmd.Process.Wait()
+	})
+
+	return cmd
+}
+
 func identify(pid int) owner {
 	start, _ := harness.StartOf(pid)
 
@@ -135,16 +168,35 @@ var _ = Describe("Sandbox processes outside the harness tree", func() {
 		self, err := os.Executable()
 		Expect(err).NotTo(HaveOccurred())
 
-		out, err := harness.RunIn(context.Background(), sb, sb.Work, self, detachHelper)
-		Expect(err).NotTo(HaveOccurred(), string(out))
+		done := make(chan error, 1)
 
-		first, _, _ := strings.Cut(string(out), "\n")
-		pid, err := strconv.Atoi(first)
-		Expect(err).NotTo(HaveOccurred(), "coverage may add lines after the pid: %s", out)
+		go func() {
+			out, runErr := harness.RunIn(context.Background(), sb, sb.Work, self, detachHelper)
+			if runErr != nil {
+				runErr = errors.Wrapf(runErr, "%s", out)
+			}
+
+			done <- runErr
+		}()
+
+		var pid int
+
+		Eventually(func() error {
+			raw, readErr := os.ReadFile(filepath.Join(sb.Work, detachPIDFile))
+			if readErr == nil {
+				pid, readErr = strconv.Atoi(string(raw))
+			}
+
+			return readErr
+		}).WithTimeout(30 * time.Second).Should(Succeed())
 
 		child := identify(pid)
 		Expect(child.Start).NotTo(BeZero())
 		DeferCleanup(func() { harness.KillIfSame(child.PID, child.Start) })
+
+		Eventually(sb.Processes).Should(ContainElement(pid), "seen while its parent runs")
+		Expect(os.WriteFile(filepath.Join(sb.Work, detachRelease), nil, 0o600)).To(Succeed())
+		Eventually(done).WithTimeout(30 * time.Second).Should(Receive(BeNil()))
 
 		sid, err := unix.Getsid(pid)
 		Expect(err).NotTo(HaveOccurred())
@@ -241,6 +293,34 @@ var _ = Describe("Keeper", func() {
 		Expect(blocker.Process.Signal(syscall.Signal(0))).To(Succeed())
 	})
 
+	It("leaves a session alone once the sandbox forgot it", func() {
+		blocker := startDetachedBlocker()
+		pid := blocker.Process.Pid
+
+		Eventually(func() int64 { return identify(pid).Start }).ShouldNot(BeZero())
+
+		input := fmt.Sprintf("{\"root\":%q}\n{\"session\":%d}\n{\"forget\":%d}\n",
+			GinkgoT().TempDir(), pid, pid)
+
+		Expect(harness.KeeperMain(strings.NewReader(input))).To(Equal(0))
+		Expect(blocker.Process.Signal(syscall.Signal(0))).To(Succeed())
+	})
+
+	It("stops a session it was told about", func() {
+		blocker := startDetachedBlocker()
+
+		Eventually(func() int64 { return identify(blocker.Process.Pid).Start }).ShouldNot(BeZero())
+
+		input := fmt.Sprintf("{\"root\":%q}\n{\"session\":%d}\n",
+			GinkgoT().TempDir(), blocker.Process.Pid)
+
+		Expect(harness.KeeperMain(strings.NewReader(input))).To(Equal(0))
+
+		state, err := blocker.Process.Wait()
+		Expect(err).NotTo(HaveOccurred())
+		Expect(state.Sys().(syscall.WaitStatus).Signal()).To(Equal(syscall.SIGKILL))
+	})
+
 	It("never signals a process group or every process", func() {
 		Expect(harness.KillIfSame(0, 0)).To(BeFalse())
 		Expect(harness.KillIfSame(-1, 0)).To(BeFalse())
@@ -264,5 +344,8 @@ var _ = Describe("Keeper", func() {
 		Expect(sb.Close()).To(Succeed())
 		Expect(sb.KeeperPID()).To(BeZero())
 		Expect(running(keeper)).To(BeFalse())
+
+		_, _ = harness.RunIn(context.Background(), sb, sb.Work, "true")
+		Expect(sb.KeeperPID()).To(BeZero(), "a closed sandbox starts no keeper")
 	})
 })

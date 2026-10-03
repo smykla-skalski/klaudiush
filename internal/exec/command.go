@@ -8,7 +8,6 @@ import (
 	"context"
 	"io"
 	"os/exec"
-	"runtime"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -150,13 +149,7 @@ func (*commandRunner) RunWithOptions(
 	}
 
 	if opts.KillWithParent {
-		// The parent-death signal follows the starting thread, which must
-		// not exit before the command does.
-		runtime.LockOSThread()
-
-		defer runtime.UnlockOSThread()
-
-		killWithParent(cmd)
+		defer killWithParent(cmd)()
 	}
 
 	err := cmd.Start()

@@ -4,4 +4,4 @@ package exec
 
 import "os/exec"
 
-func killWithParent(*exec.Cmd) {}
+func killWithParent(*exec.Cmd) func() { return func() {} }

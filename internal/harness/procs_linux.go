@@ -157,3 +157,7 @@ func signalByHandle(pid int, start int64, sig unix.Signal) (sent, handled bool) 
 
 	return unix.PidfdSendSignal(fd, sig, nil, 0) == nil, true
 }
+
+// keeperBinary names the running binary through /proc, which still reaches
+// it after its file was removed.
+func keeperBinary() (string, error) { return "/proc/self/exe", nil }

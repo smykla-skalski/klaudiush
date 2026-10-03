@@ -64,6 +64,8 @@ type Sandbox struct {
 	known    map[int]int64
 	keeper   *keeper
 
+	keeperClosed bool
+
 	scanMu sync.Mutex
 }
 

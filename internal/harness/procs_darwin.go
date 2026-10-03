@@ -107,3 +107,6 @@ func processStart(pid int) (int64, bool) {
 
 // signalByHandle reports that macOS has no process handle to signal by.
 func signalByHandle(int, int64, unix.Signal) (sent, handled bool) { return false, false }
+
+// keeperBinary is the path of the running binary.
+func keeperBinary() (string, error) { return os.Executable() }

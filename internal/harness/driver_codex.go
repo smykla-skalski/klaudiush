@@ -199,6 +199,8 @@ func (d *CodexDriver) listHooks(ctx context.Context, sb *Sandbox) ([]codexHook, 
 		return nil, err
 	}
 
+	defer stopWatch()
+
 	result := execpkg.NewCommandRunner(0).RunWithOptions(ctx, opts, d.resolve(ctx), "app-server")
 
 	stopWatch()

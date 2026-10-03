@@ -118,6 +118,8 @@ func RunIn(ctx context.Context, sb *Sandbox, dir, name string, args ...string) (
 		return nil, err
 	}
 
+	defer stopWatch()
+
 	result := execpkg.NewCommandRunner(0).RunWithOptions(ctx, opts, name, args...)
 
 	stopWatch()

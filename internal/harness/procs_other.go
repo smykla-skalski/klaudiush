@@ -10,6 +10,8 @@ func listProcesses(bool) ([]process, error) { return nil, nil }
 
 const keeperSupported = false
 
+func keeperBinary() (string, error) { return "", nil }
+
 func keeperAttr() *syscall.SysProcAttr { return nil }
 
 func freezeProcess(process) {}

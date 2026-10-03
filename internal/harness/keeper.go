@@ -19,6 +19,7 @@ type keeperMessage struct {
 	Root    string   `json:"root,omitempty"`
 	Aliases []string `json:"aliases,omitempty"`
 	Session int      `json:"session,omitempty"`
+	Forget  int      `json:"forget,omitempty"`
 	PID     int      `json:"pid,omitempty"`
 	Start   int64    `json:"start,omitempty"`
 }
@@ -44,7 +45,7 @@ func init() {
 // startKeeper starts a keeper for the sandbox with the pipe as its stdin
 // and its output discarded, so it holds none of the caller's pipes open.
 func startKeeper(root string, aliases []string) (*keeper, error) {
-	self, err := os.Executable()
+	self, err := keeperBinary()
 	if err != nil {
 		return nil, errors.Wrap(err, "finding the keeper binary")
 	}
@@ -147,6 +148,10 @@ func runKeeper(r io.Reader) int {
 
 		if msg.Session > 0 {
 			sb.sessions[msg.Session] = struct{}{}
+		}
+
+		if msg.Forget > 0 {
+			delete(sb.sessions, msg.Forget)
 		}
 
 		if msg.PID > 0 {

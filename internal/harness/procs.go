@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -46,9 +47,10 @@ type process struct {
 // tree is listed every watchPoll, so a child that starts its own session
 // and outlives its parent is still known. The returned function ends that
 // watch; call it once the command has finished.
+// Keeper messages are sent under mu, so the keeper sees each session added
+// before it is forgotten.
 func (s *Sandbox) track(opts *execpkg.RunOptions) (func(), error) {
-	k, err := s.ensureKeeper()
-	if err != nil {
+	if err := s.ensureKeeper(); err != nil {
 		return nil, err
 	}
 
@@ -56,28 +58,30 @@ func (s *Sandbox) track(opts *execpkg.RunOptions) (func(), error) {
 	opts.KillWithParent = true
 	opts.Started = func(pid int) {
 		s.mu.Lock()
-		s.sessions[pid] = struct{}{}
-		s.mu.Unlock()
+		defer s.mu.Unlock()
 
-		_ = k.send(keeperMessage{Session: pid})
+		s.sessions[pid] = struct{}{}
+
+		_ = s.keeper.send(keeperMessage{Session: pid})
 	}
 
 	return s.watch(), nil
 }
 
 // ensureKeeper starts the sandbox keeper on first use and tells it what the
-// sandbox already knows.
-func (s *Sandbox) ensureKeeper() (*keeper, error) {
+// sandbox already knows. A closed sandbox gets no new keeper, since nothing
+// would close it before the test binary exits.
+func (s *Sandbox) ensureKeeper() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.keeper != nil || !keeperSupported {
-		return s.keeper, nil
+	if s.keeper != nil || s.keeperClosed || !keeperSupported {
+		return nil
 	}
 
 	k, err := startKeeper(s.Root, s.aliases)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	var sendErr error
@@ -91,12 +95,12 @@ func (s *Sandbox) ensureKeeper() (*keeper, error) {
 	}
 
 	if sendErr != nil {
-		return nil, errors.CombineErrors(sendErr, k.close())
+		return errors.CombineErrors(sendErr, k.close())
 	}
 
 	s.keeper = k
 
-	return k, nil
+	return nil
 }
 
 // closeKeeper ends the keeper and waits for its last sweep.
@@ -104,13 +108,14 @@ func (s *Sandbox) closeKeeper() error {
 	s.mu.Lock()
 	k := s.keeper
 	s.keeper = nil
+	s.keeperClosed = true
 	s.mu.Unlock()
 
 	return k.close()
 }
 
 // watch lists the sandbox processes every watchPoll until the returned
-// function is called.
+// function is first called.
 func (s *Sandbox) watch() func() {
 	stop := make(chan struct{})
 	done := make(chan struct{})
@@ -131,10 +136,10 @@ func (s *Sandbox) watch() func() {
 		}
 	}()
 
-	return func() {
+	return sync.OnceFunc(func() {
 		close(stop)
 		<-done
-	}
+	})
 }
 
 // StopProcesses kills every process the sandbox started that is still
@@ -231,7 +236,9 @@ func (s *Sandbox) owned(withEnv bool) ([]process, error) {
 
 // roots marks the processes that belong to the sandbox by their own
 // session, environment or earlier sighting, and drops the tracked sessions
-// with no live member. skip holds the caller and its keeper.
+// with no live member, here and in the keeper, so neither takes a later
+// session leader that reuses the id for a sandbox process. skip holds the
+// caller and its keeper.
 func (s *Sandbox) roots(procs []process, tracked []int) (owned, skip map[int]bool) {
 	owned = map[int]bool{}
 	skip = map[int]bool{os.Getpid(): true}
@@ -258,6 +265,8 @@ func (s *Sandbox) roots(procs []process, tracked []int) (owned, skip map[int]boo
 	for _, sid := range tracked {
 		if !live[sid] {
 			delete(s.sessions, sid)
+
+			_ = s.keeper.send(keeperMessage{Forget: sid})
 		}
 	}
 
@@ -273,14 +282,14 @@ func (s *Sandbox) remember(owned, procs []process) {
 		alive[p.PID] = p.Start
 	}
 
-	var added []keeperMessage
-
 	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	for _, p := range owned {
 		if start, ok := s.known[p.PID]; !ok || start != p.Start {
 			s.known[p.PID] = p.Start
-			added = append(added, keeperMessage{PID: p.PID, Start: p.Start})
+
+			_ = s.keeper.send(keeperMessage{PID: p.PID, Start: p.Start})
 		}
 	}
 
@@ -288,13 +297,6 @@ func (s *Sandbox) remember(owned, procs []process) {
 		if got, ok := alive[pid]; !ok || got != start {
 			delete(s.known, pid)
 		}
-	}
-
-	k := s.keeper
-	s.mu.Unlock()
-
-	for _, msg := range added {
-		_ = k.send(msg)
 	}
 }
 
