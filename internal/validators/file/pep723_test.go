@@ -74,8 +74,18 @@ var _ = Describe("AICommentValidator PEP 723 metadata", func() {
 			"# /// script\n# dependencies = []\n# ///\nimport sys\n"),
 		Entry("block lower in the file", "/repo/fetch.py",
 			"import sys\n\n# /// script\n# dependencies = [\n#   \"rich\",\n# ]\n# ///\n"),
-		Entry("block with a bare # line and a custom type", "/repo/fetch.py",
-			"# /// pyproject-x\n# [tool]\n#\n# key = 1\n# ///\n"),
+		Entry("block with a bare # line", "/repo/fetch.py",
+			"# /// script\n# [tool.uv]\n#\n# key = 1\n# ///\n"),
+		Entry("block of a type other than script", "/repo/fetch.py",
+			"def f(xs):\n# /// note\n# sum the values\n# ///\n    return sum(xs)\n", 2, 3, 4),
+		Entry(
+			"second script block",
+			"/repo/fetch.py",
+			"# /// script\n# a = 1\n# ///\nimport sys\n# /// script\n# sum the values\n# ///\n",
+			5,
+			6,
+			7,
+		),
 		Entry("block in CRLF content", "/repo/fetch.py",
 			"# /// script\r\n# dependencies = []\r\n# ///\r\nimport sys\r\n"),
 		Entry("closes on the last # /// of the run", "/repo/fetch.py",
@@ -152,6 +162,16 @@ var _ = Describe("AICommentValidator PEP 723 metadata", func() {
 		It("exempts a line edited deep inside a long block", func() {
 			ctx.ToolInput.FilePath = writeSource("# /// script\n# dependencies = [\n" +
 				strings.Repeat("#   \"pkg\",\n", 300) + "#   \"target\",\n# ]\n# ///\nimport sys\n")
+			ctx.ToolInput.OldString = "#   \"target\","
+			ctx.ToolInput.NewString = "#   \"target2\","
+			Expect(flaggedLines(sv.Validate(context.Background(), ctx))).To(BeEmpty())
+		})
+
+		It("exempts a line edited far above the closing line of a long block", func() {
+			ctx.ToolInput.FilePath = writeSource(
+				"# /// script\n# dependencies = [\n#   \"target\",\n" +
+					strings.Repeat("#   \"pkg\",\n", 300) + "# ]\n# ///\nimport sys\n",
+			)
 			ctx.ToolInput.OldString = "#   \"target\","
 			ctx.ToolInput.NewString = "#   \"target2\","
 			Expect(flaggedLines(sv.Validate(context.Background(), ctx))).To(BeEmpty())

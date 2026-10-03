@@ -632,9 +632,12 @@ func editLeads(content, old string, syntax langSyntax, all bool) []editLead {
 		first := commentRunStart(lines, lineStates, max(0, li-maxDocContextLines))
 
 		leads = append(leads, editLead{
-			state:       lineStates[li],
-			prefix:      content[lineOffsets[li]:pos],
-			suffix:      firstLines(content[from:], maxDocContextLines),
+			state:  lineStates[li],
+			prefix: content[lineOffsets[li]:pos],
+			suffix: throughCommentRun(
+				firstLines(content[from:], maxDocContextLines),
+				content[from:],
+			),
 			before:      lines[first:li],
 			beforeState: lineStates[first],
 		})
@@ -657,6 +660,29 @@ func commentRunStart(lines []string, states []stringState, first int) int {
 	}
 
 	return first
+}
+
+// throughCommentRun extends head, a prefix of s ending at a line break,
+// while the lines after it continue its run of "#" lines, so a PEP 723 block
+// whose closing line is past the lookahead below an Edit is still closed.
+func throughCommentRun(head, s string) string {
+	end := len(head)
+
+	lastStart := strings.LastIndexByte(strings.TrimSuffix(head, "\n"), '\n') + 1
+	if end == len(s) || !strings.HasPrefix(head[lastStart:], "#") {
+		return head
+	}
+
+	for end < len(s) && s[end] == '#' {
+		next := strings.IndexByte(s[end:], '\n')
+		if next < 0 {
+			return s
+		}
+
+		end += next + 1
+	}
+
+	return s[:end]
 }
 
 // firstLines returns the first n lines of s.

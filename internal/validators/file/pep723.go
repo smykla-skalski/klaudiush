@@ -5,18 +5,19 @@ import (
 	"strings"
 )
 
-// pep723Start and pep723Body are the opening and inner lines of a PEP 723
-// inline script metadata block; pep723End closes it.
-var (
-	pep723Start = regexp.MustCompile(`^# /// [a-zA-Z0-9-]+$`)
-	pep723Body  = regexp.MustCompile(`^#( .*)?$`)
+// pep723Body is an inner line of a PEP 723 inline script metadata block.
+// Only the "script" type is defined; other types are reserved, so accepting
+// them would let any comment wrapped in "# /// x" skip the check.
+var pep723Body = regexp.MustCompile(`^#( .*)?$`)
+
+const (
+	pep723Start = "# /// script"
+	pep723End   = "# ///"
 )
 
-const pep723End = "# ///"
-
-// pep723Lines reports which of lines, scanned from state, belong to a
-// well-formed PEP 723 metadata block. As in the spec's reference regex, a
-// block opens with "# /// <type>", holds at least one line that is "#" or
+// pep723Lines reports which of lines, scanned from state, belong to the
+// first well-formed PEP 723 script block; the spec allows only one. As in the
+// spec's reference regex, a block opens with "# /// script", holds at least one line that is "#" or
 // "# ...", and closes on the last "# ///" of that unbroken run of comment
 // lines. Every line must be a top-level comment starting in column 0, so an
 // unterminated block, or one broken by code, exempts nothing.
@@ -34,8 +35,8 @@ func pep723Lines(lines []string, state stringState, scan commentScan) []bool {
 
 	inBlock := make([]bool, len(lines))
 
-	for i := 0; i < len(lines); i++ {
-		if !topLevel[i] || !pep723Start.MatchString(trimCR(lines[i])) {
+	for i := range lines {
+		if !topLevel[i] || trimCR(lines[i]) != pep723Start {
 			continue
 		}
 
@@ -55,7 +56,7 @@ func pep723Lines(lines []string, state stringState, scan commentScan) []bool {
 			inBlock[j] = true
 		}
 
-		i = end
+		break
 	}
 
 	return inBlock
