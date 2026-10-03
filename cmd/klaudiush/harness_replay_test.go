@@ -36,6 +36,7 @@ var _ = Describe("captured harness payloads", func() {
 		Expect(providers).To(HaveKey("claude"))
 		Expect(providers).To(HaveKey("codex"))
 		Expect(providers).To(HaveKey("gemini"))
+		Expect(providers).To(HaveKey("opencode"))
 	})
 
 	for _, fixture := range fixtures {

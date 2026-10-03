@@ -209,6 +209,8 @@ var _ = Describe("drivers", func() {
 		Expect(d.Provider()).To(Equal(hook.ProviderOpenCode))
 		Expect(d.Supports(harness.FeatureCompletionGate)).To(BeFalse())
 		Expect(d.Prepare(sb, model)).To(Succeed())
+		Expect(filepath.Join(sb.Bin, "opencode")).To(BeAnExistingFile())
+		Expect(d.Prepare(sb, model)).To(Succeed())
 		Expect(d.ProviderConfig(sb)).To(ContainSubstring("[providers.opencode]"))
 		Expect(d.HookFile(sb)).To(HaveSuffix("klaudiush.ts"))
 		Expect(d.SeedUnrelatedHook(sb, "")).To(Succeed())
@@ -217,17 +219,29 @@ var _ = Describe("drivers", func() {
 
 		d.SetVersion("1.14.0")
 		Expect(d.KnownGap("1.14.0")).To(BeEmpty())
+		Expect(d.Supports(harness.FeatureAfterToolRepair)).To(BeFalse())
 		Expect(d.ShellCall("ls").Tool).To(Equal("bash"))
 		Expect(d.WriteCall(sb, "a", "x").Args).To(HaveKey("filePath"))
 
 		d.SetVersion("2.0.19")
-		Expect(d.KnownGap("2.0.19")).To(ContainSubstring("bridge plugin"))
+		Expect(d.KnownGap("2.0.19")).To(BeEmpty())
+		Expect(d.Supports(harness.FeatureAfterToolRepair)).To(BeTrue())
+		Expect(d.Supports(harness.FeatureSubagent)).To(BeFalse())
 		Expect(d.ShellCall("ls").Tool).To(Equal("shell"))
 		Expect(d.WriteCall(sb, "a", "x").Args).To(HaveKey("path"))
 
 		out, err := d.Run(context.Background(), sb, "prompt", harness.RunOptions{})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(string(out)).To(ContainSubstring("--standalone"))
+	})
+
+	It("expects a pre-tool warning where the provider can carry it", func() {
+		Expect(
+			harness.BeforeToolWarningOutcome(hook.ProviderClaude),
+		).To(Equal(harness.OutcomeAdvise))
+		Expect(
+			harness.BeforeToolWarningOutcome(hook.ProviderOpenCode),
+		).To(Equal(harness.OutcomePass))
 	})
 
 	It("reads harness versions and explains a binary that does not run", func() {

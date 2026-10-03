@@ -114,6 +114,19 @@ Regenerate the opencode plugin after upgrading klaudiush, since it embeds the
 resolved binary path. `klaudiush doctor` reports a stale plugin as an
 unregistered dispatcher.
 
+opencode 1.x and 2.x load plugins through different APIs, and each rejects the
+other's plugin with only a log warning, after which every tool runs unchecked.
+Both commands run `opencode --version` (from `PATH`, or
+`~/.opencode/bin/opencode`) and write the matching bridge. When opencode is
+not found they keep the API of the plugin already installed, or write the 1.x
+bridge on a fresh install, and `klaudiush doctor` warns that the bridge is
+unverified. Rerun
+`klaudiush doctor --fix` after upgrading opencode across a major version;
+`klaudiush doctor` reports a bridge the installed opencode rejects as an error.
+The 2.x bridge also refuses `session_move` to any other directory: klaudiush
+resolves project policy from the session directory, so a moved session would
+stop protecting the original project.
+
 For Codex, klaudiush registers `SessionStart`, `PreToolUse` (no matcher, so
 shell, `apply_patch`, MCP, and local function tools are all checked before they
 run), and `Stop`. Each file in an `apply_patch` is checked on its own: an added

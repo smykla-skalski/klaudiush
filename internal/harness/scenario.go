@@ -233,11 +233,27 @@ func warnAllowedScenario() Scenario {
 			problems := r.expectFiles("warned.txt")
 			problems = append(
 				problems,
-				r.expectCapture(hook.CanonicalEventBeforeTool, OutcomeAdvise, "GIT010")...)
+				r.expectCapture(
+					hook.CanonicalEventBeforeTool,
+					BeforeToolWarningOutcome(r.Driver.Provider()),
+					"GIT010",
+				)...)
 
 			return append(problems, r.expectNoPermissionDecision()...)
 		},
 	}
+}
+
+// BeforeToolWarningOutcome is how a pre-tool warning answers on a provider.
+// Where the event has no model-facing channel (opencode can only refuse a
+// tool by throwing) the warning is a user notice in systemMessage, a pass.
+func BeforeToolWarningOutcome(provider hook.Provider) Outcome {
+	capability, ok := hook.ProviderEventCapability(provider, hook.CanonicalEventBeforeTool)
+	if ok && capability.Supports(hook.ResponseFieldAdditionalContext) {
+		return OutcomeAdvise
+	}
+
+	return OutcomePass
 }
 
 func afterToolScenario() Scenario {

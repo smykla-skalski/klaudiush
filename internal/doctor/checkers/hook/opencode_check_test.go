@@ -51,7 +51,9 @@ var _ = Describe("opencode hook checkers", func() {
 		Expect(os.WriteFile(binaryPath, []byte("#!/bin/sh\nexit 0\n"), 0o755)).To(Succeed())
 
 		originalPath, pathSet = os.LookupEnv("PATH")
-		Expect(os.Setenv("PATH", binDir+string(os.PathListSeparator)+originalPath)).To(Succeed())
+
+		Expect(os.Setenv("PATH", binDir)).To(Succeed())
+		GinkgoT().Setenv("HOME", tempDir)
 	})
 
 	AfterEach(func() {
@@ -124,6 +126,7 @@ var _ = Describe("opencode hook checkers", func() {
 			_, err := settings.InstallOpenCodeDispatcher(
 				settings.DefaultOpenCodePluginPath(),
 				binaryPath,
+				settings.OpenCodeAPIV1,
 			)
 			Expect(err).NotTo(HaveOccurred())
 
@@ -147,7 +150,11 @@ var _ = Describe("opencode hook checkers", func() {
 		})
 
 		It("passes once the bridge plugin is installed", func() {
-			_, err := settings.InstallOpenCodeDispatcher(pluginPath, binaryPath)
+			_, err := settings.InstallOpenCodeDispatcher(
+				pluginPath,
+				binaryPath,
+				settings.OpenCodeAPIV1,
+			)
 			Expect(err).NotTo(HaveOccurred())
 
 			result := hook.NewOpenCodeRegistrationChecker(enabledCfg()).Check(ctx)
@@ -155,7 +162,11 @@ var _ = Describe("opencode hook checkers", func() {
 		})
 
 		It("fails when the plugin calls a different binary", func() {
-			_, err := settings.InstallOpenCodeDispatcher(pluginPath, "/elsewhere/klaudiush")
+			_, err := settings.InstallOpenCodeDispatcher(
+				pluginPath,
+				"/elsewhere/klaudiush",
+				settings.OpenCodeAPIV1,
+			)
 			Expect(err).NotTo(HaveOccurred())
 
 			result := hook.NewOpenCodeRegistrationChecker(enabledCfg()).Check(ctx)
@@ -171,7 +182,11 @@ var _ = Describe("opencode hook checkers", func() {
 		})
 
 		It("passes for a freshly installed plugin", func() {
-			_, err := settings.InstallOpenCodeDispatcher(pluginPath, binaryPath)
+			_, err := settings.InstallOpenCodeDispatcher(
+				pluginPath,
+				binaryPath,
+				settings.OpenCodeAPIV1,
+			)
 			Expect(err).NotTo(HaveOccurred())
 
 			checker := hook.NewOpenCodeFreshnessChecker(enabledCfg())
@@ -183,7 +198,11 @@ var _ = Describe("opencode hook checkers", func() {
 		// A plugin body left over from an older klaudiush still names the right
 		// binary and events, so only a content comparison catches it.
 		It("flags a stale plugin as fixable", func() {
-			_, err := settings.InstallOpenCodeDispatcher(pluginPath, binaryPath)
+			_, err := settings.InstallOpenCodeDispatcher(
+				pluginPath,
+				binaryPath,
+				settings.OpenCodeAPIV1,
+			)
 			Expect(err).NotTo(HaveOccurred())
 
 			current, err := os.ReadFile(pluginPath)
@@ -248,7 +267,11 @@ var _ = Describe("opencode hook checkers", func() {
 		})
 
 		It("passes for every forwarded event once installed", func() {
-			_, err := settings.InstallOpenCodeDispatcher(pluginPath, binaryPath)
+			_, err := settings.InstallOpenCodeDispatcher(
+				pluginPath,
+				binaryPath,
+				settings.OpenCodeAPIV1,
+			)
 			Expect(err).NotTo(HaveOccurred())
 
 			for _, eventName := range pkgHook.OpenCodeEventNames() {
@@ -260,7 +283,11 @@ var _ = Describe("opencode hook checkers", func() {
 		// The plugin names permission.ask in a comment but does not subscribe
 		// to it, so a mention must not be reported as configured.
 		It("does not pass an event the plugin only mentions", func() {
-			_, err := settings.InstallOpenCodeDispatcher(pluginPath, binaryPath)
+			_, err := settings.InstallOpenCodeDispatcher(
+				pluginPath,
+				binaryPath,
+				settings.OpenCodeAPIV1,
+			)
 			Expect(err).NotTo(HaveOccurred())
 
 			result := hook.NewOpenCodeEventChecker(enabledCfg(), "permission.ask").Check(ctx)

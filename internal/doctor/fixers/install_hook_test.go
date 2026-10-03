@@ -9,6 +9,7 @@ import (
 	. "github.com/onsi/gomega"
 	"go.uber.org/mock/gomock"
 
+	"github.com/smykla-skalski/klaudiush/internal/doctor/settings"
 	"github.com/smykla-skalski/klaudiush/internal/prompt"
 	pkgConfig "github.com/smykla-skalski/klaudiush/pkg/config"
 )
@@ -145,4 +146,59 @@ var _ = Describe("InstallHookFixer", func() {
 		Expect(NewInstallHookFixer(mockPrompt, cfg).Fix(context.Background(), false)).
 			To(MatchError(ContainSubstring("failed to install Gemini hooks")))
 	})
+
+	Describe("opencode bridge plugin", func() {
+		var (
+			pluginPath string
+			cfg        *pkgConfig.Config
+		)
+
+		BeforeEach(func() {
+			claudeEnabled := false
+			enabled := true
+			pluginPath = filepath.Join(tempDir, "opencode", "plugin", "klaudiush.ts")
+			cfg = &pkgConfig.Config{
+				Providers: &pkgConfig.ProvidersConfig{
+					Claude: &pkgConfig.ClaudeProviderConfig{Enabled: &claudeEnabled},
+					OpenCode: &pkgConfig.OpenCodeProviderConfig{
+						Enabled:    &enabled,
+						PluginPath: pluginPath,
+					},
+				},
+			}
+		})
+
+		fix := func(detector settings.OpenCodeVersionDetector) string {
+			fixer := NewInstallHookFixer(mockPrompt, cfg).WithOpenCodeVersionDetector(detector)
+			Expect(fixer.Fix(context.Background(), false)).To(Succeed())
+
+			data, err := os.ReadFile(pluginPath)
+			Expect(err).NotTo(HaveOccurred())
+
+			return string(data)
+		}
+
+		It("installs the bridge matching the installed opencode", func() {
+			Expect(settings.DetectOpenCodePluginAPI(fix(stubOpenCode{version: "2.0.19"}))).
+				To(Equal(settings.OpenCodeAPIV2))
+			Expect(settings.DetectOpenCodePluginAPI(fix(stubOpenCode{version: "1.14.0"}))).
+				To(Equal(settings.OpenCodeAPIV1))
+		})
+
+		It("keeps the installed bridge API when opencode is not on PATH", func() {
+			fix(stubOpenCode{version: "2.0.19"})
+
+			source := fix(stubOpenCode{err: settings.ErrOpenCodeNotInstalled})
+			Expect(settings.DetectOpenCodePluginAPI(source)).To(Equal(settings.OpenCodeAPIV2))
+		})
+	})
 })
+
+type stubOpenCode struct {
+	version string
+	err     error
+}
+
+func (s stubOpenCode) Detect(context.Context) (string, error) {
+	return s.version, s.err
+}

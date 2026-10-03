@@ -1,0 +1,32 @@
+{
+  "provider": "opencode",
+  "harness": "opencode",
+  "harness_version": "2.0.19",
+  "source": "live",
+  "scenario": "deny_shell",
+  "event": "tool.execute.before",
+  "args": [
+    "--provider",
+    "opencode",
+    "--event",
+    "tool.execute.before"
+  ],
+  "expect": "deny",
+  "config": "[protection]\nenabled = true\npaths = [\"guarded/**\"]\n\n[providers.claude]\nenabled = false\n\n[providers.opencode]\nenabled = true\n",
+  "payload": {
+    "hook_event_name": "tool.execute.before",
+    "session_id": "ses_efe3f0230ffeuYKVUWJSgF1kHg",
+    "cwd": "{{WORK}}",
+    "tool_name": "shell",
+    "tool_input": {
+      "command": "touch guarded/shell.txt"
+    },
+    "tool_use_id": "call_0003"
+  },
+  "response": {
+    "continue": true,
+    "decision": "deny",
+    "reason": "[POL001] Command would change protected policy files: {{WORK}}/guarded/shell.txt\n  - {{WORK}}/guarded/shell.txt: Protected protection.paths entry (actual: 'touch guarded/shell.txt'). Repair: Do not change this file. If the change is needed, ask the user to make it, or to list the path in protection.allow",
+    "systemMessage": "❌ Blocked POL001: Command would change protected policy files: {{WORK}}/guarded/shell.txt\n  - {{WORK}}/guarded/shell.txt: Protected protection.paths entry. Fix: Do not change this file. If the change is needed, ask the user to make it, or to list the path in protection.allow\n  Ref: https://klaudiu.sh/e/POL001\n\n"
+  }
+}

@@ -794,14 +794,25 @@ func (c *OpenCodeRegistrationChecker) Check(_ context.Context) doctor.CheckResul
 // plugin body. Without this check a stale plugin keeps reporting healthy, and
 // the fix a release shipped never reaches the session.
 type OpenCodeFreshnessChecker struct {
-	cfg *pkgConfig.OpenCodeProviderConfig
+	cfg      *pkgConfig.OpenCodeProviderConfig
+	openCode settings.OpenCodeVersionDetector
 }
 
 // NewOpenCodeFreshnessChecker creates a checker for plugin staleness.
 func NewOpenCodeFreshnessChecker(
 	cfg *pkgConfig.OpenCodeProviderConfig,
 ) *OpenCodeFreshnessChecker {
-	return &OpenCodeFreshnessChecker{cfg: cfg}
+	return &OpenCodeFreshnessChecker{cfg: cfg, openCode: settings.NewOpenCodeVersionDetector()}
+}
+
+// WithOpenCodeVersionDetector replaces how the installed opencode version is
+// found, which picks the plugin API the installed bridge is compared against.
+func (c *OpenCodeFreshnessChecker) WithOpenCodeVersionDetector(
+	detector settings.OpenCodeVersionDetector,
+) *OpenCodeFreshnessChecker {
+	c.openCode = detector
+
+	return c
 }
 
 // Name returns the name of the check.
@@ -815,7 +826,7 @@ func (*OpenCodeFreshnessChecker) Category() doctor.Category {
 }
 
 // Check compares the installed plugin against the current template.
-func (c *OpenCodeFreshnessChecker) Check(_ context.Context) doctor.CheckResult {
+func (c *OpenCodeFreshnessChecker) Check(ctx context.Context) doctor.CheckResult {
 	checkName := "opencode plugin is up to date"
 
 	registrationChecker := &OpenCodeRegistrationChecker{cfg: c.cfg}
@@ -840,7 +851,9 @@ func (c *OpenCodeFreshnessChecker) Check(_ context.Context) doctor.CheckResult {
 		return registrationChecker.failForParseError(checkName, err)
 	}
 
-	rendered, err := settings.RenderOpenCodePlugin(binaryPath)
+	target := settings.ResolveOpenCodeTarget(ctx, c.openCode, pluginPath)
+
+	rendered, err := settings.RenderOpenCodePlugin(binaryPath, target.API)
 	if err != nil {
 		return doctor.FailError(
 			checkName,
@@ -855,6 +868,7 @@ func (c *OpenCodeFreshnessChecker) Check(_ context.Context) doctor.CheckResult {
 		return doctor.FailError(checkName, "Bridge plugin is out of date").
 			WithDetails(
 				"File: "+pluginPath,
+				"Expected the bridge for: "+target.Describe(),
 				"Regenerate with: klaudiush doctor --fix",
 			).
 			WithFixID("install_hook")

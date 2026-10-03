@@ -15,11 +15,12 @@ import (
 	"github.com/smykla-skalski/klaudiush/pkg/hook"
 )
 
-//go:embed templates/opencode_plugin.ts
+//go:embed templates/opencode_plugin.ts templates/opencode_plugin_v2.ts
 var openCodePluginTemplate embed.FS
 
 const (
-	openCodePluginTemplatePath = "templates/opencode_plugin.ts"
+	openCodePluginTemplatePathV1 = "templates/opencode_plugin.ts"
+	openCodePluginTemplatePathV2 = "templates/opencode_plugin_v2.ts"
 
 	// openCodePluginRelPath is the plugin location under the XDG config home.
 	// opencode loads every file in this directory at startup.
@@ -134,18 +135,24 @@ func pluginReferencesBinary(source, binaryPath string) (bool, error) {
 //
 // A plain substring search is not enough: every forwarded event appears as an
 // argument to invoke(), so any such search reports an event as configured even
-// when nothing is listening for it. The plugin subscribes in exactly two ways,
-// and this checks for both:
+// when nothing is listening for it. The plugin subscribes in one of these ways:
 //
-//   - a hook key, `"tool.execute.before":`, optionally behind opencode's
+//   - a 1.x hook key, `"tool.execute.before":`, optionally behind opencode's
 //     `experimental.` prefix for hooks that are still unstable
+//   - a 2.x hook registration, `ctx.tool.hook("execute.before",`
 //   - a case label on the shared event bus, `case "session.idle":`
 func pluginRegistersEvent(source, eventName string) bool {
-	for _, form := range []string{
+	forms := []string{
 		`"` + eventName + `":`,
 		`"experimental.` + eventName + `":`,
 		`case "` + eventName + `":`,
-	} {
+	}
+
+	if registration, ok := openCodeV2Registrations[eventName]; ok {
+		forms = append(forms, registration)
+	}
+
+	for _, form := range forms {
 		if strings.Contains(source, form) {
 			return true
 		}
@@ -154,11 +161,11 @@ func pluginRegistersEvent(source, eventName string) bool {
 	return false
 }
 
-// InstallOpenCodeDispatcher renders the bridge plugin for the given binary.
-// It reports whether the plugin was already installed and up to date, matching
-// the return convention of the other provider installers.
-func InstallOpenCodeDispatcher(pluginPath, binaryPath string) (bool, error) {
-	rendered, err := RenderOpenCodePlugin(binaryPath)
+// InstallOpenCodeDispatcher renders the bridge plugin for the given binary and
+// opencode plugin API. It reports whether the plugin was already installed and
+// up to date, matching the return convention of the other provider installers.
+func InstallOpenCodeDispatcher(pluginPath, binaryPath string, api OpenCodeAPI) (bool, error) {
+	rendered, err := RenderOpenCodePlugin(binaryPath, api)
 	if err != nil {
 		return false, err
 	}
@@ -181,9 +188,16 @@ func InstallOpenCodeDispatcher(pluginPath, binaryPath string) (bool, error) {
 	return false, nil
 }
 
-// RenderOpenCodePlugin renders the bridge plugin source for a binary path.
-func RenderOpenCodePlugin(binaryPath string) ([]byte, error) {
-	raw, err := openCodePluginTemplate.ReadFile(openCodePluginTemplatePath)
+// RenderOpenCodePlugin renders the bridge plugin source for a binary path and
+// opencode plugin API. An unknown API renders the 1.x bridge, the only one
+// earlier releases installed.
+func RenderOpenCodePlugin(binaryPath string, api OpenCodeAPI) ([]byte, error) {
+	templatePath := openCodePluginTemplatePathV1
+	if api == OpenCodeAPIV2 {
+		templatePath = openCodePluginTemplatePathV2
+	}
+
+	raw, err := openCodePluginTemplate.ReadFile(templatePath)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to read embedded opencode plugin")
 	}
