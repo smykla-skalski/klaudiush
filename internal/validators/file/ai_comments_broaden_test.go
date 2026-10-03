@@ -2,6 +2,11 @@ package file_test
 
 import (
 	"context"
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -302,4 +307,420 @@ var _ = Describe("AICommentValidator struct field docs", func() {
 		Entry("plain statement",
 			"// Guard against nil to avoid a shutdown panic.\nif cli == nil {\n}"),
 	)
+})
+
+var _ = Describe("AICommentValidator multi-line string literals", func() {
+	var (
+		sv  *file.AICommentValidator
+		ctx *hook.Context
+	)
+
+	BeforeEach(func() {
+		sv = file.NewAICommentValidator(
+			logger.NewNoOpLogger(),
+			&config.AICommentValidatorConfig{Mode: config.AICommentModeStrict},
+			nil,
+		)
+		ctx = &hook.Context{
+			EventType: hook.EventTypePreToolUse,
+			ToolName:  hook.ToolTypeWrite,
+		}
+	})
+
+	DescribeTable(
+		"does not treat markers inside triple-quoted strings as comments",
+		func(path, content string) {
+			ctx.ToolInput.FilePath = path
+			ctx.ToolInput.Content = content
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeTrue())
+		},
+		Entry("markdown heading in a python triple-double string", "/repo/gen.py",
+			"BODY = \"\"\"\n## Problem\n\nText.\n\"\"\"\nprint(BODY)"),
+		Entry("heading in a python triple-single string", "/repo/gen.py",
+			"BODY = '''\n# Steps\n// not code\n'''"),
+		Entry("hash line in a python docstring", "/repo/cli.py",
+			"def run():\n    \"\"\"Run the tool.\n\n    # example\n    \"\"\"\n    return 1"),
+		Entry("f-string prefix", "/repo/gen.py",
+			"msg = f\"\"\"\n## {title}\n\"\"\""),
+		Entry("escaped quote does not close the string", "/repo/gen.py",
+			"X = \"\"\"a \\\"\"\" ## b\n# still inside\n\"\"\""),
+		Entry("apostrophe inside a triple-double string", "/repo/gen.py",
+			"X = \"\"\"\nIt's here\n# heading\n\"\"\""),
+		Entry("hash in a regular python string", "/repo/gen.py",
+			"x = '# not a comment'\ny = \"## also not\""),
+		Entry("toml multi-line string", "/repo/config.toml",
+			"Q = '''\n# Set the value\n'''"),
+	)
+
+	DescribeTable(
+		"keeps detecting real comments around triple-quoted strings",
+		func(path, content string) {
+			ctx.ToolInput.FilePath = path
+			ctx.ToolInput.Content = content
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
+		},
+		Entry("comment after a string closes on a later line", "/repo/gen.py",
+			"BODY = \"\"\"\n## Problem\n\"\"\"\n# holds the body\nprint(BODY)"),
+		Entry("trailing comment after a one-line triple string", "/repo/gen.py",
+			"x = \"\"\"a\"\"\"  # holds the text"),
+		Entry("comment before the string opens", "/repo/gen.py",
+			"# holds the body\nBODY = \"\"\"\n## Problem\n\"\"\""),
+		Entry("python comment with an apostrophe", "/repo/gen.py",
+			"x = 1\n# it's the running total"),
+	)
+
+	It("filler mode ignores verb-first text inside a python triple string", func() {
+		v := file.NewAICommentValidator(logger.NewNoOpLogger(), nil, nil)
+		ctx.ToolInput.FilePath = "/repo/gen.py"
+		ctx.ToolInput.Content = "HELP = \"\"\"\n# Set the value first\n\"\"\""
+		Expect(v.Validate(context.Background(), ctx).Passed).To(BeTrue())
+	})
+
+	DescribeTable(
+		"does not treat a backslash as an escape in raw triple-quoted strings",
+		func(path, content string) {
+			ctx.ToolInput.FilePath = path
+			ctx.ToolInput.Content = content
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
+		},
+		Entry("toml literal string ending in a backslash", "/repo/config.toml",
+			"p = '''C:\\dir\\'''\n# Set the value"),
+	)
+
+	It("still honours escapes in python triple-quoted strings", func() {
+		ctx.ToolInput.FilePath = "/repo/gen.py"
+		ctx.ToolInput.Content = "p = \"\"\"C:\\dir\\\"\"\"\n# still inside\n\"\"\""
+		Expect(sv.Validate(context.Background(), ctx).Passed).To(BeTrue())
+	})
+
+	Context("Edit fragments", func() {
+		var dir string
+
+		BeforeEach(func() {
+			dir = GinkgoT().TempDir()
+			ctx.ToolName = hook.ToolTypeEdit
+		})
+
+		writeSource := func(content string) string {
+			path := filepath.Join(dir, "gen.py")
+			Expect(os.WriteFile(path, []byte(content), 0o600)).To(Succeed())
+
+			return path
+		}
+
+		It("allows a heading in a fragment inside an existing triple string", func() {
+			ctx.ToolInput.FilePath = writeSource("BODY = \"\"\"\n## Old\n\nText.\n\"\"\"\n")
+			ctx.ToolInput.OldString = "## Old"
+			ctx.ToolInput.NewString = "## Problem\n\n## Steps"
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeTrue())
+		})
+
+		It("flags a comment after a fragment closes an existing docstring", func() {
+			ctx.ToolInput.FilePath = writeSource(
+				"def total():\n    \"\"\"Compute.\n\n    Returns the sum.\n    \"\"\"\n    return 1\n",
+			)
+			ctx.ToolInput.OldString = "    Returns the sum.\n    \"\"\"\n    return 1"
+			ctx.ToolInput.NewString = "    Returns the total.\n    \"\"\"\n    # add tax before rounding\n    return 1"
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
+		})
+
+		It("does not carry string state between joined patch hunks", func() {
+			ctx.ToolInput.FilePath = writeSource(
+				"def total():\n    \"\"\"Old summary.\"\"\"\n    x = 1\n    return x\n",
+			)
+			ctx.ToolInput.NewString = "    \"\"\"New summary.\n    # add tax before rounding"
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
+		})
+
+		It("does not pair openers from different patch hunks", func() {
+			ctx.ToolInput.FilePath = writeSource("def total():\n    return 1\n")
+			ctx.ToolInput.NewString = "    \"\"\"Compute the total.\n" +
+				"    # add tax before rounding\n" +
+				"    \"\"\"Compute the average."
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
+		})
+
+		It("falls back to code state when replaced occurrences disagree", func() {
+			ctx.ToolInput.FilePath = writeSource(
+				"DOC = \"\"\"\nfoo\n\"\"\"\nfoo\n",
+			)
+			ctx.ToolInput.OldString = "foo"
+			ctx.ToolInput.NewString = "# holds the total\nfoo"
+			ctx.ToolInput.Additional = map[string]json.RawMessage{
+				"replace_all": json.RawMessage("true"),
+			}
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
+		})
+
+		It("does not open a string from quotes in an edited unspaced comment", func() {
+			ctx.ToolInput.FilePath = writeSource("x = 1#note\ny = 2\n")
+			ctx.ToolInput.OldString = "note\ny = 2"
+			ctx.ToolInput.NewString = "note \"\"\"\n# add tax before rounding\ny = 2"
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
+		})
+
+		It("checks a bounded number of old_string matches", func() {
+			ctx.ToolInput.FilePath = writeSource(
+				"DATA = [" + strings.Repeat("foo, ", 20000) + "]\n",
+			)
+			ctx.ToolInput.OldString = "foo"
+			ctx.ToolInput.NewString = "bar"
+			ctx.ToolInput.Additional = map[string]json.RawMessage{
+				"replace_all": json.RawMessage("true"),
+			}
+
+			start := time.Now()
+			passed := sv.Validate(context.Background(), ctx).Passed
+
+			Expect(passed).To(BeTrue())
+			Expect(time.Since(start)).To(BeNumerically("<", 2*time.Second))
+		})
+
+		It("scans joined patch hunks line by line for a new file", func() {
+			ctx.ToolInput.FilePath = filepath.Join(dir, "new.py")
+			ctx.ToolInput.NewString = "    \"\"\"New summary.\nx = compute()  # bump the retry count"
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
+		})
+
+		It("flags a comment added after a python 3.12 f-string field", func() {
+			ctx.ToolInput.FilePath = writeSource("print(f\"{d[\"#\"]}\", value)\n")
+			ctx.ToolInput.OldString = "value)"
+			ctx.ToolInput.NewString = "total)  # log the total"
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
+		})
+
+		It("matches an LF old_string in a CRLF file", func() {
+			ctx.ToolInput.FilePath = writeSource("BODY = \"\"\"\r\n## Old\r\nText.\r\n\"\"\"\r\n")
+			ctx.ToolInput.OldString = "## Old\nText."
+			ctx.ToolInput.NewString = "## Problem\nText."
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeTrue())
+		})
+
+		It("recognises a python shebang in an extension-less file", func() {
+			path := filepath.Join(dir, "gen")
+			Expect(
+				os.WriteFile(
+					path,
+					[]byte("#!/usr/bin/env python3\nBODY = \"\"\"\n## Old\n\"\"\"\n"),
+					0o600,
+				),
+			).
+				To(Succeed())
+
+			ctx.ToolInput.FilePath = path
+			ctx.ToolInput.OldString = "## Old"
+			ctx.ToolInput.NewString = "## Problem"
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeTrue())
+		})
+
+		It("resolves a relative path against the hook working directory", func() {
+			writeSource("BODY = \"\"\"\n## Old\n\nText.\n\"\"\"\n")
+
+			ctx.WorkingDir = dir
+			ctx.ToolInput.FilePath = "gen.py"
+			ctx.ToolInput.OldString = "## Old"
+			ctx.ToolInput.NewString = "## Problem"
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeTrue())
+		})
+
+		It("does not open a string from quotes in an edited comment", func() {
+			ctx.ToolInput.FilePath = writeSource("def f():\n    # use docstrings\n    return 1\n")
+			ctx.ToolInput.OldString = "use docstrings\n    return 1"
+			ctx.ToolInput.NewString = "use \"\"\" for docstrings\n" +
+				"    # add tax before rounding\n    return 1"
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
+		})
+
+		It("flags new text written into an existing comment", func() {
+			ctx.ToolInput.FilePath = writeSource("x = 0  # old wording\n")
+			ctx.ToolInput.OldString = "old wording"
+			ctx.ToolInput.NewString = "Initialize the counter"
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
+		})
+
+		It("keeps the exemption of the edited comment's marker", func() {
+			ctx.ToolInput.FilePath = writeSource("x = 0  # TODO: fix foo\n")
+			ctx.ToolInput.OldString = "fix foo"
+			ctx.ToolInput.NewString = "fix bar"
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeTrue())
+		})
+
+		It("keeps the doc comment exemption of an edited comment", func() {
+			ctx.ToolInput.FilePath = writeSource(
+				"# Returns configured value.\ndef get_value():\n    return 1\n",
+			)
+			ctx.ToolInput.OldString = "configured"
+			ctx.ToolInput.NewString = "cached"
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeTrue())
+		})
+
+		It("flags an edited comment that documents no declaration", func() {
+			ctx.ToolInput.FilePath = writeSource(
+				"# Returns configured value.\n\ndef get_value():\n    return 1\n",
+			)
+			ctx.ToolInput.OldString = "configured"
+			ctx.ToolInput.NewString = "cached"
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
+		})
+
+		It("does not check comments after the edited text", func() {
+			ctx.ToolInput.FilePath = writeSource("x = 1  # holds the total\n")
+			ctx.ToolInput.OldString = "x = 1"
+			ctx.ToolInput.NewString = "x = 2"
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeTrue())
+		})
+
+		It("scans from code state when the file is too large to read", func() {
+			ctx.ToolInput.FilePath = writeSource(
+				"BODY = \"\"\"\n## Old\n" + strings.Repeat("text\n", 1<<20) + "\"\"\"\n",
+			)
+			ctx.ToolInput.OldString = "## Old"
+			ctx.ToolInput.NewString = "## Problem"
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
+		})
+
+		It("finds a comment after f-string fields nested past the depth limit", func() {
+			ctx.ToolName = hook.ToolTypeWrite
+			ctx.ToolInput.FilePath = filepath.Join(dir, "deep.py")
+			ctx.ToolInput.Content = "s = f\"\"\"{ " + strings.Repeat("{ ", 70) +
+				strings.Repeat("} ", 70) + "\n    x  # add tax\n}\"\"\""
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
+		})
+
+		It("finds a comment after the string holding fields past the depth limit", func() {
+			ctx.ToolName = hook.ToolTypeWrite
+			ctx.ToolInput.FilePath = filepath.Join(dir, "deep.py")
+			ctx.ToolInput.Content = "s = f\"\"\"{" + strings.Repeat("(", 70) +
+				strings.Repeat(")", 70) + "}\"\"\"\n# add tax before rounding"
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
+		})
+
+		It("checks only the first match without replace_all", func() {
+			ctx.ToolInput.FilePath = writeSource("DOC = \"\"\"\nfoo\n\"\"\"\nfoo\n")
+			ctx.ToolInput.OldString = "foo"
+			ctx.ToolInput.NewString = "## Problem"
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeTrue())
+		})
+
+		It("recognises a python shebang in a patch creating an extension-less file", func() {
+			ctx.ToolInput.FilePath = filepath.Join(dir, "tool")
+			ctx.ToolInput.NewString = "#!/usr/bin/env python3\nhalf = total // 2"
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeTrue())
+		})
+
+		It("keeps an exemption every replaced comment has", func() {
+			ctx.ToolInput.FilePath = writeSource("# TODO: alpha old\n# TODO: beta old\n")
+			ctx.ToolInput.OldString = "old"
+			ctx.ToolInput.NewString = "new"
+			ctx.ToolInput.Additional = map[string]json.RawMessage{
+				"replace_all": json.RawMessage("true"),
+			}
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeTrue())
+		})
+
+		It("flags a replacement that lands in one unexempt comment", func() {
+			ctx.ToolInput.FilePath = writeSource("# TODO: alpha old\n# beta old\n")
+			ctx.ToolInput.OldString = "old"
+			ctx.ToolInput.NewString = "new"
+			ctx.ToolInput.Additional = map[string]json.RawMessage{
+				"replace_all": json.RawMessage("true"),
+			}
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
+		})
+
+		It("starts in the shared string state of matches on different lines", func() {
+			ctx.ToolInput.FilePath = writeSource(
+				"A = \"\"\"\nfoo\n\"\"\"\nB = \"\"\"\n  foo\n\"\"\"\n",
+			)
+			ctx.ToolInput.OldString = "foo"
+			ctx.ToolInput.NewString = "## Problem"
+			ctx.ToolInput.Additional = map[string]json.RawMessage{
+				"replace_all": json.RawMessage("true"),
+			}
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeTrue())
+		})
+
+		It("seeds no string state from a TOML literal string ending in a backslash", func() {
+			path := filepath.Join(dir, "config.toml")
+			Expect(
+				os.WriteFile(path, []byte("dir = 'C:\\'  # don't wrap in '''\nkey = 1\n"), 0o600),
+			).
+				To(Succeed())
+
+			ctx.ToolInput.FilePath = path
+			ctx.ToolInput.OldString = "key = 1"
+			ctx.ToolInput.NewString = "key = 1\n# Set the value to one"
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
+		})
+
+		It("scans from code state when the file cannot be read", func() {
+			ctx.ToolInput.FilePath = filepath.Join(dir, "missing.py")
+			ctx.ToolInput.OldString = "x = 1"
+			ctx.ToolInput.NewString = "x = 1\n# holds the total"
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
+		})
+	})
+
+	DescribeTable(
+		"uses the comment marker of the file's language",
+		func(path, content string, passes bool) {
+			ctx.ToolInput.FilePath = path
+			ctx.ToolInput.Content = content
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(Equal(passes))
+		},
+		Entry("triple quote after an unspaced hash does not open a string", "/repo/gen.py",
+			"x = 1#\"\"\"\ny = 2\n# add tax before rounding", false),
+		Entry("hash in a python 3.12 f-string field reusing the quote", "/repo/gen.py",
+			"line = f\"{\"#\" * depth} {title}\"", true),
+		Entry("comment after a python 3.12 f-string field reusing the quote", "/repo/gen.py",
+			"x = f\"{d[\"#\"]}\"  # holds the value", false),
+		Entry("toml basic string closing on a quote run", "/repo/config.toml",
+			"s = \"\"\"\"hi\"\"\"\"  # Set the value", false),
+		Entry("triple quote inside a comment does not open a string", "/repo/gen.py",
+			"x = 1  # EXC:FILE011:keep \"\"\"\ny = 2\n# add tax before rounding", false),
+		Entry("python floor division is not a comment", "/repo/calc.py",
+			"half = total // 2", true),
+		Entry("toml literal string ending in a backslash", "/repo/config.toml",
+			"dir = 'C:\\'  # don't wrap in '''\n# Set the value to one", false),
+		Entry("triple quote nested in a python 3.12 f-string field", "/repo/gen.py",
+			"s = f\"{\"\"\"nested\"\"\"}\"\n# Set the value to one", false),
+		Entry("comment in a multi-line f-string field", "/repo/gen.py",
+			"s = f\"\"\"{\n    total  # add tax\n}\"\"\"", false),
+		Entry("heading in a triple f-string around a field", "/repo/gen.py",
+			"s = f\"\"\"\n## {title}\n\n{body:>{width}}\n\"\"\"", true),
+		Entry("quote as a format spec fill character", "/repo/gen.py",
+			"s = f\"{x:'>10}\"\n# Set the value to one", false),
+		Entry("escaped braces in a triple f-string", "/repo/gen.py",
+			"s = f\"\"\"{{\n## Heading\n}}\"\"\"", true),
+		Entry("backtick in an unspaced python comment", "/repo/gen.py",
+			"x = 1#see `\n# Set the value to one", false),
+		Entry("backtick in an unspaced toml comment", "/repo/config.toml",
+			"x = 1#see `\n# Set the value to one", false),
+		Entry("keyword before a string is not an f-string prefix", "/repo/gen.py",
+			"if\"{\" in s:\n    # Set the value to one\n    pass", false),
+		Entry("triple quote in a backslash-continued string", "/repo/gen.py",
+			"s = 'abc\\\n\"\"\" '\nx = 1  # hidden", false),
+		Entry("comment after a backslash-continued string", "/repo/gen.py",
+			"s = 'abc\\\ndef'  # explain", false),
+		Entry("comment after a continued string in CRLF content", "/repo/gen.py",
+			"msg = \"a \\\r\nb\"  # explain\r\n", false),
+		Entry("escaped backslash at the end of a closed string", "/repo/gen.py",
+			"s = 'abc\\\\'\nx = 1  # explain", false),
+		Entry("triple quote in javadoc does not open a string", "/repo/Main.java",
+			" * Text blocks start with {@code \"\"\"}.\n// add tax before rounding", false),
+		Entry("triple quote in kdoc does not open a string", "/repo/Main.kt",
+			"/** Wraps the value in \"\"\" quotes. */\n// add tax before rounding", false),
+	)
+
+	It("recognises a python shebang in an extension-less Write", func() {
+		ctx.ToolInput.FilePath = "/repo/bin/gen"
+		ctx.ToolInput.Content = "#!/usr/bin/env python3\nBODY = \"\"\"\n## Problem\n\"\"\""
+		Expect(sv.Validate(context.Background(), ctx).Passed).To(BeTrue())
+	})
+
+	It("treats triple quotes as plain quotes in languages without them", func() {
+		ctx.ToolInput.FilePath = "/repo/main.go"
+		ctx.ToolInput.Content = "s := \"\"\"\n// holds the running total"
+		Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
+	})
 })

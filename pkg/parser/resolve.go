@@ -787,6 +787,10 @@ func (w *astWalker) follow(cmd Command, l launch, depth int) {
 		w.recordCommand(launchedCmd, depth)
 	}
 
+	for _, entrypoint := range l.entrypoints {
+		w.record(entrypoint, depth, neutralize(entrypoint.Name))
+	}
+
 	for _, script := range l.scripts {
 		w.walkScript(script, cmd, depth, scriptWalk{})
 	}
