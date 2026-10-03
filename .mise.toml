@@ -90,7 +90,7 @@ outputs = [
 description = "Build the binary (without signoff validation)"
 depends = ["generate"]
 run = "go build -o bin/klaudiush ./cmd/klaudiush"
-sources = ["**/*.go"]
+sources = ["**/*.go", "internal/doctor/settings/templates/*.ts"]
 outputs = ["bin/klaudiush"]
 
 [tasks."build:prod"]
