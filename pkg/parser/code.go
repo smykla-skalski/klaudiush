@@ -39,22 +39,23 @@ var (
 // replaced stdout, dup2 onto a pipe after fork) or captured as a value (print
 // or a log stream into a buffer, redirect_stdout). Code that can run a shell
 // string at all (os.system, shell=True, execSync, exec, shlex) or rebind
-// names dynamically (setattr, builtins, globals, :=) reads no prose: any
-// message it builds could reach that call. PATH counts only as a key or
-// assignment, since messages name it ("not found on PATH"). Reading a
-// result's stdout or printing to sys.stderr does not count.
+// names dynamically (setattr, builtins, globals) reads no prose: any message
+// it builds could reach that call. HOME and PATH count only as a key or
+// assignment, since code reads them and messages name them ("not found on
+// PATH"). Argv-list calls with cwd, stdout or stdin options, reading a
+// result's stdout, and printing to stderr do not count.
 var proseUnsafe = regexp.MustCompile(
 	`(?i)os\.system|shell\s*=\s*true|getoutput|child_process|execsync|\bexec\w*\s*\(|` +
 		`\beval\s*\(|shlex|spawn|setattr|builtins|globals\s*\(|locals\s*\(|__dict__|` +
-		`\bvars\s*\(|:=|__import__|importlib|` +
+		`\bvars\s*\(|__import__|importlib|putenv|create_subprocess|` +
 		`alias\.|\[alias|\[include|include(?:if)?\.|gitconfig|git/config|` +
 		`GIT_CONFIG|GIT_DIR|GIT_COMMON_DIR|GIT_WORK_TREE|GIT_EXEC_PATH|XDG_CONFIG_HOME|` +
-		`chdir|\bcwd\b|popen|open3|\bstdin\b|\$stdout\s*=|\bstdout\s*=[^=]|` +
+		`chdir|popen|open3|\$stdout\s*=|\bsys\.stdout\s*=[^=]|` +
 		`\bstd(?:out|err)\.write\s*=[^=]|` +
 		`dup2|\bfork\b|\bpipe\s*\(|fdopen|redirect_std|StringIO|BytesIO|` +
-		`\b(?:file|stream)\s*=\s*(?:[^s\s]|s[^y])|` +
+		`\b(?:file|stream)\s*=\s*(?:[^s\s]|s[^ty]|sy[^s]|st[^d])|` +
 		`\|\s*["'\x60]|["'\x60]\s*\||` +
-		`(?-i:\bHOME\b|["']PATH["']|\bPATH\s*=|\.PATH\b|\{PATH\})`,
+		`(?-i:\bHOME\b["'\]]*\s*[:=][^=]|["']PATH["']|\bPATH\s*=|\.PATH\b|\{PATH\})`,
 )
 
 // messageCallNames name calls that show their argument to a person: printing,
@@ -76,7 +77,7 @@ var messageAlternation = `\b(` + strings.ReplaceAll(messageCallNames, " ", "|") 
 var messageRebound = regexp.MustCompile(
 	`(?:\bimport\b[^\n;]*|\bas\s+|\bfunction\s*\*?\s*|\b(?:const|let|var)\s+|[{,][ \t]*|` +
 		`\{[^{}]*:[ \t]*|\blambda\b[^:\n]*|\bfor\b[^\n:]*)` + messageAlternation + `|` +
-		messageAlternation + `\s*=[^=>]`,
+		messageAlternation + `\s*:?=[^=>]`,
 )
 
 // pythonDef matches a Python def line, capturing its indent and name.

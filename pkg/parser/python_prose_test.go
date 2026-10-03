@@ -458,6 +458,26 @@ with contextlib.redirect_stdout(b): print("git zz")'`),
 		),
 	)
 
+	DescribeTable("reads prose in ordinary argv-list helpers",
+		func(command string) {
+			Expect(parse(command).Truncated).To(BeFalse(), "truncated: %q", command)
+		},
+		Entry(
+			"stdout and stdin options",
+			"python3 -c 'import subprocess, sys\nr = subprocess.run([\"git\", \"log\"], stdout=subprocess.PIPE, stdin=subprocess.DEVNULL)\nprint(\"git executable not found on PATH\", file=sys.stderr)'",
+		),
+		Entry(
+			"a cwd option",
+			"python3 -c 'import subprocess\nsubprocess.run([\"git\", \"status\"], cwd=root)\nprint(\"git is required\")'",
+		),
+		Entry("a walrus on another name",
+			"python3 -c 'if (n := len(args)) > 1:\n    print(\"git is required\")'"),
+		Entry("stderr imported from sys",
+			"python3 -c 'from sys import stderr\nprint(\"git is required\", file=stderr)'"),
+		Entry("HOME read from the environment",
+			"python3 -c 'import os\nhome = os.environ[\"HOME\"]\nprint(\"git is required\")'"),
+	)
+
 	It("keeps prose in a message function that only prints and exits", func() {
 		command := "python3 -c 'import sys\ndef fail(m):\n    sys.stderr.write(m)\n    raise SystemExit(2)\nfail(\"git zz is not set up\")'"
 		Expect(parse(command).Truncated).To(BeFalse())
