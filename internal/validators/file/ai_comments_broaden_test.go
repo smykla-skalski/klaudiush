@@ -587,6 +587,34 @@ var _ = Describe("AICommentValidator multi-line string literals", func() {
 			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
 		})
 
+		It("finds a comment after the string holding fields past the depth limit", func() {
+			ctx.ToolName = hook.ToolTypeWrite
+			ctx.ToolInput.FilePath = filepath.Join(dir, "deep.py")
+			ctx.ToolInput.Content = "s = f\"\"\"{" + strings.Repeat("(", 70) +
+				strings.Repeat(")", 70) + "}\"\"\"\n# add tax before rounding"
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
+		})
+
+		It("keeps an exemption every replaced comment has", func() {
+			ctx.ToolInput.FilePath = writeSource("# TODO: alpha old\n# TODO: beta old\n")
+			ctx.ToolInput.OldString = "old"
+			ctx.ToolInput.NewString = "new"
+			ctx.ToolInput.Additional = map[string]json.RawMessage{
+				"replace_all": json.RawMessage("true"),
+			}
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeTrue())
+		})
+
+		It("flags a replacement that lands in one unexempt comment", func() {
+			ctx.ToolInput.FilePath = writeSource("# TODO: alpha old\n# beta old\n")
+			ctx.ToolInput.OldString = "old"
+			ctx.ToolInput.NewString = "new"
+			ctx.ToolInput.Additional = map[string]json.RawMessage{
+				"replace_all": json.RawMessage("true"),
+			}
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
+		})
+
 		It("starts in the shared string state of matches on different lines", func() {
 			ctx.ToolInput.FilePath = writeSource(
 				"A = \"\"\"\nfoo\n\"\"\"\nB = \"\"\"\n  foo\n\"\"\"\n",

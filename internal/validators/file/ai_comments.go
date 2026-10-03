@@ -1,9 +1,11 @@
 package file
 
 import (
+	"cmp"
 	"context"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/smykla-skalski/klaudiush/internal/validator"
@@ -258,7 +260,8 @@ func allowsTestPhaseMarkers(path string) bool {
 // findAICommentViolations reports blocked comments. Task markers, machine
 // directives, exception tokens, doc comments, and Go test phase markers
 // are always exempt. In strict mode every other comment is a violation; in
-// filler mode only comments matching a pattern are.
+// filler mode only comments matching a pattern are. An Edit is checked from
+// each of its leads, and a line blocked from any lead is reported once.
 func findAICommentViolations(
 	content string,
 	patterns []*regexp.Regexp,
@@ -266,13 +269,51 @@ func findAICommentViolations(
 	allowTestPhaseMarkers bool,
 	scan commentScan,
 ) []violation {
+	leads := scan.leads
+	if len(leads) == 0 {
+		leads = []editLead{{}}
+	}
+
+	var violations []violation
+
+	seen := make(map[int]bool)
+
+	for _, lead := range leads {
+		for _, v := range findLeadViolations(
+			content, patterns, strict, allowTestPhaseMarkers, scan, lead,
+		) {
+			if !seen[v.line] {
+				seen[v.line] = true
+				violations = append(violations, v)
+			}
+		}
+	}
+
+	slices.SortStableFunc(violations, func(a, b violation) int {
+		return cmp.Compare(a.line, b.line)
+	})
+
+	return violations
+}
+
+// findLeadViolations is findAICommentViolations for one lead: content is
+// scanned from the lead's state, with its prefix on the first line and its
+// suffix as context for doc comments.
+func findLeadViolations(
+	content string,
+	patterns []*regexp.Regexp,
+	strict bool,
+	allowTestPhaseMarkers bool,
+	scan commentScan,
+	lead editLead,
+) []violation {
 	var violations []violation
 
 	lines := strings.Split(content, "\n")
-	lines[0] = scan.prefix + lines[0]
-	docLines := withFollowingSource(lines, scan.suffix)
+	lines[0] = lead.prefix + lines[0]
+	docLines := withFollowingSource(lines, lead.suffix)
 
-	state := scan.start
+	state := lead.state
 
 	for i, line := range lines {
 		var idx int
@@ -339,7 +380,7 @@ func withFollowingSource(lines []string, suffix string) []string {
 		return lines
 	}
 
-	rest := strings.SplitN(suffix, "\n", maxDocContextLines)
+	rest := strings.Split(suffix, "\n")
 	out := make([]string, 0, len(lines)+len(rest)-1)
 	out = append(out, lines...)
 	out[len(out)-1] += rest[0]

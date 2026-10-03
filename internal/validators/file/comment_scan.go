@@ -259,9 +259,13 @@ const (
 	pyKindMask  byte = 0xF0
 )
 
-// maxPythonDepth bounds the frame stack. An opener past it resets the
-// scanner to code, where comments are still found and closers pop nothing.
+// maxPythonDepth bounds the frame stack. An opener past it replaces the
+// stack with pyBroken for the rest of the scan: every "#" after whitespace is
+// then reported, so nesting the scanner cannot follow never hides a comment.
 const maxPythonDepth = 64
+
+// pyBroken is the only frame left once the frame stack overflows.
+const pyBroken byte = 0xC0
 
 func isPyString(frame byte) bool { return frame&pyKindMask == pyFrame }
 
@@ -275,7 +279,7 @@ func pyTop(stack []byte) byte {
 
 func pyPush(stack []byte, frame byte) []byte {
 	if len(stack) >= maxPythonDepth {
-		return stack[:0]
+		return append(stack[:0], pyBroken)
 	}
 
 	return append(stack, frame)
@@ -291,37 +295,51 @@ func scanPython(line string, state stringState) (int, stringState, bool) {
 	for i := 0; i < len(line); i++ {
 		top := pyTop(stack)
 
+		if line[i] == '#' && !isPyString(top) && top != pySpec {
+			idx, _, unspaced := hashComment(line, i, stateCode)
+			if idx >= 0 || top != pyBroken {
+				return idx, stringState(stack), unspaced
+			}
+
+			continue
+		}
+
 		switch {
+		case top == pyBroken:
 		case isPyString(top):
 			i, stack = scanPythonString(line, i, stack, top)
 		case top == pySpec:
 			stack = scanPythonSpec(line[i], stack)
 		default:
-			c := line[i]
-
-			switch {
-			case c == '#':
-				idx, _, unspaced := hashComment(line, i, stateCode)
-
-				return idx, stringState(stack), unspaced
-			case c == '\\':
-				i++
-			case c == '\'' || c == '"':
-				i, stack = openPythonString(line, i, stack)
-			case top == 0:
-			case c == '(' || c == '[' || c == '{':
-				stack = pyPush(stack, pyBracket)
-			case c == ')' || c == ']' || c == '}':
-				if top == pyBracket || (top == pyField && c == '}') {
-					stack = stack[:len(stack)-1]
-				}
-			case c == ':' && top == pyField:
-				stack = pyPush(stack, pySpec)
-			}
+			i, stack = scanPythonCode(line, i, stack, top)
 		}
 	}
 
 	return -1, stringState(stack), false
+}
+
+// scanPythonCode advances over line[i], a byte of code or of a replacement
+// field expression other than "#".
+func scanPythonCode(line string, i int, stack []byte, top byte) (int, []byte) {
+	c := line[i]
+
+	switch {
+	case c == '\\':
+		return i + 1, stack
+	case c == '\'' || c == '"':
+		return openPythonString(line, i, stack)
+	case top == 0:
+	case c == '(' || c == '[' || c == '{':
+		return i, pyPush(stack, pyBracket)
+	case c == ')' || c == ']' || c == '}':
+		if top == pyBracket || (top == pyField && c == '}') {
+			return i, stack[:len(stack)-1]
+		}
+	case c == ':' && top == pyField:
+		return i, pyPush(stack, pySpec)
+	}
+
+	return i, stack
 }
 
 // openPythonString pushes the string frame for the quote at line[i] and
@@ -445,18 +463,23 @@ func endPythonLine(state stringState) stringState {
 	return stringState(stack)
 }
 
-// commentScan is where scanning a Write or Edit payload starts: the language
-// syntax, the multi-line string state the first line opens in, text from the
-// file that precedes the payload on its first line, the file text after it
-// (only used to find the declaration a comment documents), and whether triple-quoted
-// state is dropped at each line break because the payload's lines are not
-// contiguous in the file.
+// commentScan is how a Write or Edit payload is scanned: the language
+// syntax, the leads it is scanned from (none means once from code), and
+// whether triple-quoted state is dropped at each line break because the
+// payload's lines are not contiguous in the file.
 type commentScan struct {
 	syntax          langSyntax
-	start           stringState
-	prefix          string
-	suffix          string
+	leads           []editLead
 	lineLocalTriple bool
+}
+
+// editLead is one place an Edit's new_string lands: the multi-line string
+// state its line starts in, the file text before it on that line, and the
+// file text after it, only used to find the declaration a comment documents.
+type editLead struct {
+	state  stringState
+	prefix string
+	suffix string
 }
 
 // lineStart returns the state the next line starts in after a line ended in
@@ -473,7 +496,7 @@ func (s commentScan) lineStart(state stringState) stringState {
 // Write starts in code. An Edit's new_string continues the line of its
 // old_string in the file on disk, from the string state that line starts in,
 // so a fragment that begins inside (or closes) a docstring or inside a comment
-// is scanned correctly; see editStart for several matches. Only languages
+// is scanned correctly; with several matches it is scanned from each. Only languages
 // with triple-quoted strings, and extension-less files that may hold a Python
 // shebang, read the file; CRLF line endings are matched as LF. An Edit with no
 // old_string joins added lines from several patch hunks whose boundaries are
@@ -522,7 +545,7 @@ func newCommentScan(hookCtx *hook.Context) commentScan {
 		return scan
 	}
 
-	scan.start, scan.prefix, scan.suffix = editStart(original, old, scan.syntax)
+	scan.leads = editLeads(original, old, scan.syntax)
 
 	return scan
 }
@@ -561,31 +584,13 @@ func readRegularFile(path string) ([]byte, bool) {
 	return data, true
 }
 
-// maxStartStateOccurrences bounds the old_string matches editStart checks;
-// each rescans its line, so many matches on a long line are quadratic.
+// maxStartStateOccurrences bounds the old_string matches editLeads checks;
+// each is scanned separately, so many matches would multiply the work.
 const maxStartStateOccurrences = 32
 
-// Stand-in prefixes for an Edit whose matches sit on different lines but in
-// the same kind of spot: inside a reported comment, or after an unspaced one.
-const (
-	commentPrefix  = "# "
-	unspacedPrefix = "_#"
-)
-
-// editLead is the state and first-line prefix an Edit's new_string is
-// scanned from.
-type editLead struct {
-	state  stringState
-	prefix string
-}
-
-// editStart returns the state and line prefix an Edit's new_string continues
-// from. When every occurrence of old in content has the same line start state
-// and prefix, those are used as they are. Otherwise each occurrence is reduced
-// to the state at its position plus a stand-in prefix for a comment, and those
-// must agree. With no match, too many, or disagreement it starts in code.
-// For a single match it also returns the file text that follows it.
-func editStart(content, old string, syntax langSyntax) (stringState, string, string) {
+// editLeads returns a lead for every occurrence of old in content, or none
+// (scan once from code) when there are none or too many.
+func editLeads(content, old string, syntax langSyntax) []editLead {
 	lines := strings.Split(content, "\n")
 	lineStates := make([]stringState, len(lines))
 	lineOffsets := make([]int, len(lines))
@@ -597,10 +602,7 @@ func editStart(content, old string, syntax langSyntax) (stringState, string, str
 		offset += len(line) + 1
 	}
 
-	var (
-		exact, reduced []editLead
-		suffix         string
-	)
+	var leads []editLead
 
 	for from := 0; ; {
 		rel := strings.Index(content[from:], old)
@@ -608,55 +610,36 @@ func editStart(content, old string, syntax langSyntax) (stringState, string, str
 			break
 		}
 
-		if len(exact) == maxStartStateOccurrences {
-			return stateCode, "", ""
+		if len(leads) == maxStartStateOccurrences {
+			return nil
 		}
 
 		pos := from + rel
 		li := sort.SearchInts(lineOffsets, pos+1) - 1
-		prefix := content[lineOffsets[li]:pos]
-		exact = append(exact, editLead{state: lineStates[li], prefix: prefix})
-
-		idx, at, unspaced := scanSegment(prefix, lineStates[li], syntax)
-
-		lead := editLead{state: at}
-
-		switch {
-		case idx >= 0:
-			lead.prefix = commentPrefix
-		case unspaced:
-			lead.prefix = unspacedPrefix
-		}
-
-		reduced = append(reduced, lead)
 		from = pos + len(old)
-		suffix = content[from:]
+
+		leads = append(leads, editLead{
+			state:  lineStates[li],
+			prefix: content[lineOffsets[li]:pos],
+			suffix: firstLines(content[from:], maxDocContextLines),
+		})
 	}
 
-	if len(exact) != 1 {
-		suffix = ""
-	}
-
-	for _, leads := range [][]editLead{exact, reduced} {
-		if lead, ok := sharedLead(leads); ok {
-			return lead.state, lead.prefix, suffix
-		}
-	}
-
-	return stateCode, "", ""
+	return leads
 }
 
-// sharedLead returns the lead every entry of leads has, if any.
-func sharedLead(leads []editLead) (editLead, bool) {
-	if len(leads) == 0 {
-		return editLead{}, false
-	}
+// firstLines returns the first n lines of s.
+func firstLines(s string, n int) string {
+	end := 0
 
-	for _, lead := range leads[1:] {
-		if lead != leads[0] {
-			return editLead{}, false
+	for range n {
+		next := strings.IndexByte(s[end:], '\n')
+		if next < 0 {
+			return s
 		}
+
+		end += next + 1
 	}
 
-	return leads[0], true
+	return s[:end]
 }
