@@ -478,7 +478,8 @@ func (w *astWalker) resolveEval(cmd Command) (string, bool) {
 // stand-ins of followed, so env git $(...) is still seen; scripts and files
 // are found as before. Eval runs its line with known variables substituted
 // (a line it cannot know is already opaque and is not walked), and a
-// container runner runs the program its exec names and its --entrypoint.
+// container runner runs the program its exec names, its --entrypoint and
+// the program after its image, and parallel runs its command lines.
 func (w *astWalker) launchedFrom(cmd, followed Command) launch {
 	l := launched(cmd)
 
@@ -490,7 +491,19 @@ func (w *astWalker) launchedFrom(cmd, followed Command) launch {
 		l.commands, l.scripts = cmds, nil
 	} else {
 		l.commands = append(l.commands, cmds...)
+		opaque := len(w.state.opacities)
 		l.entrypoints = w.entrypointCommands(followed)
+
+		// An --entrypoint already found opaque is not reported twice.
+		if len(w.state.opacities) == opaque {
+			l.commands = append(l.commands, w.containerRunCommands(followed)...)
+		}
+	}
+
+	if cmd.Name == parallelProgram {
+		scripts, code := w.parallelScripts(followed)
+		l.scripts = append(l.scripts, scripts...)
+		l.code = append(l.code, code...)
 	}
 
 	if cmd.Name == evalBuiltin {

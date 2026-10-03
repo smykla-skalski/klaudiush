@@ -60,6 +60,7 @@ type launcher struct {
 	noCommand   bool     // runs only what a script flag hands it (su)
 	joined      bool     // also runs its operands as one command line (watch)
 	stdinArgs   bool     // appends or substitutes stdin into the command (xargs)
+	shortValues string   // short options that take a value inside a cluster (-0I)
 }
 
 // launchers are the commands that run another command named in their
@@ -108,9 +109,10 @@ var launchers = map[string]launcher{
 	"unbuffer": {},
 	"watch":    {valueFlags: strings.Fields("-n --interval"), joined: true},
 	"xargs": {
-		valueFlags: strings.Fields(`-n -I -L -P -d -E -s -a --max-args --replace --max-lines
-			--max-procs --delimiter --eof --max-chars --arg-file`),
-		stdinArgs: true,
+		valueFlags: strings.Fields(`-n -I -L -P -d -E -s -a --max-args --max-procs
+			--delimiter --max-chars --arg-file --process-slot-var`),
+		shortValues: xargsShortValues,
+		stdinArgs:   true,
 	},
 }
 
@@ -477,10 +479,17 @@ func launcherLaunch(cmd Command, spec launcher) launch {
 		child = withEnvOperands(child, cmd, cmd.Args[:idx])
 	}
 
-	if spec.stdinArgs && cmd.Stdin != "" {
-		l.commands = xargsCommands(child, cmd.Stdin, xargsReplace(cmd.Args[:idx]))
-	} else {
-		l.commands = []Command{child}
+	l.commands = []Command{child}
+
+	if spec.stdinArgs {
+		replace, fromFile := xargsInput(cmd.Args[:idx])
+
+		switch {
+		case cmd.Stdin != "" && !fromFile:
+			l.commands = xargsCommands(child, cmd.Stdin, replace)
+		case replace != "" && replace != findPath:
+			l.commands = []Command{withUnknownInput(child, replace)}
+		}
 	}
 
 	return l
@@ -502,6 +511,9 @@ func commandIndex(spec launcher, args []string) (int, bool) {
 			i++
 		case strings.HasPrefix(arg, "-"):
 			// A flag, with any value attached (-uroot, --user=root).
+			if spec.shortValues != "" && shortTakesNext(arg, spec.shortValues) {
+				i++
+			}
 		case spec.assignments && assignmentPattern.MatchString(arg):
 		case spec.assignments && arg == unresolvedWord:
 		case operands > 0:
@@ -597,22 +609,100 @@ func hasAttachedValue(arg string, flags []string) bool {
 	return false
 }
 
-// xargsReplace returns the replace string xargs substitutes stdin into.
-func xargsReplace(args []string) string {
-	for i, arg := range args {
+// xargsShortValues are the short xargs options that take a value: the
+// rest of their cluster, or the next argument when they end it.
+const xargsShortValues = "adEILnPs"
+
+// xargsShortOptional are the short xargs options that take a value only
+// when it is attached (-i{}, -e, -l1).
+const xargsShortOptional = "eil"
+
+// shortTakesNext reports a short option cluster (-0I, -tn) whose first
+// option taking a value ends it, so its value is the next argument. An
+// option whose value is optional takes the rest of the cluster instead.
+func shortTakesNext(arg, values string) bool {
+	if strings.HasPrefix(arg, "--") || len(arg) < len("-x") {
+		return false
+	}
+
+	for j := 1; j < len(arg); j++ {
 		switch {
-		case arg == "-I" && i+1 < len(args):
-			return args[i+1]
-		case strings.HasPrefix(arg, "--replace="):
-			return strings.TrimPrefix(arg, "--replace=")
-		case arg == "-i" || arg == "--replace":
-			return "{}"
-		case strings.HasPrefix(arg, "-I") && len(arg) > 2:
-			return arg[2:]
+		case strings.IndexByte(values, arg[j]) >= 0:
+			return j == len(arg)-1
+		case strings.IndexByte(xargsShortOptional, arg[j]) >= 0:
+			return false
 		}
 	}
 
-	return ""
+	return false
+}
+
+// xargsInput reads the options before the command xargs runs: the replace
+// string it substitutes each input into (-I R, -iR, -i, --replace[=R]), and
+// whether the input comes from a file (-a, --arg-file) rather than stdin.
+func xargsInput(args []string) (replace string, fromFile bool) {
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		name, value, attached := strings.Cut(arg, "=")
+
+		switch {
+		case name == "--replace":
+			replace = findPath
+			if attached && value != "" {
+				replace = value
+			}
+		case name == "--arg-file":
+			fromFile = true
+		case strings.HasPrefix(arg, "--") || !strings.HasPrefix(arg, "-"):
+		default:
+			letter, value, next := xargsShortOption(arg)
+			if next && i+1 < len(args) {
+				value = args[i+1]
+				i++
+			}
+
+			switch letter {
+			case 'I', 'i':
+				replace = value
+				if replace == "" {
+					replace = findPath
+				}
+			case 'a':
+				fromFile = true
+			}
+		}
+	}
+
+	return replace, fromFile
+}
+
+// xargsShortOption returns the option of a short cluster that takes a
+// value, its attached value, and whether the value is the next argument.
+func xargsShortOption(arg string) (letter byte, value string, next bool) {
+	for j := 1; j < len(arg); j++ {
+		switch {
+		case strings.IndexByte(xargsShortValues, arg[j]) >= 0:
+			return arg[j], arg[j+1:], j == len(arg)-1
+		case strings.IndexByte(xargsShortOptional, arg[j]) >= 0:
+			return arg[j], arg[j+1:], false
+		}
+	}
+
+	return 0, "", false
+}
+
+// withUnknownInput fills an input xargs reads from stdin klaudiush cannot
+// see into the command: each replace string becomes {}, which a program or
+// subcommand word may not be.
+func withUnknownInput(child Command, replace string) Command {
+	child.Name = strings.ReplaceAll(child.Name, replace, findPath)
+	child.Args = slices.Clone(child.Args)
+
+	for i, arg := range child.Args {
+		child.Args[i] = strings.ReplaceAll(arg, replace, findPath)
+	}
+
+	return child
 }
 
 // xargsCommands builds the commands xargs runs from literal stdin: one per
@@ -879,7 +969,7 @@ func launchesTracked(arg string, rest []string) bool {
 		return ok
 	case isContainerRunner(name):
 		return containerRuns(rest).tracked() || mayHideEntrypoint(rest) ||
-			containerExecSubcommand(rest) >= 0
+			containerExecSubcommand(rest) >= 0 || slices.ContainsFunc(rest, mayBeDynamic)
 	default:
 		return isInterpreter || isLauncher || name == evalBuiltin || name == sourceBuiltin
 	}
@@ -943,5 +1033,6 @@ func childCommand(parent Command, name string, args []string) Command {
 		startup:          parent.startup,
 		dynamicWords:     parent.dynamicWords,
 		quoting:          parent.quoting,
+		quotedWords:      parent.quotedWords,
 	}
 }

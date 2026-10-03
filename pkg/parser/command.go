@@ -80,6 +80,8 @@ type Command struct {
 	startup      map[string]startupValue
 	dynamicWords map[string]bool
 	quoting      map[string]wordQuoting
+	// quotedWords are the rendered arguments the shell keeps one word each.
+	quotedWords map[string]bool
 }
 
 // wordQuoting records how the words that rendered to one argument were

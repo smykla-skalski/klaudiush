@@ -117,14 +117,28 @@ func (run containerRun) equal(other containerRun) bool {
 // of an option or the image that comes from a variable, command output or a
 // brace expansion may stand for any options, so it is reported as dynamic.
 // lastImage is the furthest image position any reading reached.
+//
+// With all set it reads every run, not only those with an --entrypoint, for
+// the image each reading reaches (images). A word in the place of an option,
+// an option's value or the image that shifts may stand for any options too.
 type runReader struct {
 	args      []string
 	runs      []containerRun
+	images    []containerImage
+	shifts    func(string) bool
 	readings  int
 	offset    int
 	lastImage int
 	exhausted bool
+	all       bool
 	dynamic   string
+}
+
+// containerImage is where a reading of a run found the image, and whether
+// an --entrypoint came before it.
+type containerImage struct {
+	index      int
+	entrypoint bool
 }
 
 // containerRuns reads the --entrypoint runs among a container runner's
@@ -244,6 +258,10 @@ func (r *runReader) read(i int, entrypoints []string) {
 			r.dynamic = DetailWordOutput
 
 			return
+		case r.all && strings.HasPrefix(arg, "-") && r.shifts(arg):
+			r.dynamic = DetailWordSplit
+
+			return
 		case strings.HasPrefix(arg, "--"):
 			unknown := !containerBoolFlags[arg] && !strings.Contains(arg, "=")
 			i = r.skipValue(i, entrypoints, containerValueFlags[arg], unknown)
@@ -299,6 +317,12 @@ func (r *runReader) skipValue(i int, entrypoints []string, takes, unknown bool) 
 		return i
 	}
 
+	if r.all && r.shifts(r.args[i+1]) {
+		r.dynamic = DetailWordSplit
+
+		return len(r.args)
+	}
+
 	if takes && !strings.HasPrefix(r.args[i+1], "-") {
 		return i + 1
 	}
@@ -328,6 +352,12 @@ func (r *runReader) image(idx int, entrypoints []string) {
 
 	if !containerGroupWords[r.args[idx]] {
 		r.lastImage = max(r.lastImage, idx)
+	}
+
+	if r.all {
+		r.payloadImage(idx, len(entrypoints) > 0)
+
+		return
 	}
 
 	if len(entrypoints) == 0 {

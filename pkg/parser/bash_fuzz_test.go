@@ -84,6 +84,15 @@ func FuzzBashParse(f *testing.F) {
 	f.Add(`docker compose -f c.yml exec -T --index 2 s git push; docker exec --x -e -y $(w) ls`)
 	f.Add(`X="-u root"; docker exec $X c git push; foo docker exec * echo; docker exec {a,b} x`)
 	f.Add(`docker exec -e "" c git push; docker exec -u=$(w) c$N g* push; docker exec -- $N`)
+	f.Add(`docker run $O img push; docker $S i p; docker -H $(h) run -v $(pwd):/w "img:$T" $X`)
+	f.Add(
+		`X="i git push"; docker run $X; docker --context run -D run i {a,b} g*; docker run --x "$I" ls`,
+	)
+	f.Add(`parallel $X ::: a; parallel -I @ 'git @ {1} {.} {= $_ =}' ::: push ::: o :::: f`)
+	f.Add(
+		`ls | parallel; parallel --rpl '{x} 1' --plus -q -j $(n) git {+/} ::: p; parallel -- ::: x`,
+	)
+	f.Add(`xargs -I % sh -c %; xargs -i% % push; xargs -0I@ git @; echo p | xargs -a f -tI % git %`)
 	f.Add(`sudo -u "" git push --force; docker run --entrypoint git --name '' i push; "" git`)
 	f.Add(`git -C "" -c '' push $'' ""''; X=; $X git push; env -u "" "$X" git push`)
 

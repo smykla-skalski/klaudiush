@@ -569,6 +569,7 @@ func (w *astWalker) extractCommand(call *syntax.CallExpr) {
 		startup:          prefixStartup(call),
 		dynamicWords:     dynamicArgs(call.Args[1:]),
 		quoting:          argQuoting(call.Args[1:]),
+		quotedWords:      quotedArgs(call.Args[1:]),
 	}, w.depth, view)
 }
 
