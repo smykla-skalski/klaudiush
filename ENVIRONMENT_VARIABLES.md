@@ -58,6 +58,21 @@ Require fresh passing results of the configured checks before an agent finishes.
 export KLAUDIUSH_EVIDENCE_ENABLED=true
 ```
 
+### Protection and MCP Trust
+
+Turn policy file protection and MCP trust checks on or off. Paths, allowed paths and trusted servers are configured in TOML. See the [protection guide](docs/PROTECTION_GUIDE.md).
+
+```bash
+# Protect klaudiush configuration, hook registrations and check scripts
+export KLAUDIUSH_PROTECTION_ENABLED=true
+
+# Check MCP tool calls against harness-reported provenance
+export KLAUDIUSH_MCP_TRUST_ENABLED=true
+
+# What happens to MCP calls without provenance: block, warn or allow
+export KLAUDIUSH_MCP_TRUST_UNKNOWN_PROVENANCE=warn
+```
+
 ## Git Validators
 
 ### Git Add Validator

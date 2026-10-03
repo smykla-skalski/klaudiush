@@ -275,6 +275,22 @@ paths = ["**/*.go", "go.mod", "go.sum"]
 
 When a session changed covered files, the completion gate (Claude `Stop`, Codex `Stop`, Gemini `AfterAgent`) blocks with EVID001 until the check passed on exactly that content. Results are tied to a digest of the covered files, so a later edit makes them stale; failed, running, canceled and background runs never count; review checks record the exact diff they reviewed. Read-only sessions and changes the check does not cover are not gated. Claude reports how a shell command ended, so running a check's command there counts; in every provider, `klaudiush evidence run tests` runs the check and records its exit status itself. See the [evidence guide](docs/EVIDENCE_GUIDE.md).
 
+### Protecting policy files and trusting MCP servers
+
+Opt in to keep the agent from editing what enforces policy on it, and to trust MCP servers by where the harness says they came from:
+
+```toml
+[protection]
+enabled = true
+
+[mcp_trust]
+enabled = true
+trusted_sources = ["managed", "user"]
+unknown_provenance = "warn"
+```
+
+Protection blocks (POL001) writes, edits, patches, MCP tool calls and shell commands that would change klaudiush configuration or state, hook registrations of every harness (`.claude/settings*.json`, `~/.codex/hooks.json`, `.gemini/settings.json`, managed settings), hook and evidence check scripts, or the binary, following symlinks, hard links, case-insensitive spellings, globs, variables and `cd` chains; commands klaudiush cannot inspect fail closed. Claude `ConfigChange` keeps settings changed mid-session from taking effect (POL002), and klaudiush commands that change policy, such as `bypass skip` or `disable`, are blocked (POL003). MCP trust reads Claude's `mcp_server` source and Gemini's `mcp_context` transport instead of the spoofable `mcp__<server>__` name (MCP004), with a configured action for calls without provenance (MCP005). Maintenance is authorized explicitly with `protection.allow` or an exception policy for the code. See the [protection guide](docs/PROTECTION_GUIDE.md).
+
 ## Performance
 
 End-to-end binary execution on Apple M3 Max (hyperfine, 30 runs, CLI git backend):

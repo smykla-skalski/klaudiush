@@ -1,0 +1,16 @@
+#:schema https://klaudiu.sh/schema/v1/config.json
+# Policy protection: see docs/PROTECTION_GUIDE.md
+# klaudiush configuration and state, hook registrations of every harness,
+# hook and evidence scripts and the binary are protected without listing them
+
+[protection]
+enabled = true
+
+# Extra paths: a name without a slash matches in any directory
+paths = ["scripts/ci/**", "Makefile"]
+
+# Explicit maintenance: the agent may change these
+allow = [".claude/settings.local.json"]
+
+# Claude ConfigChange sources kept from applying mid-session
+config_change_sources = ["user_settings", "project_settings", "local_settings"]

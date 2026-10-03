@@ -105,7 +105,7 @@ Represents tool invocations: `EventType` (PreToolUse/PostToolUse/Notification), 
 
 **Creating**: 1) Embed `BaseValidator`, 2) Implement `Validate(ctx *hook.Context)`, 3) Register in `main.go:registerValidators()`
 
-**Error Format Policy**: Validators return errors with structured format including error codes (GIT001-GIT024, FILE001-FILE009, SEC001-SEC005, SHELL001-SHELL005, HOOK001), automatic fix hints from suggestions registry, and documentation URLs (`https://klaudiu.sh/{CODE}`). Use `FailWithRef(ref, msg)` to auto-populate fix hints - NEVER set `FixHint` manually. Error priority determines which reference is shown when multiple rules fail. See `.claude/validator-error-format-policy.md` for comprehensive guide.
+**Error Format Policy**: Validators return errors with structured format including error codes (GIT001-GIT024, FILE001-FILE009, SEC001-SEC005, SHELL001-SHELL005, HOOK001, EVID001, POL001-POL003, MCP001-MCP005), automatic fix hints from suggestions registry, and documentation URLs (`https://klaudiu.sh/{CODE}`). Use `FailWithRef(ref, msg)` to auto-populate fix hints - NEVER set `FixHint` manually. Error priority determines which reference is shown when multiple rules fail. See `.claude/validator-error-format-policy.md` for comprehensive guide.
 
 ### Rule Engine (`internal/rules/`)
 
@@ -291,6 +291,10 @@ Framework: Ginkgo/Gomega. Run: `mise exec -- go test -v ./pkg/parser -run TestBa
 
 Opt-in `[evidence]` (off by default). Each `[[evidence.checks]]` has `commands` (plain literal argv, validated by `evidence.Compile`), `paths`/`exclude` globs, `kind` (`test` digests covered file content; `review` digests the diff from `git merge-base <base> HEAD`, `base` required). The first hook of a session records a content-digest baseline per check (`hooksession` `evidence_baselines`; `unknown` when the first hook comes after a tool ran). At `TurnStop` (Claude/Codex Stop, Gemini AfterAgent) every repository the session has baselines for is judged with its own config; a check is required when the session used a non-read-only tool there (`evidence_touched`) and its digest differs from the baseline (a redefined check or an unfingerprintable baseline counts as `unknown`), and `evidence.Judge` accepts only a `passed` receipt on the current digest (latest, or the kept pass when a later run never finished; Claude `returnCodeInterpretation` counts as failed) (failed/running/canceled/stale/unverified/missing block with EVID001, still capped by `maxCompletionBlocks`). Receipts are repository-scoped in the state file. Sources: Claude `PreToolUse`/`PostToolUse(Failure)` of a command `evidence.MatchCommand` accepts (exact argv, only `cd <dir> &&` prefixes ending at the repo root), fingerprinted at start and end; or `klaudiush evidence run <check>`, which runs the check itself. `hook.ReportsCommandOutcome` is true only for Claude; Codex/Gemini need the verifier. `klaudiush evidence status`, `klaudiush doctor --category evidence`. Fingerprint failures (including directories git cannot read) are HOOK001 and block by default (`Policy.Resolve("evidence", ReasonState, true)`); store errors warn. See `docs/EVIDENCE_GUIDE.md`.
 
+### Policy Protection and MCP Trust (`internal/protection/`, `internal/validators/policy/`)
+
+Opt-in `[protection]` and `[mcp_trust]` (both off by default; `PolicyValidatorFactory` registers them, no rule engine). `protection.NewSet(Options)` compiles protected paths: anywhere-rules (`.klaudiush/`, `klaudiush.toml`, `.claude/settings*.json`, `.claude/hooks/`, `.mcp.json`, `.codex/{hooks.json,config.toml}`, `.gemini/settings.json`), absolute rules (XDG config/state/data, legacy dir, binary, `~/.claude.json`, `$CODEX_HOME` files, Claude/Codex/Gemini managed paths, opencode plugin, configured hook files), scripts named by registered hook commands and evidence commands, plugins, `protection.paths`; `protection.allow` exempts. Matching uses clean and symlink-resolved spellings, hard links (`os.SameFile` when nlink > 1), Unicode case folding on darwin/windows. `Set.CheckCommand` walks `ParseResult` (FileWrites incl. `>|`, `&>`, `<>`, `>&file`; `Command.Dynamic`/`FileWrite.Dynamic`/`DynamicWrites` mark `$(...)` parts the rendered args drop) with read-only/dest-only/flag-aware program classes, globs/braces/unknown parts as regexes, and a "mentions a protected path anywhere" rule for targets known only at run time; `PolicyCommand` blocks mutating klaudiush subcommands. `ToolTargets` covers Write/Edit/MultiEdit/NotebookEdit/apply_patch (lenient header regex) and path-like strings of other tools. Truncated/unparseable commands fail closed (POL001). ConfigChange (new `CanonicalEventConfigChange`, Claude `decision:block`, `policy_settings` never blocked) yields POL002; klaudiush policy commands POL003. `MCPTrustValidator` trusts by `hook.Context.MCPServer` (Claude `mcp_server{name,source}`, Gemini `mcp_context` transport), never the `mcp__<server>__` prefix: MCP004 untrusted, MCP005 no provenance (`unknown_provenance`). POL001-003/MCP004-005 need an explicit `[exceptions.policies.<CODE>]` (`exceptions.RequiresExplicitPolicy`), and enabled guards are critical (`buildPolicy` → `Policy.WithCritical`). Doctor: `klaudiush doctor --category protection` (ConfigChange registration, MCP matcher, provenance coverage, managed hooks). See `docs/PROTECTION_GUIDE.md`.
+
 ## Hook output
 
 klaudiush always exits 0. Validation results are JSON on stdout:
@@ -358,6 +362,10 @@ Exception workflow guide available in `docs/EXCEPTIONS_GUIDE.md` with example co
 - **development.toml** - Relaxed limits for development environments
 
 Debug exceptions with: `klaudiush debug exceptions`
+
+## Protection Documentation
+
+Guide available in `docs/PROTECTION_GUIDE.md` with commented examples in `examples/config/protection.toml` and `examples/config/mcp-trust.toml`. Doctor: `klaudiush doctor --category protection`.
 
 ## Failure Policy Documentation
 
