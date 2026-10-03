@@ -505,21 +505,15 @@ func (w *astWalker) recordCommand(cmd Command, depth int) {
 		return
 	}
 
-	cmd.Name = strings.ReplaceAll(cmd.Name, unresolvedWord, unresolvedProgram)
-	cmd.Invoked = w.expandName(cmd.Name)
-
-	// An expansion splits into words, so x="git commit"; $x runs git.
-	if strings.Contains(cmd.Name, "${") {
-		if fields := strings.Fields(cmd.Invoked); len(fields) > 1 {
-			cmd.Invoked, cmd.Args = fields[0], slices.Concat(fields[1:], cmd.Args)
-		}
-	}
-
-	cmd.Name = commandName(cmd.Invoked)
+	cmd, detail := w.programWord(cmd)
 
 	// Prose in interpreter code ("hint: run git commit") runs nothing.
 	if w.literal && depth == w.depth && !literalCommand(cmd.Name) {
 		return
+	}
+
+	if detail != "" {
+		w.opaque(OpacityUnresolvedWord, ProgramWordOperation, detail)
 	}
 
 	cmd, nested := w.resolveProgram(cmd)
@@ -538,6 +532,10 @@ func (w *astWalker) recordCommand(cmd Command, depth int) {
 	w.extractFileWriteCommand(cmd)
 
 	l := w.launchedFrom(cmd, followed)
+	if detail != "" {
+		l.files = withoutProgramFile(l.files, cmd.Invoked)
+	}
+
 	l.scripts = append(l.scripts, w.gitEnvScripts(cmd)...)
 	l.files = append(l.files, w.pathScripts(cmd, l)...)
 	nested = append(nested, w.definitionScripts(followed)...)
@@ -549,7 +547,7 @@ func (w *astWalker) recordCommand(cmd Command, depth int) {
 	// Past the cap nothing more is followed, and the command fails closed:
 	// what it launches cannot be shown to be safe.
 	if depth >= maxLaunchDepth {
-		w.opaque(OpacityDepthLimit, safeName(cmd.Name), "")
+		w.opaque(OpacityDepthLimit, w.shownWord(cmd.Name), "")
 
 		return
 	}

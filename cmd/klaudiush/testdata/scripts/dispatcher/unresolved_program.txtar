@@ -1,0 +1,64 @@
+env KLAUDIUSH_TEST_PROGRAM=hunter2value
+env KLAUDIUSH_TEST_GIT=git
+
+exec git init --initial-branch=main
+exec git config user.email "test@test.com"
+exec git config user.name "Test User"
+
+stdin unset-variable.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+stdout 'program name comes from a variable klaudiush cannot resolve'
+! stdout 'KLAUDIUSH_TEST_UNSET'
+
+stdin output.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+stdout 'program name comes from command output'
+
+stdin loop-variable.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+! stdout 'hunter2value'
+! stdout 'KLAUDIUSH_TEST_PROGRAM'
+
+stdin under-xargs.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+
+stdin assigned.json
+exec klaudiush --hook-type PreToolUse
+! stdout .
+
+stdin environment.json
+exec klaudiush --hook-type PreToolUse
+! stdout .
+
+stdin which.json
+exec klaudiush --hook-type PreToolUse
+! stdout .
+
+-- unset-variable.json --
+{"tool_name": "Bash", "tool_input": {"command": "$KLAUDIUSH_TEST_UNSET origin main"}}
+
+-- output.json --
+{"tool_name": "Bash", "tool_input": {"command": "$(echo git) status"}}
+
+-- loop-variable.json --
+{"tool_name": "Bash", "tool_input": {"command": "for f in a; do $KLAUDIUSH_TEST_PROGRAM $f; done"}}
+
+-- under-xargs.json --
+{"tool_name": "Bash", "tool_input": {"command": "echo status | xargs $KLAUDIUSH_TEST_UNSET"}}
+
+-- assigned.json --
+{"tool_name": "Bash", "tool_input": {"command": "G=git; $G status"}}
+
+-- environment.json --
+{"tool_name": "Bash", "tool_input": {"command": "$KLAUDIUSH_TEST_GIT status"}}
+
+-- which.json --
+{"tool_name": "Bash", "tool_input": {"command": "$(which git) status"}}

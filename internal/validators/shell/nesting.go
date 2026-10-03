@@ -146,13 +146,27 @@ func truncatedSummary(opacities []parser.Opacity, more bool) string {
 	case len(opacities) == 0:
 		return truncatedText
 	case len(opacities) == 1:
-		return "Command cannot be inspected: " + causeSummary(opacities[0].Cause)
+		return "Command cannot be inspected: " + opacitySummary(opacities[0])
 	default:
 		return fmt.Sprintf(
 			"Command cannot be fully inspected: %d parts are opaque",
 			len(opacities),
 		)
 	}
+}
+
+// opacitySummary is causeSummary, naming a program word apart from the
+// eval, git and gh words that share its cause.
+func opacitySummary(o parser.Opacity) string {
+	if programWord(o) {
+		return "it runs a program whose name klaudiush cannot resolve"
+	}
+
+	return causeSummary(o.Cause)
+}
+
+func programWord(o parser.Opacity) bool {
+	return o.Cause == parser.OpacityUnresolvedWord && o.Operation == parser.ProgramWordOperation
 }
 
 func causeSummary(cause parser.OpacityCause) string {
@@ -231,7 +245,11 @@ func opacityFinding(o parser.Opacity) validator.Finding {
 		f.Repair = "Run the command inside the function directly, or forward " +
 			`arguments with plain "$@"`
 	case parser.OpacityUnresolvedWord:
-		f.Message, f.Required, f.Repair = unresolvedWordFinding(o)
+		if programWord(o) {
+			f.Message, f.Required, f.Repair = programWordFinding(o)
+		} else {
+			f.Message, f.Required, f.Repair = unresolvedWordFinding(o)
+		}
 	default:
 		f.Message = o.Operation + " cannot be inspected"
 		f.Repair = validator.GetSuggestion(validator.RefShellNesting)
@@ -260,6 +278,23 @@ func unresolvedWordFinding(o parser.Opacity) (message, required, repair string) 
 			"literal value earlier on the same line"
 	} else {
 		repair = "Write the subcommand literally instead of computing it"
+	}
+
+	return message, required, repair
+}
+
+// programWordFinding explains a program name that comes from a variable,
+// command output or a glob.
+func programWordFinding(o parser.Opacity) (message, required, repair string) {
+	message = "the program name " + strings.TrimPrefix(o.Detail, "it ")
+	required = "a literal program name or path, or one from a variable assigned " +
+		"literally on the same line or set in the environment"
+
+	if o.Detail == parser.DetailWordVariable {
+		repair = "Write the program name or path literally, or assign the " +
+			"variable a literal value earlier on the same line"
+	} else {
+		repair = "Write the program name or path literally instead of computing it"
 	}
 
 	return message, required, repair

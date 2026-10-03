@@ -188,6 +188,20 @@ var _ = Describe("NestingValidator", func() {
 			"function f forwards arguments",
 			`forward arguments with plain "$@"`,
 		),
+		Entry("a program from an unknown variable",
+			`sudo "$KLAUDIUSH_TEST_UNSET_PROGRAM" origin main`,
+			"runs a program whose name klaudiush cannot resolve",
+			"via sudo",
+			"the program name comes from a variable klaudiush cannot resolve",
+			"assign the variable a literal value earlier on the same line",
+		),
+		Entry("a program from command output",
+			`$(echo git) push`,
+			"runs a program whose name klaudiush cannot resolve",
+			"command",
+			"the program name comes from command output",
+			"Write the program name or path literally instead of computing it",
+		),
 		Entry("a git subcommand from an unknown variable",
 			`sudo git "$KLAUDIUSH_TEST_UNSET_SUB"`,
 			"runs eval, git or gh with a word klaudiush cannot resolve",
@@ -212,7 +226,9 @@ var _ = Describe("NestingValidator", func() {
 	)
 
 	It("passes eval and git words it can resolve", func() {
-		for _, command := range []string{`X=status; git $X`, `eval "echo hi"`} {
+		for _, command := range []string{
+			`X=status; git $X`, `eval "echo hi"`, `G=git; $G status`,
+		} {
 			Expect(v.Validate(context.Background(), bash(command)).Passed).To(BeTrue(), command)
 		}
 	})

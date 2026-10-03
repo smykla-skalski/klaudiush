@@ -174,7 +174,7 @@ func (o Opacity) equal(other Opacity) bool {
 // enter adds cmd to the origin of what it launches until the returned
 // function runs.
 func (w *astWalker) enter(cmd Command) func() {
-	w.via = append(w.via, safeName(cmd.Name))
+	w.via = append(w.via, w.shownWord(cmd.Name))
 
 	return func() { w.via = w.via[:len(w.via)-1] }
 }

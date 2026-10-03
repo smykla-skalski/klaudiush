@@ -45,8 +45,10 @@ var (
 	)
 	// configParameter matches one 'key'='value' pair in GIT_CONFIG_PARAMETERS.
 	configParameter = regexp.MustCompile(`'([^'=]+)'?=?'([^']*)'`)
-	// lookupCommands print the program named by their last operand.
-	lookupCommands = nameSet("command echo printf readlink realpath type which whereis")
+	// lookupCommands print the program named by their last operand. echo,
+	// printf and command without -v print any text, so their output is
+	// unknown.
+	lookupCommands = nameSet("readlink realpath type which whereis")
 )
 
 // newAstWalker returns a walker ready to record commands.
@@ -150,6 +152,8 @@ func commandWordParts(parts []syntax.WordPart) string {
 		switch p := part.(type) {
 		case *syntax.CmdSubst:
 			b.WriteString(substitutedProgram(p))
+		case *syntax.ExtGlob, *syntax.ProcSubst:
+			b.WriteString(unresolvedProgram)
 		case *syntax.DblQuoted:
 			b.WriteString(commandWordParts(p.Parts))
 		default:
@@ -207,10 +211,13 @@ func substitutedProgram(sub *syntax.CmdSubst) string {
 	name, operand := commandName(args[0]), args[len(args)-1]
 
 	switch {
-	case lookupCommands[name] && !strings.HasPrefix(operand, "-"):
-		return operand
 	case name == gitProgram && slices.Contains(args[1:], "--exec-path"):
 		return "/git-core"
+	case strings.HasPrefix(operand, "-"):
+		return unresolvedProgram
+	case lookupCommands[name],
+		name == "command" && (slices.Contains(args[1:], "-v") || slices.Contains(args[1:], "-V")):
+		return operand
 	default:
 		return unresolvedProgram
 	}
@@ -705,7 +712,7 @@ func (w *astWalker) definitionScripts(cmd Command) []nestedScript {
 	if body, ok := w.funcs[cmd.Invoked]; ok {
 		// Positional forms that are not substituted leave the call unknown.
 		if unsupportedPositional.MatchString(body) {
-			w.opaque(OpacityUnresolvedArgs, safeName(cmd.Invoked), "")
+			w.opaque(OpacityUnresolvedArgs, w.shownWord(cmd.Invoked), "")
 
 			return scripts
 		}

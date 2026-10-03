@@ -365,7 +365,8 @@ func (w *astWalker) resolveEval(cmd Command) (string, bool) {
 
 // launchedFrom returns what cmd runs. The commands it launches keep the
 // stand-ins of followed, so env git $(...) is still seen; scripts and files
-// are found as before. Eval runs its line with known variables substituted.
+// are found as before. Eval runs its line with known variables substituted;
+// a line it cannot know is already opaque and is not walked.
 func (w *astWalker) launchedFrom(cmd, followed Command) launch {
 	l := launched(cmd)
 
@@ -374,6 +375,8 @@ func (w *astWalker) launchedFrom(cmd, followed Command) launch {
 	}
 
 	if cmd.Name == evalBuiltin {
+		l.scripts = nil
+
 		if line, ok := w.resolveEval(followed); ok {
 			l.scripts = []string{line}
 		}
@@ -556,4 +559,100 @@ func writtenVars(cmd Command) []string {
 	}
 
 	return names
+}
+
+// ProgramWordOperation is the Opacity.Operation of a program word that comes
+// from a variable, command output or a glob.
+const ProgramWordOperation = "program"
+
+// programWord resolves the word that names cmd's program. Its expansion
+// splits into words, so x="git commit"; $x runs git, and an expansion to
+// nothing leaves the next argument as the program, so x=; $x git push runs
+// git. It also says why the word cannot be known, or returns "" when every
+// expansion in it resolves to literal text.
+func (w *astWalker) programWord(cmd Command) (Command, string) {
+	detail := ""
+
+	for range len(cmd.Args) + 1 {
+		raw := strings.ReplaceAll(cmd.Name, unresolvedWord, unresolvedProgram)
+		cmd.Invoked = w.expandName(raw)
+
+		if detail == "" {
+			detail = w.programWordDetail(raw)
+		}
+
+		if !HasUnresolvedVars(raw) {
+			break
+		}
+
+		w.noteExpanded(cmd.Invoked)
+		w.noteExpanded(commandName(cmd.Invoked))
+
+		fields := strings.Fields(cmd.Invoked)
+		if len(fields) == 0 && len(cmd.Args) > 0 {
+			cmd.Name, cmd.Args = cmd.Args[0], cmd.Args[1:]
+
+			continue
+		}
+
+		if len(fields) > 1 {
+			cmd.Invoked, cmd.Args = fields[0], slices.Concat(fields[1:], cmd.Args)
+		}
+
+		break
+	}
+
+	cmd.Name = commandName(cmd.Invoked)
+
+	return cmd, detail
+}
+
+// programWordDetail says why a program word cannot be known: a variable the
+// rules of resolveWord do not trust, command output, or a glob in the word
+// or in a variable's value.
+func (w *astWalker) programWordDetail(word string) string {
+	detail := programDetail(word)
+	if detail != DetailWordVariable {
+		return detail
+	}
+
+	expanded, ok := w.resolveWord(word)
+	if !ok {
+		return DetailWordVariable
+	}
+
+	return programDetail(expanded)
+}
+
+// programDetail is commandWordDetail for a program word, where a lone [ is
+// the test builtin rather than a glob.
+func programDetail(word string) string {
+	switch {
+	case HasUnresolvedVars(word):
+		return DetailWordVariable
+	case strings.Contains(word, unresolvedProgram) ||
+		slices.ContainsFunc(strings.Fields(word), globWord):
+		return DetailWordOutput
+	default:
+		return ""
+	}
+}
+
+// globWord reports a word the shell expands against file names.
+func globWord(word string) bool {
+	if strings.ContainsAny(word, "*?") {
+		return true
+	}
+
+	_, after, found := strings.Cut(word, "[")
+
+	return found && strings.Contains(after, "]")
+}
+
+// withoutProgramFile drops the script file a program given by an opaque path
+// would run, which would otherwise be reported a second time.
+func withoutProgramFile(files []scriptFile, invoked string) []scriptFile {
+	return slices.DeleteFunc(files, func(f scriptFile) bool {
+		return f.path == invoked
+	})
 }
