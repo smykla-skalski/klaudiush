@@ -242,19 +242,21 @@ func hashComment(line string, i int, state stringState) (int, stringState, bool)
 	return -1, state, true
 }
 
-// Python frames. A string frame is pyFrame plus pyDouble, pyTriple and
-// pyFString flags. pyField is an f-string replacement field, pyBracket a
+// Python frames. A string frame is pyFrame plus pyDouble, pyTriple,
+// pyFString and pyContinued flags; pyContinued marks a single-quoted string
+// whose line ends in a backslash continuation. pyField is an f-string replacement field, pyBracket a
 // bracket opened inside one, and pySpec its format spec. All have the high
 // bit set so a Python state never equals a non-Python one.
 const (
-	pyFrame    byte = 0x80
-	pyDouble   byte = 0x01
-	pyTriple   byte = 0x02
-	pyFString  byte = 0x04
-	pyField    byte = 0x90
-	pyBracket  byte = 0xA0
-	pySpec     byte = 0xB0
-	pyKindMask byte = 0xF0
+	pyFrame     byte = 0x80
+	pyDouble    byte = 0x01
+	pyTriple    byte = 0x02
+	pyFString   byte = 0x04
+	pyContinued byte = 0x08
+	pyField     byte = 0x90
+	pyBracket   byte = 0xA0
+	pySpec      byte = 0xB0
+	pyKindMask  byte = 0xF0
 )
 
 // maxPythonDepth bounds the frame stack. Deeper openers are ignored, which
@@ -369,6 +371,11 @@ func isIdentByte(c byte) bool {
 func scanPythonString(line string, i int, stack []byte, top byte) (int, []byte) {
 	c := line[i]
 
+	if top&pyContinued != 0 {
+		top &^= pyContinued
+		stack[len(stack)-1] = top
+	}
+
 	q := byte('\'')
 	if top&pyDouble != 0 {
 		q = '"'
@@ -378,7 +385,13 @@ func scanPythonString(line string, i int, stack []byte, top byte) (int, []byte) 
 
 	switch {
 	case c == '\\':
-		if hasNext && line[i+1] != '{' && line[i+1] != '}' {
+		if strings.TrimSuffix(line[i+1:], "\r") == "" {
+			stack[len(stack)-1] |= pyContinued
+
+			return len(line) - 1, stack
+		}
+
+		if line[i+1] != '{' && line[i+1] != '}' {
 			return i + 1, stack
 		}
 	case top&pyTriple != 0 && hasTripleQuote(line, i, q):
@@ -414,12 +427,18 @@ func scanPythonSpec(c byte, stack []byte) []byte {
 	return stack
 }
 
-// endPythonLine drops single-quoted string text left open at a line break,
-// which only a backslash continuation allows. Triple-quoted strings and
-// replacement fields carry on to the next line.
+// endPythonLine drops single-quoted string text left open at a line break
+// without a backslash continuation. Continued strings, triple-quoted strings
+// and replacement fields carry on to the next line.
 func endPythonLine(state stringState) stringState {
 	stack := []byte(state)
 	for len(stack) > 0 && isPyString(pyTop(stack)) && pyTop(stack)&pyTriple == 0 {
+		if top := pyTop(stack); top&pyContinued != 0 {
+			stack[len(stack)-1] = top &^ pyContinued
+
+			break
+		}
+
 		stack = stack[:len(stack)-1]
 	}
 
