@@ -84,6 +84,13 @@ var _ = Describe("InstallClaudeDispatcher", func() {
 		Entry("script mentioning klaudiush", "sh -c 'notify --tag klaudiush'", false),
 		Entry("argument mentioning klaudiush", "nice notify klaudiush", false),
 		Entry("unparsable command", "klaudiush 'unterminated", true),
+		Entry("command", "command klaudiush --hook-type PreToolUse", true),
+		Entry("command -p", "command -p klaudiush --hook-type PreToolUse", true),
+		Entry("command -v lookup", "command -v klaudiush", false),
+		Entry("command -V lookup", "command -V klaudiush", false),
+		Entry("command -pv lookup", "command -pv klaudiush", false),
+		Entry("command -v inside sh -c", `sh -c 'command -v klaudiush >/dev/null'`, false),
+		Entry("env command -v lookup", "env FOO=1 command -v klaudiush", false),
 	)
 
 	It("recognizes the dispatcher by program name with env assignments", func() {

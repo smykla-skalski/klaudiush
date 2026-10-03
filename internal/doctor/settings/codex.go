@@ -202,6 +202,8 @@ func programOf(command string, depth int) string {
 			continue
 		case word == "mise" && i+1 < len(words) && words[i+1] == "exec":
 			i = skipPast(words, i+miseExecWords, "--")
+		case filepath.Base(word) == wrapperCommand && commandLooksUp(words[i+1:]):
+			return ""
 		case hasWrapper(filepath.Base(word)):
 			i = skipWrapperArgs(words, i+1, filepath.Base(word)) - 1
 		case shellPrograms[filepath.Base(word)]:
@@ -216,6 +218,22 @@ func programOf(command string, depth int) string {
 	}
 
 	return ""
+}
+
+// commandLooksUp reports whether `command` was given -v or -V, which only
+// print how a name resolves instead of running it.
+func commandLooksUp(args []string) bool {
+	for _, arg := range args {
+		if arg == "--" || !strings.HasPrefix(arg, "-") {
+			return false
+		}
+
+		if strings.ContainsAny(arg, "vV") {
+			return true
+		}
+	}
+
+	return false
 }
 
 func hasWrapper(name string) bool {

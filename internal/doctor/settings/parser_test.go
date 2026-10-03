@@ -3,6 +3,7 @@ package settings_test
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 
 	"github.com/cockroachdb/errors"
@@ -390,6 +391,23 @@ var _ = Describe("SettingsParser", func() {
 			Expect(result.Hooks.PreToolUse[0].Hooks[0].Command).
 				To(Equal("klaudiush --provider codex --event PreToolUse"))
 		})
+
+		DescribeTable("tells a dispatcher run from a lookup of it",
+			func(command string, want bool) {
+				raw := `{"hooks":{"PreToolUse":[{"hooks":[{"type":"command","command":` +
+					strconv.Quote(command) + `}]}]}}`
+				Expect(os.WriteFile(hooksPath, []byte(raw), 0o600)).To(Succeed())
+
+				found, err := settings.NewCodexHooksParser(hooksPath).
+					HasEventHook("PreToolUse", "/usr/local/bin/klaudiush")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(found).To(Equal(want))
+			},
+			Entry("command wrapper", "command klaudiush --provider codex", true),
+			Entry("command -- wrapper", "command -- klaudiush --provider codex", true),
+			Entry("command -v", "command -v klaudiush", false),
+			Entry("command -V", "command -V klaudiush", false),
+		)
 
 		It("finds event-specific dispatcher hooks", func() {
 			Expect(os.WriteFile(
