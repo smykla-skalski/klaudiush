@@ -35,17 +35,12 @@ const (
 
 // commentStyle is the line-comment marker a language uses. commentLoose, for
 // files whose language is not known, accepts both "//" and "#" but only at line
-// start or after whitespace. commentHash accepts "#" and commentSlash accepts
-// "//" anywhere outside a string. commentHashSpaced accepts "#" only at line
-// start or after whitespace, for languages that also use "#" in sigils or
-// character literals.
+// start or after whitespace. commentHash accepts "#" anywhere outside a string.
 type commentStyle uint8
 
 const (
 	commentLoose commentStyle = iota
 	commentHash
-	commentSlash
-	commentHashSpaced
 )
 
 // langSyntax is the comment and string syntax the scanner applies to a file.
@@ -59,22 +54,14 @@ type langSyntax struct {
 
 // langSyntaxByExt maps file extensions of languages with triple-quoted
 // multi-line strings to their syntax. Elsewhere `"""` is an empty string plus
-// a quote.
+// a quote. Only languages with no block comments and no use of "#" outside
+// comments and strings are listed: a block comment holding `"""` would
+// otherwise open a string that hides every later comment.
 var langSyntaxByExt = map[string]langSyntax{
-	".py":     {double: tripleEscaped, single: tripleEscaped, comment: commentHash},
-	".pyi":    {double: tripleEscaped, single: tripleEscaped, comment: commentHash},
-	".pyw":    {double: tripleEscaped, single: tripleEscaped, comment: commentHash},
-	".toml":   {double: tripleEscaped, single: tripleRaw, comment: commentHash},
-	".ex":     {double: tripleEscaped, single: tripleEscaped, comment: commentHashSpaced},
-	".exs":    {double: tripleEscaped, single: tripleEscaped, comment: commentHashSpaced},
-	".jl":     {double: tripleEscaped, comment: commentHashSpaced},
-	".groovy": {double: tripleEscaped, single: tripleEscaped, comment: commentSlash},
-	".gradle": {double: tripleEscaped, single: tripleEscaped, comment: commentSlash},
-	".java":   {double: tripleEscaped, comment: commentSlash},
-	".kt":     {double: tripleRaw, comment: commentSlash},
-	".kts":    {double: tripleRaw, comment: commentSlash},
-	".scala":  {double: tripleRaw, comment: commentSlash},
-	".sc":     {double: tripleRaw, comment: commentSlash},
+	".py":   {double: tripleEscaped, single: tripleEscaped, comment: commentHash},
+	".pyi":  {double: tripleEscaped, single: tripleEscaped, comment: commentHash},
+	".pyw":  {double: tripleEscaped, single: tripleEscaped, comment: commentHash},
+	".toml": {double: tripleEscaped, single: tripleRaw, comment: commentHash},
 }
 
 // langSyntaxForPath returns the comment and string syntax for path.
@@ -104,7 +91,7 @@ func opensTripleQuote(line string, i int, syntax langSyntax) stringState {
 // scanMultiLineString advances over line[i] while inside a multi-line string
 // and returns the index of the last byte consumed and the resulting state. A
 // raw triple-quoted string closes on the last three quotes of a longer run, so
-// """a"""" holds a" in Kotlin and Scala.
+// a TOML literal string ending in four quotes keeps one quote in its value.
 func scanMultiLineString(
 	line string,
 	i int,
@@ -147,22 +134,13 @@ func isCommentMarker(line string, i int, style commentStyle) bool {
 	isHash := line[i] == '#'
 	isSlash := line[i] == '/' && i+1 < len(line) && line[i+1] == '/'
 
-	switch style {
-	case commentHash:
+	if style == commentHash {
 		return isHash
-	case commentSlash:
-		return isSlash
-	case commentHashSpaced:
-		return isHash && afterSpace(line, i)
-	case commentLoose:
 	}
 
-	return (isHash || isSlash) && afterSpace(line, i)
-}
+	afterSpace := i == 0 || line[i-1] == ' ' || line[i-1] == '\t'
 
-// afterSpace reports whether line[i] is at line start or after whitespace.
-func afterSpace(line string, i int) bool {
-	return i == 0 || line[i-1] == ' ' || line[i-1] == '\t'
+	return (isHash || isSlash) && afterSpace
 }
 
 // findCommentStart returns the byte index of the first line-comment marker

@@ -346,8 +346,6 @@ var _ = Describe("AICommentValidator multi-line string literals", func() {
 			"X = \"\"\"\nIt's here\n# heading\n\"\"\""),
 		Entry("hash in a regular python string", "/repo/gen.py",
 			"x = '# not a comment'\ny = \"## also not\""),
-		Entry("kotlin raw string", "/repo/Main.kt",
-			"val s = \"\"\"\n# heading\n// path\n\"\"\""),
 		Entry("toml multi-line string", "/repo/config.toml",
 			"Q = '''\n# Set the value\n'''"),
 	)
@@ -383,10 +381,8 @@ var _ = Describe("AICommentValidator multi-line string literals", func() {
 			ctx.ToolInput.Content = content
 			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
 		},
-		Entry("kotlin raw string ending in a backslash", "/repo/Main.kt",
-			"val p = \"\"\"C:\\dir\\\"\"\"\n// holds the running total"),
-		Entry("scala raw string ending in a backslash", "/repo/Main.scala",
-			"val p = \"\"\"C:\\dir\\\"\"\"\n// holds the running total"),
+		Entry("toml literal string ending in a backslash", "/repo/config.toml",
+			"p = '''C:\\dir\\'''\n# Set the value"),
 	)
 
 	It("still honours escapes in python triple-quoted strings", func() {
@@ -475,15 +471,10 @@ var _ = Describe("AICommentValidator multi-line string literals", func() {
 			"x = 1  # EXC:FILE011:keep \"\"\"\ny = 2\n# add tax before rounding", false),
 		Entry("python floor division is not a comment", "/repo/calc.py",
 			"half = total // 2", true),
-		Entry("java slash comment without leading space", "/repo/Main.java",
-			"int x = 1;//\"\"\"\nint y = 2;", false),
-		Entry("elixir sigil with a hash", "/repo/md.ex",
-			"if String.match?(s, ~r/^#+ (.+)$/), do: :heading", true),
-		Entry("elixir char literal hash", "/repo/md.ex", "c == ?#", true),
-		Entry("elixir heredoc heading", "/repo/md.ex",
-			"@doc \"\"\"\n## Examples\n\"\"\"\ndef run, do: 1", true),
-		Entry("kotlin raw string ending in a quote", "/repo/Main.kt",
-			"val s = \"\"\"say \"hi\"\"\"\"  // holds the text", false),
+		Entry("triple quote in javadoc does not open a string", "/repo/Main.java",
+			" * Text blocks start with {@code \"\"\"}.\n// add tax before rounding", false),
+		Entry("triple quote in kdoc does not open a string", "/repo/Main.kt",
+			"/** Wraps the value in \"\"\" quotes. */\n// add tax before rounding", false),
 	)
 
 	It("treats triple quotes as plain quotes in languages without them", func() {
