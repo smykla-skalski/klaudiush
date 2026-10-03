@@ -293,6 +293,16 @@ unknown_provenance = "warn"
 
 Protection blocks (POL001) writes, edits, patches, MCP tool calls and shell commands that would change klaudiush configuration or state, hook registrations of every harness (`.claude/settings*.json`, `~/.codex/hooks.json`, `.gemini/settings.json`, managed settings), hook and evidence check scripts, or the binary, following symlinks, hard links, case-insensitive spellings, globs, variables and `cd` chains; commands klaudiush cannot inspect fail closed. Claude `ConfigChange` keeps settings changed mid-session from taking effect (POL002), and klaudiush commands that change policy, such as `bypass skip` or `disable`, are blocked (POL003). MCP trust reads Claude's `mcp_server` source and Gemini's `mcp_context` transport instead of the spoofable `mcp__<server>__` name (MCP004), with a configured action for calls without provenance (MCP005). Maintenance is authorized explicitly with `protection.allow` or an exception policy for the code. See the [protection guide](docs/PROTECTION_GUIDE.md).
 
+### Measuring what was enforced
+
+Every hook appends one redacted line to a local, size-capped log. `klaudiush metrics` reports what the responses actually did by provider and event (prevented, completion gate held, advisory, warned, exception accepted, unavailable), repair retries and recurring violations per code, checks that could not run, and hook and validator latency:
+
+```bash
+klaudiush metrics report --since 7d
+```
+
+Findings after a tool ran are advisory and never count as prevented. No command, message, path or session ID is stored, and nothing leaves the machine. Turn it off with `[metrics] enabled = false`. See the [metrics guide](docs/METRICS_GUIDE.md).
+
 ## Performance
 
 End-to-end binary execution on Apple M3 Max (hyperfine, 30 runs, CLI git backend):

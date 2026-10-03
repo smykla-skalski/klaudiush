@@ -271,6 +271,7 @@ func (h *hookRun) validate() error {
 
 	// Permission bypass modes still validate unless the user opted out
 	bypassPolicy := bypass.NewPolicy(cfg.BypassPermissions)
+	h.skipped.Store(bypassPolicy.SkipValidation(ctx))
 
 	disp := h.newDispatcher(registry, cfg, exceptionChecker, bypassPolicy, policy)
 
@@ -282,7 +283,7 @@ func (h *hookRun) validate() error {
 
 	sessionStore := hooksession.NewStore()
 
-	errs, sessionCleanup, gateNotice := dispatchInSession(
+	session := dispatchInSession(
 		dispatchCtx,
 		disp,
 		sessionStore,
@@ -290,8 +291,12 @@ func (h *hookRun) validate() error {
 		ctx,
 		log,
 	)
+	errs, gateNotice := session.errs, session.notice
 
 	h.errs.Store(&errs)
+	h.outcome.Store(&session.outcome)
+	h.released.Store(gateNotice != "")
+	h.releasedFindings.Store(&session.released)
 
 	bt.mark("dispatch")
 
@@ -314,11 +319,15 @@ func (h *hookRun) validate() error {
 	}
 
 	// Build and write response
-	writeErr := writeResponse(ctx, errs, patternWarnings, notices, cfg.Output, log)
+	stopped, writeErr := writeResponse(ctx, errs, patternWarnings, notices, cfg.Output, log)
 
-	sessionCleanup()
+	session.cleanup()
 
 	bt.mark("response")
+
+	h.recordMetrics(ctx, errs, stopped)
+
+	bt.mark(cmdUseMetrics)
 
 	return writeErr
 }
@@ -361,6 +370,7 @@ func (h *hookRun) loadPolicyAndRegistry(
 	}
 
 	h.output.Store(cfg.Output)
+	h.metrics.Store(cfg.GetMetrics())
 
 	inheritErr := inheritPolicyGuards(cfg, policyConfigDirs(hookCtx, workDir), h.log)
 
@@ -398,11 +408,32 @@ func (h *hookRun) loadPolicyAndRegistry(
 	return cfg, policy, registry, nil
 }
 
+// sessionDispatch is the result of dispatchInSession: the findings to
+// answer with, the cleanup to run after the response is written, the notice
+// of a released completion gate, and what the validators ran.
+type sessionDispatch struct {
+	errs     []*dispatcher.ValidationError
+	cleanup  func()
+	notice   string
+	outcome  dispatcher.Outcome
+	released []bool
+}
+
+// releasedFindings marks the findings a released completion gate turned
+// into warnings: releaseBlocking keeps their order and count.
+func releasedFindings(errs []*dispatcher.ValidationError) []bool {
+	released := make([]bool, len(errs))
+	for i, verr := range errs {
+		released[i] = verr != nil && verr.ShouldBlock
+	}
+
+	return released
+}
+
 // dispatchInSession validates the hook and applies the session state: it
 // rechecks unresolved files, records or replays findings, ties check runs to
 // the content they ran against, holds back tools an evidence tool phase
-// withholds, and bounds completion gates. The returned
-// cleanup runs after the response is written.
+// withholds, and bounds completion gates.
 func dispatchInSession(
 	ctx context.Context,
 	disp *dispatcher.Dispatcher,
@@ -410,7 +441,7 @@ func dispatchInSession(
 	evidenceGate *evidenceGate,
 	hookCtx *hook.Context,
 	log logger.Logger,
-) ([]*dispatcher.ValidationError, func(), string) {
+) sessionDispatch {
 	prepareRecheck(sessionStore, hookCtx, log)
 
 	outcome := disp.DispatchWithChecks(ctx, hookCtx)
@@ -423,9 +454,14 @@ func dispatchInSession(
 	)
 	errs = evidenceGate.apply(ctx, hookCtx, errs)
 	errs = evidenceGate.toolPhase().apply(ctx, hookCtx, errs)
-	errs, gateNotice := applyCompletionGate(sessionStore, hookCtx, errs, log)
+	gated, gateNotice := applyCompletionGate(sessionStore, hookCtx, errs, log)
 
-	return errs, cleanup, gateNotice
+	result := sessionDispatch{errs: gated, cleanup: cleanup, notice: gateNotice, outcome: outcome}
+	if gateNotice != "" {
+		result.released = releasedFindings(errs)
+	}
+
+	return result
 }
 
 // answerToolSelection answers Gemini BeforeToolSelection. No validator
@@ -448,6 +484,10 @@ func (h *hookRun) answerToolSelection(
 		return nil
 	}
 
+	filtered := false
+
+	defer func() { h.recordSelection(hookCtx, filtered) }()
+
 	if response == nil {
 		return nil
 	}
@@ -460,6 +500,8 @@ func (h *hookRun) answerToolSelection(
 	if _, err := fmt.Fprintf(os.Stdout, "%s\n", data); err != nil {
 		return errors.Wrap(err, "write tool selection response")
 	}
+
+	filtered = true
 
 	return nil
 }
@@ -583,7 +625,8 @@ func bypassNotice(
 	return bypass.Notice(hookCtx.PermissionMode)
 }
 
-// writeResponse builds and writes the JSON hook response to stdout.
+// writeResponse builds and writes the JSON hook response to stdout. It
+// reports whether the response told the harness to stop something.
 func writeResponse(
 	hookCtx *hook.Context,
 	errs []*dispatcher.ValidationError,
@@ -591,7 +634,7 @@ func writeResponse(
 	notices []string,
 	output *config.OutputConfig,
 	log logger.Logger,
-) error {
+) (bool, error) {
 	response := hookresponse.BuildForContext(hookCtx, errs, patternWarnings)
 	if hookresponse.IsEmpty(response) {
 		response = nil
@@ -620,18 +663,23 @@ func writeResponse(
 	if response == nil {
 		log.Info("validation passed")
 
-		return nil
+		return false, nil
 	}
 
 	data, jsonErr := json.Marshal(response)
 	if jsonErr != nil {
 		log.Error("failed to marshal hook response", "error", jsonErr)
 
-		return errors.Wrap(jsonErr, "marshal hook response")
+		return false, errors.Wrap(jsonErr, "marshal hook response")
 	}
 
-	//nolint:errcheck // Writing marshalled JSON to stdout is best-effort for hook responses.
-	fmt.Fprintf(os.Stdout, "%s\n", data)
+	// Writing the response is best-effort; a response that was not
+	// delivered stopped nothing.
+	if _, writeErr := fmt.Fprintf(os.Stdout, "%s\n", data); writeErr != nil {
+		log.Error("failed to write hook response", "error", writeErr)
+
+		return false, nil
+	}
 
 	if dispatcher.ShouldBlock(errs) {
 		log.Error("validation blocked", "errorCount", len(errs))
@@ -639,7 +687,7 @@ func writeResponse(
 		log.Info("validation passed with warnings", "warningCount", len(errs))
 	}
 
-	return nil
+	return hookresponse.Stops(response), nil
 }
 
 // checkForUpdates performs a cached update check and returns a notification

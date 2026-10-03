@@ -36,6 +36,7 @@ type Executor interface {
 type ValidatorRun struct {
 	Validator validator.Validator
 	Result    *validator.Result
+	Elapsed   time.Duration
 }
 
 // failures converts the failed runs to validation errors, in run order.
@@ -90,10 +91,12 @@ func (se *SequentialExecutor) RunObserved(
 	runs := make([]ValidatorRun, 0, len(validators))
 
 	for _, v := range validators {
+		start := time.Now()
 		run := ValidatorRun{
 			Validator: v,
 			Result:    runValidator(ctx, hookCtx, v, se.logger),
 		}
+		run.Elapsed = time.Since(start)
 
 		observe.notify(run)
 
@@ -267,7 +270,9 @@ func (e *ParallelExecutor) RunObserved(
 	// For a single validator, run directly without goroutine overhead
 	if len(validators) == 1 {
 		v := validators[0]
+		start := time.Now()
 		run := ValidatorRun{Validator: v, Result: runValidator(ctx, hookCtx, v, e.logger)}
+		run.Elapsed = time.Since(start)
 
 		observe.notify(run)
 
@@ -286,7 +291,10 @@ func (e *ParallelExecutor) RunObserved(
 		go func(v validator.Validator) {
 			defer wg.Done()
 
-			var result *validator.Result
+			var (
+				result  *validator.Result
+				elapsed time.Duration
+			)
 
 			pool := e.poolFor(v.Category())
 			if err := pool.Acquire(ctx, 1); err != nil {
@@ -300,12 +308,14 @@ func (e *ParallelExecutor) RunObserved(
 					"category", v.Category().String(),
 				)
 
+				start := time.Now()
 				result = runValidator(ctx, hookCtx, v, e.logger)
+				elapsed = time.Since(start)
 
 				pool.Release(1)
 			}
 
-			run := ValidatorRun{Validator: v, Result: result}
+			run := ValidatorRun{Validator: v, Result: result, Elapsed: elapsed}
 
 			observe.notify(run)
 

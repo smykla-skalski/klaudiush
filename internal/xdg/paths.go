@@ -144,6 +144,11 @@ func HookSessionStateFile() string {
 	return filepath.Join(StateDir(), "hook_sessions", "state.json")
 }
 
+// MetricsFile returns StateDir()/metrics/outcomes.jsonl.
+func MetricsFile() string {
+	return filepath.Join(StateDir(), "metrics", "outcomes.jsonl")
+}
+
 // BypassNoticeStateFile returns StateDir()/bypass_notice.json.
 func BypassNoticeStateFile() string {
 	return filepath.Join(StateDir(), "bypass_notice.json")

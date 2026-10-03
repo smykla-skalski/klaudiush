@@ -91,9 +91,30 @@ var _ = Describe("whole-file inspection after the tool ran", func() {
 			Expect(result.Passed).To(BeTrue())
 			Expect(result.Inspected).To(BeFalse())
 
-			By("not counting the tool input before the tool ran")
-			Expect(validate(bg, passed, hookCtx(hook.CanonicalEventBeforeTool, name)).Inspected).
-				To(BeFalse())
+			By("counting a Write's whole content before the tool ran only as proposed")
+
+			before := hookCtx(hook.CanonicalEventBeforeTool, name)
+			result = validate(bg, passed, before)
+			Expect(result.Inspected).To(BeFalse())
+			Expect(result.Proposed).To(BeTrue())
+			Expect(validate(bg, failed, before).Proposed).To(BeTrue())
+			Expect(validate(bg, skipped, before).Proposed).To(BeFalse())
+			Expect(validate(cancelled, passed, before).Proposed).To(BeFalse())
+			Expect(validate(bg, passed, after).Proposed).To(BeFalse())
+
+			By("not counting an edit fragment as the whole file")
+
+			edit := hookCtx(hook.CanonicalEventBeforeTool, name)
+			edit.EventType = hook.EventTypePreToolUse
+			edit.ToolName = hook.ToolTypeEdit
+			edit.ToolInput = hook.ToolInput{
+				FilePath:  filepath.Join(dir, name),
+				OldString: content,
+				NewString: content + content,
+			}
+			result = validate(bg, passed, edit)
+			Expect(result.Inspected).To(BeFalse())
+			Expect(result.Proposed).To(BeFalse())
 		},
 		Entry("python", "a.py", "x = 1\n",
 			lintValidator(func(ctrl *gomock.Controller, r *linters.LintResult) validator.Validator {
@@ -233,6 +254,61 @@ var _ = Describe("whole-file inspection after the tool ran", func() {
 
 			missing := hookCtx(hook.CanonicalEventAfterTool, "missing.md")
 			Expect(build().Validate(context.Background(), missing).Inspected).To(BeFalse())
+		})
+	})
+
+	Describe("pattern validators", func() {
+		It("count a Write's whole content, not an edit fragment", func() {
+			validators := []validator.Validator{
+				file.NewLinterIgnoreValidator(log, nil, nil),
+				file.NewAICommentValidator(log, nil, nil),
+			}
+
+			write := hookCtx(hook.CanonicalEventBeforeTool, "a.py")
+			edit := &hook.Context{
+				Provider:  hook.ProviderClaude,
+				Event:     hook.CanonicalEventBeforeTool,
+				ToolName:  hook.ToolTypeEdit,
+				ToolInput: hook.ToolInput{FilePath: "a.py", OldString: "a", NewString: "b"},
+			}
+
+			for _, v := range validators {
+				Expect(v.Validate(context.Background(), write).Proposed).To(BeTrue(), v.Name())
+
+				Expect(v.Validate(context.Background(), edit).Proposed).To(BeFalse(), v.Name())
+			}
+
+			write.ToolInput.Content = "x = 1  # no" + "qa\n"
+			result := validators[0].Validate(context.Background(), write)
+			Expect(result.Passed).To(BeFalse())
+			Expect(result.Proposed).To(BeTrue())
+
+			write.ToolInput.Content = "x = 1\n\n\n# This is a comment that explains\nx = 2\n"
+			result = file.NewAICommentValidator(log, &config.AICommentValidatorConfig{
+				Mode: config.AICommentModeStrict,
+			}, nil).Validate(context.Background(), write)
+			Expect(result.Passed).To(BeFalse())
+			Expect(result.Proposed).To(BeTrue())
+		})
+	})
+
+	Describe("MarkdownValidator before the tool ran", func() {
+		It("counts a Write's whole content as proposed", func() {
+			v := file.NewMarkdownValidator(
+				nil,
+				linters.NewMarkdownLinter(execpkg.NewCommandRunner(10*time.Second)),
+				log,
+				nil,
+			)
+
+			result := v.Validate(context.Background(), &hook.Context{
+				Provider:  hook.ProviderClaude,
+				Event:     hook.CanonicalEventBeforeTool,
+				ToolName:  hook.ToolTypeWrite,
+				ToolInput: hook.ToolInput{FilePath: "a.md", Content: "# Title\n"},
+			})
+			Expect(result.Inspected).To(BeFalse())
+			Expect(result.Proposed).To(BeTrue())
 		})
 	})
 

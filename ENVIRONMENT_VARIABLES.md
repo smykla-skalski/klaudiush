@@ -73,6 +73,18 @@ export KLAUDIUSH_MCP_TRUST_ENABLED=true
 export KLAUDIUSH_MCP_TRUST_UNKNOWN_PROVENANCE=warn
 ```
 
+### Outcome Metrics
+
+Local enforcement outcome metrics are on by default. See the [metrics guide](docs/METRICS_GUIDE.md).
+
+```bash
+# Stop recording
+export KLAUDIUSH_METRICS_ENABLED=false
+
+# Report window and prune age
+export KLAUDIUSH_METRICS_RETENTION=168h
+```
+
 ## Git Validators
 
 ### Git Add Validator

@@ -80,6 +80,12 @@ type hookRun struct {
 	output    atomic.Pointer[config.OutputConfig]
 	workDir   atomic.Pointer[string]
 	errs      atomic.Pointer[[]*dispatcher.ValidationError]
+	metrics   atomic.Pointer[config.MetricsConfig]
+	outcome   atomic.Pointer[dispatcher.Outcome]
+	released  atomic.Bool
+
+	releasedFindings atomic.Pointer[[]bool]
+	skipped          atomic.Bool
 }
 
 func newHookRun(
@@ -206,7 +212,7 @@ func (h *hookRun) finish(err error) error {
 		errs = append(slices.Clone(*found), errs...)
 	}
 
-	return writeResponse(
+	stopped, err := writeResponse(
 		hookCtx,
 		errs,
 		nil,
@@ -214,6 +220,10 @@ func (h *hookRun) finish(err error) error {
 		h.output.Load(),
 		h.log,
 	)
+
+	h.recordMetrics(hookCtx, errs, stopped)
+
+	return err
 }
 
 // failureError describes the failure for the response. Blocking is only
@@ -505,19 +515,24 @@ func readConfigFile(path string) ([]byte, error) {
 
 // scanMode finds mode = "..." inside a [failure_policy] table.
 func scanMode(content string) string {
+	return scanKey(content, "failure_policy", "mode")
+}
+
+// scanKey finds name = "..." inside the [table] table, line by line.
+func scanKey(content, table, name string) string {
 	inSection := false
 
 	for line := range strings.Lines(content) {
 		line = withoutComment(line)
 
 		if strings.HasPrefix(line, "[") {
-			inSection = strings.Trim(line, "[] \t") == "failure_policy"
+			inSection = strings.Trim(line, "[] \t") == table
 
 			continue
 		}
 
 		key, value, ok := strings.Cut(line, "=")
-		if !inSection || !ok || strings.TrimSpace(key) != "mode" {
+		if !inSection || !ok || strings.TrimSpace(key) != name {
 			continue
 		}
 

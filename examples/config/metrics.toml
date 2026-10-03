@@ -1,0 +1,8 @@
+#:schema https://klaudiu.sh/schema/v1/config.json
+# Outcome metrics: see docs/METRICS_GUIDE.md
+# One redacted line per hook, local only, size-capped with a single backup
+
+[metrics]
+enabled = true
+retention = "720h"
+max_file_size_mb = 8

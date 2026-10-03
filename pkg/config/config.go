@@ -60,6 +60,9 @@ type Config struct {
 	// MCPTrust decides which MCP servers the agent may call by provenance.
 	MCPTrust *MCPTrustConfig `json:"mcp_trust,omitempty" koanf:"mcp_trust" toml:"mcp_trust,omitempty"`
 
+	// Metrics controls the local enforcement outcome metrics.
+	Metrics *MetricsConfig `json:"metrics,omitempty" koanf:"metrics" toml:"metrics,omitempty"`
+
 	// PolicySources are the configurations of other project directories
 	// (the hook's own project when a command cd's elsewhere) whose
 	// protection applies to this hook. Never read from a file.
@@ -260,6 +263,15 @@ func (c *Config) GetPatterns() *PatternsConfig {
 	}
 
 	return c.Patterns
+}
+
+// GetMetrics returns the metrics config, creating it if it doesn't exist.
+func (c *Config) GetMetrics() *MetricsConfig {
+	if c.Metrics == nil {
+		c.Metrics = &MetricsConfig{}
+	}
+
+	return c.Metrics
 }
 
 // GetOverrides returns the overrides config, creating it if it doesn't exist.

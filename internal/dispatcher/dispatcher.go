@@ -2,9 +2,11 @@
 package dispatcher
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/cockroachdb/errors"
 
@@ -73,11 +75,46 @@ type Check struct {
 	Resource  string
 }
 
-// Outcome is the result of one dispatch: the errors found and every check
-// that ran, so callers can tell a repaired resource from an unchecked one.
+// Timing is how long one validator run took.
+type Timing struct {
+	Validator string
+	Elapsed   time.Duration
+}
+
+// Unavailable is a validator run that could not check its resource. It is
+// kept apart from the errors: the failure policy may drop a run's error,
+// as missing tools are ignored by default, but the run still checked
+// nothing.
+type Unavailable struct {
+	Validator string
+	Resource  string
+	Reason    validator.UnavailableReason
+	Reference validator.Reference
+}
+
+// Outcome is the result of one dispatch: the errors found, every check that
+// proves its resource clean (Checks), every validator that checked the whole
+// of what the tool sends or left (Ran: a command, the file as the tool left
+// it, or the complete file a Write proposes, but never an edit fragment or a
+// run that skipped its file), every run that could not check its resource
+// (Unavailable), and how long each validator run took.
 type Outcome struct {
-	Errors []*ValidationError
-	Checks []Check
+	Errors      []*ValidationError
+	Checks      []Check
+	Ran         []Check
+	Unavailable []Unavailable
+	Timings     []Timing
+}
+
+// runLog collects the checks, unavailable runs and timings of one dispatch.
+// While untrusted is set, a run's claim to have checked a proposed whole
+// file is not believed.
+type runLog struct {
+	checks      []Check
+	ran         []Check
+	unavailable []Unavailable
+	timings     []Timing
+	untrusted   bool
 }
 
 // Error implements the error interface.
@@ -212,17 +249,23 @@ func (d *Dispatcher) Dispatch(ctx context.Context, hookCtx *hook.Context) []*Val
 // DispatchWithChecks validates the context like Dispatch and also reports
 // which validators ran on which resources.
 func (d *Dispatcher) DispatchWithChecks(ctx context.Context, hookCtx *hook.Context) Outcome {
-	var checks []Check
+	var ran runLog
 
-	errs := d.validate(ctx, hookCtx, &checks, newProgress(d.publish))
+	errs := d.validate(ctx, hookCtx, &ran, newProgress(d.publish))
 
-	return Outcome{Errors: errs, Checks: checks}
+	return Outcome{
+		Errors:      errs,
+		Checks:      ran.checks,
+		Ran:         ran.ran,
+		Unavailable: ran.unavailable,
+		Timings:     ran.timings,
+	}
 }
 
 func (d *Dispatcher) validate(
 	ctx context.Context,
 	hookCtx *hook.Context,
-	checks *[]Check,
+	ran *runLog,
 	p *progress,
 ) []*ValidationError {
 	d.logger.Info("dispatching",
@@ -239,17 +282,17 @@ func (d *Dispatcher) validate(
 	}
 
 	if len(hookCtx.PatchFiles) > 0 {
-		return d.validatePatchFiles(ctx, hookCtx, checks, p)
+		return d.validatePatchFiles(ctx, hookCtx, ran, p)
 	}
 
-	validationErrors := afterToolFindings(hookCtx, d.runValidators(ctx, hookCtx, checks, p))
+	validationErrors := afterToolFindings(hookCtx, d.runValidators(ctx, hookCtx, ran, p))
 
 	// Validate the files a Bash command writes, before and after it runs.
 	if hookCtx.ToolName == hook.ToolTypeBash && (hookCtx.Event == hook.CanonicalEventBeforeTool ||
 		hookCtx.Event == hook.CanonicalEventAfterTool ||
 		hookCtx.EventType == hook.EventTypePreToolUse ||
 		hookCtx.EventType == hook.EventTypePostToolUse) {
-		syntheticErrors := d.validateBashFileWrites(ctx, hookCtx, checks, p)
+		syntheticErrors := d.validateBashFileWrites(ctx, hookCtx, ran, p)
 		validationErrors = append(validationErrors, syntheticErrors...)
 	}
 
@@ -257,12 +300,12 @@ func (d *Dispatcher) validate(
 }
 
 // runValidators runs validators on a context and returns validation errors.
-// Each validator that ran to completion is added to checks, and its findings
+// Each validator that ran to completion is added to ran, and its findings
 // are published to p as they come.
 func (d *Dispatcher) runValidators(
 	ctx context.Context,
 	hookCtx *hook.Context,
-	checks *[]Check,
+	ran *runLog,
 	p *progress,
 ) []*ValidationError {
 	validators := d.registry.FindValidators(hookCtx)
@@ -286,7 +329,7 @@ func (d *Dispatcher) runValidators(
 
 	resource := hookCtx.Resource()
 
-	recordChecks(ctx, checks, runs, resource)
+	ran.record(ctx, runs, resource)
 
 	// Apply overrides to suppress disabled error codes
 	validationErrors = d.applyOverrides(validationErrors)
@@ -554,7 +597,7 @@ func errorFromFindings(verr *ValidationError, findings []validator.Finding) *Val
 func (d *Dispatcher) validateBashFileWrites(
 	ctx context.Context,
 	bashCtx *hook.Context,
-	checks *[]Check,
+	ran *runLog,
 	p *progress,
 ) []*ValidationError {
 	result, err := bashCtx.ParsedCommand()
@@ -613,7 +656,7 @@ func (d *Dispatcher) validateBashFileWrites(
 			"file", target.path,
 		)
 
-		errs := d.runValidators(ctx, syntheticCtx, checks, p)
+		errs := d.runSyntheticWrite(ctx, syntheticCtx, ran, p)
 		if bashCtx.IsAfterTool() {
 			errs = namedAfter(target.path, advisory(errs))
 		}
@@ -624,13 +667,34 @@ func (d *Dispatcher) validateBashFileWrites(
 	return allErrors
 }
 
+// runSyntheticWrite validates a file a shell command writes. Before the
+// command runs, its content is the parser's reconstruction, which may be
+// only an appended part, so a check of it shows no whole file.
+func (d *Dispatcher) runSyntheticWrite(
+	ctx context.Context,
+	syntheticCtx *hook.Context,
+	ran *runLog,
+	p *progress,
+) []*ValidationError {
+	if ran == nil || syntheticCtx.IsAfterTool() {
+		return d.runValidators(ctx, syntheticCtx, ran, p)
+	}
+
+	saved := ran.untrusted
+	ran.untrusted = true
+
+	defer func() { ran.untrusted = saved }()
+
+	return d.runValidators(ctx, syntheticCtx, ran, p)
+}
+
 // validatePatchFiles validates each file of a multi-file patch as its own Write
 // or Edit, so path rules and content checks apply to every file rather than
 // only the first one.
 func (d *Dispatcher) validatePatchFiles(
 	ctx context.Context,
 	patchCtx *hook.Context,
-	checks *[]Check,
+	ran *runLog,
 	p *progress,
 ) []*ValidationError {
 	allErrors := make([]*ValidationError, 0, len(patchCtx.PatchFiles))
@@ -663,7 +727,7 @@ func (d *Dispatcher) validatePatchFiles(
 
 		d.logger.Debug("validating patch file", "file", file.Input.FilePath)
 
-		errs := afterToolFindings(fileCtx, d.runValidators(ctx, fileCtx, checks, p))
+		errs := afterToolFindings(fileCtx, d.runValidators(ctx, fileCtx, ran, p))
 		allErrors = append(allErrors, errs...)
 	}
 
@@ -688,28 +752,55 @@ func (d *Dispatcher) resolver() parser.Resolver {
 	return d.pathResolver
 }
 
-// recordChecks adds the validators that ran on resource to checks. A
-// cancelled run may have skipped validators, so it proves nothing; on a file,
-// only runs that report reading and checking the whole file as the tool left
-// it prove it clean.
-func recordChecks(
-	ctx context.Context,
-	checks *[]Check,
-	runs []ValidatorRun,
-	resource string,
-) {
-	if checks == nil || ctx.Err() != nil {
+// record adds the timing of every run that started, every run that could
+// not check resource, and the validators that checked all of resource to
+// ran and the checks. A cancelled run may have skipped validators, so it
+// proves nothing. On a file, only runs that report reading and checking the
+// whole file as the tool left it prove it clean; a run that checked the
+// whole file a Write proposes counts as having checked it, not as proof.
+func (l *runLog) record(ctx context.Context, runs []ValidatorRun, resource string) {
+	if l == nil {
+		return
+	}
+
+	for _, run := range runs {
+		if run.Elapsed > 0 {
+			l.timings = append(l.timings, Timing{
+				Validator: run.Validator.Name(),
+				Elapsed:   run.Elapsed,
+			})
+		}
+
+		if run.Result.Unavailable {
+			l.unavailable = append(l.unavailable, Unavailable{
+				Validator: run.Validator.Name(),
+				Resource:  resource,
+				Reason:    cmp.Or(run.Result.UnavailableReason, validator.ReasonError),
+				Reference: run.Result.Reference,
+			})
+		}
+	}
+
+	if ctx.Err() != nil {
 		return
 	}
 
 	isFile := strings.HasPrefix(resource, hook.ResourceFilePrefix)
 
 	for _, run := range runs {
-		if run.Result.Unavailable || (isFile && !run.Result.Inspected) {
+		if run.Result.Unavailable {
 			continue
 		}
 
-		*checks = append(*checks, Check{Validator: run.Validator.Name(), Resource: resource})
+		check := Check{Validator: run.Validator.Name(), Resource: resource}
+
+		if !isFile || run.Result.Inspected || (run.Result.Proposed && !l.untrusted) {
+			l.ran = append(l.ran, check)
+		}
+
+		if !isFile || run.Result.Inspected {
+			l.checks = append(l.checks, check)
+		}
 	}
 }
 

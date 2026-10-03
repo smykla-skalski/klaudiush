@@ -5,6 +5,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/smykla-skalski/klaudiush/internal/validator"
+	"github.com/smykla-skalski/klaudiush/pkg/hook"
 )
 
 var _ = Describe("Finding", func() {
@@ -20,6 +21,32 @@ var _ = Describe("Finding", func() {
 
 		Expect(result.Findings).To(HaveLen(2))
 		Expect(result.Unavailable).To(BeTrue())
+	})
+
+	It("tells a Write's whole proposed file from fragments and results", func() {
+		write := &hook.Context{
+			Event:     hook.CanonicalEventBeforeTool,
+			ToolName:  hook.ToolTypeWrite,
+			ToolInput: hook.ToolInput{Content: "x"},
+		}
+		Expect(validator.ProposedWrite(write)).To(BeTrue())
+		Expect(validator.Pass().MarkProposed().Proposed).To(BeTrue())
+
+		Expect(validator.ProposedWrite(nil)).To(BeFalse())
+		Expect(validator.ProposedWrite(&hook.Context{
+			Event:     hook.CanonicalEventAfterTool,
+			ToolName:  hook.ToolTypeWrite,
+			ToolInput: hook.ToolInput{Content: "x"},
+		})).To(BeFalse())
+		Expect(validator.ProposedWrite(&hook.Context{
+			Event:     hook.CanonicalEventBeforeTool,
+			ToolName:  hook.ToolTypeEdit,
+			ToolInput: hook.ToolInput{NewString: "x"},
+		})).To(BeFalse())
+		Expect(validator.ProposedWrite(&hook.Context{
+			Event:    hook.CanonicalEventBeforeTool,
+			ToolName: hook.ToolTypeWrite,
+		})).To(BeFalse())
 	})
 
 	Describe("SortFindings", func() {

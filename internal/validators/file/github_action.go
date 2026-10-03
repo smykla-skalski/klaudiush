@@ -123,10 +123,11 @@ func (v *WorkflowValidator) Validate(ctx context.Context, hookCtx *hook.Context)
 	// After the tool ran, content is the whole file as the tool left it. Only
 	// the local digest pinning check reports findings; actionlint and version
 	// lookups only print warnings.
-	inspected := hookCtx.IsAfterTool()
+	afterTool := hookCtx.IsAfterTool()
+	cov := fileCoverage(hookCtx, afterTool)
 
 	if content == "" {
-		return inspectedIf(inspected, validator.Pass())
+		return cov.mark(validator.Pass())
 	}
 
 	var allErrors []string
@@ -164,7 +165,7 @@ func (v *WorkflowValidator) Validate(ctx context.Context, hookCtx *hook.Context)
 
 	// Report errors (blocking)
 	if len(allErrors) > 0 {
-		return inspectedIf(inspected, validator.FailWithRef(
+		return cov.mark(validator.FailWithRef(
 			validator.RefActionlint,
 			allErrors[0],
 		)).AddDetail("file", filepath.Base(filePath)).
@@ -182,7 +183,7 @@ func (v *WorkflowValidator) Validate(ctx context.Context, hookCtx *hook.Context)
 	// Only digest pinning decides; actionlint just prints warnings. After the
 	// tool ran, the pinning verdict still proves the file clean, so a missing
 	// actionlint must not keep earlier pinning findings unresolved.
-	if notRun != nil && !inspected {
+	if notRun != nil && !afterTool {
 		return notRun
 	}
 
@@ -190,7 +191,7 @@ func (v *WorkflowValidator) Validate(ctx context.Context, hookCtx *hook.Context)
 		log.Info("actionlint did not run", "reason", string(notRun.UnavailableReason))
 	}
 
-	return inspectedIf(inspected, validator.Pass())
+	return cov.mark(validator.Pass())
 }
 
 // isWorkflowFile checks if the file path is a GitHub Actions workflow or composable action

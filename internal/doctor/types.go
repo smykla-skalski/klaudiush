@@ -53,6 +53,8 @@ const (
 	CategoryFailurePolicy Category = "failure_policy"
 	// CategoryEvidence checks the evidence gate can see completion attempts
 	CategoryEvidence Category = "evidence"
+	// CategoryMetrics checks hooks can record local outcome metrics
+	CategoryMetrics Category = "metrics"
 	// CategoryProtection checks policy protection and MCP trust coverage
 	CategoryProtection Category = "protection"
 )

@@ -86,7 +86,7 @@ func (v *SecretsValidator) Validate(ctx context.Context, hookCtx *hook.Context) 
 	content, wholeFile := v.getContent(hookCtx)
 	if content == "" {
 		log.Debug("no content to validate")
-		return inspectedIf(wholeFile, validator.Pass())
+		return checkedWhole(hookCtx, wholeFile, validator.Pass())
 	}
 
 	// Check file size limit
@@ -103,7 +103,7 @@ func (v *SecretsValidator) Validate(ctx context.Context, hookCtx *hook.Context) 
 	findings = v.filterFindings(findings)
 
 	if len(findings) > 0 {
-		return inspectedIf(wholeFile, v.createResult(findings))
+		return checkedWhole(hookCtx, wholeFile, v.createResult(findings))
 	}
 
 	if v.gitleaksMissing() {
@@ -117,7 +117,7 @@ func (v *SecretsValidator) Validate(ctx context.Context, hookCtx *hook.Context) 
 	if v.shouldUseGitleaks() {
 		result := v.gitleaks.Check(ctx, content)
 		if !result.Success && len(result.Findings) > 0 {
-			return inspectedIf(wholeFile, v.createGitleaksResult(result.Findings))
+			return checkedWhole(hookCtx, wholeFile, v.createGitleaksResult(result.Findings))
 		}
 
 		if !result.Success {
@@ -127,7 +127,7 @@ func (v *SecretsValidator) Validate(ctx context.Context, hookCtx *hook.Context) 
 
 	log.Debug("no secrets detected")
 
-	return inspectedIf(wholeFile, validator.Pass())
+	return checkedWhole(hookCtx, wholeFile, validator.Pass())
 }
 
 // gitleaksUnavailable reports a gitleaks run that failed without findings:
@@ -144,14 +144,21 @@ func gitleaksUnavailable(ctx context.Context, err error) *validator.Result {
 	)
 }
 
-// inspectedIf marks result as a check of the whole file as the tool left it
-// when inspected holds.
-func inspectedIf(inspected bool, result *validator.Result) *validator.Result {
-	if inspected {
+// checkedWhole marks result as a check of the whole file: as the tool left
+// it when inspected holds, or as a Write proposes it before the tool ran.
+func checkedWhole(
+	hookCtx *hook.Context,
+	inspected bool,
+	result *validator.Result,
+) *validator.Result {
+	switch {
+	case inspected:
 		return result.MarkInspected()
+	case validator.ProposedWrite(hookCtx):
+		return result.MarkProposed()
+	default:
+		return result
 	}
-
-	return result
 }
 
 // getContent extracts content to validate from the hook context. After the
