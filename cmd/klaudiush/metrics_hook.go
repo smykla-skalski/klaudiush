@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	internalconfig "github.com/smykla-skalski/klaudiush/internal/config"
 	"github.com/smykla-skalski/klaudiush/internal/dispatcher"
 	"github.com/smykla-skalski/klaudiush/internal/metrics"
 	"github.com/smykla-skalski/klaudiush/pkg/config"
@@ -71,14 +72,18 @@ func (h *hookRun) record(obs *metrics.Observation) {
 // metricsConfig returns the loaded metrics settings, or what can be read of
 // the configuration when loading it failed. The environment switch is read
 // directly then, since a configuration that cannot be read cannot carry it.
+// An explicit enabled = false in any config file wins over a fallback that
+// could not read that file.
 func (h *hookRun) metricsConfig() *config.MetricsConfig {
 	if cfg := h.metrics.Load(); cfg != nil {
 		return cfg
 	}
 
+	disabled := false
+
 	if value, ok := os.LookupEnv(metricsEnabledEnv); ok {
 		if enabled, err := strconv.ParseBool(value); err == nil && !enabled {
-			return &config.MetricsConfig{Enabled: &enabled}
+			return &config.MetricsConfig{Enabled: &disabled}
 		}
 	}
 
@@ -87,28 +92,35 @@ func (h *hookRun) metricsConfig() *config.MetricsConfig {
 		workDir = *dir
 	}
 
-	if cfg := looseConfig(workDir); cfg != nil {
+	loader, err := configLoader(workDir)
+	if err != nil {
+		return nil
+	}
+
+	if cfg, loadErr := loader.LoadWithoutValidation(buildFlagsMap()); loadErr == nil {
 		return cfg.GetMetrics()
 	}
 
-	if scannedMetricsDisabled(workDir) {
-		disabled := false
-
+	if scannedMetricsDisabled(loader) {
 		return &config.MetricsConfig{Enabled: &disabled}
+	}
+
+	if cfg, _, loadErr := loader.LoadGlobalConfigOnly(); loadErr == nil && cfg != nil {
+		return cfg.GetMetrics()
 	}
 
 	return nil
 }
 
-// scannedMetricsDisabled reports whether a project or global config file
-// that does not parse says enabled = false inside [metrics].
-func scannedMetricsDisabled(workDir string) bool {
-	loader, err := configLoader(workDir)
-	if err != nil {
-		return false
-	}
+// scannedMetricsDisabled reports whether the project or global config file
+// the loader reads says enabled = false inside [metrics], whether or not it
+// parses.
+func scannedMetricsDisabled(loader *internalconfig.KoanfLoader) bool {
+	for _, path := range []string{loader.FindProjectConfigPath(), loader.GlobalConfigPath()} {
+		if path == "" {
+			continue
+		}
 
-	for _, path := range append(loader.ProjectConfigPaths(), loader.GlobalConfigPath()) {
 		data, readErr := readConfigFile(path)
 		if readErr == nil && scanKey(string(data), cmdUseMetrics, "enabled") == valueFalse {
 			return true

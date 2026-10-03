@@ -155,6 +155,43 @@ var _ = Describe("hook metrics", func() {
 		Expect(xdg.MetricsFile()).To(BeAnExistingFile())
 	})
 
+	It("honors a project opt-out over a global fallback when the project does not parse", func() {
+		configDir := filepath.Join(home, ".config", "klaudiush")
+		Expect(os.MkdirAll(configDir, 0o700)).To(Succeed())
+		Expect(os.WriteFile(filepath.Join(configDir, "config.toml"),
+			[]byte("[metrics]\nenabled = true\n"), 0o600)).To(Succeed())
+
+		project := GinkgoT().TempDir()
+		Expect(os.MkdirAll(filepath.Join(project, ".klaudiush"), 0o700)).To(Succeed())
+		Expect(os.WriteFile(filepath.Join(project, ".klaudiush", "config.toml"),
+			[]byte("[metrics]\nenabled = false\n[broken\n"), 0o600)).To(Succeed())
+
+		h := newRun(hook.ProviderClaude, "PreToolUse")
+		h.workDir.Store(&project)
+		h.recordMetrics(&hook.Context{Provider: hook.ProviderClaude}, nil, false)
+
+		Expect(xdg.MetricsFile()).NotTo(BeAnExistingFile())
+
+		Expect(os.WriteFile(filepath.Join(project, ".klaudiush", "config.toml"),
+			[]byte("[metrics\nbroken\n"), 0o600)).To(Succeed())
+		h.recordMetrics(&hook.Context{Provider: hook.ProviderClaude}, nil, false)
+
+		Expect(xdg.MetricsFile()).To(BeAnExistingFile())
+	})
+
+	It("reads metrics from the merged configuration when it loads", func() {
+		project := GinkgoT().TempDir()
+		Expect(os.MkdirAll(filepath.Join(project, ".klaudiush"), 0o700)).To(Succeed())
+		Expect(os.WriteFile(filepath.Join(project, ".klaudiush", "config.toml"),
+			[]byte("[metrics]\nenabled = false\n"), 0o600)).To(Succeed())
+
+		h := newRun(hook.ProviderClaude, "PreToolUse")
+		h.workDir.Store(&project)
+		h.recordMetrics(&hook.Context{Provider: hook.ProviderClaude}, nil, false)
+
+		Expect(xdg.MetricsFile()).NotTo(BeAnExistingFile())
+	})
+
 	It("records what validation found, with checks and timings", func() {
 		h := newRun(hook.ProviderClaude, "PreToolUse")
 		h.metrics.Store(&config.MetricsConfig{})
