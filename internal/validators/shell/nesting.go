@@ -252,10 +252,19 @@ func unresolvedWordFinding(o parser.Opacity) (message, required, repair string) 
 	}
 
 	if o.Operation == parser.EntrypointOperation {
-		message = "the container --entrypoint value " + strings.TrimPrefix(o.Detail, "it ")
-		required = "a literal --entrypoint, or one from a variable assigned literally " +
-			"on the same line"
-		repair = "Write the entrypoint program literally"
+		message = "the container --entrypoint or a word before it " + strings.TrimPrefix(
+			o.Detail,
+			"it ",
+		)
+		required = "a literal --entrypoint, options and image, or ones from variables " +
+			"assigned literally on the same line"
+		repair = "Write the entrypoint, options and image literally"
+
+		if o.Detail == parser.DetailEntrypointOptions {
+			required = "container options klaudiush can read up to the image"
+			repair = "Attach option values with = (--opt=value), or drop options " +
+				"before the image"
+		}
 
 		return message, required, repair
 	}

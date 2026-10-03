@@ -29,14 +29,14 @@ stdin docker-variable.json
 exec klaudiush --hook-type PreToolUse
 stdout '"permissionDecision":"deny"'
 stdout 'SHELL002'
-stdout 'container --entrypoint value comes from a variable klaudiush cannot resolve'
+stdout 'container --entrypoint or a word before it comes from a variable klaudiush cannot resolve'
 ! stdout 'KLAUDIUSH_TEST_SECRET'
 
 stdin docker-output.json
 exec klaudiush --hook-type PreToolUse
 stdout '"permissionDecision":"deny"'
 stdout 'SHELL002'
-stdout 'container --entrypoint value comes from command output'
+stdout 'container --entrypoint or a word before it comes from command output'
 
 stdin docker-valid.json
 exec klaudiush --hook-type PreToolUse
