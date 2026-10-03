@@ -11,11 +11,13 @@ import (
 
 // scriptRun is what a script file knows about how it was run: $0, and its
 // positional parameters when withArgs is set. Both are unknown at the top
-// level and in new shells started with -c.
+// level and in new shells started with -c. file is the script file being
+// read, run or sourced, which ${BASH_SOURCE[0]} names.
 type scriptRun struct {
 	zero     string
 	args     []string
 	withArgs bool
+	file     string
 }
 
 // OutputResolver is an optional Resolver extension that prints the output of
@@ -200,10 +202,11 @@ func lookupVar(name string) bool {
 }
 
 // scriptDir returns the directory dirname "$0" prints in a script file
-// whose $0 is known.
+// whose $0 is known, or dirname "${BASH_SOURCE[0]}" in a script file read
+// by path.
 func (w *astWalker) scriptDir(words []*syntax.Word) (string, bool) {
-	if w.scriptRun.zero == "" || len(words) < 2 || len(words) > 3 ||
-		!isLiteralWord(words[0]) || wordToString(words[0]) != "dirname" {
+	if len(words) < 2 || len(words) > 3 || w.defined(dirnameProgram) ||
+		!isLiteralWord(words[0]) || wordToString(words[0]) != dirnameProgram {
 		return "", false
 	}
 
@@ -211,11 +214,27 @@ func (w *astWalker) scriptDir(words []*syntax.Word) (string, bool) {
 		return "", false
 	}
 
-	if _, pe := singleParam(words[len(words)-1]); pe == nil || !simpleParam(pe, "0") {
+	_, pe := singleParam(words[len(words)-1])
+
+	switch {
+	case pe == nil:
+		return "", false
+	case simpleParam(pe, "0") && w.scriptRun.zero != "":
+		return dirname(w.scriptRun.zero), true
+	case bashSourceParam(pe) && w.scriptRun.file != "":
+		return dirname(w.scriptRun.file), true
+	default:
 		return "", false
 	}
+}
 
-	return dirname(w.scriptRun.zero), true
+// bashSourceParam reports $BASH_SOURCE or ${BASH_SOURCE[0]}, the file the
+// current code was read from.
+func bashSourceParam(pe *syntax.ParamExp) bool {
+	rendered := paramExpToString(pe)
+
+	return pe.Param.Value == "BASH_SOURCE" &&
+		(rendered == "${BASH_SOURCE}" || rendered == "${BASH_SOURCE[0]}")
 }
 
 // scriptDirParam renders a parameter in a program word, giving ${0%/*} its
@@ -300,13 +319,18 @@ func (w *astWalker) fileRun(cmd Command, file scriptFile, depth int) scriptRun {
 			run.args, run.withArgs = file.args, true
 		}
 
+		run.file = ""
+		if knownZero(file.path) {
+			run.file = file.path
+		}
+
 		return run
 	}
 
 	var run scriptRun
 
 	if knownZero(file.path) {
-		run.zero = file.path
+		run.zero, run.file = file.path, file.path
 	}
 
 	if file.withArgs && depth-1 == w.depth {
@@ -490,6 +514,12 @@ func (w *astWalker) callWords(words []*syntax.Word) (string, []string, string) {
 	for _, word := range words[1:] {
 		if values, ok := w.positionalWords(word); ok {
 			args = append(args, values...)
+
+			continue
+		}
+
+		if path, ok := w.sourcedFile(name, args, word); ok {
+			args = append(args, path)
 
 			continue
 		}
