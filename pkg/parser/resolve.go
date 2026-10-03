@@ -66,8 +66,12 @@ func newAstWalker(resolver Resolver) *astWalker {
 		aliases:         make(map[string]string),
 		funcs:           make(map[string]string),
 		scriptFiles:     make(map[string]string),
-		state:           &parseState{work: maxParseWork},
-		expanding:       make(map[string]bool),
+		state: &parseState{
+			work:     maxParseWork,
+			distinct: make(map[string]bool),
+			repeated: make(map[string]bool),
+		},
+		expanding: make(map[string]bool),
 	}
 }
 
@@ -78,6 +82,7 @@ func (w *astWalker) child(dir string, depth int) *astWalker {
 	child := newAstWalker(w.resolver)
 	child.currentDir = dir
 	child.dirUnknown = w.dirUnknown
+	child.dirComputed = w.dirComputed
 	child.depth = depth
 	child.scriptFiles = w.scriptFiles
 	child.state = w.state
@@ -363,7 +368,7 @@ func (w *astWalker) expandGHAlias(cmd Command) (Command, []nestedScript) {
 // A --shell alias comes back with gh's own "!" prefix.
 func (w *astWalker) lineGHAlias(name string) (string, bool) {
 	for cmd := range w.earlierCommands() {
-		if cmd.Name != ghCLI || len(cmd.Args) < 2 || cmd.Args[0] != "alias" ||
+		if cmd.Name != ghCLI || len(cmd.Args) < 2 || cmd.Args[0] != ghAliasCommand ||
 			cmd.Args[1] != "set" {
 			continue
 		}
@@ -791,7 +796,7 @@ func (w *astWalker) follow(cmd Command, l launch, depth int) {
 	}
 
 	for _, code := range l.code {
-		w.followCode(cmd, code, depth, "")
+		w.followCode(cmd, code, depth, scriptWalk{literal: true})
 	}
 }
 
@@ -804,11 +809,24 @@ func (w *astWalker) followFile(cmd Command, file scriptFile, depth int) {
 
 	switch status {
 	case ScriptText:
-		label := scriptName(file.path)
-		if file.interpreter || interpreterShebang(text) {
-			w.followCode(cmd, text, depth, label)
-		} else {
-			w.walkScript(text, cmd, depth, w.fileWalk(cmd, file, depth, label))
+		literal := file.interpreter || interpreterShebang(text)
+
+		src := scriptSourceText{path: file.path, text: text, literal: literal}
+		if !literal {
+			src.run = w.fileRun(cmd, file, depth)
+		}
+
+		key := w.sourceKey(cmd, src)
+		if w.followingKey(key) {
+			w.state.repeated[key] = true
+
+			return
+		}
+
+		w.walkSource(cmd, src, depth, key)
+
+		if w.state.repeated[key] && !w.followingKey(key) {
+			w.confirmRepeat(cmd, src, depth, key)
 		}
 	case ScriptOpaque:
 		if file.explicit {
@@ -818,11 +836,11 @@ func (w *astWalker) followFile(cmd Command, file scriptFile, depth int) {
 	}
 }
 
-// followCode records the command lines found in program source, naming the
-// source file by label when it came from one.
-func (w *astWalker) followCode(cmd Command, code string, depth int, label string) {
+// followCode records the command lines found in program source, walking
+// each as sw describes.
+func (w *astWalker) followCode(cmd Command, code string, depth int, sw scriptWalk) {
 	for _, line := range commandLines(code) {
-		w.walkScript(line, cmd, depth, scriptWalk{literal: true, label: label})
+		w.walkScript(line, cmd, depth, sw)
 	}
 }
 
@@ -882,6 +900,9 @@ type scriptWalk struct {
 	// file is.
 	run  scriptRun
 	file bool
+	// source is the state a script file is followed in, kept from being
+	// followed inside itself in the same state.
+	source string
 }
 
 // walkScript records the commands of a script that parent runs. A cd inside
@@ -904,6 +925,11 @@ func (w *astWalker) walkScript(script string, parent Command, depth int, sw scri
 
 	if sw.name != "" {
 		child.expanding[sw.name] = true
+	}
+
+	child.following = slices.Clone(w.following)
+	if sw.source != "" {
+		child.following = append(child.following, sw.source)
 	}
 
 	if op := sw.operation(); (sw.name != "" || sw.label != "") &&

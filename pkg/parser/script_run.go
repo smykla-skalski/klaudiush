@@ -286,31 +286,32 @@ func knownZero(path string) bool {
 		!strings.Contains(path, unresolvedProgram) && !marked(path)
 }
 
-// fileWalk describes the walk of a shell script file cmd runs. An executed
-// script's $0 is its path and its positional parameters are the arguments
-// after it, known only when cmd ran directly (xargs, for one, adds more). A
-// sourced script keeps the caller's, unless source passes arguments.
-func (w *astWalker) fileWalk(cmd Command, file scriptFile, depth int, label string) scriptWalk {
-	sw := scriptWalk{label: label, file: true}
-
+// fileRun returns $0 and the positional parameters of a shell script file
+// cmd runs. An executed script's $0 is its path and its positional
+// parameters are the arguments after it, known only when cmd ran directly
+// (xargs, for one, adds more). A sourced script keeps the caller's, unless
+// source passes arguments.
+func (w *astWalker) fileRun(cmd Command, file scriptFile, depth int) scriptRun {
 	if cmd.Name == sourceBuiltin || cmd.Name == dotBuiltin {
-		sw.run = w.scriptRun
+		run := w.scriptRun
 		if file.withArgs {
-			sw.run.args, sw.run.withArgs = file.args, true
+			run.args, run.withArgs = file.args, true
 		}
 
-		return sw
+		return run
 	}
 
+	var run scriptRun
+
 	if knownZero(file.path) {
-		sw.run.zero = file.path
+		run.zero = file.path
 	}
 
 	if file.withArgs && depth-1 == w.depth {
-		sw.run.args, sw.run.withArgs = file.args, true
+		run.args, run.withArgs = file.args, true
 	}
 
-	return sw
+	return run
 }
 
 // childRun returns what a script parent runs knows of $0 and the positional
