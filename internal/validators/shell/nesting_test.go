@@ -82,7 +82,7 @@ var _ = Describe("NestingValidator", func() {
 	})
 
 	It("reports zsh syntax bash cannot name without a construct", func() {
-		result := blocked(`foreach x (a b) git push; end`)
+		result := blocked(`{ git push }`)
 
 		Expect(result.Message).To(
 			Equal(
@@ -96,6 +96,15 @@ var _ = Describe("NestingValidator", func() {
 
 		Expect(result.Message).To(ContainSubstring("parses commands as bash, not zsh"))
 		Expect(result.Message).NotTo(ContainSubstring("does not parse as shell"))
+	})
+
+	It("points a broken command with zsh syntax at the real break", func() {
+		result := blocked(`echo ${(s:,:)list} && (`)
+
+		Expect(result.Message).To(ContainSubstring("does not parse as bash"))
+		Expect(result.Findings).To(ConsistOf(
+			HaveField("Location", "line 1, column 23"),
+		))
 	})
 
 	It("hedges a zsh loop form the zsh grammar does not know", func() {
