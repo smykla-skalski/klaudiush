@@ -256,6 +256,16 @@ func (r *ParseResult) InlineFileContent(path, workDir string, before Location) (
 	return lastCapturedWrite(r.FileWrites, resolvePath(workDir, path), &before)
 }
 
+// FileWrittenBefore reports whether any write before the consumer at source
+// position "before" changes path, captured or not. When InlineFileContent
+// finds no exact content but this is true, the file on disk is not what the
+// consumer will read.
+func (r *ParseResult) FileWrittenBefore(path, workDir string, before Location) bool {
+	_, found, _ := lastWrite(r.FileWrites, resolvePath(workDir, path), &before)
+
+	return found
+}
+
 // lastCapturedWrite returns what the writes leave in target, when the last of
 // them captured it exactly. A nil before considers every write.
 func lastCapturedWrite(writes []FileWrite, target string, before *Location) (string, bool) {

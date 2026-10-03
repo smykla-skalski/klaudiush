@@ -1087,6 +1087,27 @@ EOF`
 			Expect(ok).To(BeFalse())
 		})
 
+		DescribeTable("FileWrittenBefore reports any earlier write",
+			func(cmd, path string, written bool) {
+				result, err := p.Parse(cmd)
+				Expect(err).NotTo(HaveOccurred())
+
+				Expect(result.FileWrittenBefore(path, "", afterAll)).To(Equal(written))
+			},
+			Entry("append heredoc", "cat >> msg.txt <<'EOF'\nbody\nEOF", "msg.txt", true),
+			Entry("uncaptured echo", `echo "$X" > msg.txt`, "msg.txt", true),
+			Entry("captured heredoc", "cat > msg.txt <<'EOF'\nbody\nEOF", "msg.txt", true),
+			Entry("other file", `echo "$X" > other.txt`, "msg.txt", false),
+			Entry("no write", "git status", "msg.txt", false),
+		)
+
+		It("FileWrittenBefore ignores a write after the consumer", func() {
+			result, err := p.Parse("echo \"$X\" > msg.txt")
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(result.FileWrittenBefore("msg.txt", "", parser.Location{Line: 1})).To(BeFalse())
+		})
+
 		It("is uncertain when a captured heredoc is appended to", func() {
 			cmd := "cat > msg.txt <<'EOF'\nbody\nEOF\n" +
 				"echo more >> msg.txt"
