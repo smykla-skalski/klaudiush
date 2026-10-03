@@ -123,6 +123,9 @@ bridge on a fresh install, and `klaudiush doctor` warns that the bridge is
 unverified. Rerun
 `klaudiush doctor --fix` after upgrading opencode across a major version;
 `klaudiush doctor` reports a bridge the installed opencode rejects as an error.
+The 2.x bridge also refuses `session_move` to any other directory: klaudiush
+resolves project policy from the session directory, so a moved session would
+stop protecting the original project.
 
 For Codex, klaudiush registers `SessionStart`, `PreToolUse` (no matcher, so
 shell, `apply_patch`, MCP, and local function tools are all checked before they
