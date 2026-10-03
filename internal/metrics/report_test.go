@@ -350,6 +350,8 @@ var _ = Describe("Summarize", func() {
 		report := summarize(metrics.Filter{})
 		Expect(report.Outcomes.Prevented).To(Equal(1))
 		Expect(report.Repairs.Repaired).To(BeZero())
+		Expect(report.Repairs.Violations).To(Equal(1))
+		Expect(report.Codes).To(ContainElement(HaveField("Code", "GIT010")))
 	})
 
 	It("marks only the findings a released gate let through", func() {

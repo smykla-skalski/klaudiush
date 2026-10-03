@@ -67,6 +67,13 @@ func build(obs *Observation, hash hasher) *Record {
 
 	all := findings(hookCtx, obs, rec, hash)
 	rec.Outcome = outcome(obs, all)
+
+	if len(all) > maxFindings {
+		slices.SortStableFunc(all, func(a, b Finding) int {
+			return findingRank(a) - findingRank(b)
+		})
+	}
+
 	rec.Findings = all[:min(len(all), maxFindings)]
 	rec.Truncated = len(all) > maxFindings
 
@@ -164,6 +171,21 @@ func findingClass(
 	default:
 		return ClassWarned
 	}
+}
+
+// findingRank orders findings for the capped list: violations first, then
+// by class strength, so the findings behind the outcome are kept.
+func findingRank(f Finding) int {
+	rank := slices.Index(classOrder, f.Class)
+	if rank < 0 {
+		rank = len(classOrder)
+	}
+
+	if !f.Violation {
+		rank += len(classOrder) + 1
+	}
+
+	return rank
 }
 
 // outcome is the strongest class of the findings. Skipped applies only when

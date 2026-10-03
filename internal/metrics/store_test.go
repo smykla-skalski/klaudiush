@@ -218,6 +218,19 @@ var _ = Describe("Store", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(records).To(HaveLen(1))
 		Expect(skipped).To(Equal(1))
+
+		file, err = os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o600)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = file.WriteString(`{"t":"2026-10-05T12:`)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(file.Close()).To(Succeed())
+
+		Expect(store.Record(&metrics.Observation{Context: preTool("s", "ls")})).To(Succeed())
+
+		records, skipped, err = store.Load(now.Add(-time.Hour))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(records).To(HaveLen(2))
+		Expect(skipped).To(Equal(2))
 	})
 
 	It("prunes records older than the retention", func() {

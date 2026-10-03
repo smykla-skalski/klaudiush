@@ -140,6 +140,11 @@ func (s *Store) append(line []byte) error {
 		return errors.Wrap(err, "failed to open metrics log")
 	}
 
+	info, err := file.Stat()
+	if err == nil && info.Size() > 0 && !endsWithNewline(s.path, info.Size()) {
+		line = append([]byte{'\n'}, line...)
+	}
+
 	_, writeErr := file.Write(line)
 
 	info, statErr := file.Stat()
@@ -156,6 +161,24 @@ func (s *Store) append(line []byte) error {
 	}
 
 	return nil
+}
+
+// endsWithNewline reports whether the log's last byte ends a line, so a
+// line cut short by an interrupted writer does not swallow the next one.
+func endsWithNewline(path string, size int64) bool {
+	file, err := os.Open(filepath.Clean(path))
+	if err != nil {
+		return true
+	}
+
+	defer func() { _ = file.Close() }()
+
+	last := make([]byte, 1)
+	if _, err := file.ReadAt(last, size-1); err != nil {
+		return true
+	}
+
+	return last[0] == '\n'
 }
 
 // Load returns the records at or after since, oldest first, from the backup
