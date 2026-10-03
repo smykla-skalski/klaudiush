@@ -531,6 +531,45 @@ var _ = Describe("AICommentValidator multi-line string literals", func() {
 			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
 		})
 
+		It("flags new text written into an existing comment", func() {
+			ctx.ToolInput.FilePath = writeSource("x = 0  # old wording\n")
+			ctx.ToolInput.OldString = "old wording"
+			ctx.ToolInput.NewString = "Initialize the counter"
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
+		})
+
+		It("keeps the exemption of the edited comment's marker", func() {
+			ctx.ToolInput.FilePath = writeSource("x = 0  # TODO: fix foo\n")
+			ctx.ToolInput.OldString = "fix foo"
+			ctx.ToolInput.NewString = "fix bar"
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeTrue())
+		})
+
+		It("starts in the shared string state of matches on different lines", func() {
+			ctx.ToolInput.FilePath = writeSource(
+				"A = \"\"\"\nfoo\n\"\"\"\nB = \"\"\"\n  foo\n\"\"\"\n",
+			)
+			ctx.ToolInput.OldString = "foo"
+			ctx.ToolInput.NewString = "## Problem"
+			ctx.ToolInput.Additional = map[string]json.RawMessage{
+				"replace_all": json.RawMessage("true"),
+			}
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeTrue())
+		})
+
+		It("seeds no string state from a TOML literal string ending in a backslash", func() {
+			path := filepath.Join(dir, "config.toml")
+			Expect(
+				os.WriteFile(path, []byte("dir = 'C:\\'  # don't wrap in '''\nkey = 1\n"), 0o600),
+			).
+				To(Succeed())
+
+			ctx.ToolInput.FilePath = path
+			ctx.ToolInput.OldString = "key = 1"
+			ctx.ToolInput.NewString = "key = 1\n# Set the value to one"
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
+		})
+
 		It("scans from code state when the file cannot be read", func() {
 			ctx.ToolInput.FilePath = filepath.Join(dir, "missing.py")
 			ctx.ToolInput.OldString = "x = 1"
@@ -558,6 +597,24 @@ var _ = Describe("AICommentValidator multi-line string literals", func() {
 			"x = 1  # EXC:FILE011:keep \"\"\"\ny = 2\n# add tax before rounding", false),
 		Entry("python floor division is not a comment", "/repo/calc.py",
 			"half = total // 2", true),
+		Entry("toml literal string ending in a backslash", "/repo/config.toml",
+			"dir = 'C:\\'  # don't wrap in '''\n# Set the value to one", false),
+		Entry("triple quote nested in a python 3.12 f-string field", "/repo/gen.py",
+			"s = f\"{\"\"\"nested\"\"\"}\"\n# Set the value to one", false),
+		Entry("comment in a multi-line f-string field", "/repo/gen.py",
+			"s = f\"\"\"{\n    total  # add tax\n}\"\"\"", false),
+		Entry("heading in a triple f-string around a field", "/repo/gen.py",
+			"s = f\"\"\"\n## {title}\n\n{body:>{width}}\n\"\"\"", true),
+		Entry("quote as a format spec fill character", "/repo/gen.py",
+			"s = f\"{x:'>10}\"\n# Set the value to one", false),
+		Entry("escaped braces in a triple f-string", "/repo/gen.py",
+			"s = f\"\"\"{{\n## Heading\n}}\"\"\"", true),
+		Entry("backtick in an unspaced python comment", "/repo/gen.py",
+			"x = 1#see `\n# Set the value to one", false),
+		Entry("backtick in an unspaced toml comment", "/repo/config.toml",
+			"x = 1#see `\n# Set the value to one", false),
+		Entry("keyword before a string is not an f-string prefix", "/repo/gen.py",
+			"if\"{\" in s:\n    # Set the value to one\n    pass", false),
 		Entry("triple quote in javadoc does not open a string", "/repo/Main.java",
 			" * Text blocks start with {@code \"\"\"}.\n// add tax before rounding", false),
 		Entry("triple quote in kdoc does not open a string", "/repo/Main.kt",

@@ -11,21 +11,17 @@ import (
 )
 
 // stringState is the multi-line string literal a line starts inside of.
-// Single and double quoted strings are line-local and not tracked here.
-// stateLineComment marks an Edit fragment that starts inside a line comment:
-// the rest of that first line is comment text already in the file.
-// stateBareHash marks one that starts after a "#" right after code, which may
-// be an unspaced comment: its first line is code that opens no triple-quoted
-// string.
-type stringState uint8
+// Outside Python, single and double quoted strings are line-local and not
+// tracked here. In Python it is a stack of frames (see pyFrame) so f-string
+// replacement fields, which may span lines and hold comments and nested
+// strings, are tracked too.
+type stringState string
 
 const (
-	stateCode stringState = iota
-	stateBacktick
-	stateTripleDouble
-	stateTripleSingle
-	stateLineComment
-	stateBareHash
+	stateCode         stringState = ""
+	stateBacktick     stringState = "`"
+	stateTripleDouble stringState = `"`
+	stateTripleSingle stringState = "'"
 )
 
 // tripleQuoteTail is how many bytes of a triple quote follow its first byte.
@@ -44,9 +40,8 @@ const (
 // commentStyle is the line-comment marker a language uses. commentLoose, for
 // files whose language is not known, accepts both "//" and "#" but only at line
 // start or after whitespace. commentHash accepts only "#", also only at line
-// start or after whitespace. A "#" right after code is either an unspaced
-// comment or text in a Python 3.12 f-string field that reuses the outer quote,
-// so no triple-quoted string may open after it on that line.
+// start or after whitespace; a "#" right after code is an unspaced comment
+// that is not reported, and scanning of the line stops there.
 type commentStyle uint8
 
 const (
@@ -62,18 +57,22 @@ type langSyntax struct {
 	single     tripleKind
 	comment    commentStyle
 	closeOnRun bool
+	python     bool
 }
+
+// pythonSyntax is the syntax of Python sources, scanned by scanPython.
+var pythonSyntax = langSyntax{comment: commentHash, python: true}
 
 // langSyntaxByExt maps file extensions of languages with triple-quoted
 // multi-line strings to their syntax. Elsewhere `"""` is an empty string plus
 // a quote. closeOnRun closes a triple-quoted string on the last three quotes
-// of a longer run, as TOML does. Only languages with no block comments and no use of "#" outside
-// comments and strings are listed: a block comment holding `"""` would
-// otherwise open a string that hides every later comment.
+// of a longer run, as TOML does. Only languages with no block comments and no
+// use of "#" outside comments and strings are listed: a block comment holding
+// `"""` would otherwise open a string that hides every later comment.
 var langSyntaxByExt = map[string]langSyntax{
-	".py":  {double: tripleEscaped, single: tripleEscaped, comment: commentHash},
-	".pyi": {double: tripleEscaped, single: tripleEscaped, comment: commentHash},
-	".pyw": {double: tripleEscaped, single: tripleEscaped, comment: commentHash},
+	".py":  pythonSyntax,
+	".pyi": pythonSyntax,
+	".pyw": pythonSyntax,
 	".toml": {
 		double:     tripleEscaped,
 		single:     tripleRaw,
@@ -145,15 +144,11 @@ func scanMultiLineString(
 	}
 }
 
-// isCommentMarker reports whether a line-comment marker of the given style
+// isCommentMarker reports whether a loose line-comment marker ("//" or "#")
 // starts at line[i]. Loose markers must sit at line start or after whitespace.
-func isCommentMarker(line string, i int, style commentStyle) bool {
+func isCommentMarker(line string, i int) bool {
 	isHash := line[i] == '#'
 	isSlash := line[i] == '/' && i+1 < len(line) && line[i+1] == '/'
-
-	if style == commentHash {
-		return isHash && afterSpace(line, i)
-	}
 
 	return (isHash || isSlash) && afterSpace(line, i)
 }
@@ -168,32 +163,31 @@ func afterSpace(line string, i int) bool {
 // string state so a marker inside a string or URL literal (the "//" in
 // "https://…", a " //" inside "a // b", a "## Heading" inside a Python
 // triple-quoted string) is ignored. state is the multi-line string state
-// carried in from the previous line (Go raw strings, JS template literals and
-// the triple-quoted strings syntax enables span lines); the updated state is
-// returned so the caller can thread it. Single/double quotes are line-local.
+// carried in from the previous line; the updated state is returned so the
+// caller can thread it.
 func findCommentStart(
 	line string,
 	state stringState,
 	syntax langSyntax,
 ) (idx int, endState stringState) {
-	idx, endState, _ = scanLine(line, state, syntax)
+	idx, endState, _ = scanSegment(line, state, syntax)
+	if syntax.python {
+		endState = endPythonLine(endState)
+	}
 
 	return idx, endState
 }
 
-// scanLine is findCommentStart that also reports whether the line holds a
-// "#" right after code, which may start an unspaced comment.
-func scanLine(
+// scanSegment scans line, which may be only the start of a source line, from
+// state. It returns the index of a reported comment marker (or -1), the state
+// where scanning ended, and whether it stopped at an unspaced "#" comment.
+func scanSegment(
 	line string,
 	state stringState,
 	syntax langSyntax,
-) (idx int, endState stringState, bareHash bool) {
-	if state == stateLineComment {
-		return -1, stateCode, false
-	}
-
-	if state == stateBareHash {
-		state, bareHash = stateCode, true
+) (idx int, endState stringState, unspaced bool) {
+	if syntax.python {
+		return scanPython(line, state)
 	}
 
 	var quote byte
@@ -208,41 +202,239 @@ func scanLine(
 		c := line[i]
 
 		opened := stateCode
-		if quote == 0 && !bareHash {
+		if quote == 0 {
 			opened = opensTripleQuote(line, i, syntax)
 		}
 
 		switch {
 		case quote != 0:
-			switch c {
-			case '\\':
+			switch {
+			case c == '\\' && (quote != '\'' || syntax.single != tripleRaw):
 				i++
-			case quote:
+			case c == quote:
 				quote = 0
 			}
-		case c == '`':
-			state = stateBacktick
 		case opened != stateCode:
 			state, i = opened, i+tripleQuoteTail
 		case c == '\'' || c == '"':
 			quote = c
-		case isCommentMarker(line, i, syntax.comment):
-			return i, state, bareHash
-		case syntax.comment == commentHash && c == '#':
-			bareHash = true
+		case syntax.comment == commentHash:
+			if c == '#' {
+				return hashComment(line, i, state)
+			}
+		case c == '`':
+			state = stateBacktick
+		case isCommentMarker(line, i):
+			return i, state, false
 		}
 	}
 
-	return -1, state, bareHash
+	return -1, state, false
+}
+
+// hashComment reports a "#" comment at line[i] when it follows whitespace;
+// an unspaced one ends the scan of the line unreported.
+func hashComment(line string, i int, state stringState) (int, stringState, bool) {
+	if afterSpace(line, i) {
+		return i, state, false
+	}
+
+	return -1, state, true
+}
+
+// Python frames. A string frame is pyFrame plus pyDouble, pyTriple and
+// pyFString flags. pyField is an f-string replacement field, pyBracket a
+// bracket opened inside one, and pySpec its format spec. All have the high
+// bit set so a Python state never equals a non-Python one.
+const (
+	pyFrame    byte = 0x80
+	pyDouble   byte = 0x01
+	pyTriple   byte = 0x02
+	pyFString  byte = 0x04
+	pyField    byte = 0x90
+	pyBracket  byte = 0xA0
+	pySpec     byte = 0xB0
+	pyKindMask byte = 0xF0
+)
+
+// maxPythonDepth bounds the frame stack. Deeper openers are ignored, which
+// leaves the scanner in code, where comments are still found.
+const maxPythonDepth = 64
+
+func isPyString(frame byte) bool { return frame&pyKindMask == pyFrame }
+
+func pyTop(stack []byte) byte {
+	if len(stack) == 0 {
+		return 0
+	}
+
+	return stack[len(stack)-1]
+}
+
+func pyPush(stack []byte, frame byte) []byte {
+	if len(stack) >= maxPythonDepth {
+		return stack
+	}
+
+	return append(stack, frame)
+}
+
+// scanPython is scanSegment for Python. It follows strings with their
+// prefixes, and the replacement fields of f-strings (and t-strings), whose
+// expressions may hold comments, nested strings reusing the outer quote, and
+// line breaks.
+func scanPython(line string, state stringState) (int, stringState, bool) {
+	stack := []byte(state)
+
+	for i := 0; i < len(line); i++ {
+		top := pyTop(stack)
+
+		switch {
+		case isPyString(top):
+			i, stack = scanPythonString(line, i, stack, top)
+		case top == pySpec:
+			stack = scanPythonSpec(line[i], stack)
+		default:
+			c := line[i]
+
+			switch {
+			case c == '#':
+				idx, _, unspaced := hashComment(line, i, stateCode)
+
+				return idx, stringState(stack), unspaced
+			case c == '\\':
+				i++
+			case c == '\'' || c == '"':
+				i, stack = openPythonString(line, i, stack)
+			case top == 0:
+			case c == '(' || c == '[' || c == '{':
+				stack = pyPush(stack, pyBracket)
+			case c == ')' || c == ']' || c == '}':
+				if top == pyBracket || (top == pyField && c == '}') {
+					stack = stack[:len(stack)-1]
+				}
+			case c == ':' && top == pyField:
+				stack = pyPush(stack, pySpec)
+			}
+		}
+	}
+
+	return -1, stringState(stack), false
+}
+
+// openPythonString pushes the string frame for the quote at line[i] and
+// returns the index of its last opening byte.
+func openPythonString(line string, i int, stack []byte) (int, []byte) {
+	q := line[i]
+
+	frame := pyFrame
+	if q == '"' {
+		frame |= pyDouble
+	}
+
+	if pythonFStringPrefix(line, i) {
+		frame |= pyFString
+	}
+
+	if hasTripleQuote(line, i, q) {
+		frame |= pyTriple
+		i += tripleQuoteTail
+	}
+
+	return i, pyPush(stack, frame)
+}
+
+// pythonFStringPrefix reports whether the identifier right before the quote
+// at line[i] is a string prefix that makes it an f-string or t-string.
+func pythonFStringPrefix(line string, i int) bool {
+	j := i
+	for j > 0 && isIdentByte(line[j-1]) {
+		j--
+	}
+
+	prefix := strings.ToLower(line[j:i])
+	if len(prefix) > tripleQuoteTail || strings.Trim(prefix, "rbuft") != "" {
+		return false
+	}
+
+	return strings.ContainsAny(prefix, "ft")
+}
+
+func isIdentByte(c byte) bool {
+	return c == '_' || c >= '0' && c <= '9' || c >= 'a' && c <= 'z' ||
+		c >= 'A' && c <= 'Z' || c >= 0x80
+}
+
+// scanPythonString advances over line[i] inside the string frame top.
+func scanPythonString(line string, i int, stack []byte, top byte) (int, []byte) {
+	c := line[i]
+
+	q := byte('\'')
+	if top&pyDouble != 0 {
+		q = '"'
+	}
+
+	hasNext := i+1 < len(line)
+
+	switch {
+	case c == '\\':
+		if hasNext && line[i+1] != '{' && line[i+1] != '}' {
+			return i + 1, stack
+		}
+	case top&pyTriple != 0 && hasTripleQuote(line, i, q):
+		return i + tripleQuoteTail, stack[:len(stack)-1]
+	case top&pyTriple == 0 && c == q:
+		return i, stack[:len(stack)-1]
+	case top&pyFString != 0 && (c == '{' || c == '}'):
+		if hasNext && line[i+1] == c {
+			return i + 1, stack
+		}
+
+		if c == '{' {
+			return i, pyPush(stack, pyField)
+		}
+	}
+
+	return i, stack
+}
+
+// scanPythonSpec handles byte c of a replacement field's format spec, which
+// may nest fields and ends with the field's closing brace.
+func scanPythonSpec(c byte, stack []byte) []byte {
+	switch c {
+	case '{':
+		return pyPush(stack, pyField)
+	case '}':
+		stack = stack[:len(stack)-1]
+		if pyTop(stack) == pyField {
+			stack = stack[:len(stack)-1]
+		}
+	}
+
+	return stack
+}
+
+// endPythonLine drops single-quoted string text left open at a line break,
+// which only a backslash continuation allows. Triple-quoted strings and
+// replacement fields carry on to the next line.
+func endPythonLine(state stringState) stringState {
+	stack := []byte(state)
+	for len(stack) > 0 && isPyString(pyTop(stack)) && pyTop(stack)&pyTriple == 0 {
+		stack = stack[:len(stack)-1]
+	}
+
+	return stringState(stack)
 }
 
 // commentScan is where scanning a Write or Edit payload starts: the language
-// syntax, the multi-line string state the first line opens in, and whether
-// triple-quoted state is dropped at each line break because the payload's
-// lines are not contiguous in the file.
+// syntax, the multi-line string state the first line opens in, text from the
+// file that precedes the payload on its first line, and whether triple-quoted
+// state is dropped at each line break because the payload's lines are not
+// contiguous in the file.
 type commentScan struct {
 	syntax          langSyntax
 	start           stringState
+	prefix          string
 	lineLocalTriple bool
 }
 
@@ -257,11 +449,11 @@ func (s commentScan) lineStart(state stringState) stringState {
 }
 
 // newCommentScan works out where scanning the hook payload starts. A full
-// Write starts in code. An Edit's new_string starts in the string state found
-// at its old_string in the file on disk, so a fragment that begins inside (or
-// closes) a docstring is scanned correctly; when old_string occurs at several
-// places in different states, it falls back to code. Only languages with
-// triple-quoted strings, and extension-less files that may hold a Python
+// Write starts in code. An Edit's new_string continues the line of its
+// old_string in the file on disk, from the string state that line starts in,
+// so a fragment that begins inside (or closes) a docstring or inside a comment
+// is scanned correctly; see editStart for several matches. Only languages
+// with triple-quoted strings, and extension-less files that may hold a Python
 // shebang, read the file; CRLF line endings are matched as LF. An Edit with no
 // old_string joins added lines from several patch hunks whose boundaries are
 // lost, so triple-quoted state is not carried between its lines.
@@ -309,7 +501,7 @@ func newCommentScan(hookCtx *hook.Context) commentScan {
 		return scan
 	}
 
-	scan.start = stateAtOccurrences(original, old, scan.syntax)
+	scan.start, scan.prefix = editStart(original, old, scan.syntax)
 
 	return scan
 }
@@ -322,7 +514,7 @@ var pythonShebang = regexp.MustCompile(`^#!.*\bpython[0-9.]*(\s|$)`)
 func shebangSyntax(text string) langSyntax {
 	firstLine, _, _ := strings.Cut(text, "\n")
 	if pythonShebang.MatchString(firstLine) {
-		return langSyntaxByExt[".py"]
+		return pythonSyntax
 	}
 
 	return langSyntax{}
@@ -344,14 +536,30 @@ func readRegularFile(path string) ([]byte, bool) {
 	return data, true
 }
 
-// maxStartStateOccurrences bounds the old_string matches stateAtOccurrences
-// checks; each rescans its line, so many matches on a long line are quadratic.
+// maxStartStateOccurrences bounds the old_string matches editStart checks;
+// each rescans its line, so many matches on a long line are quadratic.
 const maxStartStateOccurrences = 32
 
-// stateAtOccurrences returns the multi-line string state shared by every
-// occurrence of old in content (stateLineComment when it starts inside a line
-// comment), or stateCode when there is none, too many, or they disagree.
-func stateAtOccurrences(content, old string, syntax langSyntax) stringState {
+// Stand-in prefixes for an Edit whose matches sit on different lines but in
+// the same kind of spot: inside a reported comment, or after an unspaced one.
+const (
+	commentPrefix  = "# "
+	unspacedPrefix = "_#"
+)
+
+// editLead is the state and first-line prefix an Edit's new_string is
+// scanned from.
+type editLead struct {
+	state  stringState
+	prefix string
+}
+
+// editStart returns the state and line prefix an Edit's new_string continues
+// from. When every occurrence of old in content has the same line start state
+// and prefix, those are used as they are. Otherwise each occurrence is reduced
+// to the state at its position plus a stand-in prefix for a comment, and those
+// must agree. With no match, too many, or disagreement it starts in code.
+func editStart(content, old string, syntax langSyntax) (stringState, string) {
 	lines := strings.Split(content, "\n")
 	lineStates := make([]stringState, len(lines))
 	lineOffsets := make([]int, len(lines))
@@ -363,40 +571,58 @@ func stateAtOccurrences(content, old string, syntax langSyntax) stringState {
 		offset += len(line) + 1
 	}
 
-	var (
-		shared stringState
-		found  bool
-	)
+	var exact, reduced []editLead
 
-	for from, seen := 0, 0; ; seen++ {
+	for from := 0; ; {
 		rel := strings.Index(content[from:], old)
 		if rel < 0 {
 			break
 		}
 
-		if seen == maxStartStateOccurrences {
-			return stateCode
+		if len(exact) == maxStartStateOccurrences {
+			return stateCode, ""
 		}
 
 		pos := from + rel
 		li := sort.SearchInts(lineOffsets, pos+1) - 1
+		prefix := content[lineOffsets[li]:pos]
+		exact = append(exact, editLead{state: lineStates[li], prefix: prefix})
 
-		idx, at, bareHash := scanLine(content[lineOffsets[li]:pos], lineStates[li], syntax)
+		idx, at, unspaced := scanSegment(prefix, lineStates[li], syntax)
+
+		lead := editLead{state: at}
 
 		switch {
 		case idx >= 0:
-			at = stateLineComment
-		case bareHash && at == stateCode:
-			at = stateBareHash
+			lead.prefix = commentPrefix
+		case unspaced:
+			lead.prefix = unspacedPrefix
 		}
 
-		if found && at != shared {
-			return stateCode
-		}
-
-		shared, found = at, true
+		reduced = append(reduced, lead)
 		from = pos + len(old)
 	}
 
-	return shared
+	for _, leads := range [][]editLead{exact, reduced} {
+		if lead, ok := sharedLead(leads); ok {
+			return lead.state, lead.prefix
+		}
+	}
+
+	return stateCode, ""
+}
+
+// sharedLead returns the lead every entry of leads has, if any.
+func sharedLead(leads []editLead) (editLead, bool) {
+	if len(leads) == 0 {
+		return editLead{}, false
+	}
+
+	for _, lead := range leads[1:] {
+		if lead != leads[0] {
+			return editLead{}, false
+		}
+	}
+
+	return leads[0], true
 }

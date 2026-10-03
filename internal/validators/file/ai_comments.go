@@ -269,6 +269,7 @@ func findAICommentViolations(
 	var violations []violation
 
 	lines := strings.Split(content, "\n")
+	lines[0] = scan.prefix + lines[0]
 
 	state := scan.start
 
