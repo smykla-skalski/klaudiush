@@ -58,6 +58,32 @@ var _ = Describe("SecretsValidator", func() {
 		}
 	})
 
+	Describe("before the tool ran", func() {
+		It("counts a Write's whole content as proposed, never an edit or a skipped file", func() {
+			hookCtx.ToolInput = hook.ToolInput{FilePath: "a.go", Content: "clean"}
+
+			result := v.Validate(context.Background(), hookCtx)
+			Expect(result.Passed).To(BeTrue())
+			Expect(result.Proposed).To(BeTrue())
+			Expect(result.Inspected).To(BeFalse())
+
+			hookCtx.ToolInput.Content = `aws_access_key_id = "AKIAIOSFODNN7EXAMPLE"`
+			result = v.Validate(context.Background(), hookCtx)
+			Expect(result.Passed).To(BeFalse())
+			Expect(result.Proposed).To(BeTrue())
+
+			hookCtx.ToolName = hook.ToolTypeEdit
+			hookCtx.ToolInput = hook.ToolInput{FilePath: "a.go", NewString: "clean"}
+			Expect(v.Validate(context.Background(), hookCtx).Proposed).To(BeFalse())
+
+			cfg.MaxFileSize = 2
+			v = secrets.NewSecretsValidator(logger.NewNoOpLogger(), detector, gitleaks, cfg, nil)
+			hookCtx.ToolName = hook.ToolTypeWrite
+			hookCtx.ToolInput = hook.ToolInput{FilePath: "a.go", Content: "clean"}
+			Expect(v.Validate(context.Background(), hookCtx).Proposed).To(BeFalse())
+		})
+	})
+
 	Describe("after the tool ran", func() {
 		const awsKey = `aws_access_key_id = "AKIAIOSFODNN7EXAMPLE"`
 

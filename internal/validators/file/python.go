@@ -92,17 +92,16 @@ func (v *PythonValidator) Validate(
 		return notRun
 	}
 
-	inspected := ci.ToolResult
+	cov := fileCoverage(hookCtx, ci.ToolResult)
 
 	if result.Success {
 		log.Debug("ruff passed")
-		return inspectedIf(inspected, validator.Pass())
+		return cov.mark(validator.Pass())
 	}
 
 	log.Debug("ruff failed", "output", result.RawOut)
 
-	return inspectedIf(
-		inspected,
+	return cov.mark(
 		validator.FailWithRef(validator.RefRuffCheck, v.formatRuffOutput(result)),
 	)
 }

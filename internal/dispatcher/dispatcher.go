@@ -93,9 +93,10 @@ type Unavailable struct {
 }
 
 // Outcome is the result of one dispatch: the errors found, every check that
-// proves its resource clean (Checks), every validator that ran to completion
-// on what the tool sends or left (Ran, which includes checks of a partial
-// edit before the tool), every run that could not check its resource
+// proves its resource clean (Checks), every validator that checked the whole
+// of what the tool sends or left (Ran: a command, the file as the tool left
+// it, or the complete file a Write proposes, but never an edit fragment or a
+// run that skipped its file), every run that could not check its resource
 // (Unavailable), and how long each validator run took.
 type Outcome struct {
 	Errors      []*ValidationError
@@ -106,11 +107,14 @@ type Outcome struct {
 }
 
 // runLog collects the checks, unavailable runs and timings of one dispatch.
+// While untrusted is set, a run's claim to have checked a proposed whole
+// file is not believed.
 type runLog struct {
 	checks      []Check
 	ran         []Check
 	unavailable []Unavailable
 	timings     []Timing
+	untrusted   bool
 }
 
 // Error implements the error interface.
@@ -652,7 +656,7 @@ func (d *Dispatcher) validateBashFileWrites(
 			"file", target.path,
 		)
 
-		errs := d.runValidators(ctx, syntheticCtx, ran, p)
+		errs := d.runSyntheticWrite(ctx, syntheticCtx, ran, p)
 		if bashCtx.IsAfterTool() {
 			errs = namedAfter(target.path, advisory(errs))
 		}
@@ -661,6 +665,27 @@ func (d *Dispatcher) validateBashFileWrites(
 	}
 
 	return allErrors
+}
+
+// runSyntheticWrite validates a file a shell command writes. Before the
+// command runs, its content is the parser's reconstruction, which may be
+// only an appended part, so a check of it shows no whole file.
+func (d *Dispatcher) runSyntheticWrite(
+	ctx context.Context,
+	syntheticCtx *hook.Context,
+	ran *runLog,
+	p *progress,
+) []*ValidationError {
+	if ran == nil || syntheticCtx.IsAfterTool() {
+		return d.runValidators(ctx, syntheticCtx, ran, p)
+	}
+
+	saved := ran.untrusted
+	ran.untrusted = true
+
+	defer func() { ran.untrusted = saved }()
+
+	return d.runValidators(ctx, syntheticCtx, ran, p)
 }
 
 // validatePatchFiles validates each file of a multi-file patch as its own Write
@@ -728,10 +753,11 @@ func (d *Dispatcher) resolver() parser.Resolver {
 }
 
 // record adds the timing of every run that started, every run that could
-// not check resource, and the validators that ran on resource to ran and
-// the checks. A cancelled run may have skipped validators, so it proves
-// nothing; on a file, only runs that report reading and checking the whole
-// file as the tool left it prove it clean.
+// not check resource, and the validators that checked all of resource to
+// ran and the checks. A cancelled run may have skipped validators, so it
+// proves nothing. On a file, only runs that report reading and checking the
+// whole file as the tool left it prove it clean; a run that checked the
+// whole file a Write proposes counts as having checked it, not as proof.
 func (l *runLog) record(ctx context.Context, runs []ValidatorRun, resource string) {
 	if l == nil {
 		return
@@ -767,7 +793,10 @@ func (l *runLog) record(ctx context.Context, runs []ValidatorRun, resource strin
 		}
 
 		check := Check{Validator: run.Validator.Name(), Resource: resource}
-		l.ran = append(l.ran, check)
+
+		if !isFile || run.Result.Inspected || (run.Result.Proposed && !l.untrusted) {
+			l.ran = append(l.ran, check)
+		}
 
 		if !isFile || run.Result.Inspected {
 			l.checks = append(l.checks, check)

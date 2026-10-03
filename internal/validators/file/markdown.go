@@ -154,10 +154,10 @@ func (v *MarkdownValidator) Validate(ctx context.Context, hookCtx *hook.Context)
 	}
 
 	// After the tool ran, content is the whole file as the tool left it.
-	wholeFile := hookCtx.IsAfterTool() && hookCtx.GetFilePath() != ""
+	cov := fileCoverage(hookCtx, hookCtx.IsAfterTool() && hookCtx.GetFilePath() != "")
 
 	if content == "" {
-		return inspectedIf(wholeFile, validator.Pass())
+		return cov.mark(validator.Pass())
 	}
 
 	timeout := v.getTimeout()
@@ -178,10 +178,8 @@ func (v *MarkdownValidator) Validate(ctx context.Context, hookCtx *hook.Context)
 		)
 	}
 
-	inspected := wholeFile
-
 	if !result.Success {
-		return inspectedIf(inspected, v.buildBlockingResult(result))
+		return cov.mark(v.buildBlockingResult(result))
 	}
 
 	if result.Skipped {
@@ -193,10 +191,10 @@ func (v *MarkdownValidator) Validate(ctx context.Context, hookCtx *hook.Context)
 
 	// No blocking errors - check for cosmetic table warnings
 	if len(result.CosmeticTableWarnings) > 0 {
-		return inspectedIf(inspected, v.buildCosmeticResult(result))
+		return cov.mark(v.buildCosmeticResult(result))
 	}
 
-	return inspectedIf(inspected, validator.Pass())
+	return cov.mark(validator.Pass())
 }
 
 // getContentWithState extracts markdown content and detects initial state from context

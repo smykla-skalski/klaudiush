@@ -69,10 +69,10 @@ func (v *TerraformValidator) Validate(
 	}
 
 	// After the tool ran, content is the whole file as the tool left it.
-	inspected := hookCtx.IsAfterTool() && hookCtx.GetFilePath() != ""
+	cov := fileCoverage(hookCtx, hookCtx.IsAfterTool() && hookCtx.GetFilePath() != "")
 
 	if content == "" {
-		return inspectedIf(inspected, validator.Pass())
+		return cov.mark(validator.Pass())
 	}
 
 	// Detect which tool to use
@@ -109,7 +109,7 @@ func (v *TerraformValidator) Validate(
 		unavailable = mergeUnavailable(unavailable, notRun)
 	}
 
-	inspected = inspected && unavailable == nil
+	cov = cov.only(unavailable == nil)
 
 	// A missing optional tool must not hide what the other check found, as
 	// missing tools are ignored by default; any other failure is reported
@@ -129,10 +129,10 @@ func (v *TerraformValidator) Validate(
 			"warnings": strings.Join(warnings, "\n"),
 		}
 
-		return inspectedIf(inspected, validator.WarnWithDetails(message, details))
+		return cov.mark(validator.WarnWithDetails(message, details))
 	}
 
-	return inspectedIf(inspected, validator.Pass())
+	return cov.mark(validator.Pass())
 }
 
 // mergeUnavailable combines the results of two checks that could not run.

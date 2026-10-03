@@ -93,17 +93,16 @@ func (v *JavaScriptValidator) Validate(
 		return notRun
 	}
 
-	inspected := ci.ToolResult
+	cov := fileCoverage(hookCtx, ci.ToolResult)
 
 	if result.Success {
 		log.Debug("oxlint passed")
-		return inspectedIf(inspected, validator.Pass())
+		return cov.mark(validator.Pass())
 	}
 
 	log.Debug("oxlint failed", "output", result.RawOut)
 
-	return inspectedIf(
-		inspected,
+	return cov.mark(
 		validator.FailWithRef(validator.RefOxlintCheck, v.formatOxlintOutput(result)),
 	)
 }

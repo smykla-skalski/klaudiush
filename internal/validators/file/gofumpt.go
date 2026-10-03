@@ -85,11 +85,12 @@ func (v *GofumptValidator) Validate(
 		return notRun
 	}
 
-	inspected := hookCtx.IsAfterTool() && (result.Success || isUnformatted(result))
+	cov := fileCoverage(hookCtx, hookCtx.IsAfterTool()).
+		only(result.Success || isUnformatted(result))
 
 	if result.Success {
 		log.Debug("gofumpt passed")
-		return inspectedIf(inspected, validator.Pass())
+		return cov.mark(validator.Pass())
 	}
 
 	log.Debug("gofumpt failed", "output", result.RawOut)
@@ -99,13 +100,13 @@ func (v *GofumptValidator) Validate(
 	if baseline != nil && v.baselineUnformatted(ctx, *baseline, opts) {
 		log.Debug("file was not gofumpt-formatted before the edit")
 
-		return inspectedIf(inspected, validator.WarnWithRef(
+		return cov.mark(validator.WarnWithRef(
 			validator.RefGofumpt,
 			message+"\n\nThe file was not gofumpt-formatted before this edit either",
 		))
 	}
 
-	return inspectedIf(inspected, validator.FailWithRef(validator.RefGofumpt, message))
+	return cov.mark(validator.FailWithRef(validator.RefGofumpt, message))
 }
 
 // isUnformatted tells formatting differences apart from a failed run, such

@@ -329,6 +329,57 @@ var _ = Describe("Dispatcher Bash file writes after the tool ran", func() {
 		}
 	})
 
+	It("counts as ran only checks of a whole command or file", func() {
+		reg := validator.NewRegistry()
+		reg.Register(
+			&fixedResult{name: "proposed", result: validator.Result{Passed: true, Proposed: true}},
+			validator.ToolTypeIs(hook.ToolTypeWrite),
+		)
+		reg.Register(
+			&fixedResult{name: "fragment", result: validator.Result{Passed: true}},
+			validator.ToolTypeIs(hook.ToolTypeWrite),
+		)
+		reg.Register(
+			&fixedResult{name: "result", result: validator.Result{Passed: true, Inspected: true}},
+			validator.ToolTypeIs(hook.ToolTypeWrite),
+		)
+
+		disp := dispatcher.NewDispatcherWithExecutor(
+			reg,
+			logger.NewNoOpLogger(),
+			dispatcher.NewSequentialExecutor(logger.NewNoOpLogger()),
+		)
+		resource := hook.ResourceFilePrefix + "/repo/a.txt"
+
+		outcome := disp.DispatchWithChecks(context.Background(), &hook.Context{
+			Provider:   hook.ProviderClaude,
+			Event:      hook.CanonicalEventBeforeTool,
+			ToolName:   hook.ToolTypeWrite,
+			WorkingDir: "/repo",
+			ToolInput:  hook.ToolInput{FilePath: "/repo/a.txt", Content: "hi\n"},
+		})
+		Expect(outcome.Ran).To(ConsistOf(
+			dispatcher.Check{Validator: "proposed", Resource: resource},
+			dispatcher.Check{Validator: "result", Resource: resource},
+		))
+		Expect(outcome.Checks).To(ConsistOf(
+			dispatcher.Check{Validator: "result", Resource: resource},
+		))
+
+		By("not believing a whole-file claim about a shell write before it runs")
+
+		outcome = disp.DispatchWithChecks(context.Background(), &hook.Context{
+			Provider:   hook.ProviderClaude,
+			Event:      hook.CanonicalEventBeforeTool,
+			ToolName:   hook.ToolTypeBash,
+			WorkingDir: "/repo",
+			ToolInput:  hook.ToolInput{Command: "echo hi >> /repo/a.txt"},
+		})
+		Expect(outcome.Ran).To(ConsistOf(
+			dispatcher.Check{Validator: "result", Resource: resource},
+		))
+	})
+
 	It("reports unavailable runs whose errors the failure policy ignores", func() {
 		reg := validator.NewRegistry()
 		reg.Register(

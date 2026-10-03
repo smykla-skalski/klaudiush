@@ -236,9 +236,11 @@ func (v *AICommentValidator) Validate(
 	strict := v.strictForPath(path)
 	allowTestPhaseMarkers := allowsTestPhaseMarkers(path)
 
+	cov := fileCoverage(hookCtx, false)
+
 	violations := findAICommentViolations(content, v.patterns, strict, allowTestPhaseMarkers)
 	if len(violations) == 0 {
-		return validator.Pass()
+		return cov.mark(validator.Pass())
 	}
 
 	header := aiCommentHeader
@@ -246,10 +248,10 @@ func (v *AICommentValidator) Validate(
 		header = aiCommentStrictHeader
 	}
 
-	return validator.FailWithRef(
+	return cov.mark(validator.FailWithRef(
 		validator.RefAIComments,
 		formatPatternViolations(header, violations),
-	)
+	))
 }
 
 // strictForPath reports whether the strict block-all policy applies to the given

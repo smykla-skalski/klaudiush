@@ -4,6 +4,8 @@ import (
 	"cmp"
 	"slices"
 	"strings"
+
+	"github.com/smykla-skalski/klaudiush/pkg/hook"
 )
 
 // Finding is one actionable violation inside a validation result. A result
@@ -61,6 +63,22 @@ func (r *Result) MarkInspected() *Result {
 	r.Inspected = true
 
 	return r
+}
+
+// MarkProposed records that, before the tool ran, the run checked the whole
+// file the tool would leave.
+func (r *Result) MarkProposed() *Result {
+	r.Proposed = true
+
+	return r
+}
+
+// ProposedWrite reports a hook whose input holds the whole file a Write
+// would leave, before the tool ran. An Edit carries only a fragment, and
+// after the tool the file on disk is what counts.
+func ProposedWrite(hookCtx *hook.Context) bool {
+	return hookCtx != nil && !hookCtx.IsAfterTool() &&
+		hookCtx.ToolName == hook.ToolTypeWrite && hookCtx.ToolInput.Content != ""
 }
 
 // SortFindings orders findings deterministically and drops exact duplicates.

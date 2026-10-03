@@ -16,14 +16,53 @@ import (
 	"github.com/smykla-skalski/klaudiush/pkg/hook"
 )
 
-// inspectedIf marks result as a check of the whole file as the tool left it
-// when inspected holds.
-func inspectedIf(inspected bool, result *validator.Result) *validator.Result {
-	if inspected {
-		return result.MarkInspected()
+// coverage is how much of a file one validator run checked.
+type coverage uint8
+
+const (
+	// coverPart is a fragment of the file, or nothing of it.
+	coverPart coverage = iota
+	// coverProposed is the whole file a Write would leave, before it ran.
+	coverProposed
+	// coverResult is the whole file as the tool left it.
+	coverResult
+)
+
+// fileCoverage is what checking the hook's content covers: the file as the
+// tool left it when toolResult holds, the whole file a Write proposes
+// before it ran, and otherwise only part of it.
+func fileCoverage(hookCtx *hook.Context, toolResult bool) coverage {
+	switch {
+	case toolResult:
+		return coverResult
+	case validator.ProposedWrite(hookCtx):
+		return coverProposed
+	default:
+		return coverPart
+	}
+}
+
+// only keeps the coverage when the run's verdict holds for the whole file.
+func (c coverage) only(complete bool) coverage {
+	if complete {
+		return c
 	}
 
-	return result
+	return coverPart
+}
+
+// mark records on result how much of the file the run checked.
+func (c coverage) mark(result *validator.Result) *validator.Result {
+	switch c {
+	case coverResult:
+		return result.MarkInspected()
+	case coverProposed:
+		return result.MarkProposed()
+	case coverPart:
+		return result
+	default:
+		return result
+	}
 }
 
 // lintUnavailable reports why a linter run checked nothing: the tool is not

@@ -116,10 +116,12 @@ func validatePatterns(
 		return validator.Pass()
 	}
 
+	cov := fileCoverage(hookCtx, false)
+
 	violations := findPatternViolations(content, patterns)
 	if len(violations) == 0 {
-		return validator.Pass()
+		return cov.mark(validator.Pass())
 	}
 
-	return validator.FailWithRef(ref, formatPatternViolations(header, violations))
+	return cov.mark(validator.FailWithRef(ref, formatPatternViolations(header, violations)))
 }

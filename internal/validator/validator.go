@@ -89,6 +89,11 @@ type Result struct {
 	// Inspected reports that, after a tool ran, this run read and checked the
 	// whole file as the tool left it. Only such runs prove a file clean.
 	Inspected bool
+
+	// Proposed reports that, before a tool ran, this run checked the whole
+	// file the tool would leave: a Write's complete content. It shows the
+	// proposal clean, not the file on disk.
+	Proposed bool
 }
 
 // Pass creates a passing validation result.

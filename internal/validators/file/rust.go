@@ -93,17 +93,16 @@ func (v *RustValidator) Validate(
 		return notRun
 	}
 
-	inspected := ci.ToolResult
+	cov := fileCoverage(hookCtx, ci.ToolResult)
 
 	if result.Success {
 		log.Debug("rustfmt passed")
-		return inspectedIf(inspected, validator.Pass())
+		return cov.mark(validator.Pass())
 	}
 
 	log.Debug("rustfmt failed", "output", result.RawOut)
 
-	return inspectedIf(
-		inspected,
+	return cov.mark(
 		validator.FailWithRef(validator.RefRustfmtCheck, v.formatRustfmtOutput(result)),
 	)
 }

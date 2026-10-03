@@ -4,6 +4,14 @@ stdin bad.json
 exec klaudiush --hook-type PreToolUse
 stdout '"permissionDecision":"deny"'
 
+stdin edit.json
+exec klaudiush --hook-type PreToolUse
+! stdout 'deny'
+
+exec klaudiush metrics --json
+stdout '"repaired": 0'
+stdout '"unresolved": 1'
+
 stdin good.json
 exec klaudiush --hook-type PreToolUse
 ! stdout 'deny'
@@ -18,6 +26,9 @@ stdout '"unresolved": 0'
 
 -- bad.json --
 {"session_id":"file-session","tool_name":"Write","tool_input":{"file_path":"a.py","content":"x = 1  # no\u0071a\n"}}
+
+-- edit.json --
+{"session_id":"file-session","tool_name":"Edit","tool_input":{"file_path":"a.py","old_string":"x = 2","new_string":"x = 3"}}
 
 -- good.json --
 {"session_id":"file-session","tool_name":"Write","tool_input":{"file_path":"a.py","content":"x = 1\n"}}
