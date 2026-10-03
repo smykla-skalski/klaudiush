@@ -82,6 +82,8 @@ func FuzzBashParse(f *testing.F) {
 	f.Add(`git push origin $(echo main); git push $R main; B='mai[n]'; git push origin $B`)
 	f.Add(`B=x; git push origin "HEAD:$B" {a,b} mai\? 'r/*'; E=; git push $E -o "$(x)" o m`)
 	f.Add(`git -C "$(pwd)" push; IFS=,; B=o,m; git push $B; git push "https://x:$T@h/r" m`)
+	f.Add(`git commit -m -m "$(x)" -sSm "$y"; a=(m); git push o "${a[@]}" ~ ~u -o"$(z)" $E""`)
+	f.Add(`f() { git push origin "$@"; }; f {a,b} "$X"; alias c='git commit'; c -m x $(y)`)
 	f.Add(`git commit $F -m "$(cat <<'E'
 x
 E

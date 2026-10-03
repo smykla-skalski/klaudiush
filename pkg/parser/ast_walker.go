@@ -84,6 +84,7 @@ type astWalker struct {
 	startupPending  map[string]syntax.Pos
 	startupDeferred map[string]bool
 	caseChanged     bool
+	forwarded       map[string]bool
 }
 
 // parseState is shared by a walker and all the child walkers of one parse.
@@ -649,7 +650,12 @@ func (w *astWalker) record(cmd Command, depth int, view string) {
 	w.follow(cmd, l, depth+1, startup)
 
 	for _, script := range nested {
-		w.walkScript(script.text, cmd, depth+1, scriptWalk{name: script.name})
+		w.walkScript(
+			script.text,
+			cmd,
+			depth+1,
+			scriptWalk{name: script.name, forwarded: script.args},
+		)
 	}
 }
 

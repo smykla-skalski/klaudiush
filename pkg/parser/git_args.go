@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"maps"
 	"slices"
 	"strings"
 
@@ -75,6 +76,7 @@ type writtenArg struct {
 	view      string
 	literal   bool
 	ambiguous bool
+	tilde     bool
 }
 
 // writtenArgs records how each argument word was written, keyed by the
@@ -97,58 +99,80 @@ func writtenArgs(words []*syntax.Word) map[string]writtenArg {
 	return written
 }
 
-func writeArg(word *syntax.Word) writtenArg {
-	var prefix, view strings.Builder
+// argWriter builds a writtenArg part by part.
+type argWriter struct {
+	prefix, view strings.Builder
+	arg          writtenArg
+	closed       bool
+}
 
-	arg := writtenArg{literal: true}
-	open := true
+func (a *argWriter) text(rendered, neutral string) {
+	a.view.WriteString(neutral)
 
-	text := func(rendered, neutral string) {
-		view.WriteString(neutral)
-
-		if open {
-			prefix.WriteString(rendered)
-		}
+	if !a.closed {
+		a.prefix.WriteString(rendered)
 	}
+}
 
-	expansion := func(shown string) {
-		open, arg.literal = false, false
+func (a *argWriter) expansion(shown string) {
+	a.closed, a.arg.literal = true, false
 
-		view.WriteString(shown)
-	}
+	a.view.WriteString(shown)
+}
 
-	for _, part := range word.Parts {
+func (a *argWriter) quoted(parts []syntax.WordPart) {
+	a.view.WriteString(neutralGlob)
+
+	for _, part := range parts {
 		switch p := part.(type) {
 		case *syntax.Lit:
-			text(renderLit(p.Value, true, allEscapable), unescapedArg(p.Value))
+			value := renderLit(p.Value, true, doubleQuoteEscapable)
+			a.text(value, neutralArg(value))
+		case *syntax.ParamExp:
+			if splitsQuoted(p) {
+				a.expansion(paramExpToString(p))
+			} else {
+				a.expansion(neutralGlob)
+			}
+		default:
+			a.expansion(neutralGlob)
+		}
+	}
+}
+
+func writeArg(word *syntax.Word) writtenArg {
+	a := argWriter{arg: writtenArg{literal: true}}
+
+	for i, part := range word.Parts {
+		switch p := part.(type) {
+		case *syntax.Lit:
+			if i == 0 && strings.HasPrefix(p.Value, "~") {
+				a.arg.tilde = true
+				a.expansion(unescapedArg(p.Value))
+
+				continue
+			}
+
+			a.text(renderLit(p.Value, true, allEscapable), unescapedArg(p.Value))
 		case *syntax.SglQuoted:
 			value := p.Value
 			if p.Dollar {
 				value = decodeANSIC(p.Value)
 			}
 
-			text(value, neutralArg(value))
+			a.text(value, neutralArg(value)+neutralGlob)
 		case *syntax.DblQuoted:
-			for _, inner := range p.Parts {
-				if lit, ok := inner.(*syntax.Lit); ok {
-					value := renderLit(lit.Value, true, doubleQuoteEscapable)
-					text(value, neutralArg(value))
-
-					continue
-				}
-
-				expansion(neutralGlob)
-			}
+			a.quoted(p.Parts)
 		case *syntax.ParamExp:
-			expansion(paramExpToString(p))
+			a.expansion(paramExpToString(p))
 		default:
-			expansion(splitMark)
+			a.expansion(splitMark)
 		}
 	}
 
-	arg.prefix, arg.view = prefix.String(), view.String()
+	a.arg.prefix, a.arg.view = a.prefix.String(), a.view.String()
 
-	return arg
+	return a.arg
 }
 
 // neutralArg replaces the characters the shell would glob, brace-expand or
@@ -183,17 +207,50 @@ func unescapedArg(text string) string {
 	return b.String()
 }
 
-// writtenAs returns how arg was written, or, when that is unknown (an
-// argument passed on by a function or a launcher that rendered it), a view
-// that treats every expansion in it as unquoted.
-func (c Command) writtenAs(arg string) writtenArg {
-	if written, ok := c.written[arg]; ok && !written.ambiguous {
+// splitsQuoted reports an expansion that gives several words even when
+// quoted: "$@", "${a[@]}" and "${!prefix@}".
+func splitsQuoted(exp *syntax.ParamExp) bool {
+	return exp.Param != nil && exp.Param.Value == "@" || exp.Names != 0 ||
+		strings.Contains(paramExpToString(exp), "[@]")
+}
+
+// writtenAs returns how arg was written. When that is unknown, it treats
+// every expansion and glob character in arg as unquoted: an argument passed
+// on by a launcher that rendered it, one an alias or function call re-quoted
+// into the text it runs, or literal text holding a rendered expansion.
+func (w *astWalker) writtenAs(cmd Command, arg string) writtenArg {
+	written, ok := cmd.written[arg]
+	if ok && !written.ambiguous && !w.forwarded[arg] &&
+		(!written.literal || !marked(arg) && !HasUnresolvedVars(arg)) {
 		return written
 	}
 
 	view := strings.ReplaceAll(arg, unresolvedWord, splitMark)
 
-	return writtenArg{view: view, literal: !marked(arg) && !HasUnresolvedVars(arg)}
+	return writtenArg{
+		view:    view,
+		literal: !marked(arg) && !HasUnresolvedVars(arg) && !strings.HasPrefix(arg, "~"),
+		tilde:   strings.HasPrefix(arg, "~"),
+	}
+}
+
+// forwardedArgs adds the arguments a caller re-quoted into a script to the
+// ones its own callers did.
+func forwardedArgs(outer map[string]bool, args []string) map[string]bool {
+	if len(outer) == 0 && len(args) == 0 {
+		return nil
+	}
+
+	forwarded := maps.Clone(outer)
+	if forwarded == nil {
+		forwarded = make(map[string]bool, len(args))
+	}
+
+	for _, arg := range args {
+		forwarded[arg] = true
+	}
+
+	return forwarded
 }
 
 // resolveGitArgs checks the arguments of the git subcommands whose argument
@@ -214,16 +271,17 @@ func (w *astWalker) resolveGitArgs(cmd Command) Command {
 		return cmd
 	}
 
+	values, end := gitOptionValues(cmd.Args, idx, sub)
 	args := make([]string, 0, len(cmd.Args))
 
-	for i := range len(cmd.Args) {
-		if i == idx || (i < idx && sub == subcmdCommit) {
-			args = append(args, cmd.Args[i])
+	for i, arg := range cmd.Args {
+		if i == idx || (i < idx || i >= end) && sub == subcmdCommit {
+			args = append(args, arg)
 
 			continue
 		}
 
-		value, keep, detail := w.gitArg(cmd, i, idx, sub)
+		value, keep, detail := w.gitArg(cmd, i, sub, values)
 		if detail != "" {
 			w.opaque(OpacityUnresolvedWord, ArgumentOperation(sub), detail)
 
@@ -233,12 +291,6 @@ func (w *astWalker) resolveGitArgs(cmd Command) Command {
 		if keep {
 			args = append(args, value)
 		}
-
-		if sub == subcmdCommit && i > idx && endsOptions(cmd, i, sub) {
-			args = append(args, cmd.Args[i+1:]...)
-
-			break
-		}
 	}
 
 	cmd.Args = args
@@ -246,57 +298,96 @@ func (w *astWalker) resolveGitArgs(cmd Command) Command {
 	return cmd
 }
 
-// endsOptions reports a literal -- that is not an option's value: what
-// follows it are paths.
-func endsOptions(cmd Command, i int, sub string) bool {
-	return cmd.Args[i] == endOfOptions && cmd.writtenAs(endOfOptions).literal &&
-		!valueSlot(cmd.Args, i, sub)
+// gitOptionValues reads the options after git's subcommand at idx left to
+// right, as git does, and returns which arguments are the value of which
+// option, and where -- ends the options.
+func gitOptionValues(args []string, idx int, sub string) (map[int]string, int) {
+	values := make(map[int]string)
+
+	for i := idx + 1; i < len(args); i++ {
+		arg := args[i]
+
+		switch {
+		case arg == endOfOptions:
+			return values, i
+		case marked(arg) || HasUnresolvedVars(arg) || !strings.HasPrefix(arg, "-"):
+			continue
+		}
+
+		if flag := nextValueFlag(arg, sub); flag != "" && i+1 < len(args) {
+			values[i+1] = flag
+			i++
+		}
+	}
+
+	return values, len(args)
 }
 
-// gitArg checks the argument at i of a git command whose subcommand is at
-// idx. It returns the argument to keep in its place, whether to keep one,
-// or why the argument cannot be known.
-func (w *astWalker) gitArg(cmd Command, i, idx int, sub string) (string, bool, string) {
+// nextValueFlag returns the option in arg that takes the next argument as
+// its value, or "" when the value is attached or none is taken. In a short
+// cluster the first option that takes a value takes the rest of it.
+func nextValueFlag(arg, sub string) string {
+	if strings.HasPrefix(arg, "--") {
+		if argValueFlags[sub][arg] {
+			return arg
+		}
+
+		return ""
+	}
+
+	for j := 1; j < len(arg); j++ {
+		flag := "-" + arg[j:j+1]
+
+		switch {
+		case argValueFlags[sub][flag] && j == len(arg)-1:
+			return flag
+		case argValueFlags[sub][flag] || strings.Contains(gluedValueFlags[sub], arg[j:j+1]):
+			return ""
+		}
+	}
+
+	return ""
+}
+
+// gitArg checks the argument at i of a git command. It returns the argument
+// to keep in its place, whether to keep one, or why the argument cannot be
+// known.
+func (w *astWalker) gitArg(
+	cmd Command,
+	i int,
+	sub string,
+	values map[int]string,
+) (string, bool, string) {
 	arg := cmd.Args[i]
-	written := cmd.writtenAs(arg)
+	written := w.writtenAs(cmd, arg)
 
 	expanded, detail := w.splitView(written.view)
 	if detail != "" {
 		return arg, true, detail
 	}
 
-	if i > idx && valueSlot(cmd.Args, i, sub) {
-		if sub == subcmdPush && !uninspectedPushValues[cmd.Args[i-1]] {
-			return w.pushArg(arg, written, expanded)
-		}
+	flag, isValue := values[i]
 
+	switch {
+	case sub == subcmdPush && attachedPushOption(written.prefix):
 		return arg, true, ""
-	}
-
-	if sub == subcmdPush {
+	case sub == subcmdPush && !uninspectedPushValues[flag]:
 		return w.pushArg(arg, written, expanded)
+	case isValue || sub == subcmdPush:
+		return arg, true, ""
+	default:
+		return w.commitOption(arg, written, expanded)
 	}
-
-	return w.commitOption(arg, written, expanded)
 }
 
-// valueSlot reports an argument that is the value of the option before it,
-// written literally.
-func valueSlot(args []string, i int, sub string) bool {
-	prev := args[i-1]
-	if marked(prev) || HasUnresolvedVars(prev) {
-		return false
+// attachedPushOption reports literal text that starts a push option with its
+// value attached (-oci.skip, --push-option=x), a value no validator reads.
+func attachedPushOption(prefix string) bool {
+	if name, _, found := strings.Cut(prefix, "="); strings.HasPrefix(prefix, "--") {
+		return found && uninspectedPushValues[name]
 	}
 
-	if argValueFlags[sub][prev] {
-		return true
-	}
-
-	if len(prev) < len("-xy") || prev[0] != '-' || prev[1] == '-' {
-		return false
-	}
-
-	return argValueFlags[sub]["-"+prev[len(prev)-1:]]
+	return strings.HasPrefix(prefix, "-") && strings.Contains(prefix[1:], "o")
 }
 
 // pushArg checks an argument of push, all of which the push validator reads.
@@ -363,6 +454,15 @@ func (w *astWalker) resolvedArg(
 		return arg, true, ""
 	}
 
+	if written.tilde {
+		home, ok := w.tildeHome(arg)
+		if !ok {
+			return arg, true, w.variableDetail()
+		}
+
+		arg = home + arg[1:]
+	}
+
 	if w.plainArrayRef(arg) {
 		return arg, true, w.variableDetail()
 	}
@@ -419,17 +519,42 @@ func (w *astWalker) splitView(view string) (string, string) {
 	}
 }
 
+// tildeHome returns the home directory a leading ~ or ~/ expands to. Other
+// tilde forms (~user, ~+, ~-) name directories klaudiush does not resolve.
+func (w *astWalker) tildeHome(arg string) (string, bool) {
+	if len(arg) > 1 && arg[1] != '/' {
+		return "", false
+	}
+
+	home, set, trusted := w.trustedValue("HOME")
+
+	return home, set && trusted
+}
+
 // secretRef reports a variable in arg whose value comes from the
-// environment rather than the line and looks like a key or password, which
-// a validator's message would show once substituted.
+// environment rather than the line and would show in a validator's message
+// once substituted: one that looks like a key or password, or any in the
+// credentials of a URL.
 func (w *astWalker) secretRef(arg string) bool {
+	userinfo := ""
+	if _, rest, found := strings.Cut(arg, "://"); found {
+		userinfo, _, _ = strings.Cut(rest, "@")
+		if !strings.Contains(rest, "@") {
+			userinfo = ""
+		}
+	}
+
 	for _, m := range varRefPattern.FindAllStringSubmatch(arg, -1) {
 		if _, assigned := w.assignments[m[1]]; assigned {
 			continue
 		}
 
 		value, set, trusted := w.trustedValue(m[1])
-		if trusted && set &&
+		if !trusted || !set {
+			continue
+		}
+
+		if strings.Contains(userinfo, m[0]) ||
 			slices.ContainsFunc(strings.FieldsFunc(value, urlSeparator), tokenLike) {
 			return true
 		}
