@@ -83,7 +83,7 @@ func searchesCDPath(target string) bool {
 
 	first, _, _ := strings.Cut(target, "/")
 
-	return first != "." && first != ".."
+	return first != "." && first != parentDir
 }
 
 func joinDir(dir, target string) string {

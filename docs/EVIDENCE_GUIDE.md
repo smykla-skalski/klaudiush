@@ -170,7 +170,7 @@ writable_paths = ["PLAN.md"]
 
 Choose prerequisites that cover only what the phase produces, such as a plan file. A prerequisite covering the code under work closes the phase again on the first edit, and one whose fix needs a withheld tool (failing tests over `src/**`) can never pass.
 
-`writable_paths` never opens, in any directory and in any letter case, `.klaudiush/`, `klaudiush.toml`, `.git/`, `.gemini/`, `.claude/`, `.codex/` or `.mcp.json`, nor the program a prerequisite command names or the script a shell or language interpreter is given directly (`./scripts/check.sh`, `sh scripts/check.sh`). A nested configuration would change what the verifier runs. Files a check only reads, such as the plan it tests, stay writable, and klaudiush cannot tell them apart from files a check runs indirectly (`env sh x.sh`, `python3 -m pkg`, a `Makefile`, sourced scripts). Keep everything a prerequisite runs out of `writable_paths`.
+`writable_paths` never opens, in any directory and in any letter case, `.klaudiush/`, `klaudiush.toml`, `.git/`, `.gemini/`, `.claude/`, `.codex/` or `.mcp.json`, nor the program a prerequisite command names or the script a shell or language interpreter is given directly (`./scripts/check.sh`, `sh /repo/scripts/check.sh`, `python3 -W ignore check.py`), compared after resolving symbolic links. When klaudiush cannot tell which operand is an interpreter's script (inline code, `-m`, standard input, an option it does not know), none of that command's operands is writable. Both the path as written and the file it resolves to must match. A file a symbolic link under one of those names leads to, and on Unix any file with a second hard link, is never writable either. A nested configuration would change what the verifier runs. Files a check only reads, such as the plan it tests, stay writable, and klaudiush cannot tell them apart from files a check runs indirectly (`env sh x.sh`, a `Makefile`, sourced scripts). Keep everything a prerequisite runs out of `writable_paths`.
 
 While a prerequisite has no passing result:
 
@@ -180,13 +180,13 @@ While a prerequisite has no passing result:
 
 Run `klaudiush evidence run plan` (the agent can, through the shell) to pass the prerequisite. The next model call is offered every tool again.
 
-The phase is judged for the repository of Gemini's working directory. Outside a git repository it does not apply, even to edits in repositories below that directory. When git is missing, or klaudiush cannot read check results or fingerprint a prerequisite's files, the [failure policy](FAILURE_POLICY_GUIDE.md) decides: by default the phase stays restricted, and the calls it allows still run, so the verifier opens it once it can record a result. A dangling symbolic link is never writable, since writing through it would create a file wherever it points.
+The phase is judged for the repository of Gemini's working directory. Outside a git repository it does not apply, even to edits in repositories below that directory. When git is missing or cannot read the repository (unreadable metadata, a repository git does not trust), or klaudiush cannot read check results or fingerprint a prerequisite's files, the [failure policy](FAILURE_POLICY_GUIDE.md) decides: by default the phase stays restricted, and the calls it allows still run, so the verifier opens it once it can record a result. A path through a dangling symbolic link, in any of its components, is never writable, since writing through it would create a file wherever it points.
 
 The phase fingerprints its prerequisites on every Gemini model call and every tool call that is not read-only, so keep their `paths` small: a plan file, not the source tree.
 
 ### Registration
 
-`BeforeToolSelection` runs before every model call, so `klaudiush init` and `klaudiush doctor --fix` register it in the Gemini settings only when the tool phase is enabled:
+`BeforeToolSelection` runs before every model call, so `klaudiush init` and `klaudiush doctor --fix` register it in the Gemini settings only when the tool phase is enabled and `filter_tools` is on:
 
 ```json
 {
@@ -198,7 +198,7 @@ The phase fingerprints its prerequisites on every Gemini model call and every to
 }
 ```
 
-`klaudiush doctor --category evidence` reports an error, fixed by `klaudiush doctor --fix`, when the hook is missing, warns when the klaudiush `BeforeTool` matcher does not select `write_file`, `replace` and `run_shell_command`, and lists tools withheld only by the tool selection (MCP tools and `save_memory` under the default matcher).
+`klaudiush doctor --category evidence` reports an error, fixed by `klaudiush doctor --fix`, when the hook is missing while `filter_tools` is on, warns when the klaudiush `BeforeTool` matcher does not select `write_file`, `replace` and `run_shell_command`, and lists tools withheld only by the tool selection (MCP tools and `save_memory` under the default matcher).
 
 ### Coverage and limits
 

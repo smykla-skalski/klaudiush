@@ -214,6 +214,266 @@ var _ = Describe("Phase", func() {
 				To(Succeed())
 			Expect(phase.Writable(repo, filepath.Join(repo, "PLAN.md"))).To(BeFalse())
 		})
+
+		It("refuses a dangling symbolic link above the target", func() {
+			if runtime.GOOS == "windows" {
+				Skip("symbolic links need privileges on Windows")
+			}
+
+			Expect(os.MkdirAll(filepath.Join(repo, "docs"), 0o750)).To(Succeed())
+			Expect(
+				os.Symlink(filepath.Join(repo, "src", "new"), filepath.Join(repo, "docs", "plans")),
+			).
+				To(Succeed())
+
+			Expect(phase.Writable(repo, filepath.Join(repo, "docs", "plans", "file.md"))).
+				To(BeFalse())
+			Expect(phase.Writable(repo, filepath.Join(repo, "docs", "plans", "a", "b.md"))).
+				To(BeFalse())
+		})
+
+		It("refuses a path whose components cannot be checked", func() {
+			Expect(os.WriteFile(filepath.Join(repo, "PLAN.md"), nil, 0o600)).To(Succeed())
+
+			Expect(phase.Writable(repo, filepath.Join(repo, "PLAN.md", "x"))).To(BeFalse())
+			Expect(phase.Writable(repo, "PLAN.md")).To(BeFalse())
+		})
+
+		It("checks the path as written and as resolved", func() {
+			if runtime.GOOS == "windows" {
+				Skip("symbolic links need privileges on Windows")
+			}
+
+			Expect(os.MkdirAll(filepath.Join(repo, "docs", "plans"), 0o750)).To(Succeed())
+			Expect(os.WriteFile(filepath.Join(repo, "docs", "plans", "a.md"), nil, 0o600)).
+				To(Succeed())
+			Expect(
+				os.Symlink(
+					filepath.Join(repo, "docs", "plans", "a.md"),
+					filepath.Join(repo, "src.md"),
+				),
+			).
+				To(Succeed())
+
+			Expect(phase.Writable(repo, filepath.Join(repo, "src.md"))).To(BeFalse())
+			Expect(phase.Writable(repo, filepath.Join(repo, "docs", "plans", "a.md"))).To(BeTrue())
+
+			link := filepath.Join(GinkgoT().TempDir(), "repo")
+			Expect(os.Symlink(repo, link)).To(Succeed())
+			Expect(phase.Writable(link, filepath.Join(link, "docs", "plans", "a.md"))).To(BeTrue())
+			Expect(phase.Writable(link, filepath.Join(repo, "docs", "plans", "a.md"))).To(BeTrue())
+		})
+
+		Describe("aliases of protected files", func() {
+			BeforeEach(func() {
+				if runtime.GOOS == "windows" {
+					Skip("symbolic links need privileges on Windows")
+				}
+
+				Expect(os.MkdirAll(filepath.Join(repo, "docs", "plans"), 0o750)).To(Succeed())
+				Expect(os.MkdirAll(filepath.Join(repo, ".klaudiush"), 0o750)).To(Succeed())
+				Expect(os.WriteFile(filepath.Join(repo, "docs", "plans", "a.md"), nil, 0o600)).
+					To(Succeed())
+			})
+
+			It("refuses the target of a configuration symlink", func() {
+				Expect(os.Symlink(
+					filepath.Join("..", "docs", "plans", "config.toml"),
+					filepath.Join(repo, ".klaudiush", "config.toml"),
+				)).To(Succeed())
+
+				Expect(phase.Writable(repo, filepath.Join(repo, "docs", "plans", "config.toml"))).
+					To(BeFalse())
+
+				Expect(
+					os.WriteFile(filepath.Join(repo, "docs", "plans", "config.toml"), nil, 0o600),
+				).
+					To(Succeed())
+				Expect(phase.Writable(repo, filepath.Join(repo, "docs", "plans", "config.toml"))).
+					To(BeFalse())
+				Expect(
+					phase.Writable(repo, filepath.Join(repo, "docs", "plans", "a.md")),
+				).To(BeTrue())
+			})
+
+			It("refuses files under a configuration directory symlink", func() {
+				Expect(os.MkdirAll(filepath.Join(repo, "sub"), 0o750)).To(Succeed())
+				Expect(os.Symlink(
+					filepath.Join(repo, "docs", "plans", "gemini"),
+					filepath.Join(repo, "sub", ".gemini"),
+				)).To(Succeed())
+
+				Expect(
+					phase.Writable(
+						repo,
+						filepath.Join(repo, "docs", "plans", "gemini", "settings.json"),
+					),
+				).
+					To(BeFalse())
+				Expect(
+					phase.Writable(repo, filepath.Join(repo, "docs", "plans", "a.md")),
+				).To(BeTrue())
+			})
+
+			It("refuses everything when a configuration symlink cannot be followed", func() {
+				loop := filepath.Join(repo, ".klaudiush", "loop")
+				Expect(os.Symlink(loop, loop)).To(Succeed())
+
+				Expect(
+					phase.Writable(repo, filepath.Join(repo, "docs", "plans", "a.md")),
+				).To(BeFalse())
+			})
+
+			It("refuses a hard link", func() {
+				Expect(os.WriteFile(filepath.Join(repo, ".klaudiush", "config.toml"), nil, 0o600)).
+					To(Succeed())
+				Expect(os.Link(
+					filepath.Join(repo, ".klaudiush", "config.toml"),
+					filepath.Join(repo, "docs", "plans", "config.toml"),
+				)).To(Succeed())
+
+				Expect(phase.Writable(repo, filepath.Join(repo, "docs", "plans", "config.toml"))).
+					To(BeFalse())
+			})
+
+			It("compares a file with protected identities", func() {
+				config := filepath.Join(repo, ".klaudiush", "config.toml")
+				script := filepath.Join(repo, "check.sh")
+
+				Expect(os.WriteFile(config, nil, 0o600)).To(Succeed())
+				Expect(os.WriteFile(script, nil, 0o600)).To(Succeed())
+
+				for path, want := range map[string]bool{
+					config: true,
+					script: true,
+					filepath.Join(repo, "docs", "plans", "a.md"): false,
+				} {
+					info, err := os.Stat(path)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(
+						evidence.SameAsProtected(repo, info, []string{script}),
+					).To(Equal(want), path)
+				}
+			})
+
+			It("refuses everything when the repository cannot be scanned", func() {
+				if os.Geteuid() == 0 {
+					Skip("root reads every directory")
+				}
+
+				locked := filepath.Join(repo, "locked")
+				Expect(os.MkdirAll(locked, 0o750)).To(Succeed())
+				Expect(os.Chmod(locked, 0o000)).To(Succeed())
+				DeferCleanup(os.Chmod, locked, os.FileMode(0o750))
+
+				Expect(
+					phase.Writable(repo, filepath.Join(repo, "docs", "plans", "a.md")),
+				).To(BeFalse())
+			})
+		})
+
+		Describe("files a prerequisite runs", func() {
+			writable := func(command, rel string) bool {
+				p := &evidence.Phase{
+					WritablePaths: []string{"docs/plans/**", "PLAN.md"},
+					Requires: []*evidence.Check{compileOne(&config.EvidenceCheckConfig{
+						Name: "plan", Commands: []string{command},
+					})},
+				}
+
+				return p.Writable(repo, filepath.Join(repo, rel))
+			}
+
+			It("resolves absolute and linked script paths", func() {
+				if runtime.GOOS == "windows" {
+					Skip("symbolic links need privileges on Windows")
+				}
+
+				plans := filepath.Join(repo, "docs", "plans")
+				Expect(os.MkdirAll(plans, 0o750)).To(Succeed())
+				Expect(os.MkdirAll(filepath.Join(repo, "scripts"), 0o750)).To(Succeed())
+				Expect(os.Symlink(
+					filepath.Join("..", "docs", "plans", "real.sh"),
+					filepath.Join(repo, "scripts", "check.sh"),
+				)).To(Succeed())
+				Expect(os.Symlink(plans, filepath.Join(repo, "tools"))).To(Succeed())
+
+				Expect(writable("sh "+filepath.Join(plans, "check.sh"), "docs/plans/check.sh")).
+					To(BeFalse())
+				Expect(writable(filepath.Join(plans, "verify"), "docs/plans/verify")).To(BeFalse())
+				Expect(writable("sh scripts/check.sh", "docs/plans/real.sh")).To(BeFalse())
+				Expect(writable("bash tools/check.sh PLAN.md", "docs/plans/check.sh")).To(BeFalse())
+				Expect(writable("bash tools/check.sh PLAN.md", "PLAN.md")).To(BeTrue())
+				Expect(writable("sh scripts/check.sh", "docs/plans/other.sh")).To(BeTrue())
+			})
+
+			DescribeTable(
+				"finds the script an interpreter runs",
+				func(command, script string, scriptWritable bool, planWritable bool) {
+					Expect(writable(command, script)).To(Equal(scriptWritable))
+					Expect(writable(command, "PLAN.md")).To(Equal(planWritable))
+				},
+				Entry("python -W ignore", "python3 -W ignore docs/plans/check.py PLAN.md",
+					"docs/plans/check.py", false, true),
+				Entry("python attached -Wignore", "python3 -uWignore docs/plans/check.py PLAN.md",
+					"docs/plans/check.py", false, true),
+				Entry("python -X value", "python3.12 -X dev -B docs/plans/check.py PLAN.md",
+					"docs/plans/check.py", false, true),
+				Entry(
+					"python long option",
+					"python --check-hash-based-pycs never docs/plans/c.py PLAN.md",
+					"docs/plans/c.py",
+					false,
+					true,
+				),
+				Entry(
+					"python long option with =",
+					"python --check-hash-based-pycs=never docs/plans/c.py PLAN.md",
+					"docs/plans/c.py",
+					false,
+					true,
+				),
+				Entry("python inline code", "python3 -c pass docs/plans/x.md PLAN.md",
+					"docs/plans/x.md", false, false),
+				Entry("python module", "python3 -m docs.plans.check PLAN.md",
+					"docs/plans/x.md", true, false),
+				Entry("python stdin", "python3 - PLAN.md", "docs/plans/x.md", true, false),
+				Entry("python value missing", "python3 -W", "docs/plans/x.md", true, true),
+				Entry("node require", "node -r docs/plans/hook.js docs/plans/check.js PLAN.md",
+					"docs/plans/hook.js", false, true),
+				Entry("node unknown option", "node --inspect docs/plans/check.js PLAN.md",
+					"docs/plans/check.js", false, false),
+				Entry("node --require=", "node --require=docs/plans/hook.js main.js PLAN.md",
+					"docs/plans/hook.js", false, true),
+				Entry("ruby -I", "ruby -I lib -W0 docs/plans/check.rb PLAN.md",
+					"docs/plans/check.rb", false, true),
+				Entry("ruby -C", "ruby -C docs docs/plans/check.rb PLAN.md",
+					"docs/plans/check.rb", false, false),
+				Entry("perl -I", "perl -I lib -Mstrict docs/plans/check.pl PLAN.md",
+					"docs/plans/check.pl", false, true),
+				Entry("perl -e", "perl -e 1 PLAN.md", "docs/plans/x.md", true, false),
+				Entry("bash -o", "bash -o pipefail docs/plans/check.sh PLAN.md",
+					"docs/plans/check.sh", false, true),
+				Entry("sh +o", "sh +o errexit -eu docs/plans/check.sh PLAN.md",
+					"docs/plans/check.sh", false, true),
+				Entry(
+					"bash --rcfile",
+					"bash --norc --rcfile docs/plans/rc docs/plans/check.sh PLAN.md",
+					"docs/plans/rc",
+					false,
+					true,
+				),
+				Entry("bash long option with value", "bash --norc=x docs/plans/check.sh PLAN.md",
+					"docs/plans/check.sh", false, false),
+				Entry("sh after --", "sh -- docs/plans/check.sh PLAN.md",
+					"docs/plans/check.sh", false, true),
+				Entry("sh -- alone", "sh --", "docs/plans/x.md", true, true),
+				Entry("sh -c", "sh -c true docs/plans/check.sh PLAN.md",
+					"docs/plans/check.sh", false, false),
+				Entry("other program", "make -C docs/plans check PLAN.md",
+					"docs/plans/check", true, true),
+			)
+		})
 	})
 
 	Describe("AllowsVerifier", func() {
