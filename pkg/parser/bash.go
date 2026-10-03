@@ -161,10 +161,8 @@ func parseFailure(command string, err error) error {
 }
 
 // zshShortFor matches the header of a zsh short loop such as
-// "for x (a b) cmd" or "for x y (a b c d) cmd" after a command separator.
-var zshShortFor = regexp.MustCompile(
-	`(?:^|[;&|({\n]|\s)for(?:\s+[A-Za-z_][A-Za-z0-9_]*)+\s*\(`,
-)
+// "for x (a b) cmd" or "for x y (a b c d) cmd" at the start of the text.
+var zshShortFor = regexp.MustCompile(`^for(?:\s+[A-Za-z_][A-Za-z0-9_]*)+\s*\(`)
 
 // zshBraceFor is the feature mvdan.cc/sh names when it rejects
 // "for x in a; { cmd }" in zsh mode, a loop form zsh itself accepts.
@@ -179,8 +177,13 @@ func unknownZshForm(command string, zshErr error) string {
 		return zshBraceFor
 	}
 
-	if zshShortFor.MatchString(command) {
-		return "short for loops"
+	// The zsh grammar reports a short loop at its "for" keyword.
+	var parseErr syntax.ParseError
+	if errors.As(zshErr, &parseErr) {
+		offset := int(parseErr.Pos.Offset())
+		if offset < len(command) && zshShortFor.MatchString(command[offset:]) {
+			return "short for loops"
+		}
 	}
 
 	return ""

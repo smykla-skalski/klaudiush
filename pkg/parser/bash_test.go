@@ -76,6 +76,8 @@ var _ = Describe("BashParser", func() {
 				Entry("for without a list", `for x y`),
 				Entry("for with a stray paren later", `for x in a; do echo (; done`),
 				Entry("word ending in for before a paren", `echo xfor (`),
+				Entry("short for loop text inside quotes",
+					`git commit -m "fix for bar (x)" && (`),
 			)
 		})
 
