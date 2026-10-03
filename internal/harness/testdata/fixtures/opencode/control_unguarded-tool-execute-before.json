@@ -1,0 +1,27 @@
+{
+  "provider": "opencode",
+  "harness": "opencode",
+  "harness_version": "2.0.19",
+  "source": "live",
+  "scenario": "control_unguarded",
+  "event": "tool.execute.before",
+  "args": [
+    "--provider",
+    "opencode",
+    "--event",
+    "tool.execute.before"
+  ],
+  "expect": "pass",
+  "config": "[protection]\nenabled = false\n\n[providers.claude]\nenabled = false\n\n[providers.opencode]\nenabled = true\n",
+  "payload": {
+    "hook_event_name": "tool.execute.before",
+    "session_id": "ses_efe3f0c7fffeQBSZLGJs9HzCRi",
+    "cwd": "{{WORK}}",
+    "tool_name": "shell",
+    "tool_input": {
+      "command": "touch guarded/shell.txt"
+    },
+    "tool_use_id": "call_0003"
+  },
+  "response": null
+}

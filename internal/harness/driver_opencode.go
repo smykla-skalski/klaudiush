@@ -2,28 +2,20 @@ package harness
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"slices"
+
+	"github.com/cockroachdb/errors"
 
 	"github.com/smykla-skalski/klaudiush/pkg/hook"
 )
 
-const (
-	openCodeModel = "scripted/klaudiush"
+const openCodeModel = "scripted/klaudiush"
 
-	// openCodeToolRename is the major version that renamed bash to shell,
-	// write's filePath to path, and replaced the plugin API.
-	openCodeToolRename = 2
-)
-
-// openCode2Gap is why klaudiush does not enforce on opencode 2.x: the
-// generated bridge plugin uses the 1.x plugin API (a module of named plugin
-// functions returning tool.execute.* hooks). opencode 2.x loads only a
-// default export {id, setup|effect} and registers tool hooks through
-// ctx.tool.hook("execute.before"), so it skips the bridge with a warning and
-// runs every tool unchecked.
-const openCode2Gap = "opencode 2.x rejects the klaudiush bridge plugin (1.x plugin API), " +
-	"so no tool call is checked"
+// openCodeToolRename is the major version that renamed bash to shell, write's
+// filePath to path, and replaced the plugin API.
+const openCodeToolRename = 2
 
 // OpenCodeDriver runs `opencode run` with a private server.
 type OpenCodeDriver struct {
@@ -44,23 +36,34 @@ func (*OpenCodeDriver) Provider() hook.Provider { return hook.ProviderOpenCode }
 // SetVersion selects the tool names of the opencode major version.
 func (d *OpenCodeDriver) SetVersion(version string) { d.version = version }
 
-func (*OpenCodeDriver) KnownGap(version string) string {
-	if MajorVersion(version) >= openCodeToolRename {
-		return openCode2Gap
-	}
-
-	return ""
-}
+func (*OpenCodeDriver) KnownGap(_ string) string { return "" }
 
 // Supports leaves out the completion gate (session.idle cannot keep the
-// agent working), after-tool repair and subagents (not driven yet), the
-// permission flow (run --auto) and unrelated hooks (opencode has no
-// declarative hook config).
-func (*OpenCodeDriver) Supports(feature Feature) bool {
+// agent working), subagents (not driven yet), the permission flow (run
+// --auto) and unrelated hooks (opencode has no declarative hook config).
+// After-tool repair is driven on 2.x, whose bridge appends findings to the
+// tool result.
+func (d *OpenCodeDriver) Supports(feature Feature) bool {
+	if feature == FeatureAfterToolRepair {
+		return MajorVersion(d.version) >= openCodeToolRename
+	}
+
 	return slices.Contains([]Feature{FeatureWriteTool}, feature)
 }
 
-func (*OpenCodeDriver) Prepare(sb *Sandbox, model *ScriptedModel) error {
+// Prepare puts opencode on the sandbox PATH, where `klaudiush init` looks for
+// it to pick the bridge plugin API, the same way it finds it for a user.
+func (d *OpenCodeDriver) Prepare(sb *Sandbox, model *ScriptedModel) error {
+	if d.binary != "" {
+		if err := os.MkdirAll(sb.Bin, dirPerm); err != nil {
+			return errors.Wrap(err, "creating sandbox bin")
+		}
+
+		if err := os.Symlink(d.binary, filepath.Join(sb.Bin, "opencode")); err != nil {
+			return errors.Wrap(err, "linking opencode into the sandbox")
+		}
+	}
+
 	config := map[string]any{
 		"$schema":    "https://opencode.ai/config.json",
 		"autoupdate": false,
