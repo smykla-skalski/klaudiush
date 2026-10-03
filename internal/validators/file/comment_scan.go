@@ -514,6 +514,12 @@ func newCommentScan(hookCtx *hook.Context) commentScan {
 		return scan
 	}
 
+	if detectShebang {
+		if scan.syntax = shebangSyntax(hookCtx.ToolInput.NewString); scan.syntax.python {
+			detectShebang = false
+		}
+	}
+
 	if hookCtx.ToolInput.OldString == "" {
 		scan.lineLocalTriple = true
 
@@ -545,7 +551,7 @@ func newCommentScan(hookCtx *hook.Context) commentScan {
 		return scan
 	}
 
-	scan.leads = editLeads(original, old, scan.syntax)
+	scan.leads = editLeads(original, old, scan.syntax, toolEdits(hookCtx)[0].ReplaceAll)
 
 	return scan
 }
@@ -588,9 +594,10 @@ func readRegularFile(path string) ([]byte, bool) {
 // each is scanned separately, so many matches would multiply the work.
 const maxStartStateOccurrences = 32
 
-// editLeads returns a lead for every occurrence of old in content, or none
-// (scan once from code) when there are none or too many.
-func editLeads(content, old string, syntax langSyntax) []editLead {
+// editLeads returns a lead for the first occurrence of old in content, or
+// for every occurrence when all is set, or none (scan once from code) when
+// there are none or too many.
+func editLeads(content, old string, syntax langSyntax, all bool) []editLead {
 	lines := strings.Split(content, "\n")
 	lineStates := make([]stringState, len(lines))
 	lineOffsets := make([]int, len(lines))
@@ -623,6 +630,10 @@ func editLeads(content, old string, syntax langSyntax) []editLead {
 			prefix: content[lineOffsets[li]:pos],
 			suffix: firstLines(content[from:], maxDocContextLines),
 		})
+
+		if !all {
+			break
+		}
 	}
 
 	return leads

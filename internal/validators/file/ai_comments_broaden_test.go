@@ -595,6 +595,19 @@ var _ = Describe("AICommentValidator multi-line string literals", func() {
 			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
 		})
 
+		It("checks only the first match without replace_all", func() {
+			ctx.ToolInput.FilePath = writeSource("DOC = \"\"\"\nfoo\n\"\"\"\nfoo\n")
+			ctx.ToolInput.OldString = "foo"
+			ctx.ToolInput.NewString = "## Problem"
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeTrue())
+		})
+
+		It("recognises a python shebang in a patch creating an extension-less file", func() {
+			ctx.ToolInput.FilePath = filepath.Join(dir, "tool")
+			ctx.ToolInput.NewString = "#!/usr/bin/env python3\nhalf = total // 2"
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeTrue())
+		})
+
 		It("keeps an exemption every replaced comment has", func() {
 			ctx.ToolInput.FilePath = writeSource("# TODO: alpha old\n# TODO: beta old\n")
 			ctx.ToolInput.OldString = "old"
