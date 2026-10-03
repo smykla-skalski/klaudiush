@@ -107,6 +107,14 @@ var _ = Describe("NestingValidator", func() {
 		))
 	})
 
+	It("points a broken command with a glob qualifier at the real break", func() {
+		result := blocked(`ls *.go(N) && (`)
+
+		Expect(result.Findings).To(ConsistOf(
+			HaveField("Location", "line 1, column 15"),
+		))
+	})
+
 	It("hedges a zsh loop form the zsh grammar does not know", func() {
 		result := blocked(`for x (a b) git push`)
 

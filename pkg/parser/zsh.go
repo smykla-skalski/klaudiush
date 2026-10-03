@@ -48,8 +48,8 @@ func parseFailure(command string, err error) error {
 			return &ZshSyntaxError{Construct: construct, Possible: true, cause: err}
 		}
 
-		// Bash stopped at zsh syntax, so the zsh error is the real break.
-		if zshFeature(err) != "" {
+		// The zsh grammar got further, so its error is the real break.
+		if errorOffset(zshErr) > errorOffset(err) {
 			return errors.Wrap(ErrParseFailed, zshErr.Error())
 		}
 
@@ -64,10 +64,25 @@ func parseFailure(command string, err error) error {
 
 	construct := zshFeature(err)
 	if construct == "" {
-		construct = zshConstruct(file)
+		construct = zshConstruct(file, errorOffset(err))
 	}
 
 	return &ZshSyntaxError{Construct: construct, cause: err}
+}
+
+// errorOffset returns the byte offset of a parse error, or -1.
+func errorOffset(err error) int {
+	var parseErr syntax.ParseError
+	if errors.As(err, &parseErr) {
+		return int(parseErr.Pos.Offset())
+	}
+
+	var langErr syntax.LangError
+	if errors.As(err, &langErr) {
+		return int(langErr.Pos.Offset())
+	}
+
+	return -1
 }
 
 // zshFeature returns the zsh feature a bash LangError names, or "".
@@ -96,14 +111,19 @@ func hasZshCall(file *syntax.File, name string) bool {
 	return found
 }
 
-// zshConstruct names the first zsh-only construct in a file parsed as zsh,
-// for zsh syntax the bash error does not name. It returns "" when it finds
-// none it knows.
-func zshConstruct(file *syntax.File) string {
+// zshConstruct names the first zsh-only construct in a file parsed as zsh
+// that reaches the bash error offset, for zsh syntax the bash error does not
+// name. Earlier constructs parsed as bash, so they are not what bash
+// rejected. It returns "" when it finds none it knows.
+func zshConstruct(file *syntax.File, bashOffset int) string {
 	construct := ""
 
 	syntax.Walk(file, func(node syntax.Node) bool {
-		if construct != "" {
+		if construct != "" || node == nil {
+			return false
+		}
+
+		if int(node.End().Offset()) <= bashOffset {
 			return false
 		}
 

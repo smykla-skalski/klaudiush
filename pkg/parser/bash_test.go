@@ -53,6 +53,8 @@ var _ = Describe("BashParser", func() {
 				Entry("array expansion", `echo ${^arr}`, "`${^var}` array expansion", false),
 				Entry("disown", `git push &|`, "`&|` and `&!` disowning", false),
 				Entry("zsh grammar accepts, nothing named", `{ echo a }`, "", false),
+				Entry("zsh construct before the bash error is not named",
+					`echo ${PWD:t}; { git push }`, "", false),
 				Entry("escaped paren is no glob qualifier",
 					`git commit -m fix\(scope\): x; { git push }`, "", false),
 				Entry("flags zsh itself rejects, still bash-unparseable", `echo ${(Y)x}`,
