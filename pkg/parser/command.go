@@ -53,7 +53,8 @@ type Location struct {
 	Seq int
 }
 
-// Command represents a parsed command with metadata.
+// Command represents a parsed command with metadata. Its startup holds the
+// BASH_ENV and ENV set for it alone.
 type Command struct {
 	Name             string   // Command name (e.g., "git")
 	Args             []string // Command arguments
@@ -73,6 +74,9 @@ type Command struct {
 	Dynamic bool
 	// Vars are the variables as they stood when the command ran.
 	Vars *VarScope
+
+	startup      map[string]startupValue
+	dynamicWords map[string]bool
 }
 
 // anyWordDynamic reports whether any word takes part of its value from
