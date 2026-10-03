@@ -37,10 +37,13 @@ const failureValidatorName = "klaudiush"
 // configuration cannot be read.
 var failureMode string
 
-// hookFailureError is an error that stopped the hook before validation finished.
+// hookFailureError is an error that stopped the hook before validation
+// finished. critical marks failures that may hide a policy guard: they
+// block whatever the failure mode says.
 type hookFailureError struct {
-	reason validator.UnavailableReason
-	err    error
+	reason   validator.UnavailableReason
+	err      error
+	critical bool
 }
 
 func (f *hookFailureError) Error() string {
@@ -53,6 +56,10 @@ func (f *hookFailureError) Unwrap() error {
 
 func failHook(reason validator.UnavailableReason, err error) error {
 	return &hookFailureError{reason: reason, err: err}
+}
+
+func failHookCritical(reason validator.UnavailableReason, err error) error {
+	return &hookFailureError{reason: reason, err: err, critical: true}
 }
 
 // hookRun is one hook invocation. It owns stdout: exactly one response is
@@ -223,7 +230,8 @@ func (h *hookRun) failureError(
 
 	// The watchdog cannot tell which check hung, so any critical validator
 	// makes an overrun block.
-	if failure.reason == validator.ReasonTimeout && len(policy.Critical()) > 0 {
+	if failure.critical ||
+		(failure.reason == validator.ReasonTimeout && len(policy.Critical()) > 0) {
 		action = failpolicy.ActionBlock
 	}
 
@@ -375,32 +383,35 @@ func policyConfigDirs(hookCtx *hook.Context, workDir string) []string {
 // configuration of any of dirs enables them. Loading configuration from a
 // cd target must not drop the guards of the project the agent works in:
 // "cd /tmp && git status; rm .klaudiush/config.toml" would otherwise run
-// under /tmp's configuration.
-func inheritPolicyGuards(cfg *config.Config, dirs []string, log logger.Logger) {
+// under /tmp's configuration. Every directory whose protection is on is
+// kept as a policy source, so its hook, evidence and plugin files stay
+// protected. A configuration that cannot be read may be the one enabling
+// the guards, so it fails the hook instead of being skipped.
+func inheritPolicyGuards(cfg *config.Config, dirs []string, log logger.Logger) error {
 	if cfg == nil {
-		return
+		return nil
 	}
 
 	for _, dir := range dirs {
-		if cfg.Protection.IsEnabled() && cfg.MCPTrust.IsEnabled() {
-			return
-		}
-
 		other, err := loadConfig(log, dir)
 		if err != nil {
-			log.Info("cannot read policy guards", "dir", dir, "error", err)
-
-			continue
+			return errors.Wrapf(err, "failed to load policy guards from %s", dir)
 		}
 
-		if !cfg.Protection.IsEnabled() && other.Protection.IsEnabled() {
-			cfg.Protection = other.Protection
+		if other.Protection.IsEnabled() {
+			if !cfg.Protection.IsEnabled() {
+				cfg.Protection = other.Protection
+			}
+
+			cfg.PolicySources = append(cfg.PolicySources, other)
 		}
 
 		if !cfg.MCPTrust.IsEnabled() && other.MCPTrust.IsEnabled() {
 			cfg.MCPTrust = other.MCPTrust
 		}
 	}
+
+	return nil
 }
 
 // fallbackPolicy finds the failure mode when the configuration cannot be

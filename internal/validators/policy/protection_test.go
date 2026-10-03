@@ -312,4 +312,34 @@ var _ = Describe("Locator", func() {
 		Expect(empty.HookFiles).To(BeEmpty())
 		Expect(empty.Config).To(BeNil())
 	})
+
+	It("keeps the files of inherited policy sources", func() {
+		enabled := true
+		source := &config.Config{
+			Protection: &config.ProtectionConfig{Enabled: &enabled},
+			Providers: &config.ProvidersConfig{
+				Codex:    &config.CodexProviderConfig{HooksConfigPath: "/src/hooks.json"},
+				OpenCode: &config.OpenCodeProviderConfig{PluginPath: "/src/plugin.ts"},
+			},
+			Evidence: &config.EvidenceConfig{Checks: []*config.EvidenceCheckConfig{
+				{Name: "t", Commands: []string{"./t.sh", "./shared.sh"}},
+			}},
+			Plugins: &config.PluginConfig{Plugins: []*config.PluginInstanceConfig{
+				{Path: "/src/plugin"},
+			}},
+		}
+		cfg := &config.Config{
+			Protection: source.Protection,
+			Evidence: &config.EvidenceConfig{Checks: []*config.EvidenceCheckConfig{
+				{Name: "s", Commands: []string{"./shared.sh"}},
+			}},
+			PolicySources: []*config.Config{source},
+		}
+
+		opts := policy.NewLocator(cfg)(&hook.Context{WorkingDir: "/work"})
+
+		Expect(opts.HookFiles).To(Equal([]string{"/src/plugin.ts", "/src/hooks.json"}))
+		Expect(opts.EvidenceCommands).To(Equal([]string{"./shared.sh", "./t.sh"}))
+		Expect(opts.PluginPaths).To(Equal([]string{"/src/plugin"}))
+	})
 })

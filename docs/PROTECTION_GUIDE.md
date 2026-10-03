@@ -25,6 +25,7 @@ These checks guard the rest of klaudiush, so they fail closed:
 
 - An exception token cannot bypass POL001-POL003, MCP004 or MCP005 unless the configuration has an `[exceptions.policies.<CODE>]` entry for that exact code.
 - When protection or MCP trust is enabled, the validator is critical: a crash or a hook running past its deadline blocks the action whatever `failure_policy.mode` says.
+- A command that changes directory (`cd ../other && ...`) keeps the guards of the project the agent works in, along with the hook, evidence and plugin files that project's configuration registers. If that project's configuration cannot be read, the action is blocked with [HOOK001](errors/HOOK001.md).
 - A shell command klaudiush cannot fully inspect (the same commands [SHELL002](errors/SHELL002.md) reports) is blocked with POL001 too, so an exception for SHELL002 does not open a way around protection.
 - Neither validator consults the rule engine: a `[[rules]]` entry is not the explicit `protection.allow` or `mcp_trust` entry these checks require.
 

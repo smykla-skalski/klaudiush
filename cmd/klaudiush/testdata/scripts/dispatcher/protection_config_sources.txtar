@@ -1,0 +1,50 @@
+cd project
+
+stdin $WORK/cd-evidence.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'POL001'
+
+cd $WORK/broken
+
+stdin $WORK/cd-from-broken.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'HOOK001'
+
+-- project/.klaudiush/config.toml --
+[protection]
+enabled = true
+
+[evidence]
+enabled = true
+
+[[evidence.checks]]
+name = "tests"
+commands = ["sh scripts/check.sh"]
+
+-- project/.git/HEAD --
+ref: refs/heads/main
+
+-- project/scripts/check.sh --
+echo checked
+
+-- other/.klaudiush/config.toml --
+[protection]
+enabled = false
+
+-- other/.git/HEAD --
+ref: refs/heads/main
+
+-- broken/.klaudiush/config.toml --
+[protection
+enabled = true
+
+-- broken/.git/HEAD --
+ref: refs/heads/main
+
+-- cd-evidence.json --
+{"session_id":"s1","hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"cd ../other && git status; echo x > ../project/scripts/check.sh"}}
+
+-- cd-from-broken.json --
+{"session_id":"s1","hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"cd ../other && git status; rm ../broken/.mcp.json"}}

@@ -346,10 +346,14 @@ func (h *hookRun) loadPolicyAndRegistry(
 
 	h.output.Store(cfg.Output)
 
-	inheritPolicyGuards(cfg, policyConfigDirs(hookCtx, workDir), h.log)
+	inheritErr := inheritPolicyGuards(cfg, policyConfigDirs(hookCtx, workDir), h.log)
 
 	policy, policyErr := buildPolicy(cfg)
 	h.setPolicy(policy)
+
+	if inheritErr != nil {
+		return nil, nil, nil, failHookCritical(validator.ReasonConfig, inheritErr)
+	}
 
 	if policyErr != nil {
 		return nil, nil, nil, failHook(validator.ReasonConfig, policyErr)

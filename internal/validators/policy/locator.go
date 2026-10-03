@@ -5,6 +5,7 @@ package policy
 import (
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/smykla-skalski/klaudiush/internal/protection"
 	"github.com/smykla-skalski/klaudiush/internal/xdg"
@@ -40,11 +41,11 @@ func NewLocator(cfg *config.Config) Locator {
 			DataDir:          xdg.DataDir(),
 			LegacyDir:        xdg.LegacyDir(),
 			XDGConfigHome:    xdg.ConfigHome(),
-			HookFiles:        hookFiles(cfg),
+			HookFiles:        fromSources(cfg, sourceHookFiles),
 			Executables:      executables(home),
 			OpenCodePlugin:   openCodePlugin(cfg),
-			EvidenceCommands: evidenceCommands(cfg),
-			PluginPaths:      pluginPaths(cfg),
+			EvidenceCommands: fromSources(cfg, evidenceCommands),
+			PluginPaths:      fromSources(cfg, pluginPaths),
 			Config:           protectionConfig(cfg),
 		}
 	}
@@ -71,6 +72,27 @@ func ProjectRoot(dir string) string {
 	return dir
 }
 
+// fromSources collects list from cfg and every configuration it inherited
+// protection from, so a guard carried over a cd still covers the files its
+// own project registered.
+func fromSources(cfg *config.Config, list func(*config.Config) []string) []string {
+	if cfg == nil {
+		return nil
+	}
+
+	items := list(cfg)
+
+	for _, source := range cfg.PolicySources {
+		for _, item := range list(source) {
+			if !slices.Contains(items, item) {
+				items = append(items, item)
+			}
+		}
+	}
+
+	return items
+}
+
 func protectionConfig(cfg *config.Config) *config.ProtectionConfig {
 	if cfg == nil {
 		return nil
@@ -91,6 +113,21 @@ func executables(home string) []string {
 	}
 
 	return paths
+}
+
+// sourceHookFiles lists the hook files of cfg, with the OpenCode plugin of a
+// configuration protection was inherited from, which Options holds only one
+// of.
+func sourceHookFiles(cfg *config.Config) []string {
+	files := hookFiles(cfg)
+
+	for _, source := range cfg.PolicySources {
+		if plugin := openCodePlugin(source); plugin != "" {
+			files = append(files, plugin)
+		}
+	}
+
+	return files
 }
 
 func hookFiles(cfg *config.Config) []string {
