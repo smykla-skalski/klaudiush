@@ -320,6 +320,24 @@ def run_git(args):
 			"python3 -c 'def run(cmd={\"k\":\n\"\"\"git zz\"\"\"}):\n    pass'"),
 		Entry("output written into a named pipe",
 			`mkfifo p; sh < p & python3 -c 'print("git zz")' > p`),
+		Entry(
+			"a bare Exception caught and run",
+			"python3 -c 'import subprocess\ntry:\n    raise Exception(\"git zz\")\nexcept Exception as e:\n    subprocess.run(str(e), shell=True)'",
+		),
+		Entry("a bare Exception turned into a string",
+			`python3 -c 'import os; os.system(str(Exception("git zz")))'`),
+		Entry(
+			"a js Error message run",
+			`node -e 'const e = new Error("git zz"); require("child_process").execSync(e.message)'`,
+		),
+		Entry(
+			"a js Error caught and run",
+			`node -e 'try { throw new Error("git zz") } catch (e) { require("child_process").execSync(e.message) }'`,
+		),
+		Entry(
+			"an error read back without a name",
+			"python3 -c 'import os, sys\ntry:\n    raise RuntimeError(\"git zz\")\nexcept RuntimeError:\n    os.system(str(sys.exc_info()[1]))'",
+		),
 	)
 
 	DescribeTable(

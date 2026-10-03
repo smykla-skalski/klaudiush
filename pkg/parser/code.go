@@ -61,7 +61,7 @@ var messageCalls = nameSet(
 // rather than handed on as a value.
 var raisedError = regexp.MustCompile(
 	`(?:^|[^\w.])(?:raise|throw\s+new|throw)\s+(?:[A-Za-z_$][\w$]*\.)*` +
-		`[A-Za-z_$][\w$]*(?:Error|Exception|Warning)\s*$`,
+		`[\w$]*(?:Error|Exception|Warning)\s*$`,
 )
 
 // trailingName matches the identifier that ends a piece of code.
@@ -76,9 +76,11 @@ const maxStringPrefix = 2
 // docRead matches code that reads docstrings back as values.
 var docRead = regexp.MustCompile(`__doc__|getdoc`)
 
-// errorCaught matches code that catches an error into a name, whose message
-// can then be handed on as a value.
-var errorCaught = regexp.MustCompile(`\bexcept\b[^:\n]*\bas\s|\bcatch\s*\(`)
+// errorCaught matches code that catches an error into a name or reads the
+// current one back, so its message can be handed on as a value.
+var errorCaught = regexp.MustCompile(
+	`\bexcept\b[^:\n]*\bas\s|\bcatch\s*\(|exc_info|format_exc|format_exception|\.args\b`,
+)
 
 // textReuse says which kinds of prose the code reads back as values.
 type textReuse struct {
@@ -133,7 +135,7 @@ func proseLiteral(code string, start, end int, reuse textReuse) bool {
 
 	callee = strings.TrimRight(callee, " \t")
 
-	return messageCalls[strings.ToLower(trailingName.FindString(callee))] ||
+	return messageCalls[trailingName.FindString(callee)] ||
 		!reuse.errors && raisedError.MatchString(callee)
 }
 
