@@ -11,6 +11,7 @@ var _ = Describe("Git words in interpreter prose", func() {
 	resolver := fakeResolver{
 		files: map[string]string{
 			"./tool.py": "#!/usr/bin/env python3\nfail(\"git zz is not set up\")\n",
+			"helper.py": "print(\"git zz is not set up\")\n",
 			"hotspots.py": `#!/usr/bin/env python3
 """Rank hotspots from git history.
 
@@ -298,5 +299,26 @@ def run_git(args):
 			"sort, which can run a program",
 			`python3 -c 'print("git zz")' | sort --compress-program=sh`,
 		),
+		Entry("a pipe in a command string the interpreter runs",
+			`python3 -c 'import subprocess; subprocess.run("python3 helper.py | sh", shell=True)'`),
+		Entry("a filter name redefined as a function",
+			`grep() { sh; }; python3 -c 'print("git zz")' | grep`),
+		Entry("gettext handed to an exec call", `python3 -c 'import os; os.system(_("git zz"))'`),
+		Entry("an exception turned back into a string",
+			`python3 -c 'import os; os.system(str(ValueError("git zz")))'`),
+		Entry("a call named in a trailing comment",
+			"python3 -c 'import os\nos.system(  # print(\n    \"git zz\")'"),
+	)
+
+	DescribeTable(
+		"reads raised and thrown errors as prose",
+		func(command string) {
+			Expect(parse(command).Truncated).To(BeFalse(), "truncated: %q", command)
+		},
+		Entry(
+			"a qualified python error",
+			`python3 -c 'raise errors.SetupError("git zz is not set up")'`,
+		),
+		Entry("a thrown js error", `node -e 'throw new Error("git zz is not set up")'`),
 	)
 })

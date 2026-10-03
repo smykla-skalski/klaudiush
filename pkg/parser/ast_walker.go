@@ -178,7 +178,7 @@ func (w *astWalker) visit(node syntax.Node) bool {
 	case *syntax.BinaryCmd:
 		w.extractPipedStdin(n)
 
-		if (n.Op == syntax.Pipe || n.Op == syntax.PipeAll) && !pipeFilter(n.Y) {
+		if (n.Op == syntax.Pipe || n.Op == syntax.PipeAll) && !w.pipeFilter(n.Y) {
 			w.noteOutputRoute()
 		}
 	case *syntax.CmdSubst, *syntax.ProcSubst:
@@ -250,10 +250,10 @@ func (w *astWalker) noteRedirectedOutput(stmt *syntax.Stmt) {
 // noteOutputRoute records that the line hands some command's output to
 // another (a pipe, a substitution, a redirect into a program). Text an
 // interpreter prints may then run, so none of it counts as prose for the
-// rest of the parse. A string found in interpreter code runs in a shell of
-// its own and routes nothing of the interpreter's.
+// rest of the parse. A prose string itself runs nothing, so it routes
+// nothing; a command string an interpreter runs (os.system) does.
 func (w *astWalker) noteOutputRoute() {
-	if !w.literal {
+	if !w.prose {
 		w.state.outputRouted = true
 	}
 }
@@ -263,12 +263,18 @@ func (w *astWalker) noteOutputRoute() {
 var pipeFilters = nameSet("head tail jq grep egrep fgrep wc uniq cut tr column nl cat")
 
 // pipeFilter reports whether a pipeline stage is one of pipeFilters, written
-// literally, so what flows into it is displayed rather than run.
-func pipeFilter(stmt *syntax.Stmt) bool {
+// literally and not redefined on the line, so what flows into it is displayed
+// rather than run.
+func (w *astWalker) pipeFilter(stmt *syntax.Stmt) bool {
 	call := callExprOf(stmt)
+	if call == nil || len(call.Assigns) > 0 || len(call.Args) == 0 ||
+		!isLiteralWord(call.Args[0]) {
+		return false
+	}
 
-	return call != nil && len(call.Assigns) == 0 && len(call.Args) > 0 &&
-		isLiteralWord(call.Args[0]) && pipeFilters[wordToString(call.Args[0])]
+	name := wordToString(call.Args[0])
+
+	return pipeFilters[name] && !w.defined(name) && !w.state.pathChanged
 }
 
 // extractPipedStdin handles "producer | consumer" pipelines, capturing the

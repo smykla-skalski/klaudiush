@@ -53,12 +53,16 @@ var proseUnsafe = regexp.MustCompile(
 // closed: an exec function or wrapper missing from it fails closed.
 var messageCalls = nameSet(
 	"print println printf eprint eprintln puts fail die warn warning error info debug " +
-		"critical exception log notice exit abort echo alert _",
+		"critical exception log notice exit abort echo alert",
 )
 
-// exceptionSuffixes end the names of exception and error types, whose
-// constructors take a message (RuntimeError, ValueError).
-var exceptionSuffixes = []string{"Error", "Exception", "Warning"}
+// raisedError matches an exception or error raised or thrown right where it
+// is built (raise ValueError(, throw new Error(), whose message is shown
+// rather than handed on as a value.
+var raisedError = regexp.MustCompile(
+	`(?:^|[^\w.])(?:raise|throw\s+new|throw)\s+(?:[A-Za-z_$][\w$]*\.)*` +
+		`[A-Za-z_$][\w$]*(?:Error|Exception|Warning)\s*$`,
+)
 
 // trailingName matches the identifier that ends a piece of code.
 var trailingName = regexp.MustCompile(`([A-Za-z_$][\w$]*)$`)
@@ -109,23 +113,14 @@ func proseLiteral(code string, start, end int) bool {
 	}
 
 	callee, isCall := strings.CutSuffix(prev, "(")
-	if !isCall {
+	if !isCall || strings.ContainsAny(callee[strings.LastIndexByte(callee, '\n')+1:], "#/") {
 		return false
 	}
 
-	return messageCall(trailingName.FindString(strings.TrimRight(callee, " \t")))
-}
+	callee = strings.TrimRight(callee, " \t")
 
-// messageCall reports whether a call name shows its argument rather than
-// running it.
-func messageCall(name string) bool {
-	if messageCalls[strings.ToLower(name)] {
-		return true
-	}
-
-	return slices.ContainsFunc(exceptionSuffixes, func(suffix string) bool {
-		return strings.HasSuffix(name, suffix)
-	})
+	return messageCalls[strings.ToLower(trailingName.FindString(callee))] ||
+		raisedError.MatchString(callee)
 }
 
 // significantCode trims trailing whitespace and whole comment lines (a
