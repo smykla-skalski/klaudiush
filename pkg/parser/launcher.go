@@ -861,17 +861,22 @@ func runsScriptPath(prev, arg string) bool {
 	return execMarkers[prev] && strings.Contains(arg, "/") && shellScriptExtensions[path.Ext(arg)]
 }
 
-// afterDirectoryOperand also scans past the operand that follows a
-// subcommand named like a launcher, since direnv exec . git push takes "."
-// (or ./, or any path) as a directory, not as the program exec runs.
+// afterDirectoryOperand returns the command a runner's exec subcommand runs
+// after its directory operand: direnv exec . git push takes "." (or ./, or
+// any path) as a directory, not as the program exec runs. Only the word
+// after the directory is the program, so direnv exec . echo git runs echo.
 func afterDirectoryOperand(cmd Command, arg string, rest []string) []Command {
-	if _, ok := launchers[commandName(arg)]; !ok || len(rest) < 2 ||
+	if !dirOperandRunners[cmd.Name] || arg != "exec" || len(rest) < 2 ||
 		strings.HasPrefix(rest[0], "-") {
 		return nil
 	}
 
-	return scanLaunch(childCommand(cmd, cmd.Name, rest[1:])).commands
+	return []Command{childCommand(cmd, rest[1], rest[2:])}
 }
+
+// dirOperandRunners take a directory before the command their exec
+// subcommand runs.
+var dirOperandRunners = nameSet("direnv")
 
 var (
 	// execMarkers precede the command a runner executes.

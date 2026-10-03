@@ -32,18 +32,74 @@ func EvalSetupTools() []string {
 	return slices.Sorted(maps.Keys(evalSetupTools))
 }
 
+// agentValueOptions are the ssh-agent options that take a value, given
+// attached or as the next argument.
+const agentValueOptions = "aAEOPt"
+
+// agentFlags are the ssh-agent flags that still print a new agent's setup;
+// -k, -u and -V print something else.
+const agentFlags = "cdDsTUx"
+
 // agentSetup reports ssh-agent printing the variables of a new agent: only
-// options, and not -k, which prints the commands that forget one.
+// options, no command to run, and no flag that prints something else.
 func agentSetup(args []string) bool {
-	return (len(args) == 0 || strings.HasPrefix(args[0], "-")) && !slices.Contains(args, "-k")
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == endOfOptions {
+			return i == len(args)-1
+		}
+
+		if len(arg) < 2 || arg[0] != '-' {
+			return false
+		}
+
+		takesNext, ok := agentCluster(arg[1:])
+		if !ok {
+			return false
+		}
+
+		if takesNext {
+			if i++; i >= len(args) {
+				return false
+			}
+		}
+	}
+
+	return true
 }
 
-// condaSetup reports conda shell.<shell> with a command such as hook or
-// activate, which prints shell code.
-func condaSetup(args []string) bool {
-	sub := firstOperand(args)
+// agentCluster checks one cluster of short ssh-agent options (-sk, -t60),
+// reporting whether its last option takes the next argument as its value.
+func agentCluster(cluster string) (takesNext, ok bool) {
+	for j, opt := range cluster {
+		switch {
+		case strings.ContainsRune(agentValueOptions, opt):
+			return j == len(cluster)-1, true
+		case !strings.ContainsRune(agentFlags, opt):
+			return false, false
+		}
+	}
 
-	return strings.HasPrefix(sub, "shell.") && len(sub) > len("shell.")
+	return false, true
+}
+
+// condaOperations are the conda shell.<shell> operations that print shell
+// setup; "commands" prints completion words instead.
+var condaOperations = nameSet("hook activate deactivate reactivate")
+
+// condaSetup reports conda shell.<shell> followed by an operation that
+// prints shell code.
+func condaSetup(args []string) bool {
+	idx := slices.IndexFunc(args, isOperand)
+	if idx < 0 || !strings.HasPrefix(args[idx], "shell.") || len(args[idx]) == len("shell.") {
+		return false
+	}
+
+	return condaOperations[firstOperand(args[idx+1:])]
+}
+
+func isOperand(arg string) bool {
+	return !strings.HasPrefix(arg, "-")
 }
 
 func subcommandIn(names ...string) func([]string) bool {
