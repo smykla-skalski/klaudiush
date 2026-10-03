@@ -79,6 +79,7 @@ var _ = Describe("opencode plugin API selection", func() {
 			Expect(source).To(ContainSubstring(`ctx.tool.hook("execute.before",`))
 			Expect(source).To(ContainSubstring("throw new Error(blockReason(resp))"))
 			Expect(source).To(ContainSubstring(`event !== "tool.execute.before"`))
+			Expect(source).To(ContainSubstring("sessionMoveEscape(event.tool, event.input, cwd)"))
 		})
 
 		It("subscribes to every advertised opencode event", func() {
