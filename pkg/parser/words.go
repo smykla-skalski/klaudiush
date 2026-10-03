@@ -477,12 +477,18 @@ func (w *astWalker) resolveEval(cmd Command) (string, bool) {
 // stand-ins of followed, so env git $(...) is still seen; scripts and files
 // are found as before. Eval runs its line with known variables substituted
 // (a line it cannot know is already opaque and is not walked), and a
-// container runner runs its --entrypoint.
+// container runner runs the program its exec names and its --entrypoint.
 func (w *astWalker) launchedFrom(cmd, followed Command) launch {
 	l := launched(cmd)
 
 	if slices.ContainsFunc(followed.Args, marked) {
 		l.commands = launched(followed).commands
+	}
+
+	if cmds, replace := w.containerExecCommands(followed); replace {
+		l.commands, l.scripts = cmds, nil
+	} else {
+		l.commands = append(l.commands, cmds...)
 	}
 
 	l.entrypoints = w.entrypointCommands(followed)
