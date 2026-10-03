@@ -1,0 +1,37 @@
+{
+  "provider": "claude",
+  "harness": "claude",
+  "harness_version": "2.1.288",
+  "source": "live",
+  "scenario": "deny_write",
+  "event": "PreToolUse",
+  "args": [
+    "--hook-type",
+    "PreToolUse"
+  ],
+  "expect": "deny",
+  "config": "[protection]\nenabled = true\npaths = [\"guarded/**\"]\n\n[providers.claude]\nenabled = true\n",
+  "payload": {
+    "session_id": "ead5a504-8f41-4d60-bba9-d8f24a64e1db",
+    "transcript_path": "{{HOME}}/.claude/projects/{{WORK_SLUG}}/ead5a504-8f41-4d60-bba9-d8f24a64e1db.jsonl",
+    "cwd": "{{WORK}}",
+    "prompt_id": "f3ab33f1-5dd4-47e7-8893-981694e687d8",
+    "permission_mode": "default",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Write",
+    "tool_input": {
+      "file_path": "{{WORK}}/guarded/write.txt",
+      "content": "denied\n"
+    },
+    "tool_use_id": "toolu_0001"
+  },
+  "response": {
+    "hookSpecificOutput": {
+      "hookEventName": "PreToolUse",
+      "permissionDecision": "deny",
+      "permissionDecisionReason": "[POL001] Write would change protected policy files: {{WORK}}/guarded/write.txt\n  - {{WORK}}/guarded/write.txt: Protected protection.paths entry (actual: 'Write {{WORK}}/guarded/write.txt'). Repair: Do not change this file. If the change is needed, ask the user to make it, or to list the path in protection.allow",
+      "additionalContext": "Automated klaudiush validation check. Fix ALL reported errors at once and retry. Fixing one issue can introduce another (e.g., adding a type(scope): prefix can push the title over its length limit). In your next message, tell the user in one short, plain-language sentence what klaudiush blocked and why. Skip error codes and details."
+    },
+    "systemMessage": "❌ Blocked POL001: Write would change protected policy files: {{WORK}}/guarded/write.txt\n  - {{WORK}}/guarded/write.txt: Protected protection.paths entry. Fix: Do not change this file. If the change is needed, ask the user to make it, or to list the path in protection.allow\n  Ref: https://klaudiu.sh/e/POL001\n\n"
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "provider": "claude",
+  "harness": "claude",
+  "harness_version": "2.1.288",
+  "source": "live",
+  "scenario": "after_tool_repair",
+  "event": "PostToolUse",
+  "args": [
+    "--hook-type",
+    "PostToolUse"
+  ],
+  "expect": "advise",
+  "config": "[protection]\nenabled = true\npaths = [\"guarded/**\"]\n\n[providers.claude]\nenabled = true\n",
+  "workspace": {
+    "notes.md": "# T\n### Skip\ntext\n"
+  },
+  "payload": {
+    "session_id": "0e58e104-7ecf-416f-8f06-015a551cfbcc",
+    "transcript_path": "{{HOME}}/.claude/projects/{{WORK_SLUG}}/0e58e104-7ecf-416f-8f06-015a551cfbcc.jsonl",
+    "cwd": "{{WORK}}",
+    "prompt_id": "8f345eae-31e9-4544-beb8-273a091cb063",
+    "permission_mode": "default",
+    "hook_event_name": "PostToolUse",
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "printf '# T\\n### Skip\\ntext\\n' > notes.md",
+      "description": "harness step"
+    },
+    "tool_response": {
+      "stdout": "",
+      "stderr": "",
+      "interrupted": false,
+      "isImage": false,
+      "noOutputExpected": false
+    },
+    "tool_use_id": "toolu_0001",
+    "duration_ms": 62
+  },
+  "response": {
+    "hookSpecificOutput": {
+      "hookEventName": "PostToolUse",
+      "additionalContext": "klaudiush checked the files after the tool ran. The changes are already applied. Repair every finding below that your change caused. Repair required: [FILE005] {{WORK}}/notes.md: Line 2: Header should have empty line after it. Fix the formatting issue and retry\n  Line 2: Header should have empty line after it\n  Header: '### Skip'\n  Next line: 'text'"
+    },
+    "systemMessage": "🔧 Repair required FILE005: {{WORK}}/notes.md: Line 2: Header should have empty line after it\n  Fix: Fix the formatting issue and retry\n  Ref: https://klaudiu.sh/e/FILE005\n\nLine 2: Header should have empty line after it\nHeader: '### Skip'\nNext line: 'text'\n\n"
+  }
+}

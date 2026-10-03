@@ -1,0 +1,33 @@
+{
+  "provider": "codex",
+  "harness": "codex",
+  "harness_version": "0.160.0",
+  "source": "live",
+  "scenario": "completion_gate",
+  "event": "Stop",
+  "args": [
+    "--provider",
+    "codex",
+    "--event",
+    "Stop"
+  ],
+  "expect": "block",
+  "config": "[protection]\nenabled = true\npaths = [\"guarded/**\"]\n\n[evidence]\nenabled = true\n\n[[evidence.checks]]\nname = \"tests\"\ncommands = [\"./check.sh\"]\npaths = [\"src/**\"]\n\n[providers.claude]\nenabled = false\n\n[providers.codex]\nenabled = true\nexperimental = true\nhooks_config_path = \"{{HOME}}/.codex/hooks.json\"\n",
+  "replay_skip": "the gate compares against a baseline that earlier hooks of the session recorded",
+  "payload": {
+    "session_id": "01a10158-cf2c-7170-801d-edca1fb1b901",
+    "turn_id": "01a10158-cf47-74a0-8809-2ad2439291a1",
+    "transcript_path": "{{HOME}}/.codex/sessions/2026/10/03/rollout-2026-10-03T12-39-19-01a10158-cf2c-7170-801d-edca1fb1b901.jsonl",
+    "cwd": "{{WORK}}",
+    "hook_event_name": "Stop",
+    "model": "klaudiush-scripted",
+    "permission_mode": "bypassPermissions",
+    "stop_hook_active": false,
+    "last_assistant_message": "harness script finished"
+  },
+  "response": {
+    "decision": "block",
+    "reason": "klaudiush completion check failed. Fix these findings before finishing: [EVID001] Required check \"tests\" (test) has no passing result for the files as they are now: it has not run since the files changed.\n  - check tests: it has not run since the files changed (actual: 'missing'; required: a passing result for sha256:a8b35a8d189d1b9d3abe6b9ae1f5264868111778fd0ee3926e8bb7e3d24e77b0). Repair: Run `klaudiush evidence run tests` from {{WORK}}; Codex does not tell hooks whether a shell command succeeded, so running `./check.sh` directly does not count",
+    "systemMessage": "❌ Blocked EVID001: Required check \"tests\" (test) has no passing result for the files as they are now: it has not run since the files changed.\n  - check tests: it has not run since the files changed. Fix: Run `klaudiush evidence run tests` from {{WORK}}; Codex does not tell hooks whether a shell command succeeded, so running `./check.sh` directly does not count\n  Ref: https://klaudiu.sh/e/EVID001\n\nRepository: {{WORK}}\n\n"
+  }
+}

@@ -1,6 +1,9 @@
 package hook
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 func TestCodexPreToolUseRejectsLifecycleFields(t *testing.T) {
 	capability, ok := ProviderEventCapability(ProviderCodex, CanonicalEventBeforeTool)
@@ -215,5 +218,59 @@ func TestClaudeElicitationAcceptsBothDeclineForms(t *testing.T) {
 		if capability.Supports(ResponseFieldSystemMessage) {
 			t.Errorf("%s must not accept systemMessage", raw)
 		}
+	}
+}
+
+func TestNativeEventNames(t *testing.T) {
+	for _, tc := range []struct {
+		provider Provider
+		want     []string
+		absent   []string
+	}{
+		{
+			ProviderClaude,
+			[]string{"PreToolUse", "PostToolUse", "PostToolUseFailure", "Stop", "PermissionRequest"},
+			[]string{"AfterToolUse", "BeforeTool", "AfterAgent"},
+		},
+		{
+			ProviderCodex,
+			[]string{"PreToolUse", "PostToolUse", "Stop", "SessionStart", "SubagentStart"},
+			[]string{"AfterToolUse", "Notification", "PostToolUseFailure"},
+		},
+		{
+			ProviderGemini,
+			[]string{"BeforeTool", "AfterTool", "AfterAgent", "BeforeToolSelection"},
+			[]string{"PreToolUse", "Stop"},
+		},
+		{
+			ProviderOpenCode,
+			[]string{"tool.execute.before", "tool.execute.after", "session.idle"},
+			[]string{"permission.ask", "PreToolUse"},
+		},
+	} {
+		got := NativeEventNames(tc.provider)
+		if !slices.IsSorted(got) {
+			t.Errorf("%s: names not sorted: %v", tc.provider, got)
+		}
+
+		for _, name := range tc.want {
+			if !slices.Contains(got, name) {
+				t.Errorf("%s: missing %q in %v", tc.provider, name, got)
+			}
+		}
+
+		for _, name := range tc.absent {
+			if slices.Contains(got, name) {
+				t.Errorf("%s: unexpected %q", tc.provider, name)
+			}
+		}
+	}
+
+	if got := NativeEventNames(ProviderUnknown); got != nil {
+		t.Errorf("unknown provider: got %v", got)
+	}
+
+	if got := NativeEventNames(Provider("bogus")); got != nil {
+		t.Errorf("bogus provider: got %v", got)
 	}
 }

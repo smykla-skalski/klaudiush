@@ -1,0 +1,39 @@
+{
+  "provider": "codex",
+  "harness": "codex",
+  "harness_version": "0.160.0",
+  "source": "live",
+  "scenario": "deny_write",
+  "event": "PreToolUse",
+  "args": [
+    "--provider",
+    "codex",
+    "--event",
+    "PreToolUse"
+  ],
+  "expect": "deny",
+  "config": "[protection]\nenabled = true\npaths = [\"guarded/**\"]\n\n[providers.claude]\nenabled = false\n\n[providers.codex]\nenabled = true\nexperimental = true\nhooks_config_path = \"{{HOME}}/.codex/hooks.json\"\n",
+  "payload": {
+    "session_id": "01a10158-c28b-7ae3-a579-85696dffdfc6",
+    "turn_id": "01a10158-c2c8-70c2-84f0-1235fd42fe47",
+    "transcript_path": "{{HOME}}/.codex/sessions/2026/10/03/rollout-2026-10-03T12-39-16-01a10158-c28b-7ae3-a579-85696dffdfc6.jsonl",
+    "cwd": "{{WORK}}",
+    "hook_event_name": "PreToolUse",
+    "model": "klaudiush-scripted",
+    "permission_mode": "bypassPermissions",
+    "tool_name": "apply_patch",
+    "tool_input": {
+      "command": "*** Begin Patch\n*** Add File: guarded/write.txt\n+denied\n*** End Patch\n"
+    },
+    "tool_use_id": "call_0002"
+  },
+  "response": {
+    "hookSpecificOutput": {
+      "hookEventName": "PreToolUse",
+      "permissionDecision": "deny",
+      "permissionDecisionReason": "[POL001] apply_patch would change protected policy files: {{WORK}}/guarded/write.txt\n  - {{WORK}}/guarded/write.txt: Protected protection.paths entry (actual: 'apply_patch guarded/write.txt'). Repair: Do not change this file. If the change is needed, ask the user to make it, or to list the path in protection.allow",
+      "additionalContext": "Automated klaudiush validation check. Fix ALL reported errors at once and retry. Fixing one issue can introduce another (e.g., adding a type(scope): prefix can push the title over its length limit)."
+    },
+    "systemMessage": "❌ Blocked POL001: apply_patch would change protected policy files: {{WORK}}/guarded/write.txt\n  - {{WORK}}/guarded/write.txt: Protected protection.paths entry. Fix: Do not change this file. If the change is needed, ask the user to make it, or to list the path in protection.allow\n  Ref: https://klaudiu.sh/e/POL001\n\n"
+  }
+}

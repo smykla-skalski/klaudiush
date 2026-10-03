@@ -1,0 +1,35 @@
+{
+  "provider": "gemini",
+  "harness": "gemini-cli",
+  "harness_version": "docs-2026-10-03",
+  "source": "docs",
+  "reference": "https://geminicli.com/docs/hooks/reference/",
+  "scenario": "after_tool_repair",
+  "event": "AfterTool",
+  "args": [
+    "--provider",
+    "gemini",
+    "--event",
+    "AfterTool"
+  ],
+  "expect": "advise",
+  "config": "[protection]\nenabled = true\npaths = [\"guarded/**\"]\n\n[providers.claude]\nenabled = false\n\n[providers.gemini]\nenabled = true\n",
+  "payload": {
+    "session_id": "gemini-docs-session",
+    "transcript_path": "{{HOME}}/.gemini/tmp/project/chats/session-gemini-docs.json",
+    "cwd": "{{WORK}}",
+    "timestamp": "2026-10-03T10:00:00Z",
+    "hook_event_name": "AfterTool",
+    "tool_name": "run_shell_command",
+    "tool_input": {
+      "command": "printf '# T\\n### Skip\\ntext\\n' > notes.md"
+    },
+    "tool_response": {
+      "llmContent": "",
+      "returnDisplay": ""
+    }
+  },
+  "workspace": {
+    "notes.md": "# T\n### Skip\ntext\n"
+  }
+}

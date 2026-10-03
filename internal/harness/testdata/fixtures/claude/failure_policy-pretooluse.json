@@ -1,0 +1,41 @@
+{
+  "provider": "claude",
+  "harness": "claude",
+  "harness_version": "2.1.288",
+  "source": "live",
+  "scenario": "failure_policy",
+  "event": "PreToolUse",
+  "args": [
+    "--hook-type",
+    "PreToolUse"
+  ],
+  "expect": "deny",
+  "config": "[protection]\nenabled = true\npaths = [\"guarded/**\"]\n\n[providers.claude]\nenabled = true\n",
+  "workspace": {
+    ".klaudiush/config.toml": "[validators.git.commit\nbroken\n",
+    "{{HOME}}/.config/klaudiush/config.toml": "[failure_policy]\nmode = \"block\"\n"
+  },
+  "payload": {
+    "session_id": "29953f6c-6fb2-43dd-a935-58552764b665",
+    "transcript_path": "{{HOME}}/.claude/projects/{{WORK_SLUG}}/29953f6c-6fb2-43dd-a935-58552764b665.jsonl",
+    "cwd": "{{WORK}}",
+    "prompt_id": "71227547-a15e-4554-8bee-ffbc1d452aa9",
+    "permission_mode": "default",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "touch failpolicy.txt",
+      "description": "harness step"
+    },
+    "tool_use_id": "toolu_0001"
+  },
+  "response": {
+    "hookSpecificOutput": {
+      "hookEventName": "PreToolUse",
+      "permissionDecision": "deny",
+      "permissionDecisionReason": "[HOOK001] Validation unavailable: klaudiush could not run (configuration error): failed to load configuration: failed to load config: failed to load project config: toml: expected ']' to close table name. Ask the user to run 'klaudiush doctor' and fix the cause this message names",
+      "additionalContext": "Automated klaudiush validation check. A required check could not run, so the action is blocked. Retrying will not help until the check works; tell the user what failed. In your next message, tell the user in one short, plain-language sentence what klaudiush blocked and why. Skip error codes and details."
+    },
+    "systemMessage": "❌ Blocked, validation unavailable HOOK001: klaudiush could not run (configuration error): failed to load configuration: failed to load config: failed to load project config: toml: expected ']' to close table name\n  Fix: Ask the user to run 'klaudiush doctor' and fix the cause this message names\n  Ref: https://klaudiu.sh/e/HOOK001\n\n"
+  }
+}
