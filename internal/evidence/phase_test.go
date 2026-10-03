@@ -161,6 +161,33 @@ var _ = Describe("Phase", func() {
 			Expect(phase.Writable(repo, filepath.Join(repo, "src", "a.go"))).To(BeTrue())
 		})
 
+		It("never opens configuration or the files a prerequisite runs", func() {
+			phase.WritablePaths = []string{"**"}
+			phase.Requires = []*evidence.Check{compileOne(&config.EvidenceCheckConfig{
+				Name: "plan", Commands: []string{
+					"sh -e scripts/check.sh PLAN.md /abs/x", "./bin/verify PLAN.md",
+				},
+			})}
+
+			for _, rel := range []string{
+				"docs/.klaudiush/config.toml",
+				"docs/.Klaudiush/config.toml",
+				"docs/klaudiush.toml",
+				"KLAUDIUSH.TOML",
+				".gemini/settings.json",
+				"sub/.claude/settings.json",
+				".codex/hooks.json",
+				".mcp.json",
+				"scripts/check.sh",
+				"bin/verify",
+			} {
+				Expect(phase.Writable(repo, filepath.Join(repo, rel))).To(BeFalse(), rel)
+			}
+
+			Expect(phase.Writable(repo, filepath.Join(repo, "scripts", "other.sh"))).To(BeTrue())
+			Expect(phase.Writable(repo, filepath.Join(repo, "PLAN.md"))).To(BeTrue())
+		})
+
 		It("follows symbolic links out of a writable directory", func() {
 			if runtime.GOOS == "windows" {
 				Skip("symbolic links need privileges on Windows")
@@ -174,6 +201,18 @@ var _ = Describe("Phase", func() {
 			Expect(
 				phase.Writable(repo, filepath.Join(repo, "docs", "plans", "main.go")),
 			).To(BeFalse())
+		})
+
+		It("refuses a dangling symbolic link", func() {
+			if runtime.GOOS == "windows" {
+				Skip("symbolic links need privileges on Windows")
+			}
+
+			Expect(
+				os.Symlink(filepath.Join(repo, "src", "new.go"), filepath.Join(repo, "PLAN.md")),
+			).
+				To(Succeed())
+			Expect(phase.Writable(repo, filepath.Join(repo, "PLAN.md"))).To(BeFalse())
 		})
 	})
 
@@ -212,7 +251,7 @@ var _ = Describe("Phase", func() {
 			Entry(
 				"after cd",
 				func(b string) string { return "cd /repo && " + b + " evidence run plan" },
-				true,
+				false,
 			),
 			Entry("check that is no prerequisite",
 				func(string) string { return "klaudiush evidence run tests" }, false),
@@ -249,6 +288,11 @@ var _ = Describe("Phase", func() {
 				func(string) string { return "nope-q7zx evidence run plan" }, false),
 		)
 
+		It("resolves a running binary known only by name on PATH", func() {
+			Expect(phase.AllowsVerifier("klaudiush evidence status", "klaudiush")).To(BeTrue())
+			Expect(phase.AllowsVerifier("klaudiush evidence status", "nope-q7zx")).To(BeFalse())
+		})
+
 		It("refuses when the running binary is unknown or missing", func() {
 			Expect(phase.AllowsVerifier("klaudiush evidence status", "")).To(BeFalse())
 			Expect(phase.AllowsVerifier("klaudiush evidence status", binary+".gone")).To(BeFalse())
@@ -260,9 +304,9 @@ var _ = Describe("PhaseCoverage", func() {
 	It("restricts only providers with a tool-selection event", func() {
 		Expect(
 			evidence.PhaseCoverage(hook.ProviderGemini),
-		).To(ContainSubstring("gemini: restricted"))
+		).To(ContainSubstring("gemini: supported"))
 		Expect(evidence.PhaseCoverage(hook.ProviderClaude)).
-			To(ContainSubstring("claude: not restricted, it has no tool-selection event"))
+			To(ContainSubstring("claude: not supported, it has no tool-selection event"))
 		Expect(evidence.PhaseCoverageLines()).To(HaveLen(len(evidence.Providers)))
 	})
 })

@@ -50,14 +50,14 @@ func CoverageLines() []string {
 func PhaseCoverage(provider hook.Provider) string {
 	if hook.FiltersTools(provider) {
 		return fmt.Sprintf(
-			"%s: restricted; BeforeToolSelection withholds mutation tools and "+
-				"BeforeTool denies calls outside the phase",
+			"%s: supported; while restricted, BeforeToolSelection asks Gemini to offer only "+
+				"the phase's tools and BeforeTool denies calls outside the phase",
 			provider,
 		)
 	}
 
 	return fmt.Sprintf(
-		"%s: not restricted, it has no tool-selection event, so tool phases do not apply",
+		"%s: not supported, it has no tool-selection event, so tool phases do not apply",
 		provider,
 	)
 }

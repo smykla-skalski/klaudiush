@@ -50,5 +50,11 @@ var _ = Describe("EvidenceConfig", func() {
 		cfg := &config.EvidenceConfig{ToolPhase: phase}
 		Expect(cfg.GetToolPhase().IsEnabled()).To(BeTrue())
 		Expect(cfg.GetToolPhase().GetReadOnlyTools()).To(BeEmpty())
+		Expect(cfg.GetToolPhase().FiltersTools()).To(BeTrue())
+
+		off := false
+		phase.FilterTools = &off
+
+		Expect(cfg.GetToolPhase().FiltersTools()).To(BeFalse())
 	})
 })

@@ -361,9 +361,7 @@ func runEvidenceStatus(cmd *cobra.Command, _ []string) error {
 	printf := func(format string, args ...any) { fmt.Printf(format, args...) }
 	store := hooksession.NewStore()
 
-	if err := printToolPhaseStatus(ctx, printf, setup, store, loggerFromCmd(cmd)); err != nil {
-		return err
-	}
+	printToolPhaseStatus(ctx, printf, setup, store, loggerFromCmd(cmd))
 
 	return printCheckStatus(ctx, printf, store, setup.repo, setup.checks)
 }
@@ -376,22 +374,21 @@ func printToolPhaseStatus(
 	setup *evidenceSetup,
 	store *hooksession.Store,
 	log logger.Logger,
-) error {
+) {
 	if !setup.cfg.Evidence.GetToolPhase().IsEnabled() {
 		printf("Tool phase: disabled\n")
 
-		return nil
+		return
 	}
 
 	phase := newEvidenceGate(setup.cfg, store, failpolicy.New(setup.cfg.FailurePolicy), log).
 		toolPhase()
-	if phase.err != nil {
-		return errors.Wrap(phase.err, "invalid evidence tool phase")
-	}
-
 	st := phase.state(ctx, &hook.Context{WorkingDir: setup.repo})
 
 	switch {
+	case phase.err != nil:
+		printf("Tool phase: invalid, Gemini is offered only %s: %s\n",
+			strings.Join(phase.phase.AllowedTools(), ", "), firstLine(phase.err.Error()))
 	case st.unavailable != nil:
 		printf("Tool phase: unknown, %s\n", st.unavailable.Message)
 	case st.restricted:
@@ -405,8 +402,6 @@ func printToolPhaseStatus(
 	for _, line := range evidence.PhaseCoverageLines() {
 		printf("  %s\n", line)
 	}
-
-	return nil
 }
 
 // printCheckStatus shows each check's verdict the way the completion gate

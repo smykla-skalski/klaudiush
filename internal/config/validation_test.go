@@ -679,7 +679,7 @@ var _ = Describe("Validator", func() {
 			Expect(validatePolicySections(cfg)[0].Error()).To(ContainSubstring("evidence"))
 		})
 
-		It("checks the tool phase against the configured checks", func() {
+		It("leaves an invalid tool phase to the hook, which restricts Gemini", func() {
 			enabled := true
 			cfg := &config.Config{Evidence: &config.EvidenceConfig{
 				Enabled: &enabled,
@@ -694,10 +694,7 @@ var _ = Describe("Validator", func() {
 			Expect(validator.Validate(cfg)).To(Succeed())
 
 			cfg.Evidence.ToolPhase.Requires = []string{"tests"}
-			Expect(validatePolicySections(cfg)).To(HaveLen(1))
-			Expect(
-				validatePolicySections(cfg)[0].Error(),
-			).To(ContainSubstring("tool_phase.requires"))
+			Expect(validatePolicySections(cfg)).To(BeEmpty())
 		})
 	})
 

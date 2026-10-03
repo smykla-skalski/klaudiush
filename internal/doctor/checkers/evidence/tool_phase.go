@@ -29,7 +29,7 @@ var phaseProbeTools = []string{
 
 // phaseOpenTools are tools outside the default BeforeTool matcher that the
 // phase withholds only through the tool selection.
-var phaseOpenTools = []string{"save_memory", "write_todos", "mcp_server_tool"}
+var phaseOpenTools = []string{"save_memory", "mcp_server_tool"}
 
 // ToolPhaseChecker verifies the evidence tool phase compiles, that Gemini
 // runs klaudiush on BeforeToolSelection, and that the tools the phase
@@ -66,10 +66,18 @@ func (c *ToolPhaseChecker) Check(context.Context) doctor.CheckResult {
 		return doctor.Skip(toolPhaseCheckName, "Evidence tool phase disabled")
 	}
 
-	phase, err := compilePhase(evidenceCfg)
+	checks, err := evidence.Compile(evidenceCfg)
 	if err != nil {
 		return doctor.FailError(toolPhaseCheckName,
-			"Evidence tool phase is invalid, so Gemini only gets read-only tools").
+			"Evidence checks are invalid, so the configuration does not load").
+			WithDetails(err.Error())
+	}
+
+	phase, err := evidence.CompilePhase(evidenceCfg, checks)
+	if err != nil {
+		return doctor.FailError(toolPhaseCheckName,
+			"Evidence tool phase is invalid, so Gemini is offered only read-only tools "+
+				"and other calls report HOOK001").
 			WithDetails(err.Error())
 	}
 
@@ -87,15 +95,6 @@ func (c *ToolPhaseChecker) Check(context.Context) doctor.CheckResult {
 	return checkGeminiSettings(gemini.SettingsPath, phase, coverage)
 }
 
-func compilePhase(cfg *config.EvidenceConfig) (*evidence.Phase, error) {
-	checks, err := evidence.Compile(cfg)
-	if err != nil {
-		return nil, err
-	}
-
-	return evidence.CompilePhase(cfg, checks)
-}
-
 func checkGeminiSettings(
 	settingsPath string,
 	phase *evidence.Phase,
@@ -110,7 +109,7 @@ func checkGeminiSettings(
 	}
 
 	if !registered {
-		return doctor.FailWarning(toolPhaseCheckName, fmt.Sprintf(
+		return doctor.FailError(toolPhaseCheckName, fmt.Sprintf(
 			"%s does not run klaudiush on %s, so Gemini offers every tool; "+
 				"BeforeTool still denies withheld calls",
 			settingsPath, settings.GeminiEventToolSelection,

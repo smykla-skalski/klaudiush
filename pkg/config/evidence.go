@@ -43,6 +43,7 @@ type EvidenceConfig struct {
 // DefaultToolPhaseReadOnlyTools are the Gemini built-in tools offered while
 // a tool phase withholds mutation tools.
 var DefaultToolPhaseReadOnlyTools = []string{
+	"ask_user",
 	"glob",
 	"google_web_search",
 	"grep_search",
@@ -50,6 +51,7 @@ var DefaultToolPhaseReadOnlyTools = []string{
 	"read_file",
 	"read_many_files",
 	"web_fetch",
+	"write_todos",
 }
 
 // EvidenceToolPhaseConfig restricts the tools Gemini offers the model until
@@ -82,6 +84,13 @@ type EvidenceToolPhaseConfig struct {
 	// the files write_file and replace may change while the phase is
 	// restricted, such as the plan a prerequisite checks. Default: none.
 	WritablePaths []string `json:"writable_paths,omitempty" koanf:"writable_paths" toml:"writable_paths,omitempty"`
+
+	// FilterTools answers Gemini BeforeToolSelection with the phase's tools.
+	// Gemini sends them as allowedFunctionNames with mode AUTO, which the
+	// Gemini API documents only for modes ANY and VALIDATED; set false if
+	// the model API rejects it, and BeforeTool still denies withheld calls.
+	// Default: true.
+	FilterTools *bool `json:"filter_tools,omitempty" koanf:"filter_tools" toml:"filter_tools,omitempty"`
 }
 
 // IsEnabled reports whether the tool phase is on. Defaults to false.
@@ -91,6 +100,15 @@ func (p *EvidenceToolPhaseConfig) IsEnabled() bool {
 	}
 
 	return *p.Enabled
+}
+
+// FiltersTools reports whether Gemini tool selection is narrowed. Defaults to true.
+func (p *EvidenceToolPhaseConfig) FiltersTools() bool {
+	if p == nil || p.FilterTools == nil {
+		return true
+	}
+
+	return *p.FilterTools
 }
 
 // GetReadOnlyTools returns the tools offered while restricted.

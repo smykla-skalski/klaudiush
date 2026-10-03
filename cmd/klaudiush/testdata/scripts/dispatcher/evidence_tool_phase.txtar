@@ -10,7 +10,7 @@ exec git commit -qm init
 stdin $WORK/select.json
 exec klaudiush --provider gemini --event BeforeToolSelection
 stdout '"hookEventName":"BeforeToolSelection"'
-stdout '"toolConfig":\{"mode":"AUTO","allowedFunctionNames":\["glob","google_web_search","grep_search","list_directory","read_file","read_many_files","replace","run_shell_command","web_fetch","write_file"\]\}'
+stdout '"toolConfig":\{"mode":"AUTO","allowedFunctionNames":\["ask_user","glob","google_web_search","grep_search","list_directory","read_file","read_many_files","replace","run_shell_command","web_fetch","write_file","write_todos"\]\}'
 ! stdout 'decision'
 ! stdout 'systemMessage'
 
@@ -21,13 +21,25 @@ stdout 'EVID002'
 stdout 'Tool \\"write_file\\" is withheld for now'
 stdout 'plan \(it has not run since the files changed\)'
 stdout 'evidence run plan'
-stdout 'may change only PLAN.txt'
+stdout 'may change only PLAN.txt, docs/\*\*'
 
 stdin $WORK/shell-other.json
 exec klaudiush --provider gemini --event BeforeTool
 stdout 'EVID002'
 
 stdin $WORK/shell-redirect.json
+exec klaudiush --provider gemini --event BeforeTool
+stdout 'EVID002'
+
+stdin $WORK/shell-cd.json
+exec klaudiush --provider gemini --event BeforeTool
+stdout 'EVID002'
+
+stdin $WORK/shell-dir.json
+exec klaudiush --provider gemini --event BeforeTool
+stdout 'EVID002'
+
+stdin $WORK/write-nested-config.json
 exec klaudiush --provider gemini --event BeforeTool
 stdout 'EVID002'
 
@@ -57,8 +69,8 @@ exec klaudiush --provider codex --event PreToolUse
 
 exec klaudiush evidence status
 stdout 'Tool phase: restricted, waiting on plan'
-stdout 'gemini: restricted; BeforeToolSelection withholds mutation tools'
-stdout 'claude: not restricted, it has no tool-selection event'
+stdout 'gemini: supported; while restricted, BeforeToolSelection asks Gemini'
+stdout 'claude: not supported, it has no tool-selection event'
 
 cp $WORK/plan.txt PLAN.txt
 exec klaudiush evidence run plan
@@ -97,7 +109,7 @@ paths = ["PLAN.txt"]
 [evidence.tool_phase]
 enabled = true
 requires = ["plan"]
-writable_paths = ["PLAN.txt"]
+writable_paths = ["PLAN.txt", "docs/**"]
 
 -- project/a.go --
 package a
@@ -126,6 +138,15 @@ Plan: add X.
 
 -- shell-verifier.json --
 {"session_id":"g1","hook_event_name":"BeforeTool","tool_name":"run_shell_command","tool_input":{"command":"klaudiush evidence run plan"}}
+
+-- shell-cd.json --
+{"session_id":"g1","hook_event_name":"BeforeTool","tool_name":"run_shell_command","tool_input":{"command":"cd docs && klaudiush evidence run plan"}}
+
+-- shell-dir.json --
+{"session_id":"g1","hook_event_name":"BeforeTool","tool_name":"run_shell_command","tool_input":{"command":"klaudiush evidence run plan","dir_path":"docs"}}
+
+-- write-nested-config.json --
+{"session_id":"g1","hook_event_name":"BeforeTool","tool_name":"write_file","tool_input":{"file_path":"docs/.klaudiush/config.toml","content":"x"}}
 
 -- mcp.json --
 {"session_id":"g1","hook_event_name":"BeforeTool","tool_name":"mcp_files_write","tool_input":{"path":"a.go"},"mcp_context":{"server_name":"files"}}

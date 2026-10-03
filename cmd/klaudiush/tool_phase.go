@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	osexec "os/exec"
 	"path/filepath"
 	"strings"
 
@@ -21,9 +23,10 @@ import (
 // phase has no state of its own: it is judged from evidence receipts every
 // time, so a passing check opens it and a later change closes it again.
 type toolPhase struct {
-	gate  *evidenceGate
-	phase *evidence.Phase
-	err   error
+	gate    *evidenceGate
+	phase   *evidence.Phase
+	err     error
+	filters bool
 }
 
 // newToolPhase returns the tool phase the configuration enables, or nil. A
@@ -45,13 +48,19 @@ func newToolPhase(cfg *config.Config, gate *evidenceGate) *toolPhase {
 		phase = &evidence.Phase{ReadOnlyTools: config.DefaultToolPhaseReadOnlyTools}
 	}
 
-	return &toolPhase{gate: gate, phase: phase, err: err}
+	return &toolPhase{
+		gate:    gate,
+		phase:   phase,
+		err:     err,
+		filters: cfg.Evidence.GetToolPhase().FiltersTools(),
+	}
 }
 
 // phaseState is the phase as judged for one hook: whether mutation tools
 // are withheld, which prerequisites are unmet and why, and the finding for
 // a phase klaudiush could not judge. Outside a repository there is no
-// content to judge, so the phase stays open there, as the evidence gate does.
+// content to judge, so the phase stays open there, as the evidence gate does;
+// without git klaudiush cannot tell, so the failure policy decides.
 type phaseState struct {
 	repo        string
 	restricted  bool
@@ -68,6 +77,16 @@ func (p *toolPhase) state(ctx context.Context, hookCtx *hook.Context) phaseState
 
 	repo, err := evidence.RepoRoot(ctx, evidenceWorkDir(hookCtx))
 	if err != nil {
+		if _, lookErr := osexec.LookPath("git"); lookErr != nil {
+			finding := p.gate.unavailable(
+				"find git to judge the evidence tool phase",
+				lookErr,
+				true,
+			)
+
+			return phaseState{restricted: finding.ShouldBlock, unavailable: finding}
+		}
+
 		return phaseState{}
 	}
 
@@ -129,6 +148,10 @@ func (p *toolPhase) selection(ctx context.Context, hookCtx *hook.Context) any {
 		return nil
 	}
 
+	if !p.filters {
+		return nil
+	}
+
 	st := p.state(ctx, hookCtx)
 	if !st.restricted {
 		p.gate.log.Info("tool phase open, offering every tool")
@@ -152,7 +175,8 @@ func (p *toolPhase) apply(
 	errs []*dispatcher.ValidationError,
 ) []*dispatcher.ValidationError {
 	if p == nil || !hook.FiltersTools(hookCtx.Provider) ||
-		hookCtx.Event != hook.CanonicalEventBeforeTool {
+		hookCtx.Event != hook.CanonicalEventBeforeTool ||
+		p.phase.AllowsReadOnly(hookCtx.ToolNameString()) {
 		return errs
 	}
 
@@ -184,12 +208,40 @@ func (p *toolPhase) permits(hookCtx *hook.Context, repo string) bool {
 	case p.phase.AllowsReadOnly(hookCtx.ToolNameString()):
 		return true
 	case hookCtx.IsBashTool():
-		return p.phase.AllowsVerifier(hookCtx.GetCommand(), p.gate.binary)
+		return !namesShellDir(hookCtx) &&
+			p.phase.AllowsVerifier(hookCtx.GetCommand(), p.gate.binary)
 	case hookCtx.IsFileTool():
 		return p.writesOnlyWritable(hookCtx, repo)
 	default:
 		return false
 	}
+}
+
+// shellDirKeys are the shell tool arguments that choose the directory a
+// command runs in (Gemini run_shell_command dir_path, directory in older
+// releases).
+var shellDirKeys = []string{"dir_path", "directory", "workdir", "cwd"}
+
+// namesShellDir reports a shell call that runs somewhere other than the
+// hook's directory, where the verifier could load another configuration.
+func namesShellDir(hookCtx *hook.Context) bool {
+	for _, key := range shellDirKeys {
+		raw, ok := hookCtx.ToolInput.Additional[key]
+		if !ok {
+			continue
+		}
+
+		var dir string
+		if err := json.Unmarshal(raw, &dir); err != nil {
+			return true
+		}
+
+		if dir != "" && dir != "." {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (p *toolPhase) writesOnlyWritable(hookCtx *hook.Context, repo string) bool {

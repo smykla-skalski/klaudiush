@@ -345,7 +345,8 @@ func (h *hookRun) newDispatcher(
 }
 
 // loadPolicyAndRegistry loads the configuration, hands the failure policy to
-// the watchdog, and builds the validator registry.
+// the watchdog, and builds the validator registry. Tool selection runs no
+// validator and runs before every model call, so it gets no registry.
 func (h *hookRun) loadPolicyAndRegistry(
 	hookCtx *hook.Context,
 	workDir string,
@@ -379,6 +380,10 @@ func (h *hookRun) loadPolicyAndRegistry(
 	// Store context and config for crash recovery
 	crashContext = hookCtx
 	crashConfig = cfg
+
+	if hookCtx.Event == hook.CanonicalEventToolSelection {
+		return cfg, policy, nil, nil
+	}
 
 	registry, _, err := factory.NewRegistryBuilder(h.log).BuildWithRuleEngine(cfg)
 	if err != nil {

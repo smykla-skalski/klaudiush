@@ -542,6 +542,9 @@
             "type": "string"
           },
           "type": "array"
+        },
+        "filter_tools": {
+          "type": "boolean"
         }
       },
       "additionalProperties": false,

@@ -82,21 +82,26 @@ var _ = Describe("ToolPhaseChecker", func() {
 		Expect(result.Status).To(Equal(doctor.StatusFail))
 		Expect(result.Severity).To(Equal(doctor.SeverityError))
 
+		Expect(result.Message).To(ContainSubstring("only read-only tools"))
+
 		cfg.Evidence.Checks[0].Commands = nil
-		Expect(check(cfg).Severity).To(Equal(doctor.SeverityError))
+		result = check(cfg)
+		Expect(result.Severity).To(Equal(doctor.SeverityError))
+		Expect(result.Message).To(ContainSubstring("Evidence checks are invalid"))
 	})
 
 	It("warns that only Gemini can have tools withheld", func() {
 		result := check(phaseConfig(""))
 		Expect(result.Status).To(Equal(doctor.StatusFail))
 		Expect(result.Severity).To(Equal(doctor.SeverityWarning))
-		Expect(result.Details).To(ContainElement(ContainSubstring("claude: not restricted")))
+		Expect(result.Details).To(ContainElement(ContainSubstring("claude: not supported")))
 	})
 
 	It("offers the install fix when BeforeToolSelection is not registered", func() {
 		result := check(phaseConfig(geminiNoSelection))
 		Expect(result.Status).To(Equal(doctor.StatusFail))
 		Expect(result.Message).To(ContainSubstring("Gemini offers every tool"))
+		Expect(result.Severity).To(Equal(doctor.SeverityError))
 		Expect(result.FixID).To(Equal("install_hook"))
 	})
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"time"
@@ -131,6 +132,18 @@ var _ = Describe("toolPhase", func() {
 			NotTo(BeNil())
 	})
 
+	It("leaves tool selection alone when filtering is off, still denying per call", func() {
+		cfg := toolPhaseConfig()
+		off := false
+		cfg.Evidence.ToolPhase.FilterTools = &off
+
+		phase := newEvidenceGate(cfg, store, nil, log).toolPhase()
+		Expect(phase.selection(ctx, geminiCtx(hook.CanonicalEventToolSelection, repo, ""))).
+			To(BeNil())
+		Expect(phase.apply(ctx, geminiCtx(hook.CanonicalEventBeforeTool, repo, "write_file"), nil)).
+			To(HaveLen(1))
+	})
+
 	It("answers only Gemini tool selection", func() {
 		phase := newEvidenceGate(toolPhaseConfig(), store, nil, log).toolPhase()
 
@@ -176,12 +189,35 @@ var _ = Describe("toolPhase", func() {
 		shell.ToolInput.Command = shellQuote(gate.binary) + " evidence run plan"
 		Expect(phase.apply(ctx, shell, nil)).To(BeEmpty())
 
+		for _, dir := range []string{`"."`, `""`} {
+			shell.ToolInput.Additional = map[string]json.RawMessage{
+				"dir_path": json.RawMessage(dir),
+			}
+			Expect(phase.apply(ctx, shell, nil)).To(BeEmpty())
+		}
+
+		for _, dir := range []string{`"docs"`, `42`} {
+			shell.ToolInput.Additional = map[string]json.RawMessage{
+				"dir_path": json.RawMessage(dir),
+			}
+			Expect(phase.apply(ctx, shell, nil)).To(HaveLen(1))
+		}
+
 		claude := geminiCtx(hook.CanonicalEventBeforeTool, repo, "write_file")
 		claude.Provider = hook.ProviderClaude
 		Expect(phase.apply(ctx, claude, nil)).To(BeEmpty())
 
 		passPlan(gate)
 		Expect(phase.apply(ctx, write, nil)).To(BeEmpty())
+	})
+
+	It("follows the failure policy when git is missing", func() {
+		GinkgoT().Setenv("PATH", GinkgoT().TempDir())
+
+		phase := newEvidenceGate(toolPhaseConfig(), store, nil, log).toolPhase()
+		errs := phase.apply(ctx, geminiCtx(hook.CanonicalEventBeforeTool, repo, "write_file"), nil)
+		Expect(errs).To(HaveLen(2))
+		Expect(errs[0].Message).To(ContainSubstring("find git"))
 	})
 
 	It("leaves the phase open outside a repository", func() {
