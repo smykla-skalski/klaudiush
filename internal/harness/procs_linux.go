@@ -19,9 +19,10 @@ const (
 	statFields  = 20
 )
 
-// listProcesses returns the live processes the caller's user owns. Env is
-// nil for those whose environment cannot be read (non-dumpable ones).
-func listProcesses() ([]process, error) {
+// listProcesses returns the live processes the caller's user owns, with
+// their environment when withEnv is set. Env is nil for those whose
+// environment cannot be read (non-dumpable ones).
+func listProcesses(withEnv bool) ([]process, error) {
 	proc, err := os.OpenRoot("/proc")
 	if err != nil {
 		return nil, errors.Wrap(err, "opening /proc")
@@ -42,7 +43,7 @@ func listProcesses() ([]process, error) {
 			continue
 		}
 
-		if p, ok := readProcess(proc, pid); ok {
+		if p, ok := readProcess(proc, pid, withEnv); ok {
 			out = append(out, p)
 		}
 	}
@@ -50,7 +51,7 @@ func listProcesses() ([]process, error) {
 	return out, nil
 }
 
-func readProcess(proc *os.Root, pid int) (process, bool) {
+func readProcess(proc *os.Root, pid int, withEnv bool) (process, bool) {
 	dir := strconv.Itoa(pid) + "/"
 
 	stat, err := proc.ReadFile(dir + "stat")
@@ -77,6 +78,9 @@ func readProcess(proc *os.Root, pid int) (process, bool) {
 	start, _ := strconv.ParseInt(fields[statStart], 10, 64)
 
 	p := process{PID: pid, PPID: ppid, SID: sid, Start: start}
+	if !withEnv {
+		return p, true
+	}
 
 	raw, err := proc.ReadFile(dir + "environ")
 	if err != nil {
@@ -153,3 +157,7 @@ func signalByHandle(pid int, start int64, sig unix.Signal) (sent, handled bool) 
 
 	return unix.PidfdSendSignal(fd, sig, nil, 0) == nil, true
 }
+
+// keeperBinary names the running binary through /proc, which still reaches
+// it after its file was removed.
+func keeperBinary() (string, error) { return "/proc/self/exe", nil }

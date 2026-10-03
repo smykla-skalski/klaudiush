@@ -1,0 +1,82 @@
+exec git init --initial-branch=main
+exec git config user.email "test@test.com"
+exec git config user.name "Test User"
+
+cp file.go staged.go
+exec git add staged.go
+
+stdin docker-git.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+! stdout 'SHELL002'
+
+stdin compose-git.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+! stdout 'SHELL002'
+
+stdin podman-latest-git.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+! stdout 'SHELL002'
+
+stdin docker-push.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'GIT007'
+! stdout 'SHELL002'
+
+stdin docker-echo.json
+exec klaudiush --hook-type PreToolUse
+! stdout .
+
+stdin compose-echo.json
+exec klaudiush --hook-type PreToolUse
+! stdout .
+
+stdin docker-valid.json
+exec klaudiush --hook-type PreToolUse
+! stdout .
+
+stdin docker-variable.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+stdout 'exec container or an option before it comes from a variable klaudiush cannot resolve'
+! stdout 'KLAUDIUSH_TEST_SECRET'
+
+stdin docker-output.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+stdout 'exec container or an option before it comes from command output'
+
+-- file.go --
+package main
+
+-- docker-git.json --
+{"tool_name": "Bash", "tool_input": {"command": "docker exec -it -u root -w /w app git commit -m 'bad title'"}}
+
+-- compose-git.json --
+{"tool_name": "Bash", "tool_input": {"command": "docker compose -f c.yml exec -T app git commit -m 'bad title'"}}
+
+-- podman-latest-git.json --
+{"tool_name": "Bash", "tool_input": {"command": "podman exec --latest git commit -m 'bad title'"}}
+
+-- docker-push.json --
+{"tool_name": "Bash", "tool_input": {"command": "docker exec -u root app git push nowhere feat"}}
+
+-- docker-echo.json --
+{"tool_name": "Bash", "tool_input": {"command": "docker exec app echo git commit -m x"}}
+
+-- compose-echo.json --
+{"tool_name": "Bash", "tool_input": {"command": "docker compose exec -T app echo git push --force nowhere main"}}
+
+-- docker-valid.json --
+{"tool_name": "Bash", "tool_input": {"command": "docker exec app git commit -sS -m 'feat(api): add user endpoint'"}}
+
+-- docker-variable.json --
+{"tool_name": "Bash", "tool_input": {"command": "docker exec \"$KLAUDIUSH_TEST_SECRET\" echo git commit -m x"}}
+
+-- docker-output.json --
+{"tool_name": "Bash", "tool_input": {"command": "docker exec $(docker ps -q) ls"}}
