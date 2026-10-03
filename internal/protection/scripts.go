@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/pelletier/go-toml/v2"
+	"mvdan.cc/sh/v3/syntax"
 )
 
 // maxSettingsBytes bounds how much of a hook settings file is read.
@@ -133,26 +134,12 @@ func collectCommands(node any, commands *[]string) {
 // commandFiles returns the files a command line names: words that resolve,
 // against the project root, to a regular file, and for hooks also paths
 // that do not exist yet, so a missing hook script cannot be created. Program
-// names found only on PATH are left out.
+// names found only on PATH are left out. Words are read with shell syntax,
+// so a quoted path keeps its spaces.
 func (s *Set) commandFiles(command string, mustExist bool) []string {
-	for _, name := range projectDirVars {
-		command = strings.ReplaceAll(command, "${"+name+"}", s.projectRoot)
-		command = strings.ReplaceAll(command, "$"+name, s.projectRoot)
-	}
-
-	command = envRef.ReplaceAllStringFunc(command, func(ref string) string {
-		name := strings.Trim(ref, "${}")
-		if value, ok := s.lookupEnv(name); ok {
-			return value
-		}
-
-		return ref
-	})
-	command = strings.NewReplacer(`"`, "", "'", "").Replace(command)
-
 	var files []string
 
-	for word := range strings.FieldsSeq(command) {
+	for _, word := range s.commandWords(command, 0) {
 		if word == "" || strings.HasPrefix(word, "-") {
 			continue
 		}
@@ -176,4 +163,135 @@ func (s *Set) commandFiles(command string, mustExist bool) []string {
 	}
 
 	return files
+}
+
+// commandWords returns the words of command after quote removal and
+// expansion of the variables the hook environment knows. A word holding
+// whitespace that is not itself a file, such as the script of bash -c, is
+// read again as a command. A command that does not parse is split on
+// whitespace with quotes dropped, so it still yields every candidate.
+func (s *Set) commandWords(command string, depth int) []string {
+	file, err := syntax.NewParser(syntax.KeepComments(false)).Parse(
+		strings.NewReader(command), "",
+	)
+	if err != nil {
+		return strings.Fields(strings.NewReplacer(`"`, "", "'", "").Replace(s.expandRefs(command)))
+	}
+
+	var words []string
+
+	syntax.Walk(file, func(node syntax.Node) bool {
+		word, ok := node.(*syntax.Word)
+		if !ok {
+			return true
+		}
+
+		value, ok := s.wordValue(word)
+		if !ok {
+			return true
+		}
+
+		words = append(words, value)
+
+		if depth < maxCommandDepth && strings.ContainsAny(value, " \t\n;&|") &&
+			!s.isFile(value) {
+			words = append(words, s.commandWords(value, depth+1)...)
+		}
+
+		return true
+	})
+
+	return words
+}
+
+// maxCommandDepth bounds how deep words are read again as commands.
+const maxCommandDepth = 3
+
+func (s *Set) isFile(word string) bool {
+	info, err := os.Stat(s.absolute(word, s.projectRoot))
+
+	return err == nil && info.Mode().IsRegular()
+}
+
+// wordValue joins the parts of word, reporting false for parts whose value
+// is only known when the command runs (command substitution, arithmetic).
+func (s *Set) wordValue(word *syntax.Word) (string, bool) {
+	var b strings.Builder
+
+	for _, part := range word.Parts {
+		if !s.writePart(&b, part) {
+			return "", false
+		}
+	}
+
+	return b.String(), true
+}
+
+func (s *Set) writePart(b *strings.Builder, part syntax.WordPart) bool {
+	switch p := part.(type) {
+	case *syntax.Lit:
+		b.WriteString(unescape(p.Value))
+	case *syntax.SglQuoted:
+		b.WriteString(p.Value)
+	case *syntax.DblQuoted:
+		for _, inner := range p.Parts {
+			if !s.writePart(b, inner) {
+				return false
+			}
+		}
+	case *syntax.ParamExp:
+		if p.Param == nil {
+			return false
+		}
+
+		b.WriteString(s.expandRefs("${" + p.Param.Value + "}"))
+	default:
+		return false
+	}
+
+	return true
+}
+
+// expandRefs replaces the project directory variables with the project
+// root and other $NAME references with their value, leaving unknown ones.
+func (s *Set) expandRefs(command string) string {
+	for _, name := range projectDirVars {
+		command = strings.ReplaceAll(command, "${"+name+"}", s.projectRoot)
+		command = strings.ReplaceAll(command, "$"+name, s.projectRoot)
+	}
+
+	return envRef.ReplaceAllStringFunc(command, func(ref string) string {
+		name := strings.Trim(ref, "${}")
+		if value, ok := s.lookupEnv(name); ok {
+			return value
+		}
+
+		return "$" + name
+	})
+}
+
+// unescape drops the backslashes of an unquoted word: policy\ check.sh
+// names "policy check.sh".
+func unescape(value string) string {
+	if !strings.Contains(value, `\`) {
+		return value
+	}
+
+	var b strings.Builder
+
+	escaped := false
+
+	for _, r := range value {
+		if r == '\\' && !escaped {
+			escaped = true
+
+			continue
+		}
+
+		escaped = false
+
+		b.WriteRune(r)
+	}
+
+	return b.String()
 }

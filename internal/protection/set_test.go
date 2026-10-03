@@ -333,6 +333,36 @@ var _ = Describe("Validate", func() {
 	})
 })
 
+var _ = Describe("hook scripts with spaces", func() {
+	It("protects the quoted or escaped path, not its fragments", func() {
+		e := newEnv(GinkgoT().TempDir(), "linux", nil)
+		quoted := e.write("project/hooks/policy check.sh", "")
+		escaped := e.write("project/hooks/escaped check.sh", "")
+		inner := e.write("project/hooks/inner.sh", "")
+		e.write("project/.claude/settings.json",
+			`{"hooks":{"PreToolUse":[{"hooks":[`+
+				`{"type":"command","command":"bash \"$CLAUDE_PROJECT_DIR/hooks/policy check.sh\" --x"},`+
+				`{"type":"command","command":"./hooks/escaped\\ check.sh"},`+
+				`{"type":"command","command":"bash -c './hooks/inner.sh && echo $(date)'"},`+
+				`{"type":"command","command":"bash 'unterminated ./hooks/broken.sh"}`+
+				`]}]}}`)
+
+		set := e.set()
+
+		for _, path := range []string{
+			quoted, escaped, inner,
+			filepath.Join(e.project, "hooks", "broken.sh"),
+		} {
+			m, ok := set.Check(path)
+			Expect(ok).To(BeTrue(), path)
+			Expect(m.Reason).To(Equal(protection.ReasonHookScript))
+		}
+
+		_, ok := set.Check(filepath.Join(e.project, "hooks", "policy"))
+		Expect(ok).To(BeFalse())
+	})
+})
+
 var _ = Describe("missing hook scripts", func() {
 	It("protects a hook script that does not exist yet", func() {
 		e := newEnv(GinkgoT().TempDir(), "linux", nil)
