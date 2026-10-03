@@ -58,7 +58,7 @@ var setupCommands = nameSet("cd pushd popd pwd set true : echo printf test [")
 // klaudiush's own lookup.
 var (
 	lookupEnvPrefixes = []string{"GIT_", "GO", "CGO_"}
-	lookupEnvNames    = nameSet("HOME XDG_CONFIG_HOME PATH BASH_ENV ENV")
+	lookupEnvNames    = nameSet("HOME XDG_CONFIG_HOME PATH BASH_ENV ENV CDPATH")
 )
 
 // substitutedProgram returns what a command substitution in a program word
@@ -127,19 +127,7 @@ func (w *astWalker) lookupOutput(words []*syntax.Word) (string, bool) {
 // a lookup reads. Commands that launched this script are part of running it.
 func (w *astWalker) lookupUnchanged() bool {
 	if w.inLoop || w.dirUnknown || w.state.pathChanged || w.state.untrusted ||
-		w.defined(gitProgram) || w.defined("go") {
-		return false
-	}
-
-	if w.distrust {
-		for _, name := range []string{"BASH_ENV", "ENV"} {
-			if _, set := w.resolver.LookupEnv(name); set {
-				return false
-			}
-		}
-	}
-
-	if slices.ContainsFunc(w.touchedVars(), lookupVar) {
+		w.defined(gitProgram) || w.defined("go") || w.lookupEnvChanged() {
 		return false
 	}
 
@@ -150,16 +138,35 @@ func (w *astWalker) lookupUnchanged() bool {
 			return false
 		}
 
-		for _, cmd := range p.commands {
-			if cmd.Location.Seq != seq && !setupCommands[cmd.Name] {
-				return false
-			}
+		if slices.ContainsFunc(p.commands, func(cmd Command) bool {
+			return cmd.Location.Seq != seq && !setupCommands[cmd.Name]
+		}) {
+			return false
 		}
 
 		seq = p.launchSeq
 	}
 
 	return true
+}
+
+// lookupEnvChanged reports an environment the lookup may not share with the
+// shell: CDPATH sending a cd elsewhere, a new shell sourcing BASH_ENV or ENV
+// first, or a variable git or go read assigned on the line.
+func (w *astWalker) lookupEnvChanged() bool {
+	if cdpath, set := w.resolver.LookupEnv("CDPATH"); set && cdpath != "" && w.currentDir != "" {
+		return true
+	}
+
+	if w.distrust && slices.ContainsFunc([]string{"BASH_ENV", "ENV"}, func(name string) bool {
+		_, set := w.resolver.LookupEnv(name)
+
+		return set
+	}) {
+		return true
+	}
+
+	return slices.ContainsFunc(w.touchedVars(), lookupVar)
 }
 
 // touchedVars names every variable assigned, forgotten or made dynamic on
