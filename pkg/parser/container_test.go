@@ -10,6 +10,14 @@ import (
 	"github.com/smykla-skalski/klaudiush/pkg/parser"
 )
 
+// Timing bounds are relative to echo given the same words, so a slow or
+// race-instrumented run scales both; a pass per runner name over the rest of
+// the arguments (quadratic) is hundreds of times slower than echo.
+const (
+	maxLinearFactor = 50
+	minLinearBound  = 500 * time.Millisecond
+)
+
 var _ = Describe("Container --entrypoint", func() {
 	resolver := fakeResolver{
 		env: map[string]string{"EP": "git"},
@@ -144,18 +152,26 @@ var _ = Describe("Container --entrypoint", func() {
 		Entry("many run words", "docker "+strings.Repeat("run --a ", 3000)+"--entrypoint git i"),
 	)
 
-	DescribeTable("scans many runner names quickly",
-		func(command string) {
-			start := time.Now()
-			result := parse(command)
+	DescribeTable("scans many runner names in time linear in the arguments",
+		func(words string) {
+			timed := func(command string) time.Duration {
+				start := time.Now()
+				result := parse(command)
+				elapsed := time.Since(start)
 
-			Expect(result).NotTo(BeNil())
-			Expect(time.Since(start)).To(BeNumerically("<", time.Second))
+				Expect(result).NotTo(BeNil())
+
+				return elapsed
+			}
+
+			baseline := timed("echo " + words)
+			limit := max(maxLinearFactor*baseline, minLinearBound)
+
+			Expect(timed("foo " + words)).To(BeNumerically("<", limit))
 		},
-		Entry("runner names", "foo "+strings.Repeat("docker ", 10000)),
-		Entry("runner names before a run",
-			"foo "+strings.Repeat("docker ", 10000)+"run --entrypoint"),
-		Entry("variables", "foo "+strings.Repeat("$A ", 10000)+"run"),
+		Entry("runner names", strings.Repeat("docker ", 10000)),
+		Entry("runner names before a run", strings.Repeat("docker ", 10000)+"run --entrypoint"),
+		Entry("variables", strings.Repeat("$A ", 10000)+"run"),
 	)
 
 	It("reads a variable holding the entrypoint both quoted and split", func() {

@@ -812,7 +812,7 @@ func scanLaunch(cmd Command) launch {
 			rest = rest[1:]
 		}
 
-		if mayRunContainers(commandName(arg)) {
+		if isContainerRunner(commandName(arg)) {
 			runners++
 		}
 
@@ -862,7 +862,7 @@ func launchesTracked(arg string, rest []string) bool {
 		_, _, ok := shellOperand(rest)
 
 		return ok
-	case mayRunContainers(name):
+	case isContainerRunner(name):
 		return containerRuns(rest).tracked() || mayHideEntrypoint(rest)
 	default:
 		return isInterpreter || isLauncher || name == evalBuiltin || name == sourceBuiltin

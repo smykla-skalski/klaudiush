@@ -412,8 +412,16 @@ func shellWords(value string) []string {
 // mayRunContainers reports a program that may be a container runner: a
 // known one (docker.exe too), or one named by a variable or command output.
 func mayRunContainers(name string) bool {
-	return containerRunners[strings.TrimSuffix(name, ".exe")] ||
+	return isContainerRunner(name) ||
 		HasUnresolvedVars(name) || strings.Contains(name, unresolvedProgram)
+}
+
+// isContainerRunner reports a known container runner (docker.exe too). Only
+// these are looked for among another command's arguments: a variable there
+// is far more often data than a runner, and checking each would cost a pass
+// over the rest of the arguments.
+func isContainerRunner(name string) bool {
+	return containerRunners[strings.TrimSuffix(name, ".exe")]
 }
 
 // entrypointCommands returns the commands a container runner starts through
