@@ -34,6 +34,10 @@ type ParseResult struct {
 	// DynamicWrites counts output redirects whose target name comes from
 	// command output ("> \"$(...)\""), which no FileWrite can name in full.
 	DynamicWrites int
+	// DynamicVars names variables assigned a value from command output,
+	// arithmetic or an append, whose rendered value in Assignments is
+	// partial or stale.
+	DynamicVars map[string]bool
 }
 
 // BashParser parses Bash commands using mvdan.cc/sh.
@@ -97,6 +101,7 @@ func (p *BashParser) Parse(command string) (*ParseResult, error) {
 		Opacities:     walker.state.opacities,
 		MoreOpacities: walker.state.moreOpacities,
 		DynamicWrites: walker.dynamicWrites,
+		DynamicVars:   walker.state.dynamicVars,
 	}, nil
 }
 

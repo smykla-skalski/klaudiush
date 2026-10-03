@@ -70,6 +70,9 @@ type FileWrite struct {
 	// echo/printf (e.g. "printf 'package x' > f.go") would produce spurious
 	// failures.
 	RedirectContent string
+	// DirUnknown reports that an earlier cd went somewhere the parser cannot
+	// resolve, so a relative Path is relative to an unknown directory.
+	DirUnknown bool
 	// Dynamic reports that part of Path comes from command output, which the
 	// rendered Path leaves out: "$(echo dir)/f" renders as "/f".
 	Dynamic bool

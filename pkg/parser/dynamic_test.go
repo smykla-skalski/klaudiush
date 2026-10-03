@@ -43,6 +43,33 @@ var _ = Describe("Dynamic words and redirects", func() {
 		Entry("duplicate to file", `echo x >& out`, parser.WriteOpRedirect),
 	)
 
+	It("renders redirect targets as the shell passes them", func() {
+		Expect(parse(`echo x > a\b`).FileWrites[0].Path).To(Equal("ab"))
+		Expect(parse("echo x > out\\").FileWrites[0].Path).To(Equal("out"))
+		Expect(
+			parse(`echo x > $'\x2ea\t\u00e9\101\q'`).FileWrites[0].Path,
+		).To(Equal(".a\té" + "A\\q"))
+		Expect(parse(`cat < in\put`).Commands[0].StdinFile).To(Equal("input"))
+	})
+
+	It("marks variables assigned from command output", func() {
+		result := parse(
+			`a=$(pwd); b=plain; c=x; c+=y; export d=$((1+1)); e=$(pwd); e=fixed; echo "$a"`,
+		)
+		Expect(result.DynamicVars).To(HaveKey("a"))
+		Expect(result.DynamicVars).To(HaveKey("c"))
+		Expect(result.DynamicVars).To(HaveKey("d"))
+		Expect(result.DynamicVars).NotTo(HaveKey("b"))
+		Expect(result.DynamicVars).NotTo(HaveKey("e"))
+	})
+
+	It("keeps the working directory unknown after an unresolved cd", func() {
+		result := parse(`cd "$X" && rm a > b`)
+		Expect(result.Commands[len(result.Commands)-1].DirUnknown).To(BeTrue())
+		Expect(result.FileWrites[0].DirUnknown).To(BeTrue())
+		Expect(parse(`sudo rm a`).Commands[1].DirUnknown).To(BeFalse())
+	})
+
 	It("keeps descriptor duplication out of file writes", func() {
 		Expect(parse(`echo x >&2`).FileWrites).To(BeEmpty())
 		Expect(parse(`echo x >&-`).FileWrites).To(BeEmpty())

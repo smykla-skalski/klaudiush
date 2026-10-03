@@ -880,6 +880,8 @@ func childCommand(parent Command, name string, args []string) Command {
 		Location:         parent.Location,
 		Type:             parent.Type,
 		WorkingDirectory: parent.WorkingDirectory,
+		DirUnknown:       parent.DirUnknown,
+		Dynamic:          parent.Dynamic,
 		Stdin:            parent.Stdin,
 		StdinFile:        parent.StdinFile,
 	}

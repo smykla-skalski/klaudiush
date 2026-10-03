@@ -63,6 +63,9 @@ type astWalker struct {
 // some explanations were dropped, and budgetReported keeps the exhausted work
 // budget from being explained more than once.
 type parseState struct {
+	// dynamicVars names variables last assigned a value from command
+	// output, arithmetic or an append, which assignments cannot hold.
+	dynamicVars    map[string]bool
 	opacities      []Opacity
 	moreOpacities  bool
 	budgetReported bool
@@ -463,6 +466,7 @@ func (w *astWalker) extractCommand(call *syntax.CallExpr) {
 		},
 		Type:             CmdTypeSimple,
 		WorkingDirectory: w.currentDir,
+		DirUnknown:       w.dirUnknown,
 		Dynamic:          anyWordDynamic(call.Args),
 		Stdin:            w.stdinByCall[call],
 		StdinFile:        w.stdinFileByCall[call],
@@ -648,10 +652,32 @@ func (w *astWalker) extractDecl(decl *syntax.DeclClause) {
 			w.state.pathChanged = true
 		}
 
+		w.noteDynamic(assign)
+
 		if assign.Value != nil && !assign.Append {
 			w.assignments[assign.Name.Value] = wordToString(assign.Value)
 		}
 	}
+}
+
+// noteDynamic records whether an assignment's value is known: one from
+// command output, arithmetic or an append is not.
+func (w *astWalker) noteDynamic(assign *syntax.Assign) {
+	if assign.Name == nil {
+		return
+	}
+
+	if w.state.dynamicVars == nil {
+		w.state.dynamicVars = make(map[string]bool)
+	}
+
+	if assign.Append || (assign.Value != nil && wordDynamic(assign.Value)) {
+		w.state.dynamicVars[assign.Name.Value] = true
+
+		return
+	}
+
+	delete(w.state.dynamicVars, assign.Name.Value)
 }
 
 // redirInfo holds the output redirection and heredoc found on a statement.
@@ -707,7 +733,7 @@ func collectRedirs(stmt *syntax.Stmt) redirInfo {
 				continue
 			}
 
-			path := wordToString(redir.Word)
+			path := argWord(redir.Word)
 			dynamic := wordDynamic(redir.Word)
 
 			if dynamic {
@@ -741,7 +767,7 @@ func collectRedirs(stmt *syntax.Stmt) redirInfo {
 			info.heredocLoc = Location{Line: redir.Pos().Line(), Column: redir.Pos().Col()}
 			info.hasHeredoc = true
 		case syntax.RdrIn:
-			info.inputPath = wordToString(redir.Word)
+			info.inputPath = argWord(redir.Word)
 		default:
 			// Other redirection operators are not relevant here.
 		}
@@ -794,6 +820,7 @@ func (w *astWalker) extractRedirect(stmt *syntax.Stmt) {
 			ContentCaptured:  captured,
 			Location:         info.heredocLoc,
 			WorkingDirectory: w.currentDir,
+			DirUnknown:       w.dirUnknown,
 		})
 	case info.hasOutput:
 		// Just output redirection without heredoc. A literal overwrite's output
@@ -808,6 +835,7 @@ func (w *astWalker) extractRedirect(stmt *syntax.Stmt) {
 			Operation:        info.outputOp,
 			Location:         info.outputLoc,
 			WorkingDirectory: w.currentDir,
+			DirUnknown:       w.dirUnknown,
 		}
 
 		if info.outputOp == WriteOpRedirect {
@@ -851,6 +879,8 @@ func copiesStdinVerbatim(call *syntax.CallExpr) bool {
 // skipped rather than recorded with a partial one.
 func (w *astWalker) extractAssigns(call *syntax.CallExpr) {
 	for _, assign := range call.Assigns {
+		w.noteDynamic(assign)
+
 		if assign.Name == nil || assign.Append || assign.Naked {
 			continue
 		}
@@ -889,6 +919,8 @@ func (w *astWalker) extractFileWriteCommand(cmd Command) {
 			Source:           cmd.Name,
 			Location:         cmd.Location,
 			WorkingDirectory: cmd.WorkingDirectory,
+			DirUnknown:       cmd.DirUnknown,
+			Dynamic:          cmd.Dynamic,
 		}
 
 		w.fileWrites = append(w.fileWrites, fw)
