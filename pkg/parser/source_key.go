@@ -18,6 +18,13 @@ const (
 	repeatPasses = 2
 )
 
+// scriptSourceText is a script file's text and how it is walked.
+type scriptSourceText struct {
+	path    string
+	text    string
+	literal bool // interpreter code rather than shell
+}
+
 // sourceEntry marks a script file being followed: the state it was entered
 // in and how many commands the line had recorded by then.
 type sourceEntry struct {
@@ -128,6 +135,69 @@ func writeParts(h hash.Hash, parts ...string) {
 	}
 }
 
+// walkSource follows a script's text, as interpreter code when literal.
+func (w *astWalker) walkSource(cmd Command, src scriptSourceText, depth int, entry sourceEntry) {
+	sw := scriptWalk{literal: src.literal, label: scriptName(src.path), source: entry}
+	text := src.text
+
+	if src.literal {
+		w.followCode(cmd, text, depth, sw)
+	} else {
+		w.walkScript(text, cmd, depth, sw)
+	}
+}
+
+// followingKey reports whether a script is being followed in state key on
+// the way here.
+func (w *astWalker) followingKey(key string) bool {
+	return slices.ContainsFunc(w.following, func(entry sourceEntry) bool {
+		return entry.key == key
+	})
+}
+
+// confirmRepeat checks a script whose repeating pass was not followed. The
+// skipped pass would also have run whatever follows its call to itself, so
+// the script is walked once more in the state the line has reached. When that
+// pass records a command not seen before, writes new content or changes the
+// command table or variable trust, the passes were not a fixed point and
+// what further ones would run is unknown, so the command fails closed.
+func (w *astWalker) confirmRepeat(cmd Command, src scriptSourceText, depth int, key string) {
+	delete(w.state.repeated, key)
+
+	before := w.effects()
+	again := w.sourceKey(cmd, src.text, src.literal)
+
+	w.walkSource(cmd, src, depth, sourceEntry{key: again, start: len(w.state.events)})
+
+	if w.effects() != before {
+		w.opaque(OpacityDepthLimit, scriptName(src.path), "")
+	}
+}
+
+// effects summarizes what one walk can leave for the next: the distinct
+// commands recorded, the latest content of each written file, the command
+// table, variable trust and dynamic variables.
+func (w *astWalker) effects() string {
+	h := sha256.New()
+
+	writeParts(h,
+		strconv.Itoa(len(w.state.distinct)),
+		strconv.FormatBool(w.state.pathChanged),
+		strconv.FormatBool(w.state.untrusted),
+	)
+
+	writes := w.latestWrites()
+	writeParts(h, strconv.Itoa(len(writes)))
+
+	for _, k := range slices.Sorted(maps.Keys(writes)) {
+		writeParts(h, k, writes[k])
+	}
+
+	writeParts(h, slices.Sorted(maps.Keys(w.state.dynamicVars))...)
+
+	return hex.EncodeToString(h.Sum(nil))
+}
+
 // noteRecorded appends cmd to the commands recorded on the line.
 func (w *astWalker) noteRecorded(cmd Command) {
 	w.state.events = append(w.state.events, strings.Join(
@@ -144,4 +214,5 @@ func (w *astWalker) noteRecorded(cmd Command) {
 		),
 		fieldSeparator,
 	))
+	w.state.distinct[w.state.events[len(w.state.events)-1]] = true
 }

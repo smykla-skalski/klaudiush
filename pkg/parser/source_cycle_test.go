@@ -39,7 +39,10 @@ def main():
 		"/s/vars.sh":  "git status\nX=1 bash /s/vars.sh\n",
 		"/s/hash.sh":  "ls push --force\nhash -p /usr/bin/git ls\n. /s/hash.sh\n",
 		"/s/alias.sh": "git config alias.ls push\ngit ls --force\n. /s/alias.sh\n",
-		"/s/top.sh":   "bash /t/f.sh\ncat > /t/f.sh <<'EOF'\n# nothing\nEOF\nbash /s/rewrite.sh\n",
+		"/s/staged.sh": "[ \"$SHLVL\" -gt 4 ] || bash /s/staged.sh\nbash /t/y.sh\nbash /t/x.sh\n" +
+			"bash /t/w.sh\ncat > /t/w.sh <<'EOF'\ncat > /t/x.sh <<'EOT'\ncat > /t/y.sh <<'EOU'\n" +
+			"git push --force\nEOU\nEOT\nEOF\n",
+		"/s/top.sh": "bash /t/f.sh\ncat > /t/f.sh <<'EOF'\n# nothing\nEOF\nbash /s/rewrite.sh\n",
 		"/s/rewrite.sh": "bash /t/f.sh\ncat > /t/f.sh <<'EOF'\ngit push --force\nEOF\n" +
 			"bash /s/rewrite.sh\n",
 	}
@@ -143,6 +146,13 @@ def main():
 		result := parse("bash /s/top.sh")
 
 		Expect(gitRuns(result, "push")).NotTo(BeEmpty(), "truncated=%v", result.Truncated)
+	})
+
+	It("fails closed on a script whose later passes stage a hidden command", func() {
+		result := parse("bash /s/staged.sh")
+
+		Expect(result.Truncated).To(BeTrue())
+		Expect(result.Opacities[0].Cause).To(Equal(parser.OpacityDepthLimit))
 	})
 
 	It("still fails closed on a chain of distinct scripts past the limit", func() {

@@ -99,8 +99,13 @@ type parseState struct {
 	untrusted     bool
 	expandedWords map[string]bool
 	// events lists every command recorded so far, in order, so a script
-	// followed into itself can tell whether its passes repeat.
-	events []string
+	// followed into itself can tell whether its passes repeat. distinct
+	// holds the same commands as a set.
+	events   []string
+	distinct map[string]bool
+	// repeated holds the states of scripts whose repeating pass was not
+	// followed and still has to be confirmed.
+	repeated map[string]bool
 }
 
 // spend takes one unit of work, reporting false once the budget is gone.

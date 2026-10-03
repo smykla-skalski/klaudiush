@@ -64,8 +64,12 @@ func newAstWalker(resolver Resolver) *astWalker {
 		aliases:         make(map[string]string),
 		funcs:           make(map[string]string),
 		scriptFiles:     make(map[string]string),
-		state:           &parseState{work: maxParseWork},
-		expanding:       make(map[string]bool),
+		state: &parseState{
+			work:     maxParseWork,
+			distinct: make(map[string]bool),
+			repeated: make(map[string]bool),
+		},
+		expanding: make(map[string]bool),
 	}
 }
 
@@ -769,18 +773,16 @@ func (w *astWalker) followFile(cmd Command, file scriptFile, depth int) {
 
 		key := w.sourceKey(cmd, text, literal)
 		if w.repeatsItself(key) {
+			w.state.repeated[key] = true
+
 			return
 		}
 
-		sw := scriptWalk{
-			literal: literal,
-			label:   scriptName(file.path),
-			source:  sourceEntry{key: key, start: len(w.state.events)},
-		}
-		if literal {
-			w.followCode(cmd, text, depth, sw)
-		} else {
-			w.walkScript(text, cmd, depth, sw)
+		src := scriptSourceText{path: file.path, text: text, literal: literal}
+		w.walkSource(cmd, src, depth, sourceEntry{key: key, start: len(w.state.events)})
+
+		if w.state.repeated[key] && !w.followingKey(key) {
+			w.confirmRepeat(cmd, src, depth, key)
 		}
 	case ScriptOpaque:
 		if file.explicit {
