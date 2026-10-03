@@ -386,6 +386,7 @@ var envHierarchy = map[string][]string{
 		"evidence",
 		"protection",
 		"mcp_trust",
+		"metrics",
 	},
 	"overrides":       {"entries"},
 	"evidence":        {"tool_phase"},

@@ -7,6 +7,7 @@ const (
 	cmdUseOverrides = "overrides"
 	cmdUseStatus    = "status"
 	cmdUseEvidence  = "evidence"
+	cmdUseMetrics   = "metrics"
 )
 
 // Literal values shared across command output and argument parsing.

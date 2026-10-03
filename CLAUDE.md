@@ -48,6 +48,12 @@ klaudiush debug crash clean --dry-run             # show what would be removed
 ./bin/klaudiush audit stats                       # show statistics
 ./bin/klaudiush audit cleanup                     # remove old entries
 
+# Metrics (local enforcement outcomes)
+./bin/klaudiush metrics report --since 7d         # outcomes, repairs, unavailable, latency
+./bin/klaudiush metrics report --json             # machine-readable
+./bin/klaudiush metrics prune                     # drop records older than retention
+./bin/klaudiush metrics clear                     # remove logs and salt
+
 # Bypass (validation when approval prompts are off)
 ./bin/klaudiush bypass status                     # show effective setting
 ./bin/klaudiush bypass skip --reason "spike"      # stop validating in bypass modes
@@ -294,6 +300,10 @@ Opt-in `[evidence]` (off by default). Each `[[evidence.checks]]` has `commands` 
 ### Policy Protection and MCP Trust (`internal/protection/`, `internal/validators/policy/`)
 
 Opt-in `[protection]` and `[mcp_trust]` (both off by default; `PolicyValidatorFactory` registers them, no rule engine). `protection.NewSet(Options)` compiles protected paths: anywhere-rules (`.klaudiush/`, `klaudiush.toml`, `.claude/settings*.json`, `.claude/hooks/`, `.mcp.json`, `.codex/{hooks.json,config.toml}`, `.gemini/settings.json`), absolute rules (XDG config/state/data, legacy dir, binary, `~/.claude.json`, `$CODEX_HOME` files, Claude/Codex/Gemini managed paths, opencode plugin, configured hook files), scripts named by registered hook commands and evidence commands, plugins, `protection.paths`; `protection.allow` exempts. Matching uses clean and symlink-resolved spellings, hard links (`os.SameFile` when nlink > 1), Unicode case folding on darwin/windows. `Set.CheckCommand` walks `ParseResult` (FileWrites incl. `>|`, `&>`, `<>`, `>&file`; `Command.Dynamic`/`FileWrite.Dynamic`/`DynamicWrites` mark `$(...)` parts the rendered args drop) with read-only/dest-only/flag-aware program classes, globs/braces/unknown parts as regexes, and a "mentions a protected path anywhere" rule for targets known only at run time; `PolicyCommand` blocks mutating klaudiush subcommands. `ToolTargets` covers Write/Edit/MultiEdit/NotebookEdit/apply_patch (lenient header regex) and path-like strings of other tools. Truncated/unparseable commands fail closed (POL001). ConfigChange (new `CanonicalEventConfigChange`, Claude `decision:block`, `policy_settings` never blocked) yields POL002; klaudiush policy commands POL003. `MCPTrustValidator` trusts by `hook.Context.MCPServer` (Claude `mcp_server{name,source}`, Gemini `mcp_context` transport), never the `mcp__<server>__` prefix: MCP004 untrusted, MCP005 no provenance (`unknown_provenance`). POL001-003/MCP004-005 need an explicit `[exceptions.policies.<CODE>]` (`exceptions.RequiresExplicitPolicy`), and enabled guards are critical (`buildPolicy` → `Policy.WithCritical`). Git commands that rewrite the work tree without paths (clean, stash, reset --hard, checkout/switch/merge/rebase/cherry-pick/revert <rev>, apply/am, `patch`) are checked by querying git (`gitrewrite.go`). `inheritPolicyGuards` keeps the guards on when the hook cwd or `CLAUDE_PROJECT_DIR`/`GEMINI_PROJECT_DIR` config enables them while config loaded from a cd target does not. Doctor: `klaudiush doctor --category protection` (ConfigChange registration, MCP matcher, provenance coverage, managed hooks). See `docs/PROTECTION_GUIDE.md`.
+
+### Outcome Metrics (`internal/metrics/`, `cmd/klaudiush/metrics.go`, `cmd/klaudiush/metrics_hook.go`)
+
+`[metrics]` on by default. After the response is written, `hookRun.recordMetrics` appends one JSONL record to `xdg.MetricsFile()` under `filelock` (250ms timeout; a failure only drops the sample). The class comes from the written response (`hookresponse.Stops`) and the event: a stop before the tool is `prevented`, at a completion gate `held`; after a tool, or when the response could not stop, `advisory`. Records carry codes, `token`-sanitized validator/event names, HMAC-salted session/resource keys, `dispatcher.Outcome.Checks` (repair detection) and `Timings`; never commands, messages, paths or session IDs. Size cap rotates into one `.1` backup. `metrics.Summarize` replays records to follow violations (session, validator, resource, code) to repair. `klaudiush doctor --category metrics`. See `docs/METRICS_GUIDE.md`.
 
 ## Hook output
 

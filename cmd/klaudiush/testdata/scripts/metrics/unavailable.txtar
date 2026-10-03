@@ -1,0 +1,44 @@
+env PATH=$KLAUDIUSH_TEST_BIN
+mkdir .klaudiush
+
+cp warn.toml .klaudiush/config.toml
+stdin write.json
+exec klaudiush --hook-type PreToolUse
+stdout 'shellcheck is not installed'
+! stdout 'permissionDecision'
+
+cp broken.toml .klaudiush/config.toml
+stdin ls.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+
+stdin stop.json
+exec klaudiush --hook-type Stop
+
+exec klaudiush metrics --json
+stdout '"records": 3'
+stdout '"prevented": 1'
+stdout '"unavailable": 1'
+stdout '"reason": "missing_tool"'
+stdout '"validator": "shellscript"'
+stdout '"reason": "config"'
+stdout '"blocked": 1'
+
+-- write.json --
+{"session_id":"s1","tool_name": "Write", "tool_input": {"file_path": "script.sh", "content": "#!/bin/sh\necho hi\n"}}
+
+-- ls.json --
+{"session_id":"s1","tool_name": "Bash", "tool_input": {"command": "ls"}}
+
+-- stop.json --
+{"session_id":"s1","hook_event_name":"Stop","stop_hook_active":false}
+
+-- warn.toml --
+[failure_policy]
+missing_tools = "warn"
+
+-- broken.toml --
+[failure_policy]
+mode = "block"
+[metrics
+broken

@@ -80,6 +80,10 @@ type hookRun struct {
 	output    atomic.Pointer[config.OutputConfig]
 	workDir   atomic.Pointer[string]
 	errs      atomic.Pointer[[]*dispatcher.ValidationError]
+	metrics   atomic.Pointer[config.MetricsConfig]
+	outcome   atomic.Pointer[dispatcher.Outcome]
+	released  atomic.Bool
+	skipped   atomic.Bool
 }
 
 func newHookRun(
@@ -206,7 +210,7 @@ func (h *hookRun) finish(err error) error {
 		errs = append(slices.Clone(*found), errs...)
 	}
 
-	return writeResponse(
+	stopped, err := writeResponse(
 		hookCtx,
 		errs,
 		nil,
@@ -214,6 +218,10 @@ func (h *hookRun) finish(err error) error {
 		h.output.Load(),
 		h.log,
 	)
+
+	h.recordMetrics(hookCtx, errs, stopped)
+
+	return err
 }
 
 // failureError describes the failure for the response. Blocking is only

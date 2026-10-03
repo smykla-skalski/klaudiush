@@ -1131,6 +1131,23 @@
       "additionalProperties": false,
       "type": "object"
     },
+    "MetricsConfig": {
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "retention": {
+          "$ref": "#/$defs/Duration"
+        },
+        "max_file_size_mb": {
+          "type": "integer",
+          "maximum": 256,
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
     "NoVerifyValidatorConfig": {
       "properties": {
         "enabled": {
@@ -2053,6 +2070,9 @@
     },
     "mcp_trust": {
       "$ref": "#/$defs/MCPTrustConfig"
+    },
+    "metrics": {
+      "$ref": "#/$defs/MetricsConfig"
     }
   },
   "additionalProperties": false,

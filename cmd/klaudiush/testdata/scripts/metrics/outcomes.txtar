@@ -1,0 +1,96 @@
+exec git init --initial-branch=main
+exec git config user.email "test@test.com"
+exec git config user.name "Test User"
+cp file.go staged.go
+exec git add staged.go
+
+stdin claude-bad.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+
+stdin claude-bad.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+
+stdin claude-good.json
+exec klaudiush --hook-type PreToolUse
+! stdout 'deny'
+
+stdin codex-post.json
+exec klaudiush --provider codex --event PostToolUse
+stdout 'GIT010'
+
+stdin claude-exception.json
+exec klaudiush --hook-type PreToolUse
+stdout 'Exception EXC:GIT010 accepted'
+
+exec klaudiush metrics --json
+stdout '"records": 5'
+stdout '"prevented": 2'
+stdout '"advisory": 1'
+stdout '"excepted": 1'
+stdout '"passed": 1'
+stdout '"violations": 2'
+stdout '"repaired": 1'
+stdout '"retries": 1'
+stdout '"recurring": 1'
+stdout '"code": "GIT010"'
+
+exec klaudiush metrics report --provider codex
+stdout 'Enforced: 0 \(prevented 0'
+stdout 'codex +PostToolUse +1 +0 +0 +1'
+
+exec klaudiush metrics --since 7d
+stdout 'claude +PreToolUse +4 +2'
+stdout 'Slowest validators'
+
+! exec klaudiush metrics --since 0d
+stderr 'invalid --since'
+
+! grep 'git commit' $HOME/.local/state/klaudiush/metrics/outcomes.jsonl
+! grep 'feat\(api\)' $HOME/.local/state/klaudiush/metrics/outcomes.jsonl
+! grep 'codex-session' $HOME/.local/state/klaudiush/metrics/outcomes.jsonl
+! grep 'claude-session' $HOME/.local/state/klaudiush/metrics/outcomes.jsonl
+
+env KLAUDIUSH_METRICS_ENABLED=false
+stdin claude-bad.json
+exec klaudiush --hook-type PreToolUse
+exec klaudiush metrics
+stdout 'Metrics recording is disabled'
+stdout '\(5 hooks\)'
+env KLAUDIUSH_METRICS_ENABLED=
+
+exec klaudiush metrics prune
+stdout 'Dropped 0 records'
+
+exec klaudiush metrics clear
+stdout 'Removed metrics'
+exec klaudiush metrics
+stdout 'No hooks recorded'
+
+-- .klaudiush/config.toml --
+[exceptions]
+enabled = true
+
+[exceptions.policies.GIT010]
+enabled = true
+allow_exception = true
+require_reason = true
+min_reason_length = 5
+
+-- file.go --
+package main
+
+func main() {}
+
+-- claude-bad.json --
+{"session_id":"claude-session","tool_name":"Bash","tool_input":{"command":"git commit -s -m 'feat(api): add user endpoint'"}}
+
+-- claude-good.json --
+{"session_id":"claude-session","tool_name":"Bash","tool_input":{"command":"git commit -sS -m 'feat(api): add user endpoint'"}}
+
+-- claude-exception.json --
+{"session_id":"claude-session","tool_name":"Bash","tool_input":{"command":"git commit -S -m 'feat(api): add user endpoint' # EXC:GIT010:Signoff+not+required+here"}}
+
+-- codex-post.json --
+{"session_id":"codex-session","hook_event_name":"PostToolUse","turn_id":"t1","tool_name":"Bash","tool_use_id":"x1","tool_input":{"command":"git commit -s -m 'feat(api): add user endpoint'"},"tool_response":"ok"}

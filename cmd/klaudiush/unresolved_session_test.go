@@ -84,10 +84,10 @@ var _ = Describe("unresolved session findings", func() {
 		hookCtx.SessionID = sessionID
 		hookCtx.WorkingDir = dir
 
-		errs, cleanup, _ := dispatchInSession(context.Background(), disp, store, nil, hookCtx, log)
-		cleanup()
+		session := dispatchInSession(context.Background(), disp, store, nil, hookCtx, log)
+		session.cleanup()
 
-		return errs
+		return session.errs
 	}
 
 	write := func(name, content, agentID string) []*dispatcher.ValidationError {

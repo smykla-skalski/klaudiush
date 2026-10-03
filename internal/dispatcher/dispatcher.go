@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/cockroachdb/errors"
 
@@ -73,11 +74,25 @@ type Check struct {
 	Resource  string
 }
 
+// Timing is how long one validator run took.
+type Timing struct {
+	Validator string
+	Elapsed   time.Duration
+}
+
 // Outcome is the result of one dispatch: the errors found and every check
-// that ran, so callers can tell a repaired resource from an unchecked one.
+// that ran, so callers can tell a repaired resource from an unchecked one,
+// and how long each validator run took.
 type Outcome struct {
-	Errors []*ValidationError
-	Checks []Check
+	Errors  []*ValidationError
+	Checks  []Check
+	Timings []Timing
+}
+
+// runLog collects the checks and timings of one dispatch.
+type runLog struct {
+	checks  []Check
+	timings []Timing
 }
 
 // Error implements the error interface.
@@ -212,17 +227,17 @@ func (d *Dispatcher) Dispatch(ctx context.Context, hookCtx *hook.Context) []*Val
 // DispatchWithChecks validates the context like Dispatch and also reports
 // which validators ran on which resources.
 func (d *Dispatcher) DispatchWithChecks(ctx context.Context, hookCtx *hook.Context) Outcome {
-	var checks []Check
+	var ran runLog
 
-	errs := d.validate(ctx, hookCtx, &checks, newProgress(d.publish))
+	errs := d.validate(ctx, hookCtx, &ran, newProgress(d.publish))
 
-	return Outcome{Errors: errs, Checks: checks}
+	return Outcome{Errors: errs, Checks: ran.checks, Timings: ran.timings}
 }
 
 func (d *Dispatcher) validate(
 	ctx context.Context,
 	hookCtx *hook.Context,
-	checks *[]Check,
+	ran *runLog,
 	p *progress,
 ) []*ValidationError {
 	d.logger.Info("dispatching",
@@ -239,17 +254,17 @@ func (d *Dispatcher) validate(
 	}
 
 	if len(hookCtx.PatchFiles) > 0 {
-		return d.validatePatchFiles(ctx, hookCtx, checks, p)
+		return d.validatePatchFiles(ctx, hookCtx, ran, p)
 	}
 
-	validationErrors := afterToolFindings(hookCtx, d.runValidators(ctx, hookCtx, checks, p))
+	validationErrors := afterToolFindings(hookCtx, d.runValidators(ctx, hookCtx, ran, p))
 
 	// Validate the files a Bash command writes, before and after it runs.
 	if hookCtx.ToolName == hook.ToolTypeBash && (hookCtx.Event == hook.CanonicalEventBeforeTool ||
 		hookCtx.Event == hook.CanonicalEventAfterTool ||
 		hookCtx.EventType == hook.EventTypePreToolUse ||
 		hookCtx.EventType == hook.EventTypePostToolUse) {
-		syntheticErrors := d.validateBashFileWrites(ctx, hookCtx, checks, p)
+		syntheticErrors := d.validateBashFileWrites(ctx, hookCtx, ran, p)
 		validationErrors = append(validationErrors, syntheticErrors...)
 	}
 
@@ -257,12 +272,12 @@ func (d *Dispatcher) validate(
 }
 
 // runValidators runs validators on a context and returns validation errors.
-// Each validator that ran to completion is added to checks, and its findings
+// Each validator that ran to completion is added to ran, and its findings
 // are published to p as they come.
 func (d *Dispatcher) runValidators(
 	ctx context.Context,
 	hookCtx *hook.Context,
-	checks *[]Check,
+	ran *runLog,
 	p *progress,
 ) []*ValidationError {
 	validators := d.registry.FindValidators(hookCtx)
@@ -286,7 +301,7 @@ func (d *Dispatcher) runValidators(
 
 	resource := hookCtx.Resource()
 
-	recordChecks(ctx, checks, runs, resource)
+	ran.record(ctx, runs, resource)
 
 	// Apply overrides to suppress disabled error codes
 	validationErrors = d.applyOverrides(validationErrors)
@@ -554,7 +569,7 @@ func errorFromFindings(verr *ValidationError, findings []validator.Finding) *Val
 func (d *Dispatcher) validateBashFileWrites(
 	ctx context.Context,
 	bashCtx *hook.Context,
-	checks *[]Check,
+	ran *runLog,
 	p *progress,
 ) []*ValidationError {
 	result, err := bashCtx.ParsedCommand()
@@ -613,7 +628,7 @@ func (d *Dispatcher) validateBashFileWrites(
 			"file", target.path,
 		)
 
-		errs := d.runValidators(ctx, syntheticCtx, checks, p)
+		errs := d.runValidators(ctx, syntheticCtx, ran, p)
 		if bashCtx.IsAfterTool() {
 			errs = namedAfter(target.path, advisory(errs))
 		}
@@ -630,7 +645,7 @@ func (d *Dispatcher) validateBashFileWrites(
 func (d *Dispatcher) validatePatchFiles(
 	ctx context.Context,
 	patchCtx *hook.Context,
-	checks *[]Check,
+	ran *runLog,
 	p *progress,
 ) []*ValidationError {
 	allErrors := make([]*ValidationError, 0, len(patchCtx.PatchFiles))
@@ -663,7 +678,7 @@ func (d *Dispatcher) validatePatchFiles(
 
 		d.logger.Debug("validating patch file", "file", file.Input.FilePath)
 
-		errs := afterToolFindings(fileCtx, d.runValidators(ctx, fileCtx, checks, p))
+		errs := afterToolFindings(fileCtx, d.runValidators(ctx, fileCtx, ran, p))
 		allErrors = append(allErrors, errs...)
 	}
 
@@ -688,17 +703,20 @@ func (d *Dispatcher) resolver() parser.Resolver {
 	return d.pathResolver
 }
 
-// recordChecks adds the validators that ran on resource to checks. A
-// cancelled run may have skipped validators, so it proves nothing; on a file,
-// only runs that report reading and checking the whole file as the tool left
-// it prove it clean.
-func recordChecks(
-	ctx context.Context,
-	checks *[]Check,
-	runs []ValidatorRun,
-	resource string,
-) {
-	if checks == nil || ctx.Err() != nil {
+// record adds every run's timing, and the validators that ran on resource
+// to the checks. A cancelled run may have skipped validators, so it proves
+// nothing; on a file, only runs that report reading and checking the whole
+// file as the tool left it prove it clean.
+func (l *runLog) record(ctx context.Context, runs []ValidatorRun, resource string) {
+	if l == nil {
+		return
+	}
+
+	for _, run := range runs {
+		l.timings = append(l.timings, Timing{Validator: run.Validator.Name(), Elapsed: run.Elapsed})
+	}
+
+	if ctx.Err() != nil {
 		return
 	}
 
@@ -709,7 +727,7 @@ func recordChecks(
 			continue
 		}
 
-		*checks = append(*checks, Check{Validator: run.Validator.Name(), Resource: resource})
+		l.checks = append(l.checks, Check{Validator: run.Validator.Name(), Resource: resource})
 	}
 }
 

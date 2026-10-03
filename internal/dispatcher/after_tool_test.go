@@ -292,6 +292,43 @@ var _ = Describe("Dispatcher Bash file writes after the tool ran", func() {
 		))
 	})
 
+	It("times every validator run, including ones that could not run", func() {
+		reg := validator.NewRegistry()
+		reg.Register(
+			&fixedResult{name: "cmd", result: validator.Result{Passed: true}},
+			validator.ToolTypeIs(hook.ToolTypeBash),
+		)
+		reg.Register(
+			&fixedResult{name: "gone", result: validator.Result{Unavailable: true}},
+			validator.ToolTypeIs(hook.ToolTypeBash),
+		)
+
+		for _, exec := range []dispatcher.Executor{
+			dispatcher.NewSequentialExecutor(logger.NewNoOpLogger()),
+			dispatcher.NewParallelExecutor(logger.NewNoOpLogger(), nil),
+		} {
+			outcome := dispatcher.NewDispatcherWithExecutor(reg, logger.NewNoOpLogger(), exec).
+				DispatchWithChecks(context.Background(), &hook.Context{
+					Provider:  hook.ProviderCodex,
+					Event:     hook.CanonicalEventAfterTool,
+					ToolName:  hook.ToolTypeBash,
+					ToolInput: hook.ToolInput{Command: "true"},
+				})
+
+			names := make([]string, 0, len(outcome.Timings))
+			for _, timing := range outcome.Timings {
+				Expect(timing.Elapsed).To(BeNumerically(">=", 0))
+
+				names = append(names, timing.Validator)
+			}
+
+			Expect(names).To(ConsistOf("cmd", "gone"))
+			Expect(outcome.Checks).To(ConsistOf(
+				dispatcher.Check{Validator: "cmd", Resource: hook.ResourceCommand},
+			))
+		}
+	})
+
 	It("reports no checks for a cancelled dispatch", func() {
 		reg := validator.NewRegistry()
 		reg.Register(rec, validator.ToolTypeIs(hook.ToolTypeWrite))
