@@ -15,8 +15,10 @@ import (
 
 	"github.com/smykla-skalski/klaudiush/internal/evidence"
 	kexec "github.com/smykla-skalski/klaudiush/internal/exec"
+	"github.com/smykla-skalski/klaudiush/internal/failpolicy"
 	"github.com/smykla-skalski/klaudiush/internal/hooksession"
 	"github.com/smykla-skalski/klaudiush/pkg/config"
+	"github.com/smykla-skalski/klaudiush/pkg/hook"
 	"github.com/smykla-skalski/klaudiush/pkg/logger"
 )
 
@@ -357,8 +359,49 @@ func runEvidenceStatus(cmd *cobra.Command, _ []string) error {
 	}
 
 	printf := func(format string, args ...any) { fmt.Printf(format, args...) }
+	store := hooksession.NewStore()
 
-	return printCheckStatus(ctx, printf, hooksession.NewStore(), setup.repo, setup.checks)
+	printToolPhaseStatus(ctx, printf, setup, store, loggerFromCmd(cmd))
+
+	return printCheckStatus(ctx, printf, store, setup.repo, setup.checks)
+}
+
+// printToolPhaseStatus shows whether the evidence tool phase withholds
+// Gemini's mutation tools in the repository now, and where it applies.
+func printToolPhaseStatus(
+	ctx context.Context,
+	printf func(format string, args ...any),
+	setup *evidenceSetup,
+	store *hooksession.Store,
+	log logger.Logger,
+) {
+	if !setup.cfg.Evidence.GetToolPhase().IsEnabled() {
+		printf("Tool phase: disabled\n")
+
+		return
+	}
+
+	phase := newEvidenceGate(setup.cfg, store, failpolicy.New(setup.cfg.FailurePolicy), log).
+		toolPhase()
+	st := phase.state(ctx, &hook.Context{WorkingDir: setup.repo})
+
+	switch {
+	case phase.err != nil:
+		printf("Tool phase: invalid, Gemini is offered only %s: %s\n",
+			strings.Join(phase.phase.AllowedTools(), ", "), firstLine(phase.err.Error()))
+	case st.unavailable != nil:
+		printf("Tool phase: unknown, %s\n", st.unavailable.Message)
+	case st.restricted:
+		printf("Tool phase: restricted, waiting on %s\n", strings.Join(st.unmet, "; "))
+		printf("  offered: %s\n", strings.Join(phase.phase.AllowedTools(), ", "))
+	default:
+		printf("Tool phase: open, %s passed on the current files\n",
+			strings.Join(phase.phase.RequiredNames(), ", "))
+	}
+
+	for _, line := range evidence.PhaseCoverageLines() {
+		printf("  %s\n", line)
+	}
 }
 
 // printCheckStatus shows each check's verdict the way the completion gate

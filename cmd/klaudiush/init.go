@@ -608,6 +608,20 @@ func performGeminiInstall(settingsPath, binaryPath string) error {
 	return nil
 }
 
+func performGeminiToolSelectionInstall(settingsPath, binaryPath string) error {
+	registered, err := settings.InstallGeminiToolSelection(settingsPath, binaryPath)
+	if err != nil {
+		return err
+	}
+
+	if !registered {
+		fmt.Printf("klaudiush registered on %s in %s for the evidence tool phase\n",
+			settings.GeminiEventToolSelection, settingsPath)
+	}
+
+	return nil
+}
+
 func performOpenCodeInstall(pluginPath, binaryPath string) error {
 	alreadyInstalled, err := settings.InstallOpenCodeDispatcher(pluginPath, binaryPath)
 	if err != nil {
@@ -648,6 +662,14 @@ func performConfiguredInstall(
 		if err := performGeminiInstall(targets.geminiSettingsPath, binaryPath); err != nil {
 			return err
 		}
+
+		if targets.geminiToolSelection {
+			if err := performGeminiToolSelectionInstall(
+				targets.geminiSettingsPath, binaryPath,
+			); err != nil {
+				return err
+			}
+		}
 	}
 
 	if targets.openCodePluginPath != "" {
@@ -665,6 +687,10 @@ type providerInstallTargets struct {
 	codexHooksPath     string
 	geminiSettingsPath string
 	openCodePluginPath string
+
+	// geminiToolSelection registers Gemini BeforeToolSelection, which only
+	// the evidence tool phase answers.
+	geminiToolSelection bool
 }
 
 func resolveProviderInstallTargets(cfg *pkgConfig.Config) providerInstallTargets {
@@ -678,6 +704,7 @@ func resolveProviderInstallTargets(cfg *pkgConfig.Config) providerInstallTargets
 	targets.claudeEnabled = providers.GetClaude().IsEnabled()
 	targets.codexHooksPath = codexInstallPath(providers.GetCodex())
 	targets.geminiSettingsPath = geminiInstallPath(providers.GetGemini())
+	targets.geminiToolSelection = cfg.Evidence.GetToolPhase().SelectsTools()
 	targets.openCodePluginPath = openCodeInstallPath(providers.GetOpenCode())
 
 	return targets

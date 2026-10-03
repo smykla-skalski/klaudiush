@@ -491,6 +491,8 @@ func (c *Context) EventNames() []string {
 		names = appendUniqueFold(names, eventNameStopFailure)
 	case CanonicalEventConfigChange:
 		names = appendUniqueFold(names, eventNameConfigChange)
+	case CanonicalEventToolSelection:
+		names = appendUniqueFold(names, geminiEventToolSelection)
 	}
 
 	return names

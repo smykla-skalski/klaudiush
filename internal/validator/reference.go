@@ -229,12 +229,16 @@ const (
 	RefValidationUnavailable Reference = ReferenceBaseURL + "/HOOK001"
 )
 
-// Evidence references (EVID001).
+// Evidence references (EVID001-EVID002).
 const (
 	// RefEvidenceMissing indicates a required check has no passing result
 	// for the current content: it never ran, failed, is still running, was
 	// canceled, or ran on content that has changed since.
 	RefEvidenceMissing Reference = ReferenceBaseURL + "/EVID001"
+
+	// RefToolPhaseLocked indicates a tool call the evidence tool phase
+	// withholds until its prerequisite checks pass on the current content.
+	RefToolPhaseLocked Reference = ReferenceBaseURL + "/EVID002"
 )
 
 // minCodeLength is the minimum length for a valid reference code.

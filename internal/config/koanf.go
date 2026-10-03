@@ -388,6 +388,7 @@ var envHierarchy = map[string][]string{
 		"mcp_trust",
 	},
 	"overrides":       {"entries"},
+	"evidence":        {"tool_phase"},
 	sectionValidators: {sectionGit, sectionFile, sectionNotification, sectionSecrets, sectionShell},
 	"validators.git": {
 		validatorCommit,

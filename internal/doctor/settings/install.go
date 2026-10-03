@@ -51,6 +51,11 @@ const (
 	geminiEventSessionEnd   = "SessionEnd"
 	geminiEventNotification = "Notification"
 	geminiEventPreCompress  = "PreCompress"
+
+	// GeminiEventToolSelection narrows the tools the model is offered. It is
+	// registered only for the evidence tool phase, since it runs before every
+	// model call.
+	GeminiEventToolSelection = "BeforeToolSelection"
 )
 
 // LoadRawJSONFile reads and parses a JSON file into a raw map.
@@ -234,6 +239,45 @@ func InstallGeminiDispatcher(settingsPath, binaryPath string) (bool, error) {
 	}
 
 	return false, nil
+}
+
+// InstallGeminiToolSelection registers klaudiush on Gemini
+// BeforeToolSelection, which the evidence tool phase answers. Returns true
+// when it was already registered.
+func InstallGeminiToolSelection(settingsPath, binaryPath string) (bool, error) {
+	hasHook, err := NewGeminiSettingsParser(settingsPath).
+		HasEventHook(GeminiEventToolSelection, binaryPath)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to check %s hook", GeminiEventToolSelection)
+	}
+
+	if hasHook {
+		return true, nil
+	}
+
+	raw, err := LoadRawJSONFile(settingsPath)
+	if err != nil {
+		return false, err
+	}
+
+	hooks := ensureHooksMap(raw)
+	hooks[GeminiEventToolSelection] = appendEventHookWithMatcher(
+		hooks[GeminiEventToolSelection],
+		GeminiToolSelectionCommand(binaryPath),
+		"",
+		DefaultCommandHookTimeout*millisecondsPerSecond,
+	)
+
+	if err := writeRawJSONFile(settingsPath, raw); err != nil {
+		return false, errors.Wrap(err, "failed to write Gemini settings")
+	}
+
+	return false, nil
+}
+
+// GeminiToolSelectionCommand returns the Gemini BeforeToolSelection command string.
+func GeminiToolSelectionCommand(binaryPath string) string {
+	return geminiDispatcherEventCommand(binaryPath, GeminiEventToolSelection)
 }
 
 // ClaudeDispatcherEvents lists the Claude events klaudiush registers for.

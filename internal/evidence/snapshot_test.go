@@ -107,6 +107,28 @@ var _ = Describe("Snapshot", func() {
 		Expect(err).To(MatchError(evidence.ErrNotRepository))
 	})
 
+	It("does not mistake a repository git cannot read for no repository", func() {
+		broken := GinkgoT().TempDir()
+		Expect(
+			os.WriteFile(filepath.Join(broken, ".git"), []byte("gitdir: /nonexistent\n"), 0o600),
+		).
+			To(Succeed())
+
+		_, err := evidence.RepoRoot(ctx, broken)
+		Expect(err).To(MatchError(evidence.ErrRepoLookup))
+		Expect(err).NotTo(MatchError(evidence.ErrNotRepository))
+
+		invalid := GinkgoT().TempDir()
+		Expect(os.MkdirAll(filepath.Join(invalid, ".git"), 0o700)).To(Succeed())
+		Expect(os.MkdirAll(filepath.Join(invalid, "sub"), 0o700)).To(Succeed())
+
+		_, err = evidence.RepoRoot(ctx, filepath.Join(invalid, "sub"))
+		Expect(err).To(MatchError(evidence.ErrRepoLookup))
+
+		_, err = evidence.RepoRoot(ctx, filepath.Join(GinkgoT().TempDir(), "missing"))
+		Expect(err).To(MatchError(evidence.ErrRepoLookup))
+	})
+
 	It("ignores the caller's git environment", func() {
 		GinkgoT().Setenv("GIT_DIR", filepath.Join(GinkgoT().TempDir(), "nowhere"))
 

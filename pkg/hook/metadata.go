@@ -76,6 +76,10 @@ const (
 	// CanonicalEventConfigChange reports that a harness settings file changed
 	// during the session (Claude ConfigChange).
 	CanonicalEventConfigChange CanonicalEvent = "config_change"
+
+	// CanonicalEventToolSelection fires before the model picks tools (Gemini
+	// BeforeToolSelection); a response can narrow the tools it is offered.
+	CanonicalEventToolSelection CanonicalEvent = "tool_selection"
 )
 
 // ToolFamily represents the normalized cross-provider tool family.
@@ -124,6 +128,7 @@ const (
 	geminiEventAfterTool       = "AfterTool"
 	geminiEventAfterAgent      = "AfterAgent"
 	geminiEventPreCompress     = "PreCompress"
+	geminiEventToolSelection   = "BeforeToolSelection"
 	eventNameUserPromptSubmit  = "UserPromptSubmit"
 	codexEventPreToolUse       = "PreToolUse"
 	codexEventPostToolUse      = "PostToolUse"
@@ -232,6 +237,8 @@ func NormalizeEventName(name string) CanonicalEvent {
 		return CanonicalEventPostCompact
 	case "configchange":
 		return CanonicalEventConfigChange
+	case "beforetoolselection", "toolselection":
+		return CanonicalEventToolSelection
 	default:
 		return CanonicalEventUnknown
 	}
@@ -250,7 +257,7 @@ func ResolveLegacyEventType(
 		CanonicalEventPreCompress, CanonicalEventElicitation, CanonicalEventElicitationResult,
 		CanonicalEventPostCompact, CanonicalEventUserPromptSubmit,
 		CanonicalEventSubagentStop, CanonicalEventSessionEnd, CanonicalEventStopFailure,
-		CanonicalEventConfigChange:
+		CanonicalEventConfigChange, CanonicalEventToolSelection:
 	case CanonicalEventBeforeTool:
 		return EventTypePreToolUse
 	case CanonicalEventAfterTool:

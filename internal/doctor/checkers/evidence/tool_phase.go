@@ -1,0 +1,191 @@
+package evidence
+
+import (
+	"context"
+	"fmt"
+	"slices"
+	"strings"
+
+	"github.com/smykla-skalski/klaudiush/internal/doctor"
+	"github.com/smykla-skalski/klaudiush/internal/doctor/settings"
+	"github.com/smykla-skalski/klaudiush/internal/evidence"
+	"github.com/smykla-skalski/klaudiush/pkg/config"
+)
+
+const (
+	toolPhaseCheckName = "Evidence tool phase reaches Gemini"
+	installHookFixID   = "install_hook"
+	dispatcherName     = "klaudiush"
+)
+
+// phaseProbeTools are Gemini tools that change files or state. The ones the
+// phase governs itself must reach a klaudiush BeforeTool hook, or a model
+// that calls them past the tool selection is not stopped.
+var phaseProbeTools = []string{
+	evidence.GeminiWriteTool,
+	evidence.GeminiEditTool,
+	evidence.GeminiShellTool,
+}
+
+// phaseOpenTools are tools outside the default BeforeTool matcher that the
+// phase withholds only through the tool selection.
+var phaseOpenTools = []string{"save_memory", "mcp_server_tool"}
+
+// ToolPhaseChecker verifies the evidence tool phase compiles, that Gemini
+// runs klaudiush on BeforeToolSelection, and that the tools the phase
+// governs reach a klaudiush BeforeTool hook. It reports which providers the
+// phase restricts at all.
+type ToolPhaseChecker struct {
+	cfg *config.Config
+}
+
+// NewToolPhaseChecker creates a ToolPhaseChecker for cfg.
+func NewToolPhaseChecker(cfg *config.Config) *ToolPhaseChecker {
+	return &ToolPhaseChecker{cfg: cfg}
+}
+
+// Name returns the name of the check.
+func (*ToolPhaseChecker) Name() string {
+	return toolPhaseCheckName
+}
+
+// Category returns the category of the check.
+func (*ToolPhaseChecker) Category() doctor.Category {
+	return doctor.CategoryEvidence
+}
+
+// Check reports an invalid phase, a Gemini setup that does not reach it,
+// and per-provider coverage.
+func (c *ToolPhaseChecker) Check(context.Context) doctor.CheckResult {
+	var evidenceCfg *config.EvidenceConfig
+	if c.cfg != nil {
+		evidenceCfg = c.cfg.Evidence
+	}
+
+	if !evidenceCfg.GetToolPhase().IsEnabled() {
+		return doctor.Skip(toolPhaseCheckName, "Evidence tool phase disabled")
+	}
+
+	checks, err := evidence.Compile(evidenceCfg)
+	if err != nil {
+		return doctor.FailError(toolPhaseCheckName,
+			"Evidence checks are invalid, so the configuration does not load").
+			WithDetails(err.Error())
+	}
+
+	phase, err := evidence.CompilePhase(evidenceCfg, checks)
+	if err != nil {
+		return doctor.FailError(toolPhaseCheckName,
+			"Evidence tool phase is invalid, so Gemini is offered only read-only tools "+
+				"and other calls report HOOK001").
+			WithDetails(err.Error())
+	}
+
+	coverage := evidence.PhaseCoverageLines()
+
+	gemini := c.cfg.GetProviders().GetGemini()
+	if !gemini.IsEnabled() || !gemini.HasSettingsPath() {
+		return doctor.FailWarning(toolPhaseCheckName,
+			"Gemini provider is not configured, and only Gemini can have tools withheld").
+			WithDetails(append([]string{
+				"Enable [providers.gemini] with settings_path, then run klaudiush init --install-hooks",
+			}, coverage...)...)
+	}
+
+	filters := evidenceCfg.GetToolPhase().FiltersTools()
+
+	return checkGeminiSettings(gemini.SettingsPath, phase, filters, coverage)
+}
+
+// checkGeminiSettings checks the Gemini hooks the phase needs. The
+// BeforeToolSelection hook matters only while the phase filters tools: with
+// filter_tools = false it answers nothing, and BeforeTool alone enforces.
+func checkGeminiSettings(
+	settingsPath string,
+	phase *evidence.Phase,
+	filters bool,
+	coverage []string,
+) doctor.CheckResult {
+	parser := settings.NewGeminiSettingsParser(settingsPath)
+
+	if filters {
+		if result, ok := checkToolSelection(parser, settingsPath, coverage); !ok {
+			return result
+		}
+	}
+
+	matchers, err := parser.GeminiBeforeToolMatchers(dispatcherName)
+	if err != nil {
+		return doctor.FailError(toolPhaseCheckName, "Gemini settings cannot be read").
+			WithDetails(settingsPath, err.Error())
+	}
+
+	unchecked := uncheckedTools(matchers, phaseProbeTools)
+	if len(unchecked) > 0 {
+		return doctor.FailWarning(toolPhaseCheckName, fmt.Sprintf(
+			"No klaudiush BeforeTool hook in %s matches %s, so a call the model makes "+
+				"past the tool selection is not denied",
+			settingsPath, strings.Join(unchecked, ", "),
+		)).
+			WithDetails(append([]string{
+				"Add the missing tools to the matcher of the klaudiush BeforeTool hook",
+			}, coverage...)...)
+	}
+
+	details := slices.Clone(coverage)
+
+	if open := uncheckedTools(matchers, phaseOpenTools); len(open) > 0 {
+		prefix := "Withheld only by the tool selection, no klaudiush BeforeTool matcher selects: "
+		if !filters {
+			prefix = "Not withheld with filter_tools = false, no klaudiush BeforeTool matcher selects: "
+		}
+
+		details = append(details, prefix+strings.Join(open, ", "))
+	}
+
+	return doctor.Pass(toolPhaseCheckName,
+		"Gemini mutation tools wait for "+strings.Join(phase.RequiredNames(), ", "),
+	).WithDetails(details...)
+}
+
+// checkToolSelection reports a Gemini settings file that does not run
+// klaudiush on BeforeToolSelection. ok is false when result should be
+// returned.
+func checkToolSelection(
+	parser *settings.GeminiSettingsParser,
+	settingsPath string,
+	coverage []string,
+) (doctor.CheckResult, bool) {
+	registered, err := parser.HasEventHook(settings.GeminiEventToolSelection, dispatcherName)
+	if err != nil {
+		return doctor.FailError(toolPhaseCheckName, "Gemini settings cannot be read").
+			WithDetails(settingsPath, err.Error()), false
+	}
+
+	if registered {
+		return doctor.CheckResult{}, true
+	}
+
+	return doctor.FailError(toolPhaseCheckName, fmt.Sprintf(
+		"%s does not run klaudiush on %s, so Gemini offers every tool; "+
+			"BeforeTool still denies withheld calls",
+		settingsPath, settings.GeminiEventToolSelection,
+	)).
+		WithDetails(append([]string{"Register with: klaudiush doctor --fix"}, coverage...)...).
+		WithFixID(installHookFixID), false
+}
+
+func uncheckedTools(matchers, tools []string) []string {
+	var unchecked []string
+
+	for _, tool := range tools {
+		selected := slices.ContainsFunc(matchers, func(matcher string) bool {
+			return settings.GeminiMatcherSelects(matcher, tool)
+		})
+		if !selected {
+			unchecked = append(unchecked, tool)
+		}
+	}
+
+	return unchecked
+}

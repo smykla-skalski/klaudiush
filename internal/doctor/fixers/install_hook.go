@@ -92,11 +92,8 @@ func (f *InstallHookFixer) Fix(_ context.Context, interactive bool) error {
 	}
 
 	if install.geminiSettingsPath != "" {
-		if _, err := settings.InstallGeminiDispatcher(
-			install.geminiSettingsPath,
-			binaryPath,
-		); err != nil {
-			return errors.Wrap(err, "failed to install Gemini hooks")
+		if err := installGemini(install, binaryPath); err != nil {
+			return err
 		}
 	}
 
@@ -112,12 +109,40 @@ func (f *InstallHookFixer) Fix(_ context.Context, interactive bool) error {
 	return nil
 }
 
+// installGemini registers the Gemini hooks, and BeforeToolSelection when the
+// evidence tool phase needs it.
+func installGemini(install installTargets, binaryPath string) error {
+	if _, err := settings.InstallGeminiDispatcher(
+		install.geminiSettingsPath,
+		binaryPath,
+	); err != nil {
+		return errors.Wrap(err, "failed to install Gemini hooks")
+	}
+
+	if !install.geminiToolSelection {
+		return nil
+	}
+
+	if _, err := settings.InstallGeminiToolSelection(
+		install.geminiSettingsPath,
+		binaryPath,
+	); err != nil {
+		return errors.Wrap(err, "failed to install Gemini tool selection hook")
+	}
+
+	return nil
+}
+
 // installTargets holds the provider hook files this fixer may write.
 type installTargets struct {
 	claudeEnabled      bool
 	codexHooksPath     string
 	geminiSettingsPath string
 	openCodePluginPath string
+
+	// geminiToolSelection registers Gemini BeforeToolSelection, which only
+	// the evidence tool phase answers.
+	geminiToolSelection bool
 }
 
 // paths lists the files that will be written, for the confirmation prompt.
@@ -160,6 +185,8 @@ func configuredInstallTargets(cfg *pkgConfig.Config) installTargets {
 	if geminiCfg.IsEnabled() && geminiCfg.HasSettingsPath() {
 		targets.geminiSettingsPath = geminiCfg.SettingsPath
 	}
+
+	targets.geminiToolSelection = cfg.Evidence.GetToolPhase().SelectsTools()
 
 	// opencode falls back to the default plugin location: unlike the JSON-hook
 	// providers there is no pre-existing file an operator must point at, so the

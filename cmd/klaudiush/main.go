@@ -262,23 +262,17 @@ func (h *hookRun) validate() error {
 		return err
 	}
 
+	if ctx.Event == hook.CanonicalEventToolSelection {
+		return h.answerToolSelection(ctx, cfg, policy)
+	}
+
 	// Create and initialize exception checker if enabled
 	exceptionHandler, exceptionChecker := initExceptionChecker(cfg, workDir, log)
 
 	// Permission bypass modes still validate unless the user opted out
 	bypassPolicy := bypass.NewPolicy(cfg.BypassPermissions)
 
-	// Create dispatcher with exception checker, overrides, and bypass policy
-	disp := dispatcher.NewDispatcherWithOptions(
-		registry,
-		log,
-		dispatcher.NewSequentialExecutor(log),
-		dispatcher.WithExceptionChecker(exceptionChecker),
-		dispatcher.WithOverrides(cfg.Overrides),
-		dispatcher.WithBypassPolicy(bypassPolicy),
-		dispatcher.WithFailurePolicy(policy),
-		dispatcher.WithProgress(h.publish),
-	)
+	disp := h.newDispatcher(registry, cfg, exceptionChecker, bypassPolicy, policy)
 
 	dispatchCtx, cancel := context.WithDeadline(
 		context.Background(),
@@ -329,8 +323,30 @@ func (h *hookRun) validate() error {
 	return writeErr
 }
 
+// newDispatcher builds the dispatcher with the exception checker,
+// overrides, bypass and failure policies, and progress reporting.
+func (h *hookRun) newDispatcher(
+	registry *validator.Registry,
+	cfg *config.Config,
+	exceptionChecker dispatcher.ExceptionChecker,
+	bypassPolicy *bypass.Policy,
+	policy *failpolicy.Policy,
+) *dispatcher.Dispatcher {
+	return dispatcher.NewDispatcherWithOptions(
+		registry,
+		h.log,
+		dispatcher.NewSequentialExecutor(h.log),
+		dispatcher.WithExceptionChecker(exceptionChecker),
+		dispatcher.WithOverrides(cfg.Overrides),
+		dispatcher.WithBypassPolicy(bypassPolicy),
+		dispatcher.WithFailurePolicy(policy),
+		dispatcher.WithProgress(h.publish),
+	)
+}
+
 // loadPolicyAndRegistry loads the configuration, hands the failure policy to
-// the watchdog, and builds the validator registry.
+// the watchdog, and builds the validator registry. Tool selection runs no
+// validator and runs before every model call, so it gets no registry.
 func (h *hookRun) loadPolicyAndRegistry(
 	hookCtx *hook.Context,
 	workDir string,
@@ -365,6 +381,10 @@ func (h *hookRun) loadPolicyAndRegistry(
 	crashContext = hookCtx
 	crashConfig = cfg
 
+	if hookCtx.Event == hook.CanonicalEventToolSelection {
+		return cfg, policy, nil, nil
+	}
+
 	registry, _, err := factory.NewRegistryBuilder(h.log).BuildWithRuleEngine(cfg)
 	if err != nil {
 		return nil, nil, nil, failHook(
@@ -380,7 +400,8 @@ func (h *hookRun) loadPolicyAndRegistry(
 
 // dispatchInSession validates the hook and applies the session state: it
 // rechecks unresolved files, records or replays findings, ties check runs to
-// the content they ran against, and bounds completion gates. The returned
+// the content they ran against, holds back tools an evidence tool phase
+// withholds, and bounds completion gates. The returned
 // cleanup runs after the response is written.
 func dispatchInSession(
 	ctx context.Context,
@@ -401,9 +422,46 @@ func dispatchInSession(
 		log,
 	)
 	errs = evidenceGate.apply(ctx, hookCtx, errs)
+	errs = evidenceGate.toolPhase().apply(ctx, hookCtx, errs)
 	errs, gateNotice := applyCompletionGate(sessionStore, hookCtx, errs, log)
 
 	return errs, cleanup, gateNotice
+}
+
+// answerToolSelection answers Gemini BeforeToolSelection. No validator
+// applies to it: the only answer is the evidence tool phase's tool list,
+// and Gemini ignores every other field on this event.
+func (h *hookRun) answerToolSelection(
+	hookCtx *hook.Context,
+	cfg *config.Config,
+	policy *failpolicy.Policy,
+) error {
+	ctx, cancel := context.WithDeadline(context.Background(), h.start.Add(policy.Deadline()))
+	defer cancel()
+
+	response := newEvidenceGate(cfg, hooksession.NewStore(), policy, h.log).
+		toolPhase().selection(ctx, hookCtx)
+
+	if !h.claim() {
+		h.log.Error("tool selection finished after the watchdog answered")
+
+		return nil
+	}
+
+	if response == nil {
+		return nil
+	}
+
+	data, err := json.Marshal(response)
+	if err != nil {
+		return errors.Wrap(err, "marshal tool selection response")
+	}
+
+	if _, err := fmt.Fprintf(os.Stdout, "%s\n", data); err != nil {
+		return errors.Wrap(err, "write tool selection response")
+	}
+
+	return nil
 }
 
 func resolveHookInvocation() (hook.Provider, hook.EventType, string, error) {

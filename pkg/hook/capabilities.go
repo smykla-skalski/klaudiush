@@ -22,6 +22,10 @@ const (
 	// ResponseFieldElicitationAction is hookSpecificOutput.action, the
 	// accept/decline/cancel answer to an MCP elicitation.
 	ResponseFieldElicitationAction ResponseField = "action"
+
+	// ResponseFieldToolConfig is hookSpecificOutput.toolConfig, the Gemini
+	// BeforeToolSelection mode and allowedFunctionNames.
+	ResponseFieldToolConfig ResponseField = "toolConfig"
 )
 
 // Enforcement is the strongest effect a blocking finding can have on an event.
@@ -42,6 +46,11 @@ const (
 
 	// EnforcementDeclineElicitation declines an MCP elicitation.
 	EnforcementDeclineElicitation Enforcement = "decline_elicitation"
+
+	// EnforcementFilterTools narrows the tools the model is offered. It is
+	// advisory: another hook's list widens it again, so tool calls still
+	// need their own check.
+	EnforcementFilterTools Enforcement = "filter_tools"
 )
 
 // EventCapability lists what a provider accepts in a response to one event.
@@ -313,6 +322,14 @@ var geminiCapabilities = map[CanonicalEvent]EventCapability{
 		Fields:      []ResponseField{ResponseFieldSystemMessage},
 		Enforcement: EnforcementNone,
 	},
+	// BeforeToolSelection honors only hookSpecificOutput.toolConfig: decision,
+	// continue and systemMessage are ignored. Gemini unions the
+	// allowedFunctionNames of every hook, and mode NONE from any hook wins.
+	CanonicalEventToolSelection: {
+		NativeName:  geminiEventToolSelection,
+		Fields:      []ResponseField{ResponseFieldToolConfig},
+		Enforcement: EnforcementFilterTools,
+	},
 }
 
 // ProviderEventCapability returns the documented response contract for a
@@ -448,6 +465,16 @@ func IsCodexAliasedEvent(rawEventName string) bool {
 	default:
 		return false
 	}
+}
+
+// FiltersTools reports whether a provider has an event whose response
+// narrows the tools the model is offered. Only Gemini does
+// (BeforeToolSelection); elsewhere tool restrictions exist only as per-call
+// checks, if at all.
+func FiltersTools(provider Provider) bool {
+	capability, ok := ProviderEventCapability(provider, CanonicalEventToolSelection)
+
+	return ok && capability.Enforcement == EnforcementFilterTools
 }
 
 // ReportsCommandOutcome reports whether a provider's after-tool events say

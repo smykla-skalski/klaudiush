@@ -43,3 +43,31 @@ func CoverageLines() []string {
 
 	return lines
 }
+
+// PhaseCoverage describes what the tool phase can do for a provider: only a
+// provider with a tool-selection event has its tools withheld, and only
+// Gemini's tool calls are checked against the phase.
+func PhaseCoverage(provider hook.Provider) string {
+	if hook.FiltersTools(provider) {
+		return fmt.Sprintf(
+			"%s: supported; while restricted, BeforeToolSelection asks Gemini to offer only "+
+				"the phase's tools and BeforeTool denies calls outside the phase",
+			provider,
+		)
+	}
+
+	return fmt.Sprintf(
+		"%s: not supported, it has no tool-selection event, so tool phases do not apply",
+		provider,
+	)
+}
+
+// PhaseCoverageLines describes every provider's tool phase coverage.
+func PhaseCoverageLines() []string {
+	lines := make([]string, 0, len(Providers))
+	for _, provider := range Providers {
+		lines = append(lines, PhaseCoverage(provider))
+	}
+
+	return lines
+}
