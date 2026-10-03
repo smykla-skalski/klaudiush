@@ -186,3 +186,19 @@ var _ = Describe("PolicyCommand flags", func() {
 		Expect(ok).To(BeFalse())
 	})
 })
+
+var _ = Describe("ToolTargets for read-only tools that save output", func() {
+	It("checks where they write", func() {
+		ctx := toolContext(
+			"mcp__fs__fetch",
+			map[string]any{"url": "https://x", "save_to": ".mcp.json"},
+		)
+		Expect(protection.ToolTargets(ctx)).To(ConsistOf(".mcp.json"))
+
+		ctx = toolContext(
+			"mcp__fs__read_query",
+			map[string]any{"query": "q", "output_path": "a/b.json"},
+		)
+		Expect(protection.ToolTargets(ctx)).To(ConsistOf("a/b.json"))
+	})
+})

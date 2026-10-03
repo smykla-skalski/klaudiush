@@ -316,3 +316,8 @@ func sources(args []string) []string {
 
 	return operands[:len(operands)-1]
 }
+
+// isTargetOption reports the -t or --target-directory option of a copy.
+func isTargetOption(arg string) bool {
+	return arg == optTarget || arg == optTargetDir || strings.HasPrefix(arg, optTargetDir+"=")
+}

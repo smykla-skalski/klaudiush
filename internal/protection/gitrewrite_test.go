@@ -70,6 +70,9 @@ var _ = Describe("CheckCommand for commands that rewrite the work tree", func() 
 		Expect(checkCommand(set, `git update-ref refs/heads/main $(git commit-tree x -p HEAD)`)).
 			NotTo(BeEmpty())
 		Expect(checkCommand(set, `git branch -f other same`)).To(BeEmpty())
+		Expect(checkCommand(set, `git branch -f other changed`)).To(BeEmpty())
+		Expect(checkCommand(set, `git update-ref refs/heads/other changed`)).To(BeEmpty())
+		Expect(checkCommand(set, `git update-ref HEAD changed`)).NotTo(BeEmpty())
 		Expect(checkCommand(set, `git reset --soft same`)).To(BeEmpty())
 		Expect(checkCommand(set, `git checkout -b new`)).To(BeEmpty())
 	})
@@ -126,5 +129,24 @@ var _ = Describe("CheckCommand for commands that rewrite the work tree", func() 
 
 		Expect(checkCommand(set, `git apply fine.patch`)).To(BeEmpty())
 		Expect(checkCommand(set, `patch -p1 < fine.patch`)).To(BeEmpty())
+	})
+})
+
+var _ = Describe("CheckCommand for git pointed elsewhere", func() {
+	It("blocks work tree writes from another repository or index", func() {
+		set := newEnv(GinkgoT().TempDir(), "linux", nil).set()
+
+		for _, command := range []string{
+			`GIT_DIR=/tmp/evil/.git git checkout -f`,
+			`env GIT_DIR=/tmp/evil/.git GIT_WORK_TREE=. git reset --hard`,
+			`export GIT_DIR=/tmp/evil/.git; git checkout -f`,
+			`GIT_INDEX_FILE=/tmp/idx git checkout-index -f -a`,
+			`git -c core.worktree=. checkout -f`,
+			`git --git-dir=/tmp/evil --work-tree=. checkout -f`,
+		} {
+			Expect(checkCommand(set, command)).NotTo(BeEmpty(), command)
+		}
+
+		Expect(checkCommand(set, `GIT_DIR=/tmp/evil/.git git log`)).To(BeEmpty())
 	})
 })

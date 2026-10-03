@@ -38,6 +38,7 @@ type gitRewrite struct {
 	ignored   bool
 	modified  bool
 	opaque    bool
+	ref       string
 	stash     string
 	pathspecs []string
 	diffs     [][]string
@@ -48,6 +49,50 @@ type gitRewrite struct {
 // see, such as one a command substitution creates.
 const ReasonGitRevision = "git ref update to an unknown revision"
 
+// ReasonGitRepository names a git command that writes the work tree from a
+// repository, index or work tree set on the command line.
+const ReasonGitRepository = "git work tree write from another repository or index"
+
+// gitEnvironment matches settings that point git at another repository,
+// index, object store or work tree: GIT_DIR=..., core.worktree, --git-dir.
+var gitEnvironment = regexp.MustCompile(
+	`\bGIT_(?:DIR|WORK_TREE|INDEX_FILE|OBJECT_DIRECTORY|ALTERNATE_OBJECT_DIRECTORIES|COMMON_DIR|` +
+		`CONFIG_COUNT|CONFIG_KEY_\d+|CONFIG_VALUE_\d+|CONFIG_PARAMETERS|CONFIG|NAMESPACE)\s*=|` +
+		`(?i:core\.worktree)|--git-dir|--work-tree|--namespace`,
+)
+
+// worktreeWriters are git subcommands, besides gitPathCommands, that
+// write work tree files.
+var worktreeWriters = map[string]bool{
+	"merge": true, "rebase": true, "cherry-pick": true, "revert": true, "pull": true,
+	"sparse-checkout": true, "submodule": true, "bisect": true,
+}
+
+// redirectsGit reports a git command that writes the work tree while the
+// command line points git at another repository, index or work tree. The
+// other checks compare against the project's own repository, so such a
+// command cannot be judged and counts.
+func (c *commandCheck) redirectsGit(cmd parser.Command) bool {
+	sub, _ := gitSplit(cmd.Args)
+
+	return (worktreeWriters[sub] || gitPathCommands[sub]) && gitEnvironment.MatchString(c.raw)
+}
+
+// movesCheckedOut reports whether ref is HEAD or the checked-out branch,
+// so moving it changes what the work tree is compared with.
+func (c *commandCheck) movesCheckedOut(dir, ref string) bool {
+	if ref == gitHead {
+		return true
+	}
+
+	current := strings.TrimSpace(c.git(dir, "symbolic-ref", "-q", gitHead))
+	if current == "" {
+		return true
+	}
+
+	return ref == current || "refs/heads/"+ref == current
+}
+
 // checkGitRewrite reports a protected file a git command would rewrite
 // although the command names no path: clean, stash, reset --hard,
 // checkout or switch to another revision, merge, cherry-pick, revert,
@@ -57,8 +102,16 @@ func (c *commandCheck) checkGitRewrite(cmd parser.Command, dir string) (Match, b
 		return Match{}, false
 	}
 
+	if c.redirectsGit(cmd) {
+		return Match{Path: strings.Join(cmd.Args, " "), Reason: ReasonGitRepository}, true
+	}
+
 	rewrite, ok := gitRewriteOf(cmd.Args)
 	if !ok {
+		return Match{}, false
+	}
+
+	if rewrite.ref != "" && !c.movesCheckedOut(dir, rewrite.ref) {
 		return Match{}, false
 	}
 
@@ -150,7 +203,12 @@ func gitRewriteOf(args []string) (gitRewrite, bool) {
 			return gitRewrite{}, false
 		}
 
-		return refMoveRewrite(operands, 1)
+		rewrite, ok := refMoveRewrite(operands, 1)
+		if len(operands) > 0 {
+			rewrite.ref = "refs/heads/" + operands[0]
+		}
+
+		return rewrite, ok
 	default:
 		return historyRewrite(sub, operands)
 	}
@@ -221,11 +279,17 @@ func checkoutRewrite(rest, operands []string) (gitRewrite, bool) {
 // operand after the ref name. A missing revision (one made by a command
 // substitution) cannot be compared, so it counts.
 func refMoveRewrite(operands []string, revIndex int) (gitRewrite, bool) {
-	if len(operands) <= revIndex {
-		return gitRewrite{opaque: len(operands) > 0}, len(operands) > 0
+	if len(operands) == 0 {
+		return gitRewrite{}, false
 	}
 
-	return gitRewrite{diffs: [][]string{{gitHead, operands[revIndex]}}}, true
+	ref := operands[0]
+
+	if len(operands) <= revIndex {
+		return gitRewrite{opaque: true, ref: ref}, true
+	}
+
+	return gitRewrite{diffs: [][]string{{gitHead, operands[revIndex]}}, ref: ref}, true
 }
 
 // lastRevDiff compares HEAD with the last operand, the tree read-tree reads.

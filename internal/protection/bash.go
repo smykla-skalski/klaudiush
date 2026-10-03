@@ -2,6 +2,7 @@ package protection
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -121,7 +122,7 @@ func (c *commandCheck) checkCommand(cmd parser.Command) {
 		c.checkBinaryCopies(cmd, program, dir)
 	}
 
-	if program == programFind {
+	if program == programFind && commandEffect(cmd) != effectNone {
 		if m, ok := c.checkFind(cmd, dir); ok {
 			c.add(Violation{Match: m, Program: program, Target: m.Path})
 		}
@@ -185,7 +186,7 @@ func (c *commandCheck) checkRewrites(cmd parser.Command, program, dir string) {
 }
 
 func (c *commandCheck) checkCandidates(cmd parser.Command, eff effect, program, dir string) {
-	for _, cand := range candidates(cmd, eff) {
+	for _, cand := range candidates(cmd, eff, c.isDir(dir)) {
 		if program == programGit {
 			cand.word = c.gitPathspec(cand.word, dir)
 		}
@@ -246,7 +247,7 @@ type candidate struct {
 }
 
 // candidates returns the words of cmd that may name a file it changes.
-func candidates(cmd parser.Command, eff effect) []candidate {
+func candidates(cmd parser.Command, eff effect, isDir func(string) bool) []candidate {
 	if eff == effectDest {
 		tree := programName(cmd) == programDitto || copiesTrees(cmd.Args)
 
@@ -256,6 +257,12 @@ func candidates(cmd parser.Command, eff effect) []candidate {
 
 		for _, dest := range dests {
 			words = append(words, candidate{word: dest, tree: tree})
+
+			intoDir := strings.HasSuffix(dest, "/") || len(srcs) > 1 || hasGlobMeta(dest) ||
+				slices.ContainsFunc(cmd.Args, isTargetOption) || isDir(dest)
+			if !intoDir {
+				continue
+			}
 
 			for _, src := range srcs {
 				joined := strings.TrimSuffix(dest, "/") + "/" + filepath.Base(src)
@@ -789,4 +796,19 @@ func findParts(args []string) ([]string, []string, []string, bool) {
 	}
 
 	return starts, names, paths, opaque
+}
+
+// isDir returns a check for whether a word names an existing directory,
+// into which a copy puts its sources.
+func (c *commandCheck) isDir(dir string) func(string) bool {
+	return func(word string) bool {
+		expanded := c.expand(word)
+		if strings.Contains(expanded, unknownPart) {
+			return true
+		}
+
+		info, err := os.Stat(c.set.absolute(expanded, dir))
+
+		return err == nil && info.IsDir()
+	}
 }

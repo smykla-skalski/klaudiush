@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/smykla-skalski/klaudiush/pkg/hook"
@@ -52,9 +53,12 @@ func ToolTargets(ctx *hook.Context) []string {
 	}
 
 	own := toolOwnName(ctx.RawToolName)
-	if nonFileTools[normalizeName(ctx.RawToolName)] ||
-		(readsOnly(own) && (!ctx.IsMCPTool() || !mentionsWrite(own))) {
+	if nonFileTools[normalizeName(ctx.RawToolName)] {
 		return nil
+	}
+
+	if readsOnly(own) && (!ctx.IsMCPTool() || !mentionsWrite(own)) {
+		return outputTargets(ctx)
 	}
 
 	targets := fileToolTargets(ctx)
@@ -251,4 +255,28 @@ func readsOnly(name string) bool {
 
 func normalizeName(name string) string {
 	return strings.NewReplacer("_", "", "-", "", " ", "").Replace(strings.ToLower(name))
+}
+
+// outputKeyWords mark an argument that names where a tool writes its
+// result, such as save_to or output_path, even for a tool that only reads
+// its input.
+var outputKeyWords = []string{"output", "save", "dest", "target", "out", "write"}
+
+// outputTargets returns the paths a read-only tool writes its result to.
+func outputTargets(ctx *hook.Context) []string {
+	var targets []string
+
+	for key, raw := range ctx.ToolInput.Additional {
+		lower := strings.ToLower(key)
+
+		if !slices.ContainsFunc(outputKeyWords, func(word string) bool {
+			return strings.Contains(lower, word)
+		}) {
+			continue
+		}
+
+		targets = append(targets, pathStrings(raw, 0)...)
+	}
+
+	return targets
 }
