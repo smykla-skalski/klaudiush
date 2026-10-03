@@ -1,6 +1,7 @@
 exec git init --initial-branch=main
 exec git config user.email "test@test.com"
 exec git config user.name "Test User"
+exec git remote add origin https://github.com/test/repo.git
 
 stdin source-curl.json
 exec klaudiush --hook-type PreToolUse

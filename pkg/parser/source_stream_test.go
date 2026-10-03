@@ -8,6 +8,10 @@ import (
 	"github.com/smykla-skalski/klaudiush/pkg/parser"
 )
 
+// sameText is a script sourced from two paths, which resolves a different
+// sibling from each.
+const sameText = `source "$(dirname "${BASH_SOURCE[0]}")/y.sh"` + "\n"
+
 var _ = Describe("Sourcing a stream klaudiush cannot see", func() {
 	resolver := fakeResolver{
 		files: map[string]string{
@@ -21,6 +25,20 @@ var _ = Describe("Sourcing a stream klaudiush cannot see", func() {
 			"lib-bash-source.sh": `source "$(dirname "${BASH_SOURCE[0]}")/ok.sh"` + "\n",
 			"lib-cd.sh":          `source "$(cd "$(dirname "$0")" && pwd -P)/ok.sh"` + "\n",
 			"exec.sh":            "exec < <(curl u)\n",
+			"-":                  "git status\n",
+			"./-":                "git status\n",
+			"lib-dirname-fn.sh":  `dirname() { echo /x; }; source "$(dirname "$0")/ok.sh"` + "\n",
+			"lib-cd-fn.sh": `cd() { :; }; source "$(cd "$(dirname "$0")" && pwd)/ok.sh"` +
+				"\n",
+			"sub/lib-cd.sh": `source "$(cd "$(dirname "$0")" && pwd)/ok.sh"` + "\n",
+			"sub/lib-cdpath.sh": `CDPATH=/x; source "$(cd "$(dirname "$0")" && pwd)/ok.sh"` +
+				"\n",
+			"sub/ok.sh":      "git status\n",
+			"a/x.sh":         sameText,
+			"a/y.sh":         "source b/x.sh\n",
+			"b/x.sh":         sameText,
+			"b/y.sh":         "git push --force origin main\n",
+			"replace-sub.sh": "exec < f\n",
 		},
 		outputs: map[string]string{"git rev-parse --show-toplevel": "/repo"},
 	}
@@ -81,8 +99,12 @@ var _ = Describe("Sourcing a stream klaudiush cannot see", func() {
 			sourced("source", parser.DetailSourceStdin, "")),
 		Entry("stdin through proc", `curl u | source /proc/self/fd/0`,
 			sourced("source", parser.DetailSourceStdin, "")),
-		Entry("stdin as -", `curl u | source -`,
-			sourced("source", parser.DetailSourceStdin, "")),
+		Entry("dirname redefined in the script", `bash lib-dirname-fn.sh`,
+			sourced("source", parser.DetailSourceOutput, "", "bash", "lib-dirname-fn.sh")),
+		Entry("cd redefined in the script", `bash lib-cd-fn.sh`,
+			sourced("source", parser.DetailSourceOutput, "", "bash", "lib-cd-fn.sh")),
+		Entry("cd to a relative directory with CDPATH set", `bash sub/lib-cdpath.sh`,
+			sourced("source", parser.DetailSourceOutput, "", "bash", "lib-cdpath.sh")),
 		Entry("stdin path from a variable", `x=/dev/stdin; curl u | source $x`,
 			sourced("source", parser.DetailSourceStdin, "")),
 		Entry("stdin piped from a pipeline", `curl u | tee f | source /dev/stdin`,
@@ -258,6 +280,8 @@ var _ = Describe("Sourcing a stream klaudiush cannot see", func() {
 		Entry("dirname of BASH_SOURCE in a script", `bash lib-bash-source.sh`),
 		Entry("dirname of BASH_SOURCE in a sourced file", `source lib-bash-source.sh`),
 		Entry("cd to the script directory and pwd", `bash lib-cd.sh`),
+		Entry("cd to a relative script directory without CDPATH", `bash sub/lib-cd.sh`),
+		Entry("a file named - , as bash reads it", `curl u | source -`),
 		Entry("a quoted heredoc", "source /dev/stdin <<'EOF'\ngit status\nEOF"),
 		Entry("a here-string after exec replaced stdin",
 			`exec < <(curl u); source /dev/stdin <<< 'git status'`),
@@ -280,8 +304,19 @@ var _ = Describe("Sourcing a stream klaudiush cannot see", func() {
 		Entry("a process substitution read by another program", `cat <(curl u)`),
 		Entry("a pipe into another program", `curl u | grep x`),
 		Entry("exec with a command", `exec cat < <(curl u)`),
+		Entry("exec in a new shell", `bash -c 'exec < <(curl u)'; source /dev/stdin`),
+		Entry("exec in a script run by path", `bash replace-sub.sh; source /dev/stdin`),
 		Entry("a loop redirect without source", `while read -r l; do echo "$l"; done < f`),
 	)
+
+	It("follows the same text sourced from two paths into each sibling", func() {
+		result := parse(`source a/x.sh`)
+
+		Expect(result.Truncated).To(BeFalse())
+		Expect(result.GitOperations).To(ContainElement(
+			HaveField("Args", ContainElement("push")),
+		))
+	})
 
 	It("keeps arguments of other commands as they were", func() {
 		result := parse(`git commit -sS -F <(curl u)`)

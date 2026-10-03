@@ -58,6 +58,7 @@ type astWalker struct {
 	pipedByCall     map[*syntax.CallExpr]string
 	untrustedByCall map[*syntax.CallExpr]string
 	stdinFed        bool
+	stdinReplaced   bool
 	// state is shared by every walker of one parse.
 	state *parseState
 	// expanding holds the aliases, functions and git aliases being expanded
@@ -126,7 +127,6 @@ type parseState struct {
 	unseenSubsts   map[string]string
 	pipedStdin     map[int]string
 	untrustedStdin map[int]string
-	stdinReplaced  bool
 	// distinct holds every distinct command recorded so far, so a pass that
 	// confirms a script's repeat can tell whether it found anything new.
 	distinct map[string]bool

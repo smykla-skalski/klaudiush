@@ -1009,6 +1009,7 @@ func (w *astWalker) walkScript(script string, parent Command, depth int, sw scri
 	w.fileWrites = append(w.fileWrites, child.fileWrites...)
 	w.dynamicWrites += child.dynamicWrites
 	w.dynamicWriteLocs = append(w.dynamicWriteLocs, child.dynamicWriteLocs...)
+	w.stdinReplaced = w.stdinReplaced || (child.stdinReplaced && runsInShell(parent, sw))
 }
 
 // argStrings converts argument words to strings. A process substitution fed

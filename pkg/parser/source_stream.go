@@ -224,16 +224,41 @@ func (w *astWalker) changedDir(sub *syntax.CmdSubst) (string, bool) {
 	cd, pwd := callExprOf(and.X), callExprOf(and.Y)
 	if cd == nil || pwd == nil || len(cd.Args) != 2 || len(and.X.Redirs) > 0 ||
 		len(and.Y.Redirs) > 0 || !isLiteralWord(cd.Args[0]) || argWord(cd.Args[0]) != "cd" ||
-		!printsDir(pwd) {
+		!printsDir(pwd) || w.defined("cd") || w.defined("pwd") {
 		return "", false
 	}
 
 	dir, ok := w.sourcedParts(cd.Args[1].Parts)
-	if !ok || dir == "" || HasUnresolvedVars(dir) {
+	if !ok || dir == "" || HasUnresolvedVars(dir) || (searchesCDPath(dir) && !w.cdpathEmpty()) {
 		return "", false
 	}
 
 	return resolvePath(w.currentDir, dir), true
+}
+
+// searchesCDPath reports a cd target the shell looks up in CDPATH: a
+// relative path not starting with . or ..
+func searchesCDPath(dir string) bool {
+	return !filepath.IsAbs(dir) && dir != "." && dir != ".." &&
+		!strings.HasPrefix(dir, "./") && !strings.HasPrefix(dir, "../")
+}
+
+// cdpathEmpty reports CDPATH known to be unset or empty, so cd goes to the
+// directory it is given.
+func (w *astWalker) cdpathEmpty() bool {
+	const name = "CDPATH"
+
+	if w.unknownVars[name] || w.state.dynamicVars[name] || w.state.namesUnknown {
+		return false
+	}
+
+	if value, assigned := w.assignments[name]; assigned {
+		return value == ""
+	}
+
+	value, set := w.resolver.LookupEnv(name)
+
+	return !set || value == ""
 }
 
 // printsDir reports pwd, with -P or -L at most.
@@ -305,7 +330,7 @@ func (w *astWalker) noteStdinRedirects(stmt *syntax.Stmt) {
 	case call == nil:
 		w.markPiped(stmt, "")
 	case runsExec(call):
-		w.state.stdinReplaced = true
+		w.stdinReplaced = true
 	case len(redirs) > 1, last.Op == syntax.DplIn, last.Op == syntax.RdrInOut,
 		heredocExpands(last):
 		w.setUntrusted(call, "")
@@ -398,7 +423,7 @@ func redirectsStdin(redir *syntax.Redirect) bool {
 func (w *astWalker) feedsStdin(cmd Command) bool {
 	_, piped := w.state.pipedStdin[cmd.Location.Seq]
 
-	return w.stdinFed || piped || cmd.Stdin != "" || cmd.StdinFile != ""
+	return w.stdinFed || w.stdinReplaced || piped || cmd.Stdin != "" || cmd.StdinFile != ""
 }
 
 // sourceLaunch returns the file source or . reads, given the arguments
@@ -454,7 +479,9 @@ func (w *astWalker) sourcePath(cmd Command, operand string) (string, Opacity) {
 	clean := resolvePath(cmd.WorkingDirectory, path)
 
 	switch {
-	case path == "-" || stdinPaths[clean]:
+	case path == "-":
+		return "./-", Opacity{}
+	case stdinPaths[clean]:
 		return w.sourceStdin(cmd)
 	case clean == devNull:
 		return "", Opacity{}
@@ -486,7 +513,7 @@ func (w *astWalker) sourceStdin(cmd Command) (string, Opacity) {
 		}
 
 		return path, Opacity{}
-	case piped || w.stdinFed || w.state.stdinReplaced:
+	case piped || w.stdinFed || w.stdinReplaced:
 		return "", sourceOpacity(cmd, DetailSourceStdin, tool)
 	default:
 		return "", Opacity{}

@@ -200,8 +200,8 @@ func lookupVar(name string) bool {
 // whose $0 is known, or dirname "${BASH_SOURCE[0]}" in a script file read
 // by path.
 func (w *astWalker) scriptDir(words []*syntax.Word) (string, bool) {
-	if len(words) < 2 || len(words) > 3 ||
-		!isLiteralWord(words[0]) || wordToString(words[0]) != "dirname" {
+	if len(words) < 2 || len(words) > 3 || w.defined(dirnameProgram) ||
+		!isLiteralWord(words[0]) || wordToString(words[0]) != dirnameProgram {
 		return "", false
 	}
 
