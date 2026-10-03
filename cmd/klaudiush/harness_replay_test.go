@@ -99,7 +99,13 @@ func replayFixture(fixture harness.Fixture) {
 		Expect(os.WriteFile(path, []byte(harness.Expand(content, work, home)), 0o600)).To(Succeed())
 	}
 
-	cmd := exec.Command("klaudiush", fixture.Args...)
+	// Run this test binary itself, not whatever klaudiush is on PATH:
+	// testscript.Main (TestMain) runs the CLI when argv[0] is "klaudiush".
+	self, err := os.Executable()
+	Expect(err).NotTo(HaveOccurred())
+
+	cmd := exec.Command(self, fixture.Args...)
+	cmd.Args[0] = "klaudiush"
 	cmd.Dir = work
 	cmd.Env = env
 	cmd.Stdin = strings.NewReader(harness.Expand(string(fixture.Payload), work, home))
