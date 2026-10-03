@@ -198,5 +198,21 @@ def run_git(args):
 			"a module docstring after a comment",
 			"python3 -c '# tool\n\"\"\"git zz helper.\"\"\"\n'",
 		),
+		Entry("a console message", `node -e 'console.log("git zz is not set up")'`),
+		Entry("a perl die", `perl -e 'die("git zz is not set up")'`),
+	)
+
+	DescribeTable("fails closed on a git word in a string some call may run",
+		func(command string) {
+			Expect(parse(command).Truncated).To(BeTrue(), "not truncated: %q", command)
+		},
+		Entry("ruby backticks in a call", "ruby -e 'x = JSON.parse(`git zz`)'"),
+		Entry("perl backticks printed", "perl -e 'print(`git zz`)'"),
+		Entry("perl readpipe", `perl -e 'my $o = readpipe("git zz")'`),
+		Entry("ruby Open3", `ruby -e 'Open3.capture2("git zz")'`),
+		Entry("a fabric runner", `python3 -c 'local("git zz")'`),
+		Entry("sudo", `python3 -c 'sudo("git zz")'`),
+		Entry("a dict value after a colon", "python3 -c 'C = {\"a\":\n    \"\"\"git zz\"\"\"}'"),
+		Entry("a docstring-like string in a call", "python3 -c 'run(\n\"\"\"git zz\"\"\")'"),
 	)
 })

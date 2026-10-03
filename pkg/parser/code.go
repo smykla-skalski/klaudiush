@@ -42,23 +42,23 @@ var gitConfigChange = regexp.MustCompile(
 		`(?-i:\bHOME\b|["']PATH["']|\bPATH\s*=|\.PATH\b|\{PATH\})`,
 )
 
-// execCallName matches the name of a call that may run its argument as a
-// command, its own or a wrapper's (check_output, getoutput, execSync).
-var execCallName = regexp.MustCompile(
-	`(?i)system|popen|output|spawn|exec|shell|command|cmd|script|invoke|process|eval`,
+// messageCalls name calls that show their argument to a person: printing,
+// logging, failing and exiting. Any other call may run it, so the list is
+// closed: an exec function or wrapper missing from it fails closed.
+var messageCalls = nameSet(
+	"print println printf eprint eprintln puts fail die warn warning error info debug " +
+		"critical exception log notice exit abort echo alert _",
 )
 
-// execCallWords are words of a call name (run_git, checkCall) too short to
-// match inside other words, and keywords whose operand may still run.
-var execCallWords = nameSet(
-	"run call sh bash zsh return yield await lambda assert if elif while for in and or not else",
-)
+// exceptionSuffixes end the names of exception and error types, whose
+// constructors take a message (RuntimeError, ValueError).
+var exceptionSuffixes = []string{"Error", "Exception", "Warning"}
 
 // trailingName matches the identifier that ends a piece of code.
 var trailingName = regexp.MustCompile(`([A-Za-z_$][\w$]*)$`)
 
-// nameWord matches one word of a snake_case or camelCase name.
-var nameWord = regexp.MustCompile(`[A-Z]?[a-z0-9]+|[A-Z]+`)
+// docstringOwner matches the line a Python docstring follows: a def or class.
+var docstringOwner = regexp.MustCompile(`^\s*(?:async\s+)?(?:def|class)\b`)
 
 // shellPatternChars start a brace expansion or glob in a shell word.
 const shellPatternChars = "{}[]*?"
@@ -67,10 +67,15 @@ const shellPatternChars = "{}[]*?"
 const maxStringPrefix = 2
 
 // proseLiteral reports whether the string literal opening at start in code is
-// text rather than a command line: a docstring, or the first argument of a
-// call that does not run commands (print, fail, console.error). A string
-// handed to an exec call, assigned, returned or listed may run, so it is not.
+// text rather than a command line: a docstring at the top of a module, def
+// or class, or the first argument of a message call (print, fail, raise
+// ValueError). A string anywhere else may run, and a backtick string runs in
+// Ruby and Perl, so neither is prose.
 func proseLiteral(code string, start int) bool {
+	if code[start] == '`' {
+		return false
+	}
+
 	before := code[:start]
 
 	triple := strings.HasSuffix(before, `""`) || strings.HasSuffix(before, `''`)
@@ -86,8 +91,15 @@ func proseLiteral(code string, start int) bool {
 
 	prev := significantCode(before)
 
-	if triple && (prev == "" || strings.HasSuffix(prev, ":")) {
-		return prev == "" || strings.Contains(before[len(prev):], "\n")
+	if triple && prev == "" {
+		return true
+	}
+
+	if triple && strings.HasSuffix(prev, ":") {
+		lineStart := strings.LastIndexByte(prev, '\n') + 1
+
+		return docstringOwner.MatchString(prev[lineStart:]) &&
+			strings.Contains(before[len(prev):], "\n")
 	}
 
 	callee, isCall := strings.CutSuffix(prev, "(")
@@ -95,19 +107,18 @@ func proseLiteral(code string, start int) bool {
 		return false
 	}
 
-	name := trailingName.FindString(strings.TrimRight(callee, " \t"))
-
-	return name != "" && !runsCommands(name)
+	return messageCall(trailingName.FindString(strings.TrimRight(callee, " \t")))
 }
 
-// runsCommands reports whether a call name may run its argument.
-func runsCommands(name string) bool {
-	if execCallName.MatchString(name) {
+// messageCall reports whether a call name shows its argument rather than
+// running it.
+func messageCall(name string) bool {
+	if messageCalls[strings.ToLower(name)] {
 		return true
 	}
 
-	return slices.ContainsFunc(nameWord.FindAllString(name, -1), func(word string) bool {
-		return execCallWords[strings.ToLower(word)]
+	return slices.ContainsFunc(exceptionSuffixes, func(suffix string) bool {
+		return strings.HasSuffix(name, suffix)
 	})
 }
 
