@@ -411,8 +411,9 @@ func (w *astWalker) lineGHAlias(name string) (string, bool) {
 // alias or function, or a git or gh shell alias. The name keeps the
 // definition from being expanded inside itself.
 type nestedScript struct {
-	name string
-	text string
+	name      string
+	text      string
+	splitArgs bool
 }
 
 // programBehind returns git or gh for a program invoked with one of their
@@ -760,10 +761,8 @@ func (w *astWalker) definitionScripts(cmd Command) []nestedScript {
 			return scripts
 		}
 
-		scripts = append(
-			scripts,
-			nestedScript{name: cmd.Invoked, text: substitutePositional(body, cmd.Args)},
-		)
+		text, split := substitutePositional(body, cmd.Args)
+		scripts = append(scripts, nestedScript{name: cmd.Invoked, text: text, splitArgs: split})
 	}
 
 	return scripts
@@ -772,9 +771,12 @@ func (w *astWalker) definitionScripts(cmd Command) []nestedScript {
 // substitutePositional puts a call's arguments in place of the positional
 // parameters a function body uses. An unquoted reference splits its value
 // into words and an empty one leaves none, so f() { $1 git push; }; f ""
-// runs git push.
-func substitutePositional(body string, args []string) string {
-	return positionalParam.ReplaceAllStringFunc(body, func(ref string) string {
+// runs git push. It also reports whether an unquoted reference split a
+// value, which only holds while IFS keeps its default.
+func substitutePositional(body string, args []string) (string, bool) {
+	split := false
+
+	text := positionalParam.ReplaceAllStringFunc(body, func(ref string) string {
 		param := strings.Trim(ref, `"${}`)
 		quoted := strings.HasPrefix(ref, `"`) || strings.HasSuffix(ref, `"`)
 
@@ -795,8 +797,12 @@ func substitutePositional(body string, args []string) string {
 			return quoteArgs(values)
 		}
 
+		split = split || slices.ContainsFunc(values, func(v string) bool { return v != "" })
+
 		return quoteArgs(splitFields(values))
 	})
+
+	return text, split
 }
 
 // splitFields splits values into the words an unquoted expansion gives.

@@ -79,6 +79,31 @@ type Command struct {
 
 	startup      map[string]startupValue
 	dynamicWords map[string]bool
+	quoting      map[string]wordQuoting
+}
+
+// wordQuoting records how the words that rendered to one argument were
+// written: an expansion quoted that way stays a word when it is empty.
+type wordQuoting uint8
+
+const (
+	quotedWord wordQuoting = 1 << iota
+	unquotedWord
+)
+
+// argQuoting maps each rendered argument to how its words were quoted.
+func argQuoting(words []*syntax.Word) map[string]wordQuoting {
+	quoting := make(map[string]wordQuoting, len(words))
+
+	for _, word := range words {
+		if keepsEmptyWord(word) {
+			quoting[argWord(word)] |= quotedWord
+		} else {
+			quoting[argWord(word)] |= unquotedWord
+		}
+	}
+
+	return quoting
 }
 
 // anyWordDynamic reports whether any word takes part of its value from

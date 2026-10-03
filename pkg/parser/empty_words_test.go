@@ -125,6 +125,47 @@ var _ = Describe("Empty words", func() {
 		Entry("cd -- empty", `cd /repo && cd -- '' && git push origin main`, "/repo"),
 		Entry("pushd empty", `cd /repo && pushd "" && git push origin main`, "/repo"),
 		Entry("cd with no operand", `cd /repo && cd && git push origin main`, "~"),
+		Entry("cd quoted empty variable", `X=; cd /repo; cd "$X"; git status`, "/repo"),
+		Entry("cd quoted empty braced", `X=; cd /repo; cd "${X}"; git status`, "/repo"),
+		Entry("cd unquoted empty variable", `X=; cd /repo; cd $X; git status`, "~"),
+		Entry("cd unquoted empty then dir", `X=; cd /repo; cd $X /tmp; git status`, "/tmp"),
+		Entry("command cd quoted empty", `X=; cd /repo; command cd "$X"; git status`, "/repo"),
+		Entry("pushd quoted empty variable", `X=; cd /repo; pushd "$X"; git status`, "/repo"),
+	)
+
+	It("leaves the directory unknown when the empty operand's quoting is mixed", func() {
+		result, err := p.Parse(`X=; cd /repo; cd "$X" $X; git status`)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(result.GitOperations).NotTo(BeEmpty())
+		Expect(result.GitOperations[0].WorkingDirectory).NotTo(Equal("~"))
+	})
+
+	DescribeTable("fails closed on function arguments split under another IFS",
+		func(command string) {
+			result, err := p.Parse(command)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.Truncated).To(BeTrue())
+			Expect(result.Opacities).To(ContainElement(
+				HaveField("Cause", parser.OpacityUnresolvedArgs),
+			))
+		},
+		Entry("IFS set in the body", `f(){ IFS=,; $1; }; f 'git,push,--force'`),
+		Entry("IFS set before the call", `IFS=,; f(){ $1; }; f 'git,push,--force'`),
+		Entry("IFS set by a called function", `g(){ IFS=,; }; f(){ g; $1; }; f 'git,push'`),
+		Entry("IFS read in the body", `f(){ read -r IFS; $1; }; f 'git,push'`),
+		Entry("IFS set by eval", `f(){ eval 'IFS=,'; $1; }; f 'git,push'`),
+		Entry("IFS as call prefix", `f(){ $1; }; IFS=, f 'git,push'`),
+	)
+
+	DescribeTable("keeps splitting function arguments with the default IFS",
+		func(command string) {
+			result, err := p.Parse(command)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.Truncated).To(BeFalse())
+			Expect(result.GitOperations).NotTo(BeEmpty())
+		},
+		Entry("unquoted", `f(){ $1; }; f 'git push --force'`),
+		Entry("quoted reference with IFS set", `f(){ IFS=,; git "$1"; }; f 'push'`),
 	)
 
 	It("does not run an empty program word", func() {

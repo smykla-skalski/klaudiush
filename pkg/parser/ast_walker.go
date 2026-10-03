@@ -568,6 +568,7 @@ func (w *astWalker) extractCommand(call *syntax.CallExpr) {
 		StdinFile:        w.stdinFileByCall[call],
 		startup:          prefixStartup(call),
 		dynamicWords:     dynamicArgs(call.Args[1:]),
+		quoting:          argQuoting(call.Args[1:]),
 	}, w.depth, view)
 }
 
@@ -644,7 +645,20 @@ func (w *astWalker) record(cmd Command, depth int, view string) {
 	w.follow(cmd, l, depth+1, startup)
 
 	for _, script := range nested {
-		w.walkScript(script.text, cmd, depth+1, scriptWalk{name: script.name})
+		w.walkNested(script, cmd, depth+1)
+	}
+}
+
+// walkNested walks a nested script. A function body whose arguments were
+// split on the default IFS is unknown when IFS may differ, before the call
+// or anywhere in the body: IFS=,; $1 with git,push runs git push.
+func (w *astWalker) walkNested(script nestedScript, cmd Command, depth int) {
+	untrusted := w.state.untrusted
+
+	w.walkScript(script.text, cmd, depth, scriptWalk{name: script.name})
+
+	if script.splitArgs && (untrusted || w.state.untrusted) {
+		w.opaque(OpacityUnresolvedArgs, w.shownWord(script.name), "")
 	}
 }
 
@@ -689,11 +703,11 @@ func (w *astWalker) trackShellState(cmd Command) {
 		w.trackPositional(cmd)
 	case "cd":
 		w.dirComputed = w.dirComputed || cmd.Dynamic
-		w.changeDirTo(cmd.Args)
+		w.changeDirTo(cmd, cmd.Args)
 	case "pushd":
 		w.dirComputed = w.dirComputed || cmd.Dynamic
 		w.dirStack = append(w.dirStack, w.currentDir)
-		w.changeDirTo(cmd.Args)
+		w.changeDirTo(cmd, cmd.Args)
 	case "popd":
 		if n := len(w.dirStack); n > 0 {
 			w.currentDir, w.dirStack = w.dirStack[n-1], w.dirStack[:n-1]
@@ -728,34 +742,57 @@ func (w *astWalker) changeDir(target string) {
 }
 
 // changeDirTo moves the walker's directory to the operand of cd or pushd.
-// An empty operand (cd "") leaves the shell where it is; no operand goes
-// home.
-func (w *astWalker) changeDirTo(args []string) {
-	target, ok := operand(args)
-	if ok && target == "" {
+// An empty operand (cd "" or cd "$x" with x empty) leaves the shell where
+// it is; no operand goes home. An unquoted expansion to nothing is no word,
+// so the next one is the operand; when how it was quoted is not known, the
+// directory is unknown.
+func (w *astWalker) changeDirTo(cmd Command, args []string) {
+	i := operandIndex(args)
+	if i < 0 {
+		w.changeDir("")
+
 		return
 	}
 
-	w.changeDir(target)
+	target := args[i]
+	if target == "" {
+		return
+	}
+
+	if w.expandName(target) != "" {
+		w.changeDir(target)
+
+		return
+	}
+
+	switch cmd.quoting[target] {
+	case quotedWord:
+	case unquotedWord:
+		w.changeDirTo(cmd, slices.Delete(slices.Clone(args), i, i+1))
+	default:
+		w.dirUnknown = true
+	}
 }
 
 // firstOperand returns the first argument that is not an option.
 func firstOperand(args []string) string {
-	arg, _ := operand(args)
+	if i := operandIndex(args); i >= 0 {
+		return args[i]
+	}
 
-	return arg
+	return ""
 }
 
-// operand returns the first argument that is not an option and whether
-// there is one.
-func operand(args []string) (string, bool) {
-	for _, arg := range args {
+// operandIndex returns the index of the first argument that is not an
+// option, or -1.
+func operandIndex(args []string) int {
+	for i, arg := range args {
 		if arg == "-" || !strings.HasPrefix(arg, "-") {
-			return arg, true
+			return i
 		}
 	}
 
-	return "", false
+	return -1
 }
 
 // gitCommandVars are environment variables whose value git runs as a
