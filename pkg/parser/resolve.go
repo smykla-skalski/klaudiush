@@ -221,8 +221,6 @@ func substitutedProgram(sub *syntax.CmdSubst) string {
 // disk explains. It then expands git aliases, returning the command line of a
 // shell alias for the walker to follow.
 func (w *astWalker) resolveProgram(cmd Command) (Command, []nestedScript) {
-	w.expanded = nil
-
 	if sub, ok := strings.CutPrefix(cmd.Name, "git-"); ok && sub != "" {
 		cmd.Name, cmd.Args = gitProgram, slices.Concat([]string{sub}, cmd.Args)
 	}

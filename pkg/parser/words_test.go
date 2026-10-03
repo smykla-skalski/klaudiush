@@ -165,7 +165,50 @@ var _ = Describe("Unresolved eval and command words", func() {
 			opacity("git", parser.DetailWordOutput)),
 		Entry("partly substituted with backticks", "git cherry`echo -pick` abc",
 			opacity("git", parser.DetailWordOutput)),
+		Entry("read with an empty delimiter", `x=status; read -d '' x <<< commit; git $x`,
+			opacity("git", parser.DetailWordVariable)),
+		Entry("printf -v to a dynamic name", `x=status; v=x; printf -v $v commit; git $x`,
+			opacity("git", parser.DetailWordVariable)),
+		Entry("printf -v to an element", `x=status; printf -v x[0] commit; git $x`,
+			opacity("git", parser.DetailWordVariable)),
+		Entry("read to a dynamic name", `x=status; v=x; read $v <<< commit; git $x`,
+			opacity("git", parser.DetailWordVariable)),
+		Entry("declare of a dynamic name", `x=status; v=x; declare $v=commit; git $x`,
+			opacity("git", parser.DetailWordVariable)),
+		Entry("export of a dynamic name", `x=status; v=x; export $v=commit; git $x`,
+			opacity("git", parser.DetailWordVariable)),
+		Entry("declare of a quoted assignment", `x=status; v='x=commit'; declare "$v"; git $x`,
+			opacity("git", parser.DetailWordVariable)),
+		Entry("declare of command output", `x=status; declare -- "$(echo x=commit)"; git $x`,
+			opacity("git", parser.DetailWordVariable)),
+		Entry("lowercase attribute", `x=status; declare -l x=COMMIT; git $x`,
+			opacity("git", parser.DetailWordVariable)),
+		Entry("lowercase attribute set first", `declare -l y; y=COMMIT; git $y`,
+			opacity("git", parser.DetailWordVariable)),
+		Entry("reference to a literal name", `X=status; declare -n R=X; R=push; git $X`,
+			opacity("git", parser.DetailWordVariable)),
 	)
+
+	DescribeTable("keeps a flag with a substituted value from taking the next argument",
+		func(command string, args ...string) {
+			result := parse(command)
+
+			Expect(result.GitOperations).To(HaveLen(1))
+			Expect(result.GitOperations[0].Args).To(Equal(args))
+		},
+		Entry("git -C", `git -C$(pwd) push --force o main`,
+			"-C$(...)", "push", "--force", "o", "main"),
+		Entry("git -c", `git -c$(echo a=b) push`, "-c$(...)", "push"),
+		Entry("commit -m", `git commit -sS -m$(echo x) --no-verify`,
+			"commit", "-sS", "-m$(...)", "--no-verify"),
+	)
+
+	It("hides a value substituted into an eval line", func() {
+		secret := fakeResolver{env: map[string]string{"SECRET": "hunterpassword"}}
+		result, err := parser.NewBashParserWithResolver(secret).Parse(`eval "git $SECRET"`)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(result.Opacities).To(ConsistOf(HaveField("Operation", "git <hidden>")))
+	})
 
 	It("checks a launcher program from command output as git when it runs a git command", func() {
 		for _, command := range []string{
@@ -242,6 +285,9 @@ var _ = Describe("Unresolved eval and command words", func() {
 		Entry("a local in a function", `f(){ local y=1; }; x=status; f; git $x`, "status"),
 		Entry("printf -v of another variable", `x=status; printf -v y commit; git $x`, "status"),
 		Entry("printf without -v", `x=status; printf '%s' x; git $x`, "status"),
+		Entry("read of another variable with a prompt", `read -t 5 -p "Name: " y; x=status; git $x`,
+			"status"),
+		Entry("export attribute", `declare -x x=status; git $x`, "status"),
 	)
 
 	DescribeTable("leaves gh words it does not dispatch on alone",

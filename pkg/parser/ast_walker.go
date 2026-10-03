@@ -39,7 +39,6 @@ type astWalker struct {
 	loopCalls   map[*syntax.CallExpr]bool
 	inLoop      bool
 	outerLoop   bool
-	expanded    map[string]bool
 	// depth counts the launchers, scripts and aliases that led here.
 	depth int
 	// resolver answers what the command text cannot: environment, script
@@ -93,7 +92,9 @@ type parseState struct {
 	seq int
 	// pathChanged records that the line changes PATH or the shell's command
 	// table, so a bare name may no longer run what it runs outside it.
-	pathChanged bool
+	pathChanged   bool
+	untrusted     bool
+	expandedWords map[string]bool
 }
 
 // spend takes one unit of work, reporting false once the budget is gone.
@@ -670,6 +671,8 @@ func (w *astWalker) gitEnvScripts(cmd Command) []string {
 // extractDecl records assignments made by export, declare, local and
 // readonly, and notes a changed PATH.
 func (w *astWalker) extractDecl(decl *syntax.DeclClause) {
+	w.distrustDecl(decl)
+
 	for _, assign := range decl.Args {
 		if assign.Name == nil {
 			continue

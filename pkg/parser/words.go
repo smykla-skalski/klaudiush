@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"regexp"
 	"slices"
 	"strings"
 
@@ -57,6 +58,14 @@ func marked(arg string) bool {
 	return strings.Contains(arg, unresolvedWord)
 }
 
+// gluedToFlag reports a short flag whose attached value was all
+// substitution (-C$(pwd)). Without a stand-in for the value the bare flag
+// would take the next argument as its value.
+func gluedToFlag(arg, value string) bool {
+	return strings.HasSuffix(arg, unresolvedWord) && strings.HasPrefix(value, "-") &&
+		!strings.HasPrefix(value, "--")
+}
+
 // storedArgs removes the marks from cmd's arguments. An argument that was
 // all substitution is dropped, as the parser always did, unless it is the
 // value of a git global option or of a flag: keeping it empty there stops
@@ -77,6 +86,10 @@ func storedArgs(cmd Command) []string {
 
 	for i, arg := range cmd.Args {
 		value := strings.ReplaceAll(arg, unresolvedWord, "")
+		if gluedToFlag(arg, value) {
+			value += unresolvedProgram
+		}
+
 		if value != "" || (marked(arg) && keepsEmpty(cmd, i, idx, sub)) {
 			args = append(args, value)
 		}
@@ -187,17 +200,22 @@ func (w *astWalker) resolveWord(word string) (string, bool) {
 	known := true
 
 	expanded := expandVars(word, func(name string) (string, bool) {
-		if w.inLoop || w.state.dynamicVars[name] || w.unknownVars[name] {
+		if w.inLoop || w.state.untrusted || w.state.dynamicVars[name] || w.unknownVars[name] {
 			known = false
 
 			return "", false
 		}
 
-		if value, ok := w.assignments[name]; ok {
-			return value, true
+		value, ok := w.assignments[name]
+		if !ok {
+			value, ok = w.resolver.LookupEnv(name)
 		}
 
-		return w.resolver.LookupEnv(name)
+		if ok {
+			w.noteExpanded(value)
+		}
+
+		return value, ok
 	})
 
 	return expanded, known && !HasUnresolvedVars(expanded)
@@ -275,10 +293,7 @@ func (w *astWalker) resolveCommandWord(word, program string) ([]string, bool) {
 		if expanded, ok := w.resolveWord(word); ok {
 			detail = commandWordDetail(expanded)
 			if detail == "" {
-				fields := nonNil(strings.Fields(expanded))
-				w.noteExpanded(fields)
-
-				return fields, true
+				return nonNil(strings.Fields(expanded)), true
 			}
 		}
 	}
@@ -297,21 +312,22 @@ func nonNil(words []string) []string {
 	return words
 }
 
-// noteExpanded remembers words that came from a variable's value, which may
-// be a secret, so a diagnostic never shows them.
-func (w *astWalker) noteExpanded(words []string) {
-	if w.expanded == nil {
-		w.expanded = make(map[string]bool)
+// noteExpanded remembers the words of a variable's value, which may be a
+// secret, so no diagnostic of the parse shows them, even after eval runs a
+// line the value was substituted into.
+func (w *astWalker) noteExpanded(value string) {
+	if w.state.expandedWords == nil {
+		w.state.expandedWords = make(map[string]bool)
 	}
 
-	for _, word := range words {
-		w.expanded[word] = true
+	for word := range strings.FieldsSeq(value) {
+		w.state.expandedWords[word] = true
 	}
 }
 
 // shownWord is safeName, hiding a word that came from a variable's value.
 func (w *astWalker) shownWord(word string) string {
-	if w.expanded[word] {
+	if w.state.expandedWords[word] {
 		return hiddenName
 	}
 
@@ -373,41 +389,64 @@ func (w *astWalker) forget(name string) {
 	}
 }
 
-// varWriters are the builtins that set variables named in their arguments,
-// with the flags of each that take a value.
-var varWriters = map[string][]string{
-	"read":        strings.Fields("-d -i -n -N -p -t -u"),
-	"mapfile":     strings.Fields("-d -n -O -s -u -C -c"),
-	"readarray":   strings.Fields("-d -n -O -s -u -C -c"),
-	printfBuiltin: nil,
-	"getopts":     nil,
-	"unset":       nil,
-}
+// varWriters are the builtins that set variables named in their arguments.
+var varWriters = nameSet("read mapfile readarray getopts unset " + printfBuiltin)
 
 // defaultVars are the variables a writer sets when it names none.
 var defaultVars = map[string]string{"read": "REPLY", "mapfile": "MAPFILE", "readarray": "MAPFILE"}
 
 // forgetWritten forgets the variables cmd sets other than by assignment.
 func (w *astWalker) forgetWritten(cmd Command) {
-	valueFlags, ok := varWriters[cmd.Name]
-	if !ok {
+	if !varWriters[cmd.Name] {
 		return
 	}
 
-	names := writtenVars(cmd, valueFlags)
+	names := writtenVars(cmd)
 	if len(names) == 0 && defaultVars[cmd.Name] != "" {
 		names = []string{defaultVars[cmd.Name]}
 	}
 
 	for _, name := range names {
-		w.forget(name)
+		w.forgetName(name)
 	}
 }
 
-// writtenVars returns the variable names cmd writes: its operands, and the
-// value of -a (read) or -v (printf), given apart or attached. printf writes
-// only through -v.
-func writtenVars(cmd Command, valueFlags []string) []string {
+// forgetName forgets a written variable. A target built from an expansion
+// or naming an element ("$v", x[0]) could be any variable, so after it none
+// is trusted. Other words (a prompt, a timeout) name no variable.
+func (w *astWalker) forgetName(name string) {
+	switch {
+	case variableName.MatchString(name):
+		w.forget(name)
+	case strings.ContainsAny(name, "$[") || marked(name):
+		w.state.untrusted = true
+	}
+}
+
+// variableName matches a plain shell variable name.
+var variableName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+// distrustDecl stops trusting any variable after a declare whose operand is
+// not a literal assignment (declare "$v", export $v=x) or whose options
+// change values or make references (-l, -u, -c, -n).
+func (w *astWalker) distrustDecl(decl *syntax.DeclClause) {
+	for _, a := range decl.Args {
+		if a.Name != nil || a.Value == nil {
+			continue
+		}
+
+		option := wordToString(a.Value)
+		if !strings.HasPrefix(option, "-") && !strings.HasPrefix(option, "+") ||
+			strings.ContainsAny(option, "lucn") {
+			w.state.untrusted = true
+		}
+	}
+}
+
+// writtenVars returns the words cmd may write to: every operand and flag
+// value, since an empty value such as read -d ” leaves no word behind, and
+// for printf only the value of -v, given apart or attached.
+func writtenVars(cmd Command) []string {
 	var names []string
 
 	for i := 0; i < len(cmd.Args); i++ {
@@ -422,8 +461,6 @@ func writtenVars(cmd Command, valueFlags []string) []string {
 			i++
 		case strings.HasPrefix(arg, "-v") || strings.HasPrefix(arg, "-a"):
 			names = append(names, arg[2:])
-		case slices.Contains(valueFlags, arg):
-			i++
 		case strings.HasPrefix(arg, "-"):
 		case cmd.Name == printfBuiltin:
 			return names
