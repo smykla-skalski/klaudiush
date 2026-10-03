@@ -116,9 +116,15 @@ func hasZshCall(file *syntax.File, name string) bool {
 // name. Earlier constructs parsed as bash, so they are not what bash
 // rejected. It returns "" when it finds none it knows.
 func zshConstruct(file *syntax.File, bashOffset int) string {
-	construct, disown := "", false
+	return zshConstructIn(file, bashOffset)
+}
 
-	syntax.Walk(file, func(node syntax.Node) bool {
+const zshDisown = "`&|` and `&!` disowning"
+
+func zshConstructIn(root syntax.Node, bashOffset int) string {
+	construct := ""
+
+	syntax.Walk(root, func(node syntax.Node) bool {
 		if construct != "" || node == nil {
 			return false
 		}
@@ -129,18 +135,19 @@ func zshConstruct(file *syntax.File, bashOffset int) string {
 
 		// A statement's disown marker trails its words, so name it only
 		// when nothing inside the statement is zsh syntax.
-		if stmt, ok := node.(*syntax.Stmt); ok && stmt.Disown {
-			disown = true
+		if stmt, ok := node.(*syntax.Stmt); ok && stmt.Disown && node != root {
+			construct = zshConstructIn(stmt, bashOffset)
+			if construct == "" {
+				construct = zshDisown
+			}
+
+			return false
 		}
 
 		construct = zshNodeConstruct(node)
 
 		return construct == ""
 	})
-
-	if construct == "" && disown {
-		return "`&|` and `&!` disowning"
-	}
 
 	return construct
 }
