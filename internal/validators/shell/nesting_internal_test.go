@@ -21,6 +21,28 @@ var _ = Describe("opacity explanations", func() {
 		))
 	})
 
+	It("has a repair for every eval setup tool the parser names", func() {
+		tools := make([]string, 0, len(evalSetupRepairs))
+		for tool := range evalSetupRepairs {
+			tools = append(tools, tool)
+		}
+
+		Expect(tools).To(ConsistOf(parser.EvalSetupTools()))
+	})
+
+	It("keeps the generic eval repair for a tool it does not know", func() {
+		o := parser.Opacity{
+			Cause:     parser.OpacityUnresolvedWord,
+			Operation: "eval",
+			Detail:    parser.DetailWordOutput,
+			Tool:      "future",
+		}
+
+		Expect(opacityFinding(o)).To(
+			HaveField("Repair", "Run the commands directly instead of through eval"),
+		)
+	})
+
 	It("falls back when a truncated parse has no explanation", func() {
 		Expect(truncatedSummary(nil, false)).To(Equal(truncatedText))
 	})
