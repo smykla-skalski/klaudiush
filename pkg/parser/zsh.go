@@ -4,6 +4,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/cockroachdb/errors"
 	"mvdan.cc/sh/v3/syntax"
@@ -255,6 +256,14 @@ const (
 // extended glob as plain text, so the command it runs is never inspected.
 const GlobCommandSubst = "$(...)"
 
+// GlobVariable is the Opacity.Operation of an extended glob holding a $
+// expansion, whose text zsh may read as glob qualifiers under glob_subst.
+const GlobVariable = "$var"
+
+// GlobSubst is the Opacity.Operation of a word holding zsh's $~var, which
+// bash reads as plain text but zsh expands as a glob, qualifiers included.
+const GlobSubst = "$~var"
+
 // zshQualifierPrefix starts the (#q...) form, which extended_glob allows
 // anywhere in a word.
 const zshQualifierPrefix = "#q"
@@ -280,6 +289,10 @@ const (
 // sits in the word and whatever runs the word, which may flag a bash-only
 // command such as bash -c 'ls *(e:x:)'.
 func codeQualifier(word *syntax.Word) string {
+	if strings.Contains(unquotedText(word), "$~") {
+		return GlobSubst
+	}
+
 	for _, part := range word.Parts {
 		glob, ok := part.(*syntax.ExtGlob)
 		if !ok || glob.Pattern == nil {
@@ -288,6 +301,10 @@ func codeQualifier(word *syntax.Word) string {
 
 		if hasCommandSubst(glob.Pattern.Value) {
 			return GlobCommandSubst
+		}
+
+		if strings.Contains(glob.Pattern.Value, "$") {
+			return GlobVariable
 		}
 
 		if form := qualifierCode(glob.Pattern.Value); form != "" {
@@ -316,15 +333,6 @@ func qualifierCode(pattern string) string {
 	quoted := strings.ContainsAny(list, shellQuoting)
 	if !hashQ && !quoted && strings.ContainsAny(list, "|(") {
 		return ""
-	}
-
-	if strings.Contains(list, "$") {
-		switch {
-		case strings.Contains(list, "e"):
-			return qualifierEval
-		case strings.Contains(list, "+"):
-			return qualifierFunc
-		}
 	}
 
 	list = unquote(list)
@@ -383,9 +391,10 @@ func isUnit(list string, i int) bool {
 		strings.IndexByte(signedQualifiers, list[i-1]) >= 0
 }
 
-// isNameChar reports a character zsh accepts in a function name after +.
+// isNameChar reports a character zsh may accept in a function name after
+// +, any byte of a multibyte character included.
 func isNameChar(c byte) bool {
-	return c == '_' || (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') ||
+	return c == '_' || c >= utf8.RuneSelf || (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') ||
 		(c >= 'A' && c <= 'Z')
 }
 

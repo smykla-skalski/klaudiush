@@ -299,11 +299,27 @@ var evalSetupRepairs = map[string]string{
 // globCodeFinding explains an extended glob that runs code: a command
 // substitution, or a zsh glob qualifier bash reads as an extended glob.
 func globCodeFinding(o parser.Opacity) (message, required, repair string) {
-	if o.Operation == parser.GlobCommandSubst {
+	switch o.Operation {
+	case parser.GlobCommandSubst:
 		message = "an extended glob holds a command substitution, which the shell runs " +
 			"but klaudiush does not inspect"
 		required = "no command substitutions inside extended globs such as *(...) or @(...)"
 		repair = "Run the command separately, or store its output in a variable first"
+
+		return message, required, repair
+	case parser.GlobVariable:
+		message = "an extended glob holds a variable, whose value zsh may read as glob " +
+			"qualifiers that run code (glob_subst)"
+		required = "literal text inside extended globs such as *(...) or @(...)"
+		repair = "Write the pattern literally, or select the files another way " +
+			"(find or a loop) and run the command directly"
+
+		return message, required, repair
+	case parser.GlobSubst:
+		message = "$~var expands a variable as a zsh glob, whose qualifiers can run code, " +
+			"and bash reads it as plain text"
+		required = "no $~var glob substitution"
+		repair = "Write the glob literally, or use the variable without the ~"
 
 		return message, required, repair
 	}
