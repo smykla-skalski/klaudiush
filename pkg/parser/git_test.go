@@ -392,6 +392,7 @@ EOF
 		Entry("glued short value", "git commit -Fx$(echo y)", "-F", true, "x"),
 		Entry("combined flags", "git commit -sSF $(mktemp)", "-F", true, ""),
 		Entry("combined flags before a path", "git commit -sSF $(mktemp) a.txt", "-F", true, ""),
+		Entry("arithmetic expansion", "git commit -F msg$((1))", "-F", true, "msg"),
 		Entry("variable is not a substitution", `git commit -F "$MSG"`, "-F", false, "${MSG}"),
 	)
 

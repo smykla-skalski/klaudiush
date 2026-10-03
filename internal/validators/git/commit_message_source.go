@@ -2,7 +2,6 @@ package git
 
 import (
 	"io"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -28,7 +27,7 @@ const (
 	stdinFd         = "0"
 	homeVar         = "HOME"
 	noFileFlag      = "--no-file"
-	minAbbrevLen    = len("--fi")
+	minAbbrevLen    = len("--m")
 	messageLocation = "commit message"
 	opaqueSummary   = "Commit message cannot be inspected: "
 )
@@ -86,25 +85,13 @@ var readOnlyPrograms = []string{
 	"ls", "stat", "file", "less", "more", "diff", "cmp", "echo", "printf",
 	"realpath", "readlink", "basename", "dirname", "du", "md5", "md5sum",
 	"cd", "pushd", "popd", "mkdir", "touch", "alias",
-	"shasum", "sha1sum", "sha256sum", "sed", "perl",
+	"shasum", "sha1sum", "sha256sum",
 }
 
 // filePlacers put, replace or remove files at paths they are given, so a
 // destination klaudiush cannot resolve may be the message file.
 var filePlacers = []string{
 	"cp", "mv", "rsync", "install", "ln", "rm", "rmdir", "tee", "dd", "truncate",
-}
-
-// shellExpanded reports an argument the shell expands to paths the parser
-// does not resolve: ~+ and ~- (the current and previous directory), globs
-// and braces.
-func shellExpanded(arg string) bool {
-	if _, value, found := strings.Cut(arg, "="); found && shellExpanded(value) {
-		return true
-	}
-
-	return strings.HasPrefix(arg, "~+") || strings.HasPrefix(arg, "~-") ||
-		strings.ContainsAny(arg, "*?[{")
 }
 
 // readOnlyGitSubcommands leave the work tree files they name unchanged.
@@ -236,7 +223,7 @@ func (v *CommitValidator) readMessageFile(
 		return "", opaqueSource(reasonSubstituted)
 	}
 
-	return v.readMessagePath(gitCmd, src, filePath)
+	return v.readMessagePath(src, filePath, src.gitDir(gitCmd), gitCmd.Location)
 }
 
 // readMessageStdin returns what a heredoc, here-string, literal echo or a
@@ -256,159 +243,10 @@ func (v *CommitValidator) readMessageStdin(
 
 		return stdin, nil
 	case file != "" && !isStdinPath(file) && !isFdPath(file):
-		return v.readMessagePath(gitCmd, src, file)
+		return v.readMessagePath(src, file, src.shellDir(), gitCmd.Location)
 	default:
 		return "", opaqueSource(reasonStdin)
 	}
-}
-
-// readMessagePath returns the content of a message file: what the command
-// writes to it first when that is known, else the file on disk.
-func (v *CommitValidator) readMessagePath(
-	gitCmd *parser.GitCommand,
-	src messageSource,
-	filePath string,
-) (string, error) {
-	workDir := gitCmd.GetWorkingDirectory()
-
-	if src.parsed != nil {
-		content, ok := src.parsed.InlineFileContent(filePath, workDir, gitCmd.Location)
-		if ok {
-			v.Logger().Debug("Reading commit message from inline file write", "path", filePath)
-
-			return strings.TrimSpace(content), nil
-		}
-
-		if src.parsed.FileWrittenBefore(filePath, workDir, gitCmd.Location) {
-			return "", opaqueSourceWith(reasonRewritten, repairSeparate)
-		}
-	}
-
-	readPath, err := resolveMessagePath(gitCmd, src, filePath)
-	if err != nil {
-		return "", err
-	}
-
-	if changed := src.changedBefore(gitCmd.Location, readPath); changed != nil {
-		return "", changed
-	}
-
-	v.Logger().Debug("Reading commit message from file", "path", readPath)
-
-	content, err := readRegularFile(readPath)
-	if err != nil {
-		v.Logger().Debug("Commit message file is unreadable", "error", err)
-
-		if errors.Is(err, fs.ErrNotExist) {
-			return "", opaqueSourceWith(reasonMissing, repairMissing)
-		}
-
-		return "", opaqueSource(reasonNotRegular)
-	}
-
-	return strings.TrimSpace(content), nil
-}
-
-// changedBefore fails when something earlier on the line may change the file
-// at readPath: a write to it under another name, a write whose target is
-// unknown, or a command that names it and is not known to only read it.
-func (src messageSource) changedBefore(before parser.Location, readPath string) error {
-	if src.parsed == nil {
-		return nil
-	}
-
-	if src.parsed.DynamicWrites > 0 {
-		return opaqueSourceWith(reasonUnknownWrite, repairSeparate)
-	}
-
-	for _, fw := range src.parsed.WritesBefore(before) {
-		target, ok := src.absolute(fw.Vars, fw.Path, fw.WorkingDirectory, fw.DirUnknown)
-		if !ok || fw.Dynamic {
-			return opaqueSourceWith(reasonUnknownWrite, repairSeparate)
-		}
-
-		if sameFile(target, readPath) {
-			return opaqueSourceWith(reasonRewritten, repairSeparate)
-		}
-	}
-
-	for _, cmd := range src.parsed.CommandsBefore(before) {
-		if readOnlyCommand(cmd) {
-			continue
-		}
-
-		if src.namesFile(cmd, readPath) {
-			return opaqueSourceWith(reasonChanged, repairSeparate)
-		}
-	}
-
-	return nil
-}
-
-// namesFile reports a command argument that is the file at readPath or a
-// directory above it, also as the value of a key=value argument (dd of=).
-func (src messageSource) namesFile(cmd parser.Command, readPath string) bool {
-	if slices.Contains(filePlacers, cmd.Name) &&
-		(cmd.Dynamic || slices.Contains(cmd.SubstitutedArgs, true) || slices.ContainsFunc(cmd.Args, shellExpanded)) {
-		return true
-	}
-
-	for _, arg := range cmd.Args {
-		if _, value, found := strings.Cut(arg, "="); found {
-			arg = value
-		}
-
-		path, ok := src.absolute(cmd.Vars, arg, cmd.WorkingDirectory, cmd.DirUnknown)
-		if ok && (sameFile(path, readPath) || containsPath(path, readPath)) {
-			return true
-		}
-	}
-
-	return false
-}
-
-// readOnlyCommand reports a command known to leave the files it names as
-// they are.
-func readOnlyCommand(cmd parser.Command) bool {
-	switch cmd.Name {
-	case gitCommand:
-		gitCmd, err := parser.ParseGitCommand(cmd)
-
-		return err == nil && slices.Contains(readOnlyGitSubcommands, gitCmd.Subcommand)
-	case "sed", "perl":
-		return !slices.ContainsFunc(cmd.Args, editsInPlace)
-	default:
-		return slices.Contains(readOnlyPrograms, cmd.Name)
-	}
-}
-
-// editsInPlace reports a sed or perl flag that rewrites the files it reads.
-func editsInPlace(arg string) bool {
-	return strings.HasPrefix(arg, "--in-place") ||
-		(strings.HasPrefix(arg, "-") && !strings.HasPrefix(arg, "--") && strings.Contains(arg, "i"))
-}
-
-// absolute resolves path as the shell would see it from dir, or reports
-// false when a variable or the directory cannot be resolved.
-func (src messageSource) absolute(
-	vars *parser.VarScope,
-	path, dir string,
-	dirUnknown bool,
-) (string, bool) {
-	path = expandTilde(vars.ExpandVars(path))
-	if parser.HasUnresolvedVars(path) {
-		return "", false
-	}
-
-	if filepath.IsAbs(path) {
-		return filepath.Clean(path), true
-	}
-
-	if dirUnknown {
-		return "", false
-	}
-
-	return src.join(dir, path), true
 }
 
 // join places a relative path under dir, itself relative to the shell's
@@ -447,49 +285,6 @@ func containsPath(dir, path string) bool {
 			return false
 		}
 	}
-}
-
-// resolveMessagePath resolves a -F path the way the shell and git would:
-// variables from the line (and HOME from the environment), a leading ~, and
-// a relative path joined onto the commit's working directory.
-func resolveMessagePath(
-	gitCmd *parser.GitCommand,
-	src messageSource,
-	filePath string,
-) (string, error) {
-	readPath := expandPathVars(src, filePath)
-	if parser.HasUnresolvedVars(readPath) || usesDynamicVar(src.cmd.Vars, filePath) {
-		return "", opaqueSource(reasonVarPath)
-	}
-
-	readPath = expandTilde(readPath)
-	if filepath.IsAbs(readPath) {
-		return filepath.Clean(readPath), nil
-	}
-
-	cDir, hasC := gitCmd.GlobalOptions["-C"]
-	if src.cmd.DirUnknown || (hasC && (cDir == "" || parser.HasUnresolvedVars(cDir))) {
-		return "", opaqueSource(reasonDirectory)
-	}
-
-	return src.join(gitCmd.GetWorkingDirectory(), readPath), nil
-}
-
-// expandPathVars substitutes the line's variables, then HOME from the
-// environment when the line leaves it untouched.
-func expandPathVars(src messageSource, path string) string {
-	path = src.cmd.Vars.ExpandVars(path)
-
-	ref := "${" + homeVar + "}"
-	if !strings.Contains(path, ref) || homeAssignment.MatchString(src.text) {
-		return path
-	}
-
-	if home, ok := os.LookupEnv(homeVar); ok && home != "" {
-		path = strings.ReplaceAll(path, ref, home)
-	}
-
-	return path
 }
 
 // usesDynamicVar reports a path that names a variable holding command output.

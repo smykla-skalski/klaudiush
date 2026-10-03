@@ -72,6 +72,7 @@ type Command struct {
 	// partially: rm "$(echo dir)/f" has the argument "/f".
 	Dynamic         bool
 	SubstitutedArgs []bool
+	DirComputed     bool
 	// Vars are the variables as they stood when the command ran.
 	Vars *VarScope
 }

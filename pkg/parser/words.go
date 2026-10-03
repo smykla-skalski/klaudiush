@@ -34,7 +34,7 @@ func markSubstituted(word *syntax.Word, rendered string) string {
 func hasCmdSubst(parts []syntax.WordPart) bool {
 	for _, part := range parts {
 		switch p := part.(type) {
-		case *syntax.CmdSubst, *syntax.ProcSubst:
+		case *syntax.CmdSubst, *syntax.ProcSubst, *syntax.ArithmExp:
 			return true
 		case *syntax.DblQuoted:
 			if hasCmdSubst(p.Parts) {

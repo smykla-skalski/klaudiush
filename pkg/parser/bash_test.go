@@ -1101,6 +1101,37 @@ EOF`
 			Entry("no write", "git status", "msg.txt", false),
 		)
 
+		DescribeTable("DynamicWritesBetween locates substituted redirect targets",
+			func(cmd string, before bool) {
+				result, err := p.Parse(cmd)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result.GitOperations).NotTo(BeEmpty())
+
+				commit := result.GitOperations[0].Location
+				Expect(result.DynamicWritesBetween(parser.Location{}, commit)).To(Equal(before))
+			},
+			Entry("before the commit", `echo x > "$(mktemp)"; git commit -F m`, true),
+			Entry("after the commit", `git commit -F m; echo x > "$(mktemp)"`, false),
+			Entry("none", `echo x > out.txt; git commit -F m`, false),
+		)
+
+		DescribeTable("commit context the validator relies on",
+			func(cmd string, check func(parser.Command)) {
+				result, err := p.Parse(cmd)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result.GitOperations).NotTo(BeEmpty())
+				check(result.GitOperations[0])
+			},
+			Entry("cd to a computed directory", `cd "$(printf sub/)repo" && git commit -F m`,
+				func(c parser.Command) { Expect(c.DirComputed).To(BeTrue()) }),
+			Entry("literal cd", `cd repo && git commit -F m`,
+				func(c parser.Command) { Expect(c.DirComputed).To(BeFalse()) }),
+			Entry("substituted stdin redirect", `git commit -F - < "$(printf sub/)m"`,
+				func(c parser.Command) { Expect(c.StdinFile).To(HavePrefix("/dev/fd/")) }),
+			Entry("literal stdin redirect", `git commit -F - < m`,
+				func(c parser.Command) { Expect(c.StdinFile).To(Equal("m")) }),
+		)
+
 		It("FileWrittenBefore ignores a write after the consumer", func() {
 			result, err := p.Parse("echo \"$X\" > msg.txt")
 			Expect(err).NotTo(HaveOccurred())

@@ -199,6 +199,31 @@ var _ = Describe("CommitValidator message sources", func() {
 			`rm -rf {dir} && git commit -sS -F {good}`,
 			"may change",
 		),
+		Entry("abbreviated --m", "git commit -sS --m 'bad'", "abbreviates"),
+		Entry("substituted stdin redirect",
+			`cd {dir} && git commit -sS -F - < "$(printf sub/)good.txt"`, "reads stdin"),
+		Entry(
+			"captured write then sed -i",
+			"echo '"+goodMessage+"' > {dir}/m.txt; sed -i 's/.*/bad/' {dir}/m.txt; git commit -sS -F {dir}/m.txt",
+			"may change",
+		),
+		Entry(
+			"captured write then uncaptured write through a variable",
+			"echo '"+goodMessage+"' > {dir}/m.txt; echo bad > \"$F\"; git commit -sS -F {dir}/m.txt",
+			"whose name",
+		),
+		Entry("partly substituted git -C",
+			`git -C "$(printf sub/)repo" commit -sS -a -F msg.txt`, "directory"),
+		Entry("partly substituted cd",
+			`cd "$(printf sub/)repo" && git commit -sS -F msg.txt`, "directory"),
+		Entry(
+			"arithmetic in the -F path",
+			"git commit -sS -F {dir}/good$((1)).txt",
+			"substitution",
+		),
+		Entry("perl writing a named file",
+			`perl -e 'open my $f, ">", $ARGV[0]' {good}; git commit -sS -F {good}`, "may change"),
+		Entry("sed naming the file", "sed -n 1p {good} && git commit -sS -F {good}", "may change"),
 	)
 
 	It("blocks a write through a symlink to the message file", func() {
@@ -206,7 +231,7 @@ var _ = Describe("CommitValidator message sources", func() {
 		Expect(os.Symlink(filepath.Join(dir, "good.txt"), link)).To(Succeed())
 
 		expectOpaqueMessage(
-			validate("echo bad > "+link+" && git commit -sS -F "+filepath.Join(dir, "good.txt")),
+			validate("echo \"$X\" > "+link+" && git commit -sS -F "+filepath.Join(dir, "good.txt")),
 			"written earlier",
 		)
 	})
@@ -309,14 +334,20 @@ var _ = Describe("CommitValidator message sources", func() {
 		Entry("-m message", "git commit -sS -m '"+badMessage+"'", false),
 		Entry("-m heredoc", "git commit -sS -m \"$(cat <<'EOF'\n"+goodMessage+"\nEOF\n)\"", true),
 		Entry("empty file", "git commit -sS -F {dir}/empty.txt", true),
+		Entry("git -C with a variable set on the line",
+			`D={dir}; git -C "$D" commit -sS -F bad.txt`, false),
+		Entry("stdin redirect read from the shell's directory, not -C",
+			"cd {dir} && git -C sub commit -sS -a -F - < bad.txt", false),
+		Entry("substituted write after the commit",
+			`git commit -sS -F {good}; echo x > "$(mktemp)"`, true),
+		Entry("copy to a known variable destination first",
+			`D={dir}/other; cp {bad} "$D/out.txt"; git commit -sS -F {good}`, true),
 		Entry("read-only commands naming the file first",
 			"cat {good} && grep fix {good} && git add {good} && git commit -sS -F {good}", true),
 		Entry("cd and mkdir in the file's directory first",
 			"cd {dir} && mkdir -p {dir}/sub && git commit -sS -F good.txt", true),
 		Entry("copy into another directory first",
 			"cp {good} {dir}/other/ && git commit -sS -F {bad}", false),
-		Entry("sed without -i naming the file first",
-			"sed -n 1p {good} && git commit -sS -F {good}", true),
 		Entry(
 			"unrelated write first",
 			"echo x > {dir}/other.txt && git commit -sS -F {bad}",

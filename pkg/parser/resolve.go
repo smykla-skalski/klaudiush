@@ -27,8 +27,9 @@ const (
 	// be known. No program has this name, so it resolves as missing.
 	unresolvedProgram = "$(...)"
 	// procSubstPrefix names the files process substitutions stand for.
-	procSubstPrefix = "/dev/fd/klaudiush-"
-	devStdin        = "/dev/stdin"
+	procSubstPrefix  = "/dev/fd/klaudiush-"
+	substitutedInput = procSubstPrefix + "substituted"
+	devStdin         = "/dev/stdin"
 	// lookupWords is a lookup command plus the operand it names.
 	lookupWords = 2
 )
@@ -910,6 +911,7 @@ func (w *astWalker) walkScript(script string, parent Command, depth int, sw scri
 
 	w.fileWrites = append(w.fileWrites, child.fileWrites...)
 	w.dynamicWrites += child.dynamicWrites
+	w.dynamicWriteLocs = append(w.dynamicWriteLocs, child.dynamicWriteLocs...)
 }
 
 // argStrings converts argument words to strings. A process substitution fed

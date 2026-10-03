@@ -905,6 +905,7 @@ func childCommand(parent Command, name string, args []string) Command {
 		Type:             parent.Type,
 		WorkingDirectory: parent.WorkingDirectory,
 		DirUnknown:       parent.DirUnknown,
+		DirComputed:      parent.DirComputed,
 		Dynamic:          parent.Dynamic,
 		Stdin:            parent.Stdin,
 		StdinFile:        parent.StdinFile,
