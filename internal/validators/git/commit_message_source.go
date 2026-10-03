@@ -99,6 +99,10 @@ var filePlacers = []string{
 // does not resolve: ~+ and ~- (the current and previous directory), globs
 // and braces.
 func shellExpanded(arg string) bool {
+	if _, value, found := strings.Cut(arg, "="); found && shellExpanded(value) {
+		return true
+	}
+
 	return strings.HasPrefix(arg, "~+") || strings.HasPrefix(arg, "~-") ||
 		strings.ContainsAny(arg, "*?[{")
 }

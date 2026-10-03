@@ -178,6 +178,11 @@ var _ = Describe("CommitValidator message sources", func() {
 		Entry("copy to a substituted destination",
 			`cd {dir} && cp sub/good.txt "$(pwd)" && git commit -sS -F good.txt`, "may change"),
 		Entry(
+			"dd to ~+ after of=",
+			`cd {dir} && dd if=sub/good.txt of=~+/good.txt && git commit -sS -F good.txt`,
+			"may change",
+		),
+		Entry(
 			"copy to ~+",
 			`cd {dir} && cp sub/good.txt ~+ && git commit -sS -F good.txt`,
 			"may change",
