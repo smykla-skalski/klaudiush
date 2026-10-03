@@ -70,6 +70,9 @@ type FileWrite struct {
 	// echo/printf (e.g. "printf 'package x' > f.go") would produce spurious
 	// failures.
 	RedirectContent string
+	// Dynamic reports that part of Path comes from command output, which the
+	// rendered Path leaves out: "$(echo dir)/f" renders as "/f".
+	Dynamic bool
 	// RedirectContentCaptured reports whether RedirectContent was reconstructed.
 	// It is true only for an overwrite redirect (">", not ">>") whose producer is
 	// a literal echo or a printf using only %s/%% directives and known escapes;

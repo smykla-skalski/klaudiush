@@ -3,6 +3,7 @@ package parser
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"mvdan.cc/sh/v3/syntax"
@@ -62,6 +63,45 @@ type Command struct {
 	Stdin            string   // Content fed to stdin via heredoc or a piped echo/printf
 	StdinFile        string   // File redirected to stdin (<)
 	Invoked          string   // Program word as written, before resolving it to Name
+	// Dynamic reports that a word of the command comes from command output,
+	// arithmetic or an extended glob, which Args leave out or render
+	// partially: rm "$(echo dir)/f" has the argument "/f".
+	Dynamic bool
+}
+
+// anyWordDynamic reports whether any word takes part of its value from
+// something the rendered argument leaves out.
+func anyWordDynamic(words []*syntax.Word) bool {
+	return slices.ContainsFunc(words, wordDynamic)
+}
+
+// wordDynamic reports whether word contains a command or process
+// substitution, arithmetic expansion or extended glob.
+func wordDynamic(word *syntax.Word) bool {
+	if word == nil {
+		return false
+	}
+
+	return partsDynamic(word.Parts)
+}
+
+func partsDynamic(parts []syntax.WordPart) bool {
+	for _, part := range parts {
+		switch p := part.(type) {
+		case *syntax.CmdSubst, *syntax.ProcSubst, *syntax.ArithmExp, *syntax.ExtGlob:
+			return true
+		case *syntax.DblQuoted:
+			if partsDynamic(p.Parts) {
+				return true
+			}
+		case *syntax.ParamExp:
+			if p.Exp != nil && wordDynamic(p.Exp.Word) {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 // String returns a string representation of the command.

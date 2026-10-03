@@ -16,6 +16,9 @@ type astWalker struct {
 	via        []string
 	commands   []Command
 	fileWrites []FileWrite
+	// dynamicWrites counts output redirects whose target name comes from
+	// command output, so it is unknown until the command runs.
+	dynamicWrites int
 	// parent is the walker of the script that runs this one. What it recorded
 	// earlier on the line (writes, git config) is in place when this runs.
 	parent     *astWalker
@@ -460,6 +463,7 @@ func (w *astWalker) extractCommand(call *syntax.CallExpr) {
 		},
 		Type:             CmdTypeSimple,
 		WorkingDirectory: w.currentDir,
+		Dynamic:          anyWordDynamic(call.Args),
 		Stdin:            w.stdinByCall[call],
 		StdinFile:        w.stdinFileByCall[call],
 	}, w.depth)
@@ -660,6 +664,35 @@ type redirInfo struct {
 	inputPath      string // file redirected to stdin (<)
 	hasOutput      bool
 	hasHeredoc     bool
+	outputDynamic  bool // the target name comes from command output
+	dynamicWrites  int  // output targets whose name comes from command output
+}
+
+// appendsOutput reports whether a redirect appends instead of truncating.
+func appendsOutput(op syntax.RedirOperator) bool {
+	switch op {
+	case syntax.AppOut, syntax.AppClob, syntax.AppAll, syntax.AppAllClob, syntax.RdrInOut:
+		return true
+	default:
+		return false
+	}
+}
+
+// duplicatesDescriptor reports whether a >& redirect copies a descriptor
+// (>&2, >&-) rather than writing a file (>&out.log).
+func duplicatesDescriptor(word *syntax.Word) bool {
+	target := wordToString(word)
+	if target == "-" {
+		return true
+	}
+
+	for _, r := range target {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+
+	return target != ""
 }
 
 // collectRedirs gathers output redirection and heredoc details from a statement.
@@ -668,16 +701,28 @@ func collectRedirs(stmt *syntax.Stmt) redirInfo {
 
 	for _, redir := range stmt.Redirs {
 		switch redir.Op {
-		case syntax.RdrOut, syntax.AppOut:
+		case syntax.RdrOut, syntax.AppOut, syntax.RdrClob, syntax.AppClob, syntax.RdrAll,
+			syntax.RdrAllClob, syntax.AppAll, syntax.AppAllClob, syntax.RdrInOut, syntax.DplOut:
+			if redir.Op == syntax.DplOut && duplicatesDescriptor(redir.Word) {
+				continue
+			}
+
 			path := wordToString(redir.Word)
+			dynamic := wordDynamic(redir.Word)
+
+			if dynamic {
+				info.dynamicWrites++
+			}
+
 			if path == "" {
 				continue
 			}
 
 			info.outputPath = path
+			info.outputDynamic = dynamic
 
 			info.outputOp = WriteOpRedirect
-			if redir.Op == syntax.AppOut {
+			if appendsOutput(redir.Op) {
 				info.outputOp = WriteOpAppend
 			}
 
@@ -712,6 +757,7 @@ func (w *astWalker) extractRedirect(stmt *syntax.Stmt) {
 	}
 
 	info := collectRedirs(stmt)
+	w.dynamicWrites += info.dynamicWrites
 
 	// A redirect happens as its command starts, before any later command.
 	seq := w.state.nextSeq()
@@ -742,6 +788,7 @@ func (w *astWalker) extractRedirect(stmt *syntax.Stmt) {
 		captured := info.outputOp == WriteOpRedirect && copiesStdinVerbatim(callExprOf(stmt))
 		w.fileWrites = append(w.fileWrites, FileWrite{
 			Path:             info.outputPath,
+			Dynamic:          info.outputDynamic,
 			Operation:        WriteOpHeredoc,
 			Content:          info.heredocContent,
 			ContentCaptured:  captured,
@@ -757,6 +804,7 @@ func (w *astWalker) extractRedirect(stmt *syntax.Stmt) {
 		// tripping gofumpt).
 		fw := FileWrite{
 			Path:             info.outputPath,
+			Dynamic:          info.outputDynamic,
 			Operation:        info.outputOp,
 			Location:         info.outputLoc,
 			WorkingDirectory: w.currentDir,

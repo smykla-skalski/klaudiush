@@ -856,6 +856,7 @@ func (w *astWalker) walkScript(script string, parent Command, depth int, sw scri
 	}
 
 	w.fileWrites = append(w.fileWrites, child.fileWrites...)
+	w.dynamicWrites += child.dynamicWrites
 }
 
 // argStrings converts argument words to strings. A process substitution fed

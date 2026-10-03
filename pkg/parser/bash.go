@@ -31,6 +31,9 @@ type ParseResult struct {
 	// most a few entries and may be empty only when Truncated is false.
 	Opacities     []Opacity
 	MoreOpacities bool
+	// DynamicWrites counts output redirects whose target name comes from
+	// command output ("> \"$(...)\""), which no FileWrite can name in full.
+	DynamicWrites int
 }
 
 // BashParser parses Bash commands using mvdan.cc/sh.
@@ -93,6 +96,7 @@ func (p *BashParser) Parse(command string) (*ParseResult, error) {
 		Truncated:     walker.state.truncated,
 		Opacities:     walker.state.opacities,
 		MoreOpacities: walker.state.moreOpacities,
+		DynamicWrites: walker.dynamicWrites,
 	}, nil
 }
 
