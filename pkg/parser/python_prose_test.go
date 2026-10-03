@@ -1,6 +1,9 @@
 package parser_test
 
 import (
+	"strings"
+	"time"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -338,7 +341,44 @@ def run_git(args):
 			"an error read back without a name",
 			"python3 -c 'import os, sys\ntry:\n    raise RuntimeError(\"git zz\")\nexcept RuntimeError:\n    os.system(str(sys.exc_info()[1]))'",
 		),
+		Entry(
+			"a message printed into a buffer",
+			`python3 -c 'import io, os; b = io.StringIO(); print("git zz", file=b); os.system(b.getvalue())'`,
+		),
+		Entry("output redirected into a buffer",
+			`python3 -c 'import contextlib, io; b = io.StringIO()
+with contextlib.redirect_stdout(b): print("git zz")'`),
+		Entry(
+			"a log stream into a buffer",
+			`python3 -c 'import logging; logging.basicConfig(stream=buf); logging.error("git zz")'`,
+		),
+		Entry(
+			"an error caught over several lines",
+			"python3 -c 'import os\ntry:\n    raise RuntimeError(\"git zz\")\nexcept (OSError,\n        RuntimeError) as err:\n    os.system(str(err))'",
+		),
+		Entry(
+			"an error hook",
+			`python3 -c 'import os, sys; sys.excepthook = lambda t, v, tb: os.system(str(v)); raise RuntimeError("git zz")'`,
+		),
 	)
+
+	It("still reads a message printed to stderr as prose", func() {
+		command := `python3 -c 'import sys; print("git zz is not set up", file=sys.stderr)'`
+		Expect(parse(command).Truncated).To(BeFalse())
+	})
+
+	It("keeps a script of long comment blocks cheap to scan", func() {
+		line := "# print(\"git zz\")\n"
+		big := fakeResolver{files: map[string]string{
+			"big.py": strings.Repeat(line, parser.MaxScriptBytes/len(line)-1),
+		}}
+
+		start := time.Now()
+		_, err := parser.NewBashParserWithResolver(big).Parse("python3 big.py")
+
+		Expect(err).NotTo(HaveOccurred())
+		Expect(time.Since(start)).To(BeNumerically("<", 2*time.Second))
+	})
 
 	DescribeTable(
 		"reads raised and thrown errors as prose",

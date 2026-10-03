@@ -36,14 +36,16 @@ var (
 // variables that move or extend the configuration git reads, a directory
 // change to another repository, a PATH that finds other git commands, or
 // output piped or redirected into a program (popen, a process's stdin, a
-// replaced stdout, dup2 onto a pipe after fork). PATH counts only as a key or
-// assignment, since messages name it ("not found on PATH"). Reading a
-// result's stdout or printing to stderr does not count.
+// replaced stdout, dup2 onto a pipe after fork) or captured as a value (print
+// or a log stream into a buffer, redirect_stdout). PATH counts only as a key
+// or assignment, since messages name it ("not found on PATH"). Reading a
+// result's stdout or printing to sys.stderr does not count.
 var proseUnsafe = regexp.MustCompile(
 	`(?i)alias\.|\[alias|\[include|include(?:if)?\.|gitconfig|git/config|` +
 		`GIT_CONFIG|GIT_DIR|GIT_COMMON_DIR|GIT_WORK_TREE|GIT_EXEC_PATH|XDG_CONFIG_HOME|` +
 		`chdir|\bcwd\b|popen|open3|\bstdin\b|\$stdout\s*=|\bstdout\s*=[^=]|` +
-		`dup2|\bfork\b|\bpipe\s*\(|fdopen|` +
+		`dup2|\bfork\b|\bpipe\s*\(|fdopen|redirect_std|StringIO|BytesIO|` +
+		`\b(?:file|stream)\s*=\s*(?:[^s\s]|s[^y])|` +
 		`\|\s*["'\x60]|["'\x60]\s*\||` +
 		`(?-i:\bHOME\b|["']PATH["']|\bPATH\s*=|\.PATH\b|\{PATH\})`,
 )
@@ -79,7 +81,8 @@ var docRead = regexp.MustCompile(`__doc__|getdoc`)
 // errorCaught matches code that catches an error into a name or reads the
 // current one back, so its message can be handed on as a value.
 var errorCaught = regexp.MustCompile(
-	`\bexcept\b[^:\n]*\bas\s|\bcatch\s*\(|exc_info|format_exc|format_exception|\.args\b`,
+	`\bexcept\b[^:]*\bas\s|\bcatch\s*\(|exc_info|format_exc|format_exception|\.args\b|` +
+		`sys\.exception|excepthook|uncaughtException|unhandledRejection|\.then\s*\(`,
 )
 
 // textReuse says which kinds of prose the code reads back as values.
@@ -148,10 +151,15 @@ func bracketsClosed(line string) bool {
 		strings.Count(line, "{") == strings.Count(line, "}")
 }
 
+// maxCommentSkip bounds how many comment lines significantCode skips, so a
+// long comment block costs each literal a fixed amount of work. Past it the
+// comment itself is returned, which no prose rule accepts.
+const maxCommentSkip = 32
+
 // significantCode trims trailing whitespace and whole comment lines (a
 // shebang included) from code, leaving what last precedes a literal.
 func significantCode(code string) string {
-	for {
+	for range maxCommentSkip {
 		code = strings.TrimRight(code, " \t\r\n")
 
 		lineStart := strings.LastIndexByte(code, '\n') + 1
@@ -161,6 +169,8 @@ func significantCode(code string) string {
 
 		code = code[:lineStart]
 	}
+
+	return code
 }
 
 // codeLine is a command line found in program source. prose marks a plain
@@ -185,8 +195,13 @@ func commandLines(code string) []codeLine {
 	reuse := textReuse{docs: docRead.MatchString(code), errors: errorCaught.MatchString(code)}
 
 	for _, m := range literals {
+		text := literalEscapes.Replace(submatchText(code, m))
+		if !mentionsCommand.MatchString(text) {
+			continue
+		}
+
 		lines = append(lines, codeLine{
-			text:  literalEscapes.Replace(submatchText(code, m)),
+			text:  text,
 			prose: !unsafe && proseLiteral(code, m[0], m[1], reuse),
 		})
 	}
