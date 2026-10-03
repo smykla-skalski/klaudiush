@@ -855,7 +855,7 @@ func scanLaunch(cmd Command) launch {
 // launchesTracked reports whether arg followed by rest runs something worth
 // following: a validated git or gh command, a shell given a script, an
 // interpreter, a launcher, eval or source, a shell script given by path, or a
-// container run with --entrypoint.
+// container run with --entrypoint or exec.
 func launchesTracked(arg string, rest []string) bool {
 	name := commandName(arg)
 	_, isInterpreter := interpreters[name]
@@ -878,7 +878,8 @@ func launchesTracked(arg string, rest []string) bool {
 
 		return ok
 	case isContainerRunner(name):
-		return containerRuns(rest).tracked() || mayHideEntrypoint(rest)
+		return containerRuns(rest).tracked() || mayHideEntrypoint(rest) ||
+			containerExecSubcommand(rest) >= 0
 	default:
 		return isInterpreter || isLauncher || name == evalBuiltin || name == sourceBuiltin
 	}
