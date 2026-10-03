@@ -1310,7 +1310,7 @@ Signed-off-by: Test User <test@klaudiu.sh>`
 				},
 			}
 
-			expectOpaqueMessage(validator.Validate(context.Background(), ctx), "cannot be read")
+			expectOpaqueMessage(validator.Validate(context.Background(), ctx), "does not exist")
 		})
 
 		It("should block -F - with no stdin it can see", func() {
@@ -1677,7 +1677,7 @@ Signed-off-by: Test User <test@klaudiu.sh>`
 				ToolInput: hook.ToolInput{Command: cmd},
 			}
 
-			expectOpaqueMessage(validator.Validate(context.Background(), ctx), "cannot be read")
+			expectOpaqueMessage(validator.Validate(context.Background(), ctx), "does not exist")
 		})
 
 		It("validates a message written via an echo redirect", func() {

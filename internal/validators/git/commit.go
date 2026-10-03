@@ -108,7 +108,12 @@ func (v *CommitValidator) validateCommits(
 			continue
 		}
 
-		src := messageSource{cmd: cmd, parsed: result, command: hookCtx.GetCommand()}
+		src := messageSource{
+			cmd:    cmd,
+			parsed: result,
+			cwd:    shellDir(hookCtx),
+			text:   hookCtx.GetCommand(),
+		}
 
 		res := v.validateGitCommit(ctx, gitCmd, hasGitAdd, src)
 		if attribution != nil {
@@ -150,7 +155,7 @@ func (v *CommitValidator) withAttribution(
 		return f.Reference == validator.RefGitClaudeAttr
 	}) {
 		msg, err := v.extractCommitMessage(gitCmd, src)
-		if err != nil || !containsAIAttribution(withoutMessage(src.command, msg)) {
+		if err != nil || !containsAIAttribution(withoutMessage(src.text, msg)) {
 			return res
 		}
 
@@ -395,6 +400,10 @@ func (v *CommitValidator) extractCommitMessage(
 	gitCmd *parser.GitCommand,
 	src messageSource,
 ) (string, error) {
+	if err := checkMessageFlags(gitCmd); err != nil {
+		return "", err
+	}
+
 	if hasFileFlag(gitCmd) {
 		return v.readMessageFile(gitCmd, src, v.getFlagValue(gitCmd, commitFileFlags))
 	}

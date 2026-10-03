@@ -266,6 +266,34 @@ func (r *ParseResult) FileWrittenBefore(path, workDir string, before Location) b
 	return found
 }
 
+// WritesBefore returns the file writes that happen before source position
+// "before", for consumers that must compare targets themselves.
+func (r *ParseResult) WritesBefore(before Location) []FileWrite {
+	writes := make([]FileWrite, 0, len(r.FileWrites))
+
+	for _, fw := range r.FileWrites {
+		if locationBefore(fw.Location, before) {
+			writes = append(writes, fw)
+		}
+	}
+
+	return writes
+}
+
+// CommandsBefore returns the commands that run before source position
+// "before".
+func (r *ParseResult) CommandsBefore(before Location) []Command {
+	commands := make([]Command, 0, len(r.Commands))
+
+	for _, cmd := range r.Commands {
+		if locationBefore(cmd.Location, before) {
+			commands = append(commands, cmd)
+		}
+	}
+
+	return commands
+}
+
 // lastCapturedWrite returns what the writes leave in target, when the last of
 // them captured it exactly. A nil before considers every write.
 func lastCapturedWrite(writes []FileWrite, target string, before *Location) (string, bool) {
