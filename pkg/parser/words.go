@@ -449,7 +449,7 @@ func (w *astWalker) forgetDeclared(cmd Command) {
 	for _, arg := range cmd.Args {
 		if strings.HasPrefix(arg, "-") || strings.HasPrefix(arg, "+") {
 			if strings.ContainsAny(arg[1:], "lucn") {
-				w.distrustNames()
+				w.distrustOption(arg)
 			}
 
 			continue
@@ -541,10 +541,7 @@ func (w *astWalker) distrustDecl(decl *syntax.DeclClause) {
 		}
 
 		option := wordToString(a.Value)
-		if !strings.HasPrefix(option, "-") && !strings.HasPrefix(option, "+") ||
-			strings.ContainsAny(option, "lucn") {
-			w.distrustNames()
-		}
+		w.distrustOption(option)
 	}
 }
 

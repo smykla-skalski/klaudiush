@@ -68,9 +68,11 @@ type astWalker struct {
 	scope        *VarScope
 	scopeDynamic int
 
-	startupUnset   map[string]bool
-	loopStartup    map[string]bool
-	startupPending map[string]syntax.Pos
+	startupUnset    map[string]bool
+	loopStartup     map[string]bool
+	startupPending  map[string]syntax.Pos
+	startupDeferred map[string]bool
+	caseChanged     bool
 }
 
 // parseState is shared by a walker and all the child walkers of one parse.
@@ -632,6 +634,8 @@ func (w *astWalker) trackShellState(cmd Command) {
 		}
 	case "enable":
 		w.state.pathChanged = true
+	case setBuiltin:
+		w.noteKeywordMode(cmd.Args)
 	}
 }
 
@@ -706,6 +710,8 @@ func (w *astWalker) extractDecl(decl *syntax.DeclClause) {
 
 		w.forgetUnlessSafe(assign)
 	}
+
+	w.forgetCaseChanged(decl)
 }
 
 // noteDynamic records whether an assignment's value is known: one from
@@ -720,6 +726,7 @@ func (w *astWalker) noteDynamic(assign *syntax.Assign) {
 	}
 
 	w.state.dynamicVersion++
+	w.noteStartupDeferred(assign)
 
 	if assign.Append || (assign.Value != nil && wordDynamic(assign.Value)) {
 		w.state.dynamicVars[assign.Name.Value] = true

@@ -89,6 +89,7 @@ func (w *astWalker) child(dir string, depth int) *astWalker {
 	child.outerLoop = w.inLoop
 	child.loopStartup = maps.Clone(w.loopStartup)
 	child.startupUnset = maps.Clone(w.startupUnset)
+	child.startupDeferred = maps.Clone(w.startupDeferred)
 	maps.Copy(child.aliases, w.aliases)
 	maps.Copy(child.funcs, w.funcs)
 	maps.Copy(child.expanding, w.expanding)
