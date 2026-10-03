@@ -5,6 +5,24 @@ All notable changes to klaudiush will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.41.0](https://github.com/smykla-skalski/klaudiush/compare/v1.40.2...v1.41.0) (2026-10-03)
+
+### Features
+
+* **hooks:** enforce validation failure policy ([#693](https://github.com/smykla-skalski/klaudiush/issues/693)) ([8058028](https://github.com/smykla-skalski/klaudiush/commit/8058028f036f3b3979ebee716d8a562a39396d81))
+* **output:** deliver complete repair findings ([#689](https://github.com/smykla-skalski/klaudiush/issues/689)) ([215f21a](https://github.com/smykla-skalski/klaudiush/commit/215f21a42b4ac1bf12d833b7aac9a4942ba8d88a))
+* **parser:** explain inspection failures ([#692](https://github.com/smykla-skalski/klaudiush/issues/692)) ([2ef8595](https://github.com/smykla-skalski/klaudiush/commit/2ef85953fd88bdefa04bb3c995392ef214bdab83))
+
+### Bug Fixes
+
+* **codex:** align hooks with current contracts ([#685](https://github.com/smykla-skalski/klaudiush/issues/685)) ([92e227e](https://github.com/smykla-skalski/klaudiush/commit/92e227ef1a27443e804029bb1031b09bbfd564df))
+* **deps:** update module github.com/onsi/gomega to v1.44.0 ([#667](https://github.com/smykla-skalski/klaudiush/issues/667)) ([3678324](https://github.com/smykla-skalski/klaudiush/commit/3678324cc693e8f5c0708726f11a77966e510cb4))
+* **hooks:** preserve event decision semantics ([#686](https://github.com/smykla-skalski/klaudiush/issues/686)) ([679beec](https://github.com/smykla-skalski/klaudiush/commit/679beecac06857a08234cc35c0a54dd996102d90))
+* **hooks:** preserve permissions on warnings ([#687](https://github.com/smykla-skalski/klaudiush/issues/687)) ([bb41674](https://github.com/smykla-skalski/klaudiush/commit/bb41674291aa37ee84d2ad460a54e7769f59d8f9))
+* **session:** retain only unresolved findings ([#690](https://github.com/smykla-skalski/klaudiush/issues/690)) ([e22790c](https://github.com/smykla-skalski/klaudiush/commit/e22790cce38c317270e52bdeb1a611a07aa9c333))
+* **session:** serialize finding store updates ([#691](https://github.com/smykla-skalski/klaudiush/issues/691)) ([3d16729](https://github.com/smykla-skalski/klaudiush/commit/3d16729cc63280ba2a43329db546a767b07c6796))
+* **validation:** cover Claude edits after tools ([#688](https://github.com/smykla-skalski/klaudiush/issues/688)) ([31e6754](https://github.com/smykla-skalski/klaudiush/commit/31e67544a5524bf2489b774c03255c2bb4e39bfd))
+
 ## [1.40.2](https://github.com/smykla-skalski/klaudiush/compare/v1.40.1...v1.40.2) (2026-10-01)
 
 ### Bug Fixes
