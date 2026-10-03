@@ -5,6 +5,23 @@ All notable changes to klaudiush will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.43.0](https://github.com/smykla-skalski/klaudiush/compare/v1.42.0...v1.43.0) (2026-10-03)
+
+### Features
+
+* **parser:** suggest repairs for eval setup ([#722](https://github.com/smykla-skalski/klaudiush/issues/722)) ([afb6c1c](https://github.com/smykla-skalski/klaudiush/commit/afb6c1ce4b64c814110a59262164db7e5249d04d))
+
+### Bug Fixes
+
+* **git:** block unreadable commit message files ([#733](https://github.com/smykla-skalski/klaudiush/issues/733)) ([5e97bf5](https://github.com/smykla-skalski/klaudiush/commit/5e97bf5c0f77e659267059b18eda759bafa5b93c))
+* **parser:** allow scripts that name themselves ([#724](https://github.com/smykla-skalski/klaudiush/issues/724)) ([3223756](https://github.com/smykla-skalski/klaudiush/commit/322375628bb4b3546e6a39eff8f891d39bf82f6e))
+* **parser:** block unresolved program words ([#726](https://github.com/smykla-skalski/klaudiush/issues/726)) ([7351e2c](https://github.com/smykla-skalski/klaudiush/commit/7351e2c895180552296545a86ecf7a41332f1eb9))
+* **parser:** block zsh code glob qualifiers ([#734](https://github.com/smykla-skalski/klaudiush/issues/734)) ([d4d2fd6](https://github.com/smykla-skalski/klaudiush/commit/d4d2fd65f08e8773592b68352b91c2db3baa03bf))
+* **parser:** follow BASH_ENV and ENV files ([#732](https://github.com/smykla-skalski/klaudiush/issues/732)) ([dc44d06](https://github.com/smykla-skalski/klaudiush/commit/dc44d06b61a9338b2f1cea6372989f34505b270c))
+* **parser:** follow container --entrypoint ([#731](https://github.com/smykla-skalski/klaudiush/issues/731)) ([db98766](https://github.com/smykla-skalski/klaudiush/commit/db987660ccab559b21f60886bb995dabbeb8bf77))
+* **parser:** name zsh-only syntax in SHELL002 ([#719](https://github.com/smykla-skalski/klaudiush/issues/719)) ([cab9516](https://github.com/smykla-skalski/klaudiush/commit/cab9516491d483506792b3d5dd5c33a2d812b8e9))
+* **validator:** skip FILE011 in triple strings ([#723](https://github.com/smykla-skalski/klaudiush/issues/723)) ([31987d7](https://github.com/smykla-skalski/klaudiush/commit/31987d773993d94b74dc5b45716b4597fc36a27a))
+
 ## [1.42.0](https://github.com/smykla-skalski/klaudiush/compare/v1.41.0...v1.42.0) (2026-10-03)
 
 ### Features
