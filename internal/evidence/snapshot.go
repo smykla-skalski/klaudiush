@@ -252,10 +252,11 @@ func (s *Snapshot) hash(ctx context.Context, path string) (string, error) {
 	return sum, nil
 }
 
-// submoduleState identifies a submodule by its checked-out commit and its
-// uncommitted changes. An uninitialized submodule is an empty directory,
-// where git would answer for the parent repository instead. A nested
-// repository without commits has no HEAD; its status still identifies it.
+// submoduleState identifies a submodule by its checked-out commit and by
+// the content of every file in it, so each further edit inside it changes
+// the digest. An uninitialized submodule is an empty directory, where git
+// would answer for the parent repository instead. A nested repository
+// without commits has no HEAD; its files still identify it.
 func (s *Snapshot) submoduleState(ctx context.Context, path string) (string, error) {
 	dir := filepath.Join(s.root, filepath.FromSlash(path))
 
@@ -268,14 +269,24 @@ func (s *Snapshot) submoduleState(ctx context.Context, path string) (string, err
 		head = []byte("unborn")
 	}
 
-	status, err := runGit(ctx, dir, "status", "--porcelain", "--untracked-files=all")
+	nested, err := TakeSnapshot(ctx, dir)
 	if err != nil {
 		return "", errors.Wrapf(err, "failed to read submodule %s", path)
 	}
 
-	sum := sha256.Sum256(append(head, status...))
+	hash := sha256.New()
+	writeEntry(hash, "HEAD", strings.TrimSpace(string(head)))
 
-	return submoduleMarker + ":" + hex.EncodeToString(sum[:]), nil
+	for _, file := range nested.files {
+		fileSum, err := nested.hash(ctx, file)
+		if err != nil {
+			return "", err
+		}
+
+		writeEntry(hash, file, fileSum)
+	}
+
+	return submoduleMarker + ":" + hex.EncodeToString(hash.Sum(nil)), nil
 }
 
 // hashFile hashes a file's content and permissions. A symlink hashes its

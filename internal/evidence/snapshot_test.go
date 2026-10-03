@@ -262,6 +262,11 @@ var _ = Describe("Snapshot", func() {
 
 		dirty, _ := digest(checks[0])
 		Expect(dirty).NotTo(Equal(empty))
+
+		write(repo, "scratch/x.txt", "y\n")
+
+		dirtier, _ := digest(checks[0])
+		Expect(dirtier).NotTo(Equal(dirty))
 	})
 
 	It("tracks a submodule by its commit and uncommitted changes", func() {
@@ -284,6 +289,11 @@ var _ = Describe("Snapshot", func() {
 
 		dirty, _ := digest(all)
 		Expect(dirty).NotTo(Equal(clean))
+
+		write(repo, "sub/s.go", "package s\n\nvar Z = 2\n")
+
+		dirtier, _ := digest(all)
+		Expect(dirtier).NotTo(Equal(dirty))
 
 		Expect(os.RemoveAll(sub)).To(Succeed())
 		Expect(os.Mkdir(sub, 0o755)).To(Succeed())
