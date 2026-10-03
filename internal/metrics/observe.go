@@ -16,10 +16,10 @@ import (
 // end over unresolved findings, Skipped a hook the bypass policy did not
 // validate, and Filtered a tool selection that withheld tools.
 type Observation struct {
-	Context  *hook.Context
-	Errors   []*dispatcher.ValidationError
-	Checks   []dispatcher.Check
-	Timings  []dispatcher.Timing
+	Context *hook.Context
+	Errors  []*dispatcher.ValidationError
+	Checks  []dispatcher.Check
+	Timings []dispatcher.Timing
 
 	// Unavailable lists the validator runs that could not check their
 	// resource, including runs whose error the failure policy dropped.

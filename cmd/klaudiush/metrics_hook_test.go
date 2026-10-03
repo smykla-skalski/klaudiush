@@ -256,6 +256,7 @@ var _ = Describe("hook metrics", func() {
 		out := captureStdout(func() {
 			stopped, err = writeResponse(hookCtx, errs, nil, nil, nil, logger.NewNoOpLogger())
 		})
+
 		Expect(err).NotTo(HaveOccurred())
 		Expect(stopped).To(BeTrue())
 		Expect(out).To(ContainSubstring(`"permissionDecision":"deny"`))
@@ -263,6 +264,7 @@ var _ = Describe("hook metrics", func() {
 		withUnwritableStdout(func() {
 			stopped, err = writeResponse(hookCtx, errs, nil, nil, nil, logger.NewNoOpLogger())
 		})
+
 		Expect(err).NotTo(HaveOccurred())
 		Expect(stopped).To(BeFalse())
 	})
@@ -359,6 +361,7 @@ func withUnwritableStdout(fn func()) {
 
 	defer func() {
 		os.Stdout = original
+
 		Expect(readOnly.Close()).To(Succeed())
 	}()
 
