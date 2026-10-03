@@ -173,10 +173,11 @@ var _ = Describe("ResolveBinary", func() {
 			"relative": "bin/relative",
 			"missing":  filepath.Join(root, "missing"),
 			"loop":     filepath.Join(root, "shims", "loop"),
+			"itself":   filepath.Join(root, "mise-bin", "mise"),
 		})
 		shims := filepath.Join(root, "shims")
 
-		for _, tool := range []string{"relative", "missing", "loop"} {
+		for _, tool := range []string{"relative", "missing", "loop", "itself"} {
 			symlink(mise, filepath.Join(shims, tool))
 		}
 
@@ -186,6 +187,7 @@ var _ = Describe("ResolveBinary", func() {
 			"relative": "no absolute path",
 			"missing":  "returned " + filepath.Join(root, "missing"),
 			"loop":     "returned another shim",
+			"itself":   "returned another shim",
 		} {
 			_, err := harness.ResolveBinary(ctx, probeVar, tool)
 			Expect(err).To(MatchError(ContainSubstring(reason)), tool)

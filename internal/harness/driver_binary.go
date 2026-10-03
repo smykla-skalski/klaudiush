@@ -170,7 +170,8 @@ func resolveExecutable(ctx context.Context, path string) (string, error) {
 			filepath.Base(manager), tool, shimmed)
 	}
 
-	if isMiseShim(shimmed, resolved) || isAsdfShim(resolved) {
+	if filepath.Base(resolved) == miseName || isMiseShim(shimmed, resolved) ||
+		isAsdfShim(resolved) {
 		return "", errors.Newf("%s which %s returned another shim: %s",
 			filepath.Base(manager), tool, shimmed)
 	}

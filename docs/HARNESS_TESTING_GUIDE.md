@@ -43,7 +43,7 @@ mise run test:harness:fixtures   # run and rewrite the captured fixtures
 
 | Variable | Effect |
 |:--|:--|
-| `KLAUDIUSH_HARNESS_CLAUDE`, `KLAUDIUSH_HARNESS_CODEX`, `KLAUDIUSH_HARNESS_OPENCODE` | Harness binary to use instead of the one on `PATH`. Takes precedence over `PATH`; a shim named here is resolved the same way |
+| `KLAUDIUSH_HARNESS_CLAUDE`, `KLAUDIUSH_HARNESS_CODEX`, `KLAUDIUSH_HARNESS_OPENCODE` | Harness binary to use instead of the one on `PATH`. Takes precedence over `PATH`; a shim named here is resolved the same way. Use an absolute path: a relative one is taken from `internal/harness`, where `go test` runs |
 | `KLAUDIUSH_HARNESS_ONLY` | Comma-separated harness names to run, such as `claude,codex` |
 | `KLAUDIUSH_HARNESS_TMPDIR` | Where sandboxes are created (default: the system temp directory) |
 | `KLAUDIUSH_HARNESS_KEEP=1` | Keep sandboxes on disk for debugging |
