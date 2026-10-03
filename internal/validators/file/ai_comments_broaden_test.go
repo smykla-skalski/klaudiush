@@ -476,6 +476,19 @@ var _ = Describe("AICommentValidator multi-line string literals", func() {
 			Expect(time.Since(start)).To(BeNumerically("<", 2*time.Second))
 		})
 
+		It("scans joined patch hunks line by line for a new file", func() {
+			ctx.ToolInput.FilePath = filepath.Join(dir, "new.py")
+			ctx.ToolInput.NewString = "    \"\"\"New summary.\nx = compute()  # bump the retry count"
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
+		})
+
+		It("flags a comment added after a python 3.12 f-string field", func() {
+			ctx.ToolInput.FilePath = writeSource("print(f\"{d[\"#\"]}\", value)\n")
+			ctx.ToolInput.OldString = "value)"
+			ctx.ToolInput.NewString = "total)  # log the total"
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
+		})
+
 		It("matches an LF old_string in a CRLF file", func() {
 			ctx.ToolInput.FilePath = writeSource("BODY = \"\"\"\r\n## Old\r\nText.\r\n\"\"\"\r\n")
 			ctx.ToolInput.OldString = "## Old\nText."

@@ -14,6 +14,9 @@ import (
 // Single and double quoted strings are line-local and not tracked here.
 // stateLineComment marks an Edit fragment that starts inside a line comment:
 // the rest of that first line is comment text already in the file.
+// stateBareHash marks one that starts after a "#" right after code, which may
+// be an unspaced comment: its first line is code that opens no triple-quoted
+// string.
 type stringState uint8
 
 const (
@@ -22,6 +25,7 @@ const (
 	stateTripleDouble
 	stateTripleSingle
 	stateLineComment
+	stateBareHash
 )
 
 // tripleQuoteTail is how many bytes of a triple quote follow its first byte.
@@ -188,6 +192,10 @@ func scanLine(
 		return -1, stateCode, false
 	}
 
+	if state == stateBareHash {
+		state, bareHash = stateCode, true
+	}
+
 	var quote byte
 
 	for i := 0; i < len(line); i++ {
@@ -255,9 +263,8 @@ func (s commentScan) lineStart(state stringState) stringState {
 // places in different states, it falls back to code. Only languages with
 // triple-quoted strings, and extension-less files that may hold a Python
 // shebang, read the file; CRLF line endings are matched as LF. An Edit with no
-// old_string on a non-empty file joins added lines from several patch hunks
-// whose boundaries are lost, so triple-quoted state is not carried between its
-// lines.
+// old_string joins added lines from several patch hunks whose boundaries are
+// lost, so triple-quoted state is not carried between its lines.
 func newCommentScan(hookCtx *hook.Context) commentScan {
 	path := hookCtx.GetFilePath()
 	scan := commentScan{syntax: langSyntaxForPath(path)}
@@ -269,6 +276,14 @@ func newCommentScan(hookCtx *hook.Context) commentScan {
 		}
 
 		return scan
+	}
+
+	if hookCtx.ToolInput.OldString == "" {
+		scan.lineLocalTriple = true
+
+		if !detectShebang {
+			return scan
+		}
 	}
 
 	if scan.syntax == (langSyntax{}) && !detectShebang {
@@ -291,8 +306,6 @@ func newCommentScan(hookCtx *hook.Context) commentScan {
 
 	old := strings.ReplaceAll(hookCtx.ToolInput.OldString, "\r\n", "\n")
 	if old == "" {
-		scan.lineLocalTriple = true
-
 		return scan
 	}
 
@@ -369,8 +382,12 @@ func stateAtOccurrences(content, old string, syntax langSyntax) stringState {
 		li := sort.SearchInts(lineOffsets, pos+1) - 1
 
 		idx, at, bareHash := scanLine(content[lineOffsets[li]:pos], lineStates[li], syntax)
-		if idx >= 0 || bareHash {
+
+		switch {
+		case idx >= 0:
 			at = stateLineComment
+		case bareHash && at == stateCode:
+			at = stateBareHash
 		}
 
 		if found && at != shared {
