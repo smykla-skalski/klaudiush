@@ -42,6 +42,10 @@ def main():
 		"/s/staged.sh": "[ \"$SHLVL\" -gt 4 ] || bash /s/staged.sh\nbash /t/y.sh\nbash /t/x.sh\n" +
 			"bash /t/w.sh\ncat > /t/w.sh <<'EOF'\ncat > /t/x.sh <<'EOT'\ncat > /t/y.sh <<'EOU'\n" +
 			"git push --force\nEOU\nEOT\nEOF\n",
+		"/s/q1.py": "#!/usr/bin/env python3\n\"\"\"Usage:\n    python3 q1.py\n" +
+			"    sh -c 'python3 q1.py'\n\"\"\"\nimport subprocess\n" +
+			"subprocess.run([\"gh\", \"issue\", \"list\"])\n",
+		"/s/sh2.sh": "gh issue list\nbash /s/sh2.sh\nsh -c 'bash /s/sh2.sh'\n",
 		"/s/top.sh": "bash /t/f.sh\ncat > /t/f.sh <<'EOF'\n# nothing\nEOF\nbash /s/rewrite.sh\n",
 		"/s/rewrite.sh": "bash /t/f.sh\ncat > /t/f.sh <<'EOF'\ngit push --force\nEOF\n" +
 			"bash /s/rewrite.sh\n",
@@ -84,6 +88,8 @@ def main():
 		Entry("python script by absolute path", "python3 /s/file_issues.py --dry-run"),
 		Entry("python script after cd", "cd /s && python3 file_issues.py --dry-run"),
 		Entry("python script by path from its directory", "cd /s && python3 /s/file_issues.py"),
+		Entry("python script naming itself directly and through sh -c", "cd /s && python3 q1.py"),
+		Entry("shell script rerunning itself directly and through sh -c", "bash /s/sh2.sh"),
 	)
 
 	It("still sees the git command a self-naming python script runs", func() {

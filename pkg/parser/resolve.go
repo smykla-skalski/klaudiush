@@ -772,14 +772,14 @@ func (w *astWalker) followFile(cmd Command, file scriptFile, depth int) {
 		literal := file.interpreter || interpreterShebang(text)
 
 		key := w.sourceKey(cmd, text, literal)
-		if w.repeatsItself(key) {
+		if w.followingKey(key) {
 			w.state.repeated[key] = true
 
 			return
 		}
 
 		src := scriptSourceText{path: file.path, text: text, literal: literal}
-		w.walkSource(cmd, src, depth, sourceEntry{key: key, start: len(w.state.events)})
+		w.walkSource(cmd, src, depth, key)
 
 		if w.state.repeated[key] && !w.followingKey(key) {
 			w.confirmRepeat(cmd, src, depth, key)
@@ -852,9 +852,9 @@ type scriptWalk struct {
 	literal bool
 	// label names the script in diagnostics.
 	label string
-	// source marks a script file being followed, so a pass that only
-	// repeats the one before is not followed again.
-	source sourceEntry
+	// source is the state a script file is followed in, kept from being
+	// followed inside itself in the same state.
+	source string
 }
 
 // walkScript records the commands of a script that parent runs. A cd inside
@@ -878,7 +878,7 @@ func (w *astWalker) walkScript(script string, parent Command, depth int, sw scri
 	}
 
 	child.following = slices.Clone(w.following)
-	if sw.source.key != "" {
+	if sw.source != "" {
 		child.following = append(child.following, sw.source)
 	}
 
