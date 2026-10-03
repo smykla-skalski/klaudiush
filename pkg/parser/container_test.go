@@ -1,6 +1,9 @@
 package parser_test
 
 import (
+	"strings"
+	"time"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -65,6 +68,34 @@ var _ = Describe("Container --entrypoint", func() {
 		Entry("short clusters", "docker run -itd -eA=1 -ue --entrypoint git img push --force"),
 		Entry("end of options", "docker run --entrypoint git -- img push --force"),
 		Entry("an empty value dropped", `docker run --name "" --entrypoint git img push --force`),
+		Entry("an empty entrypoint replaced",
+			`docker run --entrypoint '' --entrypoint git img push --force`),
+		Entry("an empty entrypoint before options",
+			`docker run --entrypoint '' -e A=1 --entrypoint git img push --force`),
+		Entry("an empty compose entrypoint replaced",
+			`docker compose run --entrypoint "" --entrypoint git svc push --force`),
+		Entry(
+			"a value starting with a dash",
+			"docker run --name -e --entrypoint git img push --force",
+		),
+		Entry("an unknown option taking a value",
+			"podman run --hosts-file /x --entrypoint git img push --force"),
+		Entry("unknown nerdctl options",
+			"nerdctl run --verify none --cosign-key k --entrypoint git img push --force"),
+		Entry("a dashed value after an entrypoint",
+			"docker run --entrypoint git --name -w img push --force"),
+		Entry("a compose abbreviation", "podman-compose run --entry git svc push --force"),
+		Entry("an attached compose abbreviation", "docker-compose run --ent=git svc push --force"),
+		Entry("a resolved variable holding options",
+			`X="--entrypoint git"; docker run $X img push --force`),
+		Entry("a resolved option before the entrypoint",
+			"OPTS=--rm; docker run $OPTS --entrypoint git img push --force"),
+		Entry("a runner from a variable", `"$DOCKER" run --entrypoint git img push --force`),
+		Entry("apple container", "container run --entrypoint git img push --force"),
+		Entry("docker.exe", "docker.exe run --entrypoint git img push --force"),
+		Entry("env as the entrypoint", "docker run --entrypoint env img git push --force"),
+		Entry("an unknown option standing alone",
+			"docker run --future-bool --entrypoint git img push --force"),
 		Entry("an image that is not git", "docker run --entrypoint git ubuntu:24.04 push --force"),
 		Entry("a JSON array", `podman run --entrypoint '["git","push"]' img --force`),
 		Entry("compose shell words", `docker compose run --entrypoint "git push" svc --force`),
@@ -83,6 +114,19 @@ var _ = Describe("Container --entrypoint", func() {
 		),
 		Entry("docker by path", "/usr/local/bin/docker run --entrypoint git img push --force"),
 		Entry("inside a script line", `tmux new 'docker run --entrypoint git img push --force'`),
+	)
+
+	DescribeTable("fails closed quickly on entrypoints that fan out",
+		func(command string) {
+			start := time.Now()
+			result := parse(command)
+
+			Expect(time.Since(start)).To(BeNumerically("<", 5*time.Second))
+			Expect(result.Truncated).To(BeTrue())
+		},
+		Entry("nested runners", strings.Repeat("docker run --entrypoint docker run ", 1000)),
+		Entry("nested images", strings.Repeat("docker run --entrypoint docker img ", 1000)),
+		Entry("many run words", "docker "+strings.Repeat("run --a ", 3000)+"--entrypoint git i"),
 	)
 
 	It("hands the arguments after the image to git", func() {
@@ -107,6 +151,11 @@ var _ = Describe("Container --entrypoint", func() {
 		Entry("docker exec", "docker exec ctr --entrypoint git log"),
 		Entry("no image", "docker run --entrypoint git"),
 		Entry("no entrypoint value", "docker run --entrypoint"),
+		Entry("a substituted option value",
+			`docker run -v "$(pwd)":/w -e "X=$HOME" --entrypoint python img app.py`),
+		Entry("an unknown image without an entrypoint", `docker run --rm "$IMG" push --force`),
+		Entry("many unknown options without an entrypoint",
+			"docker run --a1 x --a2 x --a3 x --a4 x --a5 x --a6 x --a7 x img push --force"),
 		Entry(
 			"an entrypoint that is not plain words",
 			`docker run --entrypoint 'echo $(date)' img`,
@@ -115,7 +164,8 @@ var _ = Describe("Container --entrypoint", func() {
 		Entry("an unrelated program", "make run --entrypoint git img push --force"),
 	)
 
-	DescribeTable("fails closed on an entrypoint it cannot resolve",
+	DescribeTable(
+		"fails closed on an entrypoint it cannot resolve",
 		func(command, detail string) {
 			result := parse(command)
 
@@ -142,5 +192,27 @@ var _ = Describe("Container --entrypoint", func() {
 		),
 		Entry("under sudo",
 			`sudo docker run --entrypoint "$UNSET" img push`, parser.DetailWordVariable),
+		Entry("an unknown variable before the entrypoint",
+			"docker run $OPTS --entrypoint git img push --force", parser.DetailWordVariable),
+		Entry("command output before the entrypoint",
+			"docker run $(echo --rm) --entrypoint git img push --force", parser.DetailWordOutput),
+		Entry("a brace expansion naming the entrypoint",
+			"docker run {--entrypoint,git} img push --force", parser.DetailWordOutput),
+		Entry("a brace expansion in the entrypoint",
+			"docker run --entrypoint={x,git} img push --force", parser.DetailWordOutput),
+		Entry(
+			"an unknown image",
+			`docker run --entrypoint git "$IMG" push`,
+			parser.DetailWordVariable,
+		),
+		Entry("too many run words",
+			"docker run --name run --name run --name run --name run --name run "+
+				"--name run --name run --name run --entrypoint git img push",
+			parser.DetailEntrypointOptions),
+		Entry(
+			"too many options of unknown arity",
+			"docker run --a1 --a2 --a3 --a4 --a5 --a6 --a7 --a8 --a9 --a10 --entrypoint git img push",
+			parser.DetailEntrypointOptions,
+		),
 	)
 })

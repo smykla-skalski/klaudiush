@@ -33,7 +33,7 @@ Each finding names the operation klaudiush could not see through, the programs t
 | git or gh word from command output    | `git $(echo commit)`, `git c?mmit`              | Write the subcommand literally                            |
 | eval of a variable or command output  | `eval "$LINE"`, `eval "$(tool init)"`           | Run the commands directly instead of through eval         |
 | eval of a known tool's shell setup    | `eval "$(mise activate bash)"`                  | Run the command through the tool (see below)              |
-| Container entrypoint not literal      | `docker run --entrypoint "$EP" img push`        | Write the entrypoint program literally                    |
+| Container entrypoint not literal      | `docker run --entrypoint "$EP" img push`        | Write the entrypoint, options and image literally         |
 
 When eval runs the output of one command substitution whose program is a literal name from the list below, with arguments that make it print shell setup, the finding names the tool and a form klaudiush can inspect. The block stays. A computed program name (`$TOOL`, `$(which mise)`) or argument, a name that only contains a known one (`evil-mise`), or a tool or `eval` redefined as an alias or function on the same line gets the generic repair. A literal path is named by its last part (`/opt/homebrew/bin/brew` is `brew`); this changes only the text.
 

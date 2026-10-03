@@ -850,8 +850,8 @@ func launchesTracked(arg string, rest []string) bool {
 		_, _, ok := shellOperand(rest)
 
 		return ok
-	case containerRunners[name]:
-		return len(containerRuns(rest)) > 0
+	case mayRunContainers(name):
+		return containerRuns(rest).tracked()
 	default:
 		return isInterpreter || isLauncher || name == evalBuiltin || name == sourceBuiltin
 	}
