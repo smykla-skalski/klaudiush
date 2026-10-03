@@ -140,7 +140,7 @@ func (c *commandCheck) checkCommand(cmd parser.Command) {
 		return
 	}
 
-	if unknownInput {
+	if unknownInput && !readOnlyPrograms[launchedProgram(cmd.Args)] {
 		if m, ok := c.listsProtectedNames(); ok {
 			c.add(Violation{Match: m, Program: program, Target: m.Path})
 		}

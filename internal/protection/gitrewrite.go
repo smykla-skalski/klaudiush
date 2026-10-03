@@ -79,19 +79,88 @@ func (c *commandCheck) redirectsGit(cmd parser.Command) bool {
 		return false
 	}
 
-	return gitEnvironment.MatchString(c.raw) || c.loadsShellState()
+	return namesGitEnvironment(c.raw) || shellEnvironmentOpaque.MatchString(c.raw) ||
+		c.loadsUnknownShellState()
 }
 
-// loadsShellState reports a source, . or eval in the command: a script
-// read into the shell can export GIT_DIR or GIT_INDEX_FILE where the
-// command text does not show it.
-func (c *commandCheck) loadsShellState() bool {
-	return slices.ContainsFunc(c.result.Commands, func(cmd parser.Command) bool {
-		name := programName(cmd)
+// gitEnvironmentName matches the variables that point git elsewhere, in
+// any position: export $x after x=GIT_DIR, read GIT_DIR, printf -v.
+var gitEnvironmentName = regexp.MustCompile(
+	`GIT_(?:DIR|WORK_TREE|INDEX_FILE|OBJECT_DIRECTORY|ALTERNATE_OBJECT_DIRECTORIES|COMMON_DIR|` +
+		`CONFIG|NAMESPACE)`,
+)
 
-		return name == "source" || name == "." || name == "eval"
+// shellEnvironmentOpaque matches commands that set variables whose names
+// or values the text does not show (export $(cat f), env $(...),
+// declare -x "$v", read into a variable later exported), and startup
+// files a shell reads before running a command.
+var shellEnvironmentOpaque = regexp.MustCompile(
+	`\b(?:export|declare|typeset|readonly|local|env)\b[^;&|\n]*\s["']?[$` + "`" + `]|` +
+		`\bset\s+-[a-zA-Z]*a|\bBASH_ENV\b|\bENV=|--rcfile|--init-file`,
+)
+
+// namesGitEnvironment reports a git environment variable or option in
+// text, after removing the quotes and backslashes that split a name the
+// shell joins ("GIT""_DIR", GIT\_DIR).
+func namesGitEnvironment(text string) bool {
+	joined := strings.NewReplacer(`"`, "", "'", "", `\`, "").Replace(text)
+
+	return gitEnvironment.MatchString(joined) || gitEnvironmentName.MatchString(joined)
+}
+
+// loadsUnknownShellState reports a source, . or eval that may set git
+// variables: a script that cannot be read or names one, or eval of text
+// that comes from command output or names one. Sourcing a script that
+// leaves git alone (a virtualenv's activate) passes.
+func (c *commandCheck) loadsUnknownShellState() bool {
+	return slices.ContainsFunc(c.result.Commands, func(cmd parser.Command) bool {
+		switch programName(cmd) {
+		case "source", ".":
+			if len(cmd.Args) == 0 || cmd.Dynamic {
+				return true
+			}
+
+			return scriptMaySetGit(
+				c.set.absolute(c.expand(cmd.Args[0]), c.dir(cmd.WorkingDirectory, cmd.DirUnknown)),
+			)
+		case "eval":
+			return cmd.Dynamic || namesGitEnvironment(strings.Join(cmd.Args, " "))
+		default:
+			return false
+		}
 	})
 }
+
+// maxSourcedBytes bounds how much of a sourced script is read.
+const maxSourcedBytes = 1 << 20
+
+// scriptMaySetGit reports a sourced script that cannot be read, or that
+// names git variables, loads further state or sets variables opaquely.
+func scriptMaySetGit(path string) bool {
+	if strings.Contains(path, unknownPart) {
+		return true
+	}
+
+	info, err := os.Stat(path)
+	if err != nil || !info.Mode().IsRegular() || info.Size() > maxSourcedBytes {
+		return true
+	}
+
+	data, err := os.ReadFile(filepath.Clean(path))
+	if err != nil {
+		return true
+	}
+
+	text := shellComment.ReplaceAllString(string(data), "")
+
+	return namesGitEnvironment(text) || shellEnvironmentOpaque.MatchString(text) ||
+		loadsMoreState.MatchString(text)
+}
+
+var (
+	shellComment   = regexp.MustCompile(`(?m)(^|\s)#.*$`)
+	loadsMoreState = regexp.MustCompile(`(?m)(^|[;&|]|\s)(source|\.|eval)\s`)
+)
 
 // movesCheckedOut reports whether ref is HEAD or the checked-out branch,
 // so moving it changes what the work tree is compared with.

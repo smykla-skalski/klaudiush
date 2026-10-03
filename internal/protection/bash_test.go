@@ -192,6 +192,7 @@ var _ = Describe("CheckCommand", func() {
 		Entry("substitution read into other file", `echo $(cat .mcp.json) > out.txt`),
 		Entry("find listing", `find . -type f`),
 		Entry("xargs over sources", `find . -name '*.pyc' | xargs rm`),
+		Entry("glob into read-only xargs", `ls -d .* | xargs ls -ld`),
 		Entry("find by protected name", `find . -name settings.json`),
 		Entry("copy protected file out", `cp .mcp.json backup.json`),
 		Entry("find other name", `find . -name '*.orig' -delete`),

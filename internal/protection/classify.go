@@ -332,3 +332,24 @@ func localPart(src string) string {
 
 	return path
 }
+
+// xargsValueOptions are xargs and parallel options that take the next word.
+var xargsValueOptions = map[string]bool{
+	"-I": true, "-L": true, "-n": true, "-P": true, "-s": true, "-d": true, "-E": true, "-a": true,
+	"--max-args": true, "--max-procs": true, "--delimiter": true, "--arg-file": true,
+}
+
+// launchedProgram returns the program xargs or parallel runs, lower-cased.
+func launchedProgram(args []string) string {
+	for i := 0; i < len(args); i++ {
+		switch {
+		case xargsValueOptions[args[i]]:
+			i++
+		case strings.HasPrefix(args[i], "-"):
+		default:
+			return strings.ToLower(filepath.Base(args[i]))
+		}
+	}
+
+	return "echo"
+}

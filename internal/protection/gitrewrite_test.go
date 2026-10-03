@@ -152,5 +152,33 @@ var _ = Describe("CheckCommand for git pointed elsewhere", func() {
 		Expect(checkCommand(set, `. /tmp/gitenv.sh && git reset --hard`)).NotTo(BeEmpty())
 		Expect(checkCommand(set, `eval "$(cat /tmp/gitenv.sh)"; git checkout -f`)).NotTo(BeEmpty())
 		Expect(checkCommand(set, `source /tmp/env.sh; git status`)).To(BeEmpty())
+
+		for _, command := range []string{
+			`export $(cat ~/envonly); git checkout -f`,
+			`export "$(cat ~/envonly)"; git checkout -f`,
+			`env $(cat ~/envonly) git checkout -f`,
+			`read -r GIT_DIR < /tmp/gd; export GIT_DIR; git checkout -f`,
+			`printf -v GIT_DIR %s x; export GIT_DIR; git checkout -f`,
+			`x=GIT_DIR; export $x=/tmp/e; git checkout -f`,
+			`declare -x "GIT""_DIR=/tmp/e"; git checkout -f`,
+			`BASH_ENV=~/env.sh bash -c "git checkout -f"`,
+			`bash --rcfile ~/env.sh -ic "git checkout -f"`,
+			`set -a; . ~/envonly; git checkout -f`,
+		} {
+			Expect(checkCommand(set, command)).NotTo(BeEmpty(), command)
+		}
+	})
+
+	It("lets sourced scripts that leave git alone through", func() {
+		e := newEnv(GinkgoT().TempDir(), "linux", nil)
+		activate := e.write("project/.venv/bin/activate",
+			"# This file must be used with \"source bin/activate\"\n"+
+				"VIRTUAL_ENV=/x\nexport VIRTUAL_ENV\nPATH=\"$VIRTUAL_ENV/bin:$PATH\"\nexport PATH\n")
+		gitenv := e.write("project/gitenv.sh", "export GIT_DIR=/tmp/evil/.git\n")
+		set := e.set()
+
+		Expect(checkCommand(set, "source "+activate+" && git checkout -b x")).To(BeEmpty())
+		Expect(checkCommand(set, `export PATH="$PATH:/x"; git checkout -b y`)).To(BeEmpty())
+		Expect(checkCommand(set, "source "+gitenv+" && git checkout -f")).NotTo(BeEmpty())
 	})
 })
