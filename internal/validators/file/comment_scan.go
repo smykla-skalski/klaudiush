@@ -468,31 +468,27 @@ func endPythonLine(state stringState) stringState {
 // syntax, the leads it is scanned from (none means once from code), and
 // whether triple-quoted state is dropped at each line break because the
 // payload's lines are not contiguous in the file.
-//
-// metadataTaken is set when an Edit with no old_string targets a file that
-// already holds a PEP 723 script block, so the payload's block cannot be the
-// file's only one.
 type commentScan struct {
 	syntax          langSyntax
 	leads           []editLead
 	lineLocalTriple bool
-	metadataTaken   bool
 }
 
 // editLead is one place an Edit's new_string lands: the multi-line string
 // state its line starts in, the file text before it on that line, and the
 // file text after it, only used to find the declaration a comment documents.
 // before holds the file lines above it, starting in beforeState, only used to
-// find a PEP 723 metadata block the Edit lands in. metadataElsewhere is set
-// when the file has a script block the replaced text does not touch, so a
-// block the Edit adds would be a second one.
+// find a PEP 723 metadata block the Edit lands in. noMetadata is set when a
+// block the Edit adds could be a second one: the file has a script block the
+// replaced text does not touch, or several occurrences are replaced and not
+// all of them inside the file's block.
 type editLead struct {
-	state             stringState
-	prefix            string
-	suffix            string
-	before            []string
-	beforeState       stringState
-	metadataElsewhere bool
+	state       stringState
+	prefix      string
+	suffix      string
+	before      []string
+	beforeState stringState
+	noMetadata  bool
 }
 
 // lineStart returns the state the next line starts in after a line ended in
@@ -533,8 +529,15 @@ func newCommentScan(hookCtx *hook.Context) commentScan {
 		}
 	}
 
-	scan.lineLocalTriple = hookCtx.ToolInput.OldString == ""
-	if !needsSource(scan.syntax, detectShebang, scan.lineLocalTriple) {
+	if hookCtx.ToolInput.OldString == "" {
+		scan.lineLocalTriple = true
+
+		if !detectShebang {
+			return scan
+		}
+	}
+
+	if scan.syntax == (langSyntax{}) && !detectShebang {
 		return scan
 	}
 
@@ -554,8 +557,6 @@ func newCommentScan(hookCtx *hook.Context) commentScan {
 
 	old := strings.ReplaceAll(hookCtx.ToolInput.OldString, "\r\n", "\n")
 	if old == "" {
-		scan.metadataTaken = hasMetadata(original, scan.syntax)
-
 		return scan
 	}
 
@@ -564,34 +565,12 @@ func newCommentScan(hookCtx *hook.Context) commentScan {
 	return scan
 }
 
-// needsSource reports whether an Edit reads the file on disk: to detect a
-// shebang, to find its start state, or, with no old_string, to find a PEP 723
-// block already in a Python file.
-func needsSource(syntax langSyntax, detectShebang, noOldString bool) bool {
-	switch {
-	case detectShebang:
-		return true
-	case noOldString:
-		return syntax.python
-	default:
-		return syntax != (langSyntax{})
-	}
-}
-
-// hasMetadata reports whether a Python source holds a PEP 723 script block.
-func hasMetadata(source string, syntax langSyntax) bool {
-	if !syntax.python {
-		return false
-	}
-
-	lines := strings.Split(source, "\n")
-
-	return lastMarked(pep723Lines(lines, stateCode, commentScan{syntax: syntax})) >= 0
-}
-
-// pythonShebang matches a first line that runs the file with Python,
-// directly or as a uv script.
-var pythonShebang = regexp.MustCompile(`^#!.*(\bpython[0-9.]*|\buv\s+run\s.*--script)(\s|$)`)
+// pythonShebang matches a first line that runs the file with Python, or
+// with uv as a script, directly or through env.
+var pythonShebang = regexp.MustCompile(
+	`^#!.*\bpython[0-9.]*(\s|$)` +
+		`|^#!\s*(\S*/)?(env\s+(-S\s+)?)?uv\s+run\s(.*\s)?--script(\s|$)`,
+)
 
 // shebangSyntax returns the Python syntax when text starts with a Python
 // shebang, for scripts without an extension, and the default syntax otherwise.
@@ -682,12 +661,20 @@ func editLeads(content, old string, syntax langSyntax, all bool) []editLead {
 			),
 			before:      lines[first:li],
 			beforeState: lineStates[first],
-			metadataElsewhere: metadataStart >= 0 &&
+			noMetadata: metadataStart >= 0 &&
 				(last < metadataStart || li > metadataEnd),
 		})
 
 		if !all {
 			break
+		}
+	}
+
+	if len(leads) > 1 && (metadataStart < 0 || slices.ContainsFunc(leads, func(l editLead) bool {
+		return l.noMetadata
+	})) {
+		for i := range leads {
+			leads[i].noMetadata = true
 		}
 	}
 

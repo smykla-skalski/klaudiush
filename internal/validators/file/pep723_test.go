@@ -2,6 +2,7 @@ package file_test
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -113,6 +114,10 @@ var _ = Describe("AICommentValidator PEP 723 metadata", func() {
 		Entry("extension-less uv script", "/repo/bin/fetch", pep723Script),
 		Entry("comment in an extension-less uv script is flagged", "/repo/bin/fetch",
 			pep723Script+"# fetch the page\n", 7),
+		Entry("shebang that only mentions uv run --script", "/repo/bin/fetch",
+			"#!/bin/echo uv run --script\n# /// script\n# a = 1\n# ///\n", 2, 3, 4),
+		Entry("direct uv shebang", "/repo/bin/fetch",
+			"#!/usr/local/bin/uv run --script\n# /// script\n# a = 1\n# ///\n"),
 		Entry("extension-less file without a python shebang", "/repo/bin/fetch",
 			"#!/bin/sh\n# /// script\n# a = 1\n# ///\n", 2, 3, 4),
 		Entry("only python files are exempt", "/repo/main.rb",
@@ -218,16 +223,32 @@ var _ = Describe("AICommentValidator PEP 723 metadata", func() {
 			Expect(flaggedLines(sv.Validate(context.Background(), ctx))).To(BeEmpty())
 		})
 
-		It("flags a block in a patch-style Edit to a file that has one", func() {
-			ctx.ToolInput.FilePath = writeSource(pep723Script)
-			ctx.ToolInput.NewString = "# /// script\n# sum the values\n# ///"
+		It("flags a block in a patch-style Edit with no old_string", func() {
+			ctx.ToolInput.FilePath = writeSource("import sys\n")
+			ctx.ToolInput.NewString = "# /// script\n# dependencies = []\n# ///"
 			Expect(flaggedLines(sv.Validate(context.Background(), ctx))).To(Equal([]int{1, 2, 3}))
 		})
 
-		It("exempts a block in a patch-style Edit with no old_string", func() {
-			ctx.ToolInput.FilePath = writeSource("import sys\n")
-			ctx.ToolInput.NewString = "# /// script\n# dependencies = []\n# ///"
-			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeTrue())
+		It("flags blocks a replace_all Edit adds at several places", func() {
+			ctx.ToolInput.FilePath = writeSource("x = 1\nfoo()\ny = 2\nfoo()\n")
+			ctx.ToolInput.OldString = "foo()"
+			ctx.ToolInput.NewString = "# /// script\n# sum the values\n# ///\nfoo()"
+			ctx.ToolInput.Additional = map[string]json.RawMessage{
+				"replace_all": json.RawMessage("true"),
+			}
+			Expect(flaggedLines(sv.Validate(context.Background(), ctx))).To(Equal([]int{1, 2, 3}))
+		})
+
+		It("exempts a replace_all Edit inside the file's block", func() {
+			ctx.ToolInput.FilePath = writeSource(
+				"# /// script\n# a = \"1.0\"\n# b = \"1.0\"\n# ///\nimport sys\n",
+			)
+			ctx.ToolInput.OldString = "\"1.0\""
+			ctx.ToolInput.NewString = "\"2.0\""
+			ctx.ToolInput.Additional = map[string]json.RawMessage{
+				"replace_all": json.RawMessage("true"),
+			}
+			Expect(flaggedLines(sv.Validate(context.Background(), ctx))).To(BeEmpty())
 		})
 	})
 })

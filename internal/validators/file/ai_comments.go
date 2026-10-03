@@ -373,9 +373,11 @@ func findLeadViolations(
 // pep723Metadata reports which payload lines belong to a PEP 723 metadata
 // block in a Python file. An Edit's block is matched against the file text
 // around it, so a line edited inside an existing block is still recognised.
+// An Edit with no old_string joins lines from several hunks whose positions
+// are unknown, so none of its lines are exempt.
 func pep723Metadata(lines, docLines []string, scan commentScan, lead editLead) []bool {
 	inBlock := make([]bool, len(lines))
-	if !scan.syntax.python || scan.metadataTaken || lead.metadataElsewhere {
+	if !scan.syntax.python || scan.lineLocalTriple || lead.noMetadata {
 		return inBlock
 	}
 
