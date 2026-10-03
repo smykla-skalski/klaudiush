@@ -172,8 +172,20 @@ func findCommentStart(
 	state stringState,
 	syntax langSyntax,
 ) (idx int, endState stringState) {
+	idx, endState, _ = scanLine(line, state, syntax)
+
+	return idx, endState
+}
+
+// scanLine is findCommentStart that also reports whether the scan stopped at
+// a "#" right after code, which may be an unspaced comment.
+func scanLine(
+	line string,
+	state stringState,
+	syntax langSyntax,
+) (idx int, endState stringState, stopped bool) {
 	if state == stateLineComment {
-		return -1, stateCode
+		return -1, stateCode, false
 	}
 
 	var quote byte
@@ -207,13 +219,13 @@ func findCommentStart(
 		case c == '\'' || c == '"':
 			quote = c
 		case isCommentMarker(line, i, syntax.comment):
-			return i, state
+			return i, state, false
 		case syntax.comment == commentHash && c == '#':
-			return -1, state
+			return -1, state, true
 		}
 	}
 
-	return -1, state
+	return -1, state, false
 }
 
 // commentScan is where scanning a Write or Edit payload starts: the language
@@ -348,8 +360,8 @@ func stateAtOccurrences(content, old string, syntax langSyntax) stringState {
 		pos := from + rel
 		li := sort.SearchInts(lineOffsets, pos+1) - 1
 
-		idx, at := findCommentStart(content[lineOffsets[li]:pos], lineStates[li], syntax)
-		if idx >= 0 {
+		idx, at, stopped := scanLine(content[lineOffsets[li]:pos], lineStates[li], syntax)
+		if idx >= 0 || stopped {
 			at = stateLineComment
 		}
 

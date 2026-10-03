@@ -450,6 +450,13 @@ var _ = Describe("AICommentValidator multi-line string literals", func() {
 			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
 		})
 
+		It("does not open a string from quotes in an edited unspaced comment", func() {
+			ctx.ToolInput.FilePath = writeSource("x = 1#note\ny = 2\n")
+			ctx.ToolInput.OldString = "note\ny = 2"
+			ctx.ToolInput.NewString = "note \"\"\"\n# add tax before rounding\ny = 2"
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
+		})
+
 		It("matches an LF old_string in a CRLF file", func() {
 			ctx.ToolInput.FilePath = writeSource("BODY = \"\"\"\r\n## Old\r\nText.\r\n\"\"\"\r\n")
 			ctx.ToolInput.OldString = "## Old\nText."
