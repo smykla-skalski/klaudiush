@@ -31,27 +31,37 @@ var _ = Describe("BashParser", func() {
 		Context("with zsh syntax", func() {
 			DescribeTable(
 				"reports the construct bash rejects",
-				func(command, construct string) {
+				func(command, construct string, possible bool) {
 					_, err := p.Parse(command)
 
 					var zshErr *parser.ZshSyntaxError
 					Expect(errors.As(err, &zshErr)).To(BeTrue(), "error: %v", err)
 					Expect(zshErr.Construct).To(Equal(construct))
+					Expect(zshErr.Possible).To(Equal(possible))
 					Expect(err).To(MatchError(parser.ErrParseFailed))
 				},
 				Entry("parameter expansion flags",
 					`typeset -A NUM; NUM[a]=1; list=a,b; for x in ${(s:,:)list}; do echo $x; done`,
-					"parameter expansion flags"),
-				Entry("anonymous function", `() { git push }`, "anonymous functions"),
-				Entry("=( process substitution", `diff =(git log) f`, "`=(` process substitutions"),
-				Entry("foreach loop, unnamed by bash", `foreach x (a b) echo $x; end`, ""),
-				Entry("short for loop", `for x (a b) git push`, "short for loops"),
-				Entry("short for loop after another command",
-					`echo hi; for x (a b) echo $x`, "short for loops"),
-				Entry("two short for loops",
-					`for x (a b) echo $x; for y (c) git status`, "short for loops"),
+					"parameter expansion flags", false),
+				Entry("anonymous function", `() { git push }`, "anonymous functions", false),
+				Entry("=( process substitution", `diff =(git log) f`,
+					"`=(` process substitutions", false),
+				Entry("foreach loop, unnamed by bash", `foreach x (a b) echo $x; end`, "", false),
 				Entry("flags zsh itself rejects, still bash-unparseable", `echo ${(Y)x}`,
-					"parameter expansion flags"),
+					"parameter expansion flags", false),
+				Entry("short for loop", `for x (a b) git push`, "short for loops", true),
+				Entry("short for loop after another command",
+					`echo hi; for x (a b) echo $x`, "short for loops", true),
+				Entry("short for loop with two names", `for x y (a b c d) echo $x $y`,
+					"short for loops", true),
+				Entry("short for loop with a brace body", `for x (a b) { git push }`,
+					"short for loops", true),
+				Entry("broken short for loop, still only possible zsh",
+					`for x (a b) git push; echo "unclosed`, "short for loops", true),
+				Entry("for loop with braces", `for x in a b; { git push }`,
+					"for loops with braces", true),
+				Entry("broken for loop with braces, still only possible zsh",
+					`for x in a; { echo (`, "for loops with braces", true),
 			)
 
 			DescribeTable("keeps a command no shell parses a plain parse failure",
@@ -65,11 +75,7 @@ var _ = Describe("BashParser", func() {
 				Entry("unclosed subshell", `git commit -m "x" && (`),
 				Entry("for without a list", `for x y`),
 				Entry("for with a stray paren later", `for x in a; do echo (; done`),
-				Entry("unclosed short for loop", `for x (`),
-				Entry("short for loop then an unclosed paren", `echo hi; for x ( ; done`),
-				Entry("short for loop then an unclosed quote",
-					`for x (a b) git push; echo "unclosed`),
-				Entry("brace for loop with an error inside", `for x in a; { echo (`),
+				Entry("word ending in for before a paren", `echo xfor (`),
 			)
 		})
 

@@ -109,15 +109,19 @@ func (p *BashParser) Parse(command string) (*ParseResult, error) {
 	}, nil
 }
 
-// ZshSyntaxError reports a command that does not parse as bash but that the
-// zsh grammar accepts. Commands are inspected as bash, so zsh syntax stays
-// opaque even though a zsh login shell may run it. errors.Is matches it as
+// ZshSyntaxError reports a command that does not parse as bash but uses zsh
+// syntax. Commands are inspected as bash, so zsh syntax stays opaque even
+// though a zsh login shell may run it. errors.Is matches it as
 // ErrParseFailed.
 type ZshSyntaxError struct {
-	// Construct names the zsh syntax bash rejected, such as "parameter
-	// expansion flags". It is empty when the bash error does not name it.
+	// Construct names the zsh syntax, such as "parameter expansion flags".
+	// It is empty when the bash error does not name it.
 	Construct string
-	cause     error
+	// Possible reports that the zsh grammar rejects the command too, but it
+	// holds a zsh loop form that grammar does not know. The command may be
+	// valid zsh or broken, and the bash error may be the real one.
+	Possible bool
+	cause    error
 }
 
 func (e *ZshSyntaxError) Error() string {
@@ -139,8 +143,8 @@ func (e *ZshSyntaxError) Unwrap() error {
 func parseFailure(command string, err error) error {
 	zshParser := syntax.NewParser(syntax.Variant(syntax.LangZsh))
 	if _, zshErr := zshParser.Parse(strings.NewReader(command), ""); zshErr != nil {
-		if construct := unparsedZshForm(command, zshErr); construct != "" {
-			return &ZshSyntaxError{Construct: construct, cause: err}
+		if construct := unknownZshForm(command, zshErr); construct != "" {
+			return &ZshSyntaxError{Construct: construct, Possible: true, cause: err}
 		}
 
 		return errors.Wrap(ErrParseFailed, err.Error())
@@ -156,41 +160,27 @@ func parseFailure(command string, err error) error {
 	return zerr
 }
 
-// zshShortFor matches the header of the zsh short loop "for x (a b) cmd" at
-// the start of the text, up to and including the opening parenthesis.
-var zshShortFor = regexp.MustCompile(`^for\s+[A-Za-z_][A-Za-z0-9_]*\s*\(`)
+// zshShortFor matches the header of a zsh short loop such as
+// "for x (a b) cmd" or "for x y (a b c d) cmd" after a command separator.
+var zshShortFor = regexp.MustCompile(
+	`(?:^|[;&|({\n]|\s)for(?:\s+[A-Za-z_][A-Za-z0-9_]*)+\s*\(`,
+)
 
-// maxZshRewrites bounds how many short for loops one command may hold before
-// it is reported as a plain parse failure.
-const maxZshRewrites = 8
+// zshBraceFor is the feature mvdan.cc/sh names when it rejects
+// "for x in a; { cmd }" in zsh mode, a loop form zsh itself accepts.
+const zshBraceFor = "for loops with braces"
 
-// unparsedZshForm reports "short for loops" when the command is valid zsh
-// except for short for loops, which the zsh grammar of mvdan.cc/sh rejects.
-// Each loop header "for x (" is rewritten to ": $(", which keeps the word
-// list and the body, and the result must then parse as zsh.
-func unparsedZshForm(command string, zshErr error) string {
-	for range maxZshRewrites {
-		var parseErr syntax.ParseError
-		if !errors.As(zshErr, &parseErr) {
-			return ""
-		}
+// unknownZshForm names a zsh loop form the zsh grammar of mvdan.cc/sh does
+// not know, so a command using one is not reported as plainly broken shell.
+// It cannot tell whether the rest of the command is valid zsh.
+func unknownZshForm(command string, zshErr error) string {
+	var langErr syntax.LangError
+	if errors.As(zshErr, &langErr) && langErr.Feature == zshBraceFor {
+		return zshBraceFor
+	}
 
-		offset := int(parseErr.Pos.Offset())
-		if offset >= len(command) {
-			return ""
-		}
-
-		header := zshShortFor.FindString(command[offset:])
-		if header == "" {
-			return ""
-		}
-
-		command = command[:offset] + ": $(" + command[offset+len(header):]
-
-		zshParser := syntax.NewParser(syntax.Variant(syntax.LangZsh))
-		if _, zshErr = zshParser.Parse(strings.NewReader(command), ""); zshErr == nil {
-			return "short for loops"
-		}
+	if zshShortFor.MatchString(command) {
+		return "short for loops"
 	}
 
 	return ""

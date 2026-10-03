@@ -50,8 +50,8 @@ func (*NestingValidator) Validate(_ context.Context, hookCtx *hook.Context) *val
 
 	switch {
 	case errors.As(err, &zshErr):
-		return validator.FailWithRef(validator.RefShellNesting, zshSummary(zshErr.Construct)).
-			AddFinding(zshSyntaxFinding(err, zshErr.Construct))
+		return validator.FailWithRef(validator.RefShellNesting, zshSummary(zshErr)).
+			AddFinding(zshSyntaxFinding(err, zshErr))
 	case errors.Is(err, parser.ErrParseFailed):
 		return validator.FailWithRef(validator.RefShellNesting, parseFailedText).
 			AddFinding(parseFailedFinding(err))
@@ -95,25 +95,39 @@ func parseFailedFinding(err error) validator.Finding {
 
 // zshSummary names the zsh construct, so zsh syntax is not reported as
 // broken syntax.
-func zshSummary(construct string) string {
-	if construct == "" {
+func zshSummary(zshErr *parser.ZshSyntaxError) string {
+	switch {
+	case zshErr.Possible:
+		return "Command does not parse as bash and uses zsh syntax (" + zshErr.Construct +
+			") klaudiush cannot inspect"
+	case zshErr.Construct == "":
 		return "Command uses zsh syntax that bash does not parse, so klaudiush cannot inspect it"
+	default:
+		return "Command uses zsh syntax (" + zshErr.Construct + ") that bash does not parse, " +
+			"so klaudiush cannot inspect it"
 	}
-
-	return "Command uses zsh syntax (" + construct + ") that bash does not parse, " +
-		"so klaudiush cannot inspect it"
 }
 
-func zshSyntaxFinding(err error, construct string) validator.Finding {
+func zshSyntaxFinding(err error, zshErr *parser.ZshSyntaxError) validator.Finding {
 	f := parseFailedFinding(err)
+	f.Required = "bash syntax"
 
+	if zshErr.Possible {
+		f.Message = "command does not parse as bash; " + zshErr.Construct +
+			" are zsh syntax klaudiush cannot inspect"
+		f.Repair = "Fix the shell syntax at that position, and rewrite " +
+			zshErr.Construct + " in bash; klaudiush parses every command as bash"
+
+		return f
+	}
+
+	construct := zshErr.Construct
 	if construct == "" {
 		construct = "this syntax"
 	}
 
 	f.Message = construct + " is zsh syntax bash does not parse, and klaudiush " +
 		"inspects commands as bash"
-	f.Required = "bash syntax"
 	f.Repair = "Rewrite the command in bash syntax; klaudiush parses every command " +
 		"as bash, whatever the login shell"
 

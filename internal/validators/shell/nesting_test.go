@@ -90,6 +90,20 @@ var _ = Describe("NestingValidator", func() {
 		)
 	})
 
+	It("hedges a zsh loop form the zsh grammar does not know", func() {
+		result := blocked(`for x (a b) git push`)
+
+		Expect(result.Message).To(Equal(
+			"Command does not parse as bash and uses zsh syntax (short for loops) " +
+				"klaudiush cannot inspect",
+		))
+		Expect(result.Findings).To(ConsistOf(SatisfyAll(
+			HaveField("Location", MatchRegexp(`^line 1, column \d+$`)),
+			HaveField("Message", ContainSubstring("short for loops are zsh syntax")),
+			HaveField("Repair", ContainSubstring("Fix the shell syntax at that position")),
+		)))
+	})
+
 	DescribeTable("explains each kind of opaque operation distinctly",
 		func(command, summary, location, message, repair string) {
 			result := blocked(command)
