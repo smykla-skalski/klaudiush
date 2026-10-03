@@ -78,7 +78,8 @@ func BuildCodex(
 	case hook.CanonicalEventUnknown, hook.CanonicalEventNotification,
 		hook.CanonicalEventPreCompress, hook.CanonicalEventElicitation,
 		hook.CanonicalEventElicitationResult, hook.CanonicalEventSessionEnd,
-		hook.CanonicalEventStopFailure, hook.CanonicalEventConfigChange:
+		hook.CanonicalEventStopFailure, hook.CanonicalEventConfigChange,
+		hook.CanonicalEventToolSelection:
 	}
 
 	resp = restrictCodexResponse(resp, capability)

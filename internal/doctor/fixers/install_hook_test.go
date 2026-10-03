@@ -100,5 +100,40 @@ var _ = Describe("InstallHookFixer", func() {
 		fixer := NewInstallHookFixer(mockPrompt, cfg)
 		Expect(fixer.Fix(context.Background(), false)).To(Succeed())
 		Expect(geminiSettingsPath).To(BeAnExistingFile())
+
+		data, err := os.ReadFile(geminiSettingsPath)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(data)).NotTo(ContainSubstring("BeforeToolSelection"))
+
+		enabled := true
+		cfg.Evidence = &pkgConfig.EvidenceConfig{
+			ToolPhase: &pkgConfig.EvidenceToolPhaseConfig{Enabled: &enabled},
+		}
+
+		Expect(NewInstallHookFixer(mockPrompt, cfg).Fix(context.Background(), false)).To(Succeed())
+
+		data, err = os.ReadFile(geminiSettingsPath)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(data)).To(ContainSubstring("--event BeforeToolSelection"))
+	})
+
+	It("reports a Gemini settings file it cannot extend", func() {
+		claudeEnabled := false
+		enabled := true
+		geminiSettingsPath := filepath.Join(tempDir, "settings.json")
+		Expect(os.WriteFile(geminiSettingsPath, []byte("{"), 0o600)).To(Succeed())
+
+		cfg := &pkgConfig.Config{
+			Providers: &pkgConfig.ProvidersConfig{
+				Claude: &pkgConfig.ClaudeProviderConfig{Enabled: &claudeEnabled},
+				Gemini: &pkgConfig.GeminiProviderConfig{
+					Enabled:      &enabled,
+					SettingsPath: geminiSettingsPath,
+				},
+			},
+		}
+
+		Expect(NewInstallHookFixer(mockPrompt, cfg).Fix(context.Background(), false)).
+			To(MatchError(ContainSubstring("failed to install Gemini hooks")))
 	})
 })

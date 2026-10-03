@@ -46,6 +46,7 @@ type evidenceGate struct {
 	now        func() time.Time
 	alive      func(pid int) bool
 	log        logger.Logger
+	phase      *toolPhase
 }
 
 // newEvidenceGate returns a gate for the hook's configuration. Without
@@ -74,7 +75,7 @@ func newEvidenceGate(
 		}
 	}
 
-	return &evidenceGate{
+	gate := &evidenceGate{
 		checks:    checks,
 		configErr: configErr,
 		loadChecks: func(repo string) ([]*evidence.Check, error) {
@@ -87,6 +88,18 @@ func newEvidenceGate(
 		alive:  evidence.ProcessAlive,
 		log:    log,
 	}
+	gate.phase = newToolPhase(cfg, gate)
+
+	return gate
+}
+
+// toolPhase returns the evidence tool phase the configuration enables, or nil.
+func (g *evidenceGate) toolPhase() *toolPhase {
+	if g == nil {
+		return nil
+	}
+
+	return g.phase
 }
 
 // repoChecks loads the checks configured for a repository, or nil when its

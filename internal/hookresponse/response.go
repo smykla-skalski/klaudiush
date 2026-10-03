@@ -54,6 +54,16 @@ type GeminiHookSpecificOutput struct {
 	HookEventName     string         `json:"hookEventName"`
 	AdditionalContext string         `json:"additionalContext,omitempty"`
 	ToolInput         map[string]any `json:"tool_input,omitempty"`
+
+	// ToolConfig narrows the tools offered to the model (BeforeToolSelection).
+	ToolConfig *GeminiToolConfig `json:"toolConfig,omitempty"`
+}
+
+// GeminiToolConfig is the BeforeToolSelection tool configuration. Gemini
+// unions AllowedFunctionNames across hooks.
+type GeminiToolConfig struct {
+	Mode                 string   `json:"mode"`
+	AllowedFunctionNames []string `json:"allowedFunctionNames"`
 }
 
 // OpenCodeCommandResponse is the top-level JSON structure for opencode hooks.

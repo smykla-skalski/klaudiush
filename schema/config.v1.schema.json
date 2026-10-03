@@ -512,6 +512,36 @@
             "$ref": "#/$defs/EvidenceCheckConfig"
           },
           "type": "array"
+        },
+        "tool_phase": {
+          "$ref": "#/$defs/EvidenceToolPhaseConfig"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "EvidenceToolPhaseConfig": {
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "requires": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "read_only_tools": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "writable_paths": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         }
       },
       "additionalProperties": false,

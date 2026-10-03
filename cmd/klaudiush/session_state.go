@@ -67,7 +67,8 @@ func applyHookSessionLifecycle(
 		hook.CanonicalEventPostCompact,
 		hook.CanonicalEventUserPromptSubmit,
 		hook.CanonicalEventStopFailure,
-		hook.CanonicalEventConfigChange:
+		hook.CanonicalEventConfigChange,
+		hook.CanonicalEventToolSelection:
 		return errs, cleanup
 	case hook.CanonicalEventSessionStart:
 		if err := store.Start(hookCtx.Provider, hookCtx.SessionID); err != nil {

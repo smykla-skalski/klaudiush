@@ -11,6 +11,7 @@ Keep an agent from finishing until required checks passed against the files as t
 - [Running checks with the verifier](#running-checks-with-the-verifier)
 - [Review receipts](#review-receipts)
 - [Provider coverage](#provider-coverage)
+- [Gemini tool phases](#gemini-tool-phases)
 - [What the gate cannot prevent](#what-the-gate-cannot-prevent)
 - [Inspecting results](#inspecting-results)
 - [Troubleshooting](#troubleshooting)
@@ -140,6 +141,74 @@ The gate message tells the agent which option works for its provider. `klaudiush
 
 `klaudiush doctor --category evidence` warns when a Claude settings file runs klaudiush but not on `Stop`.
 
+## Gemini tool phases
+
+A tool phase keeps Gemini from changing files until prerequisite checks passed on the current content, for example until a plan exists and was checked. It reuses the evidence checks and their results: the phase has no state of its own, so it opens as soon as every prerequisite has a passing result for the files as they are now, and closes again when a later change makes a result stale.
+
+```toml
+[evidence]
+enabled = true
+
+[[evidence.checks]]
+name = "plan"
+commands = ["test -s PLAN.md"]
+paths = ["PLAN.md"]
+
+[evidence.tool_phase]
+enabled = true
+requires = ["plan"]
+writable_paths = ["PLAN.md"]
+```
+
+| Key | Default | Meaning |
+|:--|:--|:--|
+| `enabled` | `false` | Turns the phase on. Needs `evidence.enabled = true` |
+| `requires` | none | Checks that must pass before mutation tools are offered. Required |
+| `read_only_tools` | `glob`, `google_web_search`, `grep_search`, `list_directory`, `read_file`, `read_many_files`, `web_fetch` | Gemini tools offered while the phase is restricted. `write_file`, `replace` and `run_shell_command` are refused here |
+| `writable_paths` | none | Globs, relative to the repository root, that `write_file` and `replace` may change while restricted. `.klaudiush/` and `.git/` never are |
+
+While a prerequisite has no passing result:
+
+- Gemini `BeforeToolSelection` answers with `toolConfig` mode `AUTO` and `allowedFunctionNames` set to the read-only tools, `run_shell_command`, and `write_file`/`replace` when `writable_paths` is set. The model can still answer without a tool.
+- Gemini `BeforeTool` denies with [EVID002](errors/EVID002.md) every call outside that set, so a tool another hook offered, or one the model calls anyway, is still stopped. The shell runs only `klaudiush evidence run <prerequisite>` or `klaudiush evidence status` as plain words, by absolute path or by name on `PATH`, after optional `cd <dir> &&` steps, with no redirections. File tools may change only `writable_paths`, resolved through symbolic links.
+- Every other validator still runs on the calls the phase allows.
+
+Run `klaudiush evidence run plan` (the agent can, through the shell) to pass the prerequisite. The next model call is offered every tool again.
+
+Outside a git repository the phase does not apply. When klaudiush cannot read check results or fingerprint a prerequisite's files, the [failure policy](FAILURE_POLICY_GUIDE.md) decides: by default the phase stays restricted, and the calls it allows still run, so the verifier can always open it.
+
+### Registration
+
+`BeforeToolSelection` runs before every model call, so `klaudiush init` and `klaudiush doctor --fix` register it in the Gemini settings only when the tool phase is enabled:
+
+```json
+{
+  "hooks": {
+    "BeforeToolSelection": [
+      {"hooks": [{"type": "command", "command": "klaudiush --provider gemini --event BeforeToolSelection", "timeout": 30000}]}
+    ]
+  }
+}
+```
+
+`klaudiush doctor --category evidence` warns when the hook is missing, when the klaudiush `BeforeTool` matcher does not select `write_file`, `replace` and `run_shell_command`, and lists tools withheld only by the tool selection (MCP tools, `save_memory`, `write_todos` under the default matcher).
+
+### Coverage and limits
+
+| Provider | Tools withheld | Calls checked against the phase |
+|:--|:--|:--|
+| Gemini | Yes, `BeforeToolSelection` | Yes, `BeforeTool` |
+| Claude | No: no tool-selection event | No |
+| Codex | No: no tool-selection event | No |
+| opencode | No: no tool-selection event | No |
+
+`klaudiush evidence status` prints whether the phase is restricted and the same coverage.
+
+- Gemini merges the `allowedFunctionNames` of every `BeforeToolSelection` hook as a union. Another hook that lists `write_file` offers it again; `BeforeTool` still denies the call.
+- Gemini still sends the declarations of every tool to the model and restricts it through the function-calling config, so the selection narrows what the model picks, not what exists.
+- Tools that reach no klaudiush `BeforeTool` hook (MCP tools, `save_memory` and `write_todos` under the default matcher) are withheld only by the selection. Widen the `BeforeTool` matcher to check them per call.
+- When the `BeforeToolSelection` hook fails or times out, Gemini offers every tool; `BeforeTool` still enforces.
+
 ## What the gate cannot prevent
 
 The gate stops an agent from claiming a check passed without one. It does not stop an agent determined to cheat with full access to your machine:
@@ -164,6 +233,7 @@ Coverage:
   codex: gated; only 'klaudiush evidence run' counts, hooks do not learn shell exit status
   gemini: gated; only 'klaudiush evidence run' counts, hooks do not learn shell exit status
   opencode: not gated, it has no completion event klaudiush can block
+Tool phase: disabled
 
 tests (test): mise run test
   current: sha256:... (42 file(s))

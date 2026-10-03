@@ -52,7 +52,7 @@ func BuildClaude(
 		return BuildElicitation(hookCtx, errs, patternWarnings)
 	case hook.EnforcementBlockDecision, hook.EnforcementContinueTurn:
 		return buildClaudeDecision(hookCtx, capability, eventName, errs, patternWarnings)
-	case hook.EnforcementNone, hook.EnforcementStop:
+	case hook.EnforcementNone, hook.EnforcementStop, hook.EnforcementFilterTools:
 		return buildClaudeAdvisory(hookCtx, capability, eventName, errs, patternWarnings)
 	default:
 		return buildClaudeAdvisory(hookCtx, capability, eventName, errs, patternWarnings)

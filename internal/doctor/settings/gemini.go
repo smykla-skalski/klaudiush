@@ -1,6 +1,7 @@
 package settings
 
 import (
+	"regexp"
 	"strings"
 
 	"github.com/cockroachdb/errors"
@@ -25,6 +26,8 @@ type GeminiHookEvents struct {
 	SessionEnd   []CodexMatcherGroup `json:"SessionEnd,omitempty"`
 	Notification []CodexMatcherGroup `json:"Notification,omitempty"`
 	PreCompress  []CodexMatcherGroup `json:"PreCompress,omitempty"`
+
+	BeforeToolSelection []CodexMatcherGroup `json:"BeforeToolSelection,omitempty"`
 }
 
 // NewGeminiSettingsParser creates a new Gemini settings parser for the given file path.
@@ -94,9 +97,52 @@ func geminiEventGroups(settingsFile *GeminiSettingsFile, eventName string) []Cod
 		return settingsFile.Hooks.Notification
 	case "precompress", "pre_compress":
 		return settingsFile.Hooks.PreCompress
+	case "beforetoolselection", "tool_selection":
+		return settingsFile.Hooks.BeforeToolSelection
 	default:
 		return nil
 	}
+}
+
+// GeminiBeforeToolMatchers returns the matchers of the BeforeTool groups
+// that run klaudiush, or nil when none does.
+func (p *GeminiSettingsParser) GeminiBeforeToolMatchers(dispatcherPath string) ([]string, error) {
+	settingsFile, err := p.Parse()
+	if err != nil {
+		if errors.Is(err, ErrSettingsNotFound) {
+			return nil, nil
+		}
+
+		return nil, err
+	}
+
+	var matchers []string
+
+	for _, group := range settingsFile.Hooks.BeforeTool {
+		if hasCodexDispatcherCommand([]CodexMatcherGroup{group}, dispatcherPath) {
+			matchers = append(matchers, group.Matcher)
+		}
+	}
+
+	return matchers, nil
+}
+
+// GeminiMatcherSelects reports whether a Gemini tool matcher selects a tool.
+// Gemini tests the matcher as an unanchored regular expression, compares it
+// literally when it is not one, and treats an empty matcher or "*" as every
+// tool.
+func GeminiMatcherSelects(matcher, toolName string) bool {
+	matcher = strings.TrimSpace(matcher)
+	if matcher == "" || matcher == "*" {
+		return true
+	}
+
+	re, err := regexp.Compile(matcher)
+	if err != nil {
+		return matcher == toolName
+	}
+
+	return re.MatchString(toolName)
 }
 
 func geminiDispatcherMatcher() string {

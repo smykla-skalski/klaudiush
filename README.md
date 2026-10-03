@@ -275,6 +275,8 @@ paths = ["**/*.go", "go.mod", "go.sum"]
 
 When a session changed covered files, the completion gate (Claude `Stop`, Codex `Stop`, Gemini `AfterAgent`) blocks with EVID001 until the check passed on exactly that content. Results are tied to a digest of the covered files, so a later edit makes them stale; failed, running, canceled and background runs never count; review checks record the exact diff they reviewed. Read-only sessions and changes the check does not cover are not gated. Claude reports how a shell command ended, so running a check's command there counts; in every provider, `klaudiush evidence run tests` runs the check and records its exit status itself. See the [evidence guide](docs/EVIDENCE_GUIDE.md).
 
+Add `[evidence.tool_phase]` with `requires = ["plan"]` to keep Gemini from changing files until those checks pass: `BeforeToolSelection` offers only read-only tools and the verifier, and `BeforeTool` denies anything else with EVID002. Other providers have no tool-selection event and are not restricted. See [Gemini tool phases](docs/EVIDENCE_GUIDE.md#gemini-tool-phases).
+
 ### Protecting policy files and trusting MCP servers
 
 Opt in to keep the agent from editing what enforces policy on it, and to trust MCP servers by where the harness says they came from:

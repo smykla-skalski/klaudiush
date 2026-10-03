@@ -1,0 +1,22 @@
+#:schema https://klaudiu.sh/schema/v1/config.json
+# Gemini tool phase: see docs/EVIDENCE_GUIDE.md#gemini-tool-phases
+# Gemini is offered only read-only tools until the plan check passes on the current plan
+# Editing the plan withholds the mutation tools again until the check passes on it
+
+[evidence]
+enabled = true
+
+[[evidence.checks]]
+name = "plan"
+commands = ["test -s docs/plans/current.md"]
+paths = ["docs/plans/current.md"]
+
+[[evidence.checks]]
+name = "tests"
+commands = ["mise run test"]
+paths = ["**/*.go", "go.mod", "go.sum"]
+
+[evidence.tool_phase]
+enabled = true
+requires = ["plan"]
+writable_paths = ["docs/plans/**"]

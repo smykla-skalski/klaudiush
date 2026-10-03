@@ -184,6 +184,7 @@ func buildDoctorRegistry(cfg *pkgConfig.Config) *doctor.Registry {
 
 	// Register evidence gate checkers
 	registry.RegisterChecker(evidencechecker.NewGateChecker(cfg))
+	registry.RegisterChecker(evidencechecker.NewToolPhaseChecker(cfg))
 
 	// Register policy protection checkers
 	registry.RegisterChecker(protectionchecker.NewProtectionChecker(cfg))

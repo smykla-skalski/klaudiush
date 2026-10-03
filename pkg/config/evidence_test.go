@@ -37,4 +37,18 @@ var _ = Describe("EvidenceConfig", func() {
 		Expect(check.GetKind()).To(Equal("review"))
 		Expect(check.GetTimeout()).To(Equal(time.Minute))
 	})
+
+	It("keeps the tool phase off unless enabled, with default read-only tools", func() {
+		var nilCfg *config.EvidenceConfig
+		Expect(nilCfg.GetToolPhase()).To(BeNil())
+		Expect(nilCfg.GetToolPhase().IsEnabled()).To(BeFalse())
+		Expect(nilCfg.GetToolPhase().GetReadOnlyTools()).
+			To(Equal(config.DefaultToolPhaseReadOnlyTools))
+
+		enabled := true
+		phase := &config.EvidenceToolPhaseConfig{Enabled: &enabled, ReadOnlyTools: []string{}}
+		cfg := &config.EvidenceConfig{ToolPhase: phase}
+		Expect(cfg.GetToolPhase().IsEnabled()).To(BeTrue())
+		Expect(cfg.GetToolPhase().GetReadOnlyTools()).To(BeEmpty())
+	})
 })

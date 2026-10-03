@@ -118,7 +118,11 @@ func validatePolicySections(cfg *config.Config) []error {
 	}
 
 	if cfg.Evidence != nil {
-		if _, err := evidence.Compile(cfg.Evidence); err != nil {
+		checks, err := evidence.Compile(cfg.Evidence)
+		if err != nil {
+			validationErrors = append(validationErrors, errors.Wrap(err, "evidence"))
+		} else if _, err := evidence.CompilePhase(cfg.Evidence, checks); err != nil &&
+			!errors.Is(err, evidence.ErrPhaseDisabled) {
 			validationErrors = append(validationErrors, errors.Wrap(err, "evidence"))
 		}
 	}

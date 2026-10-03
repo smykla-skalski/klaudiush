@@ -1,0 +1,137 @@
+[!exec:git] skip
+[!exec:sh] skip
+
+env GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@example.com GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@example.com
+cd project
+exec git init -q
+exec git add -A
+exec git commit -qm init
+
+stdin $WORK/select.json
+exec klaudiush --provider gemini --event BeforeToolSelection
+stdout '"hookEventName":"BeforeToolSelection"'
+stdout '"toolConfig":\{"mode":"AUTO","allowedFunctionNames":\["glob","google_web_search","grep_search","list_directory","read_file","read_many_files","replace","run_shell_command","web_fetch","write_file"\]\}'
+! stdout 'decision'
+! stdout 'systemMessage'
+
+stdin $WORK/write-code.json
+exec klaudiush --provider gemini --event BeforeTool
+stdout '"decision":"deny"'
+stdout 'EVID002'
+stdout 'Tool \\"write_file\\" is withheld for now'
+stdout 'plan \(it has not run since the files changed\)'
+stdout 'evidence run plan'
+stdout 'may change only PLAN.txt'
+
+stdin $WORK/shell-other.json
+exec klaudiush --provider gemini --event BeforeTool
+stdout 'EVID002'
+
+stdin $WORK/shell-redirect.json
+exec klaudiush --provider gemini --event BeforeTool
+stdout 'EVID002'
+
+stdin $WORK/mcp.json
+exec klaudiush --provider gemini --event BeforeTool
+stdout 'EVID002'
+
+stdin $WORK/read.json
+exec klaudiush --provider gemini --event BeforeTool
+! stdout .
+
+stdin $WORK/shell-verifier.json
+exec klaudiush --provider gemini --event BeforeTool
+! stdout .
+
+stdin $WORK/write-plan.json
+exec klaudiush --provider gemini --event BeforeTool
+! stdout 'EVID002'
+
+stdin $WORK/claude-write.json
+exec klaudiush --provider claude --event PreToolUse
+! stdout 'EVID002'
+
+stdin $WORK/codex-shell.json
+exec klaudiush --provider codex --event PreToolUse
+! stdout 'EVID002'
+
+exec klaudiush evidence status
+stdout 'Tool phase: restricted, waiting on plan'
+stdout 'gemini: restricted; BeforeToolSelection withholds mutation tools'
+stdout 'claude: not restricted, it has no tool-selection event'
+
+cp $WORK/plan.txt PLAN.txt
+exec klaudiush evidence run plan
+stderr 'plan passed'
+
+stdin $WORK/select.json
+exec klaudiush --provider gemini --event BeforeToolSelection
+! stdout .
+
+stdin $WORK/write-code.json
+exec klaudiush --provider gemini --event BeforeTool
+! stdout 'EVID002'
+
+exec klaudiush evidence status
+stdout 'Tool phase: open, plan passed on the current files'
+
+cp $WORK/empty PLAN.txt
+stdin $WORK/select.json
+exec klaudiush --provider gemini --event BeforeToolSelection
+stdout 'allowedFunctionNames'
+
+stdin $WORK/write-code.json
+exec klaudiush --provider gemini --event BeforeTool
+stdout 'EVID002'
+stdout 'its passed result is for content that has changed since'
+
+-- project/.klaudiush/config.toml --
+[evidence]
+enabled = true
+
+[[evidence.checks]]
+name = "plan"
+commands = ["test -s PLAN.txt"]
+paths = ["PLAN.txt"]
+
+[evidence.tool_phase]
+enabled = true
+requires = ["plan"]
+writable_paths = ["PLAN.txt"]
+
+-- project/a.go --
+package a
+
+-- plan.txt --
+Plan: add X.
+
+-- empty --
+-- select.json --
+{"session_id":"g1","hook_event_name":"BeforeToolSelection","llm_request":{"model":"gemini-2.5-pro","messages":[{"role":"user","content":"add X"}]}}
+
+-- write-code.json --
+{"session_id":"g1","hook_event_name":"BeforeTool","tool_name":"write_file","tool_input":{"file_path":"a.go","content":"package a\n\nvar X = 1\n"}}
+
+-- write-plan.json --
+{"session_id":"g1","hook_event_name":"BeforeTool","tool_name":"write_file","tool_input":{"file_path":"PLAN.txt","content":"Plan: add X.\n"}}
+
+-- read.json --
+{"session_id":"g1","hook_event_name":"BeforeTool","tool_name":"read_file","tool_input":{"file_path":"a.go"}}
+
+-- shell-other.json --
+{"session_id":"g1","hook_event_name":"BeforeTool","tool_name":"run_shell_command","tool_input":{"command":"go generate ./..."}}
+
+-- shell-redirect.json --
+{"session_id":"g1","hook_event_name":"BeforeTool","tool_name":"run_shell_command","tool_input":{"command":"klaudiush evidence run plan > a.go"}}
+
+-- shell-verifier.json --
+{"session_id":"g1","hook_event_name":"BeforeTool","tool_name":"run_shell_command","tool_input":{"command":"klaudiush evidence run plan"}}
+
+-- mcp.json --
+{"session_id":"g1","hook_event_name":"BeforeTool","tool_name":"mcp_files_write","tool_input":{"path":"a.go"},"mcp_context":{"server_name":"files"}}
+
+-- claude-write.json --
+{"session_id":"c1","hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"a.go","content":"package a\n"}}
+
+-- codex-shell.json --
+{"session_id":"x1","hook_event_name":"PreToolUse","turn_id":"t1","tool_name":"Bash","tool_input":{"command":"go generate ./..."}}

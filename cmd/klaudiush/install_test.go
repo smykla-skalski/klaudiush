@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -582,6 +583,37 @@ var _ = Describe("Install", func() {
 			Expect(codexHooksPath).To(BeAnExistingFile())
 			Expect(geminiSettingsPath).To(BeAnExistingFile())
 			Expect(claudeSettingsPath).NotTo(BeAnExistingFile())
+
+			data, err := os.ReadFile(geminiSettingsPath)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(data)).NotTo(ContainSubstring("BeforeToolSelection"))
+		})
+
+		It("registers Gemini tool selection only for the evidence tool phase", func() {
+			geminiSettingsPath := filepath.Join(tempDir, ".gemini", "settings.json")
+
+			claudeEnabled := false
+			enabled := true
+			cfg := &pkgConfig.Config{
+				Providers: &pkgConfig.ProvidersConfig{
+					Claude: &pkgConfig.ClaudeProviderConfig{Enabled: &claudeEnabled},
+					Gemini: &pkgConfig.GeminiProviderConfig{
+						Enabled:      &enabled,
+						SettingsPath: geminiSettingsPath,
+					},
+				},
+				Evidence: &pkgConfig.EvidenceConfig{
+					ToolPhase: &pkgConfig.EvidenceToolPhaseConfig{Enabled: &enabled},
+				},
+			}
+
+			for range 2 {
+				Expect(performConfiguredInstall("", fakeBinary, cfg)).To(Succeed())
+			}
+
+			data, err := os.ReadFile(geminiSettingsPath)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(strings.Count(string(data), "--event BeforeToolSelection")).To(Equal(1))
 		})
 	})
 })
