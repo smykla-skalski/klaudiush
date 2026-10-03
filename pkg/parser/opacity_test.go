@@ -127,6 +127,142 @@ var _ = Describe("Opacity explanations", func() {
 		),
 	)
 
+	DescribeTable("flags zsh glob qualifiers that run code",
+		func(command, form string) {
+			Expect(only(command)).To(Equal(parser.Opacity{
+				Cause:     parser.OpacityZshGlobQualifier,
+				Operation: form,
+			}))
+		},
+		Entry("an e qualifier", `ls *(e:'git push':)`, "(e)"),
+		Entry("an e qualifier with braces", `ls *(e{'git push'})`, "(e)"),
+		Entry("an e qualifier after other qualifiers", `ls *(.Ne,git push,)`, "(e)"),
+		Entry("a negated e qualifier", `ls ?(^e:'git push':)`, "(e)"),
+		Entry("an e qualifier after an owner", `ls *(u:root:e:'git push':)`, "(e)"),
+		Entry("an e qualifier after a subscript", `ls *([1]e:'git push':)`, "(e)"),
+		Entry("an e qualifier after a size", `ls *(Lk+1e:'git push':)`, "(e)"),
+		Entry("an e qualifier holding a pipe", `ls *(e:'git push || true':)`, "(e)"),
+		Entry("an e qualifier under a directory", `ls "$D"/*(e:'git push':)`, "(e)"),
+		Entry("a quoted glob-subst lookalike stays out", `ls "$~q" *(e:'git push':)`, "(e)"),
+		Entry("a function qualifier", `ls *(+fn)`, "(+func)"),
+		Entry("a function qualifier with modifiers", `ls x*(+fn:t)`, "(+func)"),
+		Entry("a sort by code", `ls *(oe:'git push':)`, "(e)"),
+		Entry("a reverse sort by a function", `ls *(O+fn)`, "(+func)"),
+		Entry("a function after a sort by time", `ls *(om+uname)`, "(+func)"),
+		Entry("a function after a reverse sort by size", `ls *(OL+fn)`, "(+func)"),
+		Entry("a function after a time unit and a flag", `ls *(amM+fn)`, "(+func)"),
+		Entry("a function after a group delimited by letters", `ls *(gdwheeld+fn)`, "(+func)"),
+		Entry("a numeric function after a group", `ls *(gdwheeld+3)`, "(+func)"),
+		Entry("a function after an owner", `ls *(udrootd+pwd)`, "(+func)"),
+		Entry("a digit function after a sort", `ls *(om+3)`, "(+func)"),
+		Entry("a digit function after a unit and a flag", `ls *(mmM+3)`, "(+func)"),
+		Entry("a plus in a symbolic mode", `ls *(f:u+x:)`, "(+func)"),
+		Entry("a common word holding an e qualifier", `ls !(tests)`, "(e)"),
+		Entry("a function after a sort and a flag", `ls *(oLM+fn)`, "(+func)"),
+		Entry("the #q form", `ls *(#qe:'git push':)`, "(e)"),
+		Entry("the #q form with a pipe", `ls *(#q+fn|x)`, "(+func)"),
+		Entry("a qualifier in an array", `a=(*(e:'git push':))`, "(e)"),
+		Entry("an e qualifier after an octal mode", `ls *(f-0e:"git push":)`, "(e)"),
+		Entry("an e qualifier after an exact mode", `ls *(f=644e:"git push":)`, "(e)"),
+		Entry("an e qualifier after a wildcard mode", `ls *(f?44e:"git push":)`, "(e)"),
+		Entry("an e qualifier holding a command substitution",
+			`ls *(e:"git push"$(true):)`, parser.GlobCommandSubst),
+		Entry("an e qualifier holding backticks",
+			"ls *(e:\"git push\"`true|true`:)", parser.GlobCommandSubst),
+		Entry("a command substitution in an alternation",
+			"ls @(a|`git push`)", parser.GlobCommandSubst),
+		Entry("a command substitution in a repeat", `ls *(a$(git push))`, parser.GlobCommandSubst),
+		Entry("a quoted e", `ls *('e':"git push":)`, "(e)"),
+		Entry("an ANSI-C quoted argument", `ls *(e$':git push:')`, parser.GlobVariable),
+		Entry("an ANSI-C quoted pipe delimiter", `ls *(e$'|git push|')`, parser.GlobVariable),
+		Entry("a function name starting with a digit", `ls *(+1x)`, "(+func)"),
+		Entry("a sort by a function starting with a digit", `ls *(O+1x)`, "(+func)"),
+		Entry("a quoted brace in a parameter expansion",
+			`ls *(e:'git push #'${x:-"}|"}:)`, parser.GlobVariable),
+		Entry("a delimiter from a variable", `ls *(e${d}git push${d})`, parser.GlobVariable),
+		Entry("qualifiers from a glob-subst variable",
+			`q='e:git push:'; ls *($~q)`, parser.GlobVariable),
+		Entry("qualifiers from a variable", `ls *($q)`, parser.GlobVariable),
+		Entry("a glob from a glob-subst variable",
+			`q='*(e:git push:)'; ls $~q`, parser.GlobSubst),
+		Entry("a glob-subst variable inside a word", `ls a$~q`, parser.GlobSubst),
+		Entry("a non-ASCII function name", `ls *(+é)`, "(+func)"),
+		Entry("a qualifier in a command substitution in a heredoc",
+			"cat <<EOF\n$(ls *(+fn))\nEOF", "(+func)"),
+		Entry("an e qualifier after a numeric glob", `ls <0-9>(e:'git push':)`, "(e)"),
+		Entry("a function qualifier after an open numeric glob", `echo <->(+fn)`, "(+func)"),
+		Entry("a qualifier after a half-open numeric glob", `ls a<1->(.e,x,)`, "(e)"),
+		Entry("an e qualifier in a default value", `ls ${x:-*(e:'git push':)}`, "(e)"),
+		Entry("a function qualifier in a default value", `ls ${x-*(+fn)}`, "(+func)"),
+		Entry("a qualifier in an alternate value", `ls ${x:+*(.e:x:)}`, "(e)"),
+		Entry("a qualifier in a replacement", `ls ${x/y/*(+fn)}`, "(+func)"),
+		Entry("a qualifier in a nested default", `ls ${x:-${y:-*(#qe:x:)}}`, "(e)"),
+		Entry("a subscript naming a variable",
+			`x='path[$(git push)]'; ls *([x])`, "([...])"),
+		Entry("a subscript range naming a variable", `ls *(.[1,x])`, "([...])"),
+		Entry("a subscript in the #q form", `ls *(#q[x]).go`, "([...])"),
+		Entry("a quoted pipe", `ls *(e:'git push|x':)`, "(e)"),
+		Entry("an escaped e", `ls *(\e:"git push":)`, "(e)"),
+		Entry("a quoted plus", `ls *("+"fn)`, "(+func)"),
+		Entry("an escaped delimiter", `ls *(e\:"git push"\:)`, "(e)"),
+		Entry("an e qualifier holding a parameter expansion",
+			`ls *(e:"git push ${x:-a|b}":)`, parser.GlobVariable),
+		Entry("an e qualifier after a qualifier it cannot read",
+			`ls *(f<u+x>Ze:"git push":)`, "(+func)"),
+	)
+
+	It("flags a glob qualifier in a heredoc fed to a shell", func() {
+		Expect(only("zsh <<'EOF'\nls *(+fn)\nEOF")).To(Equal(parser.Opacity{
+			Cause:     parser.OpacityZshGlobQualifier,
+			Operation: "(+func)",
+			Origin:    []string{"zsh"},
+		}))
+	})
+
+	It("flags a glob qualifier inside an inline script", func() {
+		Expect(only(`zsh -c "ls *(e:'git push':)"`)).To(Equal(parser.Opacity{
+			Cause:     parser.OpacityZshGlobQualifier,
+			Operation: "(e)",
+			Origin:    []string{"zsh"},
+		}))
+	})
+
+	DescribeTable("leaves extended globs that run no code alone",
+		func(command string) {
+			result := parse(command)
+
+			Expect(result.Truncated).To(BeFalse(), "truncated: %q", command)
+			Expect(result.Opacities).To(BeEmpty())
+		},
+		Entry("an alternation", `ls @(a|b).go`),
+		Entry("a plain repeat", `ls *(foo)`),
+		Entry("a group with e and a pipe", `ls *(e:x:|y)`),
+		Entry("an e without a closing delimiter", `ls *(seen)`),
+		Entry("an e at the end", `ls ?(ee)`),
+		Entry("a mode with e in it", `ls *(feature)`),
+		Entry("an owner named e", `ls *(u:e:)`),
+		Entry("a prefix holding e", `ls *(P:e:)`),
+		Entry("a size with a sign", `ls *(m+3)`),
+		Entry("a history modifier", `ls *(N:e)`),
+		Entry("a size with a unit and a sign", `ls *(Lk+1)`),
+		Entry("a time with a unit and a sign", `ls *(mm+3)`),
+		Entry("a sort by name", `ls *(on)`),
+		Entry("a nested group", `ls *(e:(x):)`),
+		Entry("a numeric subscript", `ls *([1,3])`),
+		Entry("a bracket inside a word", `ls @([a-z]*).go`),
+		Entry("a digit range", `ls +([0-9]).txt`),
+		Entry("an alternation in a default value", `ls ${x:-@(a|b)}`),
+		Entry("a harmless qualifier after a numeric glob", `ls <->(N)`),
+		Entry("a qualifier in a quoted heredoc", "cat <<'EOF'\nls *(+fn)\nEOF"),
+		Entry("a qualifier in a heredoc", "cat <<EOF\nls *(e:x:) $~q\nEOF"),
+		Entry("a qualifier in a here-string", `cat <<< *(+fn)`),
+		Entry("an escaped glob substitution", `printf '%s\n' \$~q`),
+		Entry("a dollar and a tilde split by quotes", `echo $'x'~q`),
+		Entry("a dollar and a tilde across a quoted part", `echo a$"b"~q`),
+		Entry("a process substitution feeding tee", `ls | tee >(grep -e foo)`),
+		Entry("parentheses in a default value", `echo ${x:-f(a)}`),
+	)
+
 	It("explains an exhausted budget once", func() {
 		calls := func(name string) string {
 			return strings.Repeat(name+"; ", 60)

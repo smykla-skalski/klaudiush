@@ -187,6 +187,8 @@ func causeSummary(cause parser.OpacityCause) string {
 		return "it runs eval, git, gh or a container entrypoint with a word klaudiush cannot resolve"
 	case parser.OpacityStartupFile:
 		return "it starts a shell whose startup file klaudiush cannot read"
+	case parser.OpacityZshGlobQualifier:
+		return "it uses a glob that runs code klaudiush cannot inspect"
 	default:
 		return "part of it is opaque"
 	}
@@ -256,6 +258,8 @@ func opacityFinding(o parser.Opacity) validator.Finding {
 		f.Message = "the startup file " + o.Operation + " names cannot be inspected: " + o.Detail
 		f.Required = "a literal path to a readable file, or no startup file"
 		f.Repair = startupFileRepair(o)
+	case parser.OpacityZshGlobQualifier:
+		f.Message, f.Required, f.Repair = globCodeFinding(o)
 	default:
 		f.Message = o.Operation + " cannot be inspected"
 		f.Repair = validator.GetSuggestion(validator.RefShellNesting)
@@ -387,6 +391,44 @@ func startupFileRepair(o parser.Opacity) string {
 		return "Keep the startup file a readable regular file within the size limit, " +
 			"or run its commands directly"
 	}
+}
+
+// globCodeFinding explains an extended glob that runs code: a command
+// substitution, or a zsh glob qualifier bash reads as an extended glob.
+func globCodeFinding(o parser.Opacity) (message, required, repair string) {
+	switch o.Operation {
+	case parser.GlobCommandSubst:
+		message = "an extended glob holds a command substitution, which the shell runs " +
+			"but klaudiush does not inspect"
+		required = "no command substitutions inside extended globs such as *(...) or @(...)"
+		repair = "Run the command separately, or store its output in a variable first"
+
+		return message, required, repair
+	case parser.GlobVariable:
+		message = "an extended glob holds a variable, whose value zsh may read as glob " +
+			"qualifiers that run code (glob_subst)"
+		required = "literal text inside extended globs such as *(...) or @(...)"
+		repair = "Write the pattern literally, or select the files another way " +
+			"(find or a loop) and run the command directly"
+
+		return message, required, repair
+	case parser.GlobSubst:
+		message = "$~var expands a variable as a zsh glob, whose qualifiers can run code, " +
+			"and bash reads it as plain text"
+		required = "no $~var glob substitution"
+		repair = "Write the glob literally, or use the variable without the ~"
+
+		return message, required, repair
+	}
+
+	message = "glob qualifier " + o.Operation + " runs shell code for every file " +
+		"it matches when the login shell is zsh, and bash reads it as an extended glob"
+	required = "no zsh glob qualifiers that run code: (e:...:), (+func), (oe:...:), " +
+		"(o+func), or a [...] subscript naming a variable"
+	repair = "Select the files another way (find, a plain glob or a loop) and run " +
+		"the command directly, or quote the word if it is meant literally"
+
+	return message, required, repair
 }
 
 func unreadableScriptRepair(detail string) string {

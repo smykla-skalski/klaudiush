@@ -4,6 +4,8 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/cockroachdb/errors"
 	"mvdan.cc/sh/v3/syntax"
@@ -236,4 +238,360 @@ func unknownZshForm(command string, zshErr error) string {
 	}
 
 	return ""
+}
+
+// OpacityZshGlobQualifier means a word bash reads as an extended glob is, in
+// a zsh login shell, a glob qualifier that runs shell code for each match,
+// or holds a command substitution the parser does not inspect.
+const OpacityZshGlobQualifier OpacityCause = "zsh-glob-qualifier"
+
+// Forms of glob qualifier that run code, set as Opacity.Operation. The e form
+// covers oe sorting and the +func form covers o+func sorting.
+const (
+	qualifierEval = "(e)"
+	qualifierFunc = "(+func)"
+	// qualifierSubscript is a [...] subscript naming a variable.
+	qualifierSubscript = "([...])"
+)
+
+// GlobCommandSubst is the Opacity.Operation of an extended glob holding a
+// command substitution. Bash and zsh both run it, but the parser keeps an
+// extended glob as plain text, so the command it runs is never inspected.
+const GlobCommandSubst = "$(...)"
+
+// GlobVariable is the Opacity.Operation of an extended glob holding a $
+// expansion, whose text zsh may read as glob qualifiers under glob_subst.
+const GlobVariable = "$var"
+
+// GlobSubst is the Opacity.Operation of a word holding zsh's $~var, which
+// bash reads as plain text but zsh expands as a glob, qualifiers included.
+const GlobSubst = "$~var"
+
+// zshQualifierPrefix starts the (#q...) form, which extended_glob allows
+// anywhere in a word.
+const zshQualifierPrefix = "#q"
+
+// shellQuoting holds the characters that quote or expand text in a qualifier
+// list. zsh removes or expands them before it reads the qualifiers.
+const shellQuoting = `'"\$`
+
+// signedQualifiers take a number that may start with +, as in m+3 or
+// Lk-10, and unitLetters are the units between the letter and the sign.
+// textQualifiers take text or a key that could hide a qualifier letter
+// (u, g, f and P delimiters, the e argument, the o sort key, subscripts),
+// so after one of them a + is never read as a sign.
+const (
+	signedQualifiers = "amcLldY"
+	unitLetters      = "MwhmskKgGtTpP"
+	textQualifiers   = "ugfPeoO["
+)
+
+// codeQualifier returns the code-running form in the extended globs of word,
+// or "". A [...] subscript only counts in an extended glob ending the word,
+// the only place zsh reads one as a qualifier. Bash reads *(e:'cmd':) as an extended glob, but zsh runs cmd for
+// every file the glob matches. Every extended glob is checked wherever it
+// sits in the word and whatever runs the word, which may flag a bash-only
+// command such as bash -c 'ls *(e:x:)'.
+func codeQualifier(word *syntax.Word) string {
+	if hasGlobSubst(word) {
+		return GlobSubst
+	}
+
+	for i, part := range word.Parts {
+		glob, ok := part.(*syntax.ExtGlob)
+		if !ok || glob.Pattern == nil {
+			continue
+		}
+
+		if form := globForm(glob.Pattern.Value, i == len(word.Parts)-1); form != "" {
+			return form
+		}
+	}
+
+	if hasLiteralParen(word) {
+		return literalGlobForm(word)
+	}
+
+	return ""
+}
+
+// numericRange matches the text of a zsh numeric glob such as <0-9> or <->
+// between its < and >.
+var numericRange = regexp.MustCompile(`^[0-9]*-[0-9]*$`)
+
+// numericGlobQualifier returns the code-running form of qualifiers after a
+// zsh numeric glob, or "". Bash reads <0-9>(e:cmd:) as input from the file
+// 0-9 and a >(...) process substitution, but zsh reads a numeric glob with
+// qualifiers that run cmd for every match.
+func numericGlobQualifier(stmt *syntax.Stmt) string {
+	for _, redir := range stmt.Redirs {
+		if redir.Op != syntax.RdrIn || redir.Word == nil || len(redir.Word.Parts) != 2 {
+			continue
+		}
+
+		lit, isLit := redir.Word.Parts[0].(*syntax.Lit)
+		proc, isProc := redir.Word.Parts[1].(*syntax.ProcSubst)
+
+		if !isLit || !isProc || proc.Op != syntax.CmdOut || !numericRange.MatchString(lit.Value) {
+			continue
+		}
+
+		var sb strings.Builder
+
+		for i, inner := range proc.Stmts {
+			if i > 0 {
+				sb.WriteString("; ")
+			}
+
+			if err := syntax.NewPrinter().Print(&sb, inner); err != nil {
+				return GlobVariable
+			}
+		}
+
+		if form := globForm(sb.String(), true); form != "" {
+			return form
+		}
+	}
+
+	return ""
+}
+
+// hasGlobSubst reports an unescaped $~ in a run of adjacent unquoted
+// literals of word, which the parser splits into a $ and a ~ literal.
+func hasGlobSubst(word *syntax.Word) bool {
+	var run strings.Builder
+
+	for _, part := range word.Parts {
+		lit, ok := part.(*syntax.Lit)
+		if !ok {
+			if hasUnescaped(run.String(), "$~") {
+				return true
+			}
+
+			run.Reset()
+
+			continue
+		}
+
+		run.WriteString(lit.Value)
+	}
+
+	return hasUnescaped(run.String(), "$~")
+}
+
+// hasUnescaped reports whether text holds seq at an offset no backslash
+// escapes.
+func hasUnescaped(text, seq string) bool {
+	for i := 0; i < len(text); i++ {
+		switch {
+		case text[i] == '\\':
+			i++
+		case strings.HasPrefix(text[i:], seq):
+			return true
+		}
+	}
+
+	return false
+}
+
+// globForm returns the code-running form of one extended glob pattern, or
+// "". Trailing reports that the glob ends its word.
+func globForm(pattern string, trailing bool) string {
+	switch {
+	case hasCommandSubst(pattern):
+		return GlobCommandSubst
+	case strings.Contains(pattern, "$"):
+		return GlobVariable
+	default:
+		return qualifierCode(pattern, trailing)
+	}
+}
+
+// hasLiteralParen reports a literal ( in word, which bash keeps as text only
+// where it does not parse extended globs, such as the word of ${x:-word}.
+func hasLiteralParen(word *syntax.Word) bool {
+	for _, part := range word.Parts {
+		if lit, ok := part.(*syntax.Lit); ok && strings.Contains(lit.Value, "(") {
+			return true
+		}
+	}
+
+	return false
+}
+
+// literalGlobForm checks the extended glob shapes in the text of a word the
+// parser kept as literals. zsh still globs such a word, as in
+// ${x:-*(e:cmd:)}, so it is read the way an extended glob would be.
+func literalGlobForm(word *syntax.Word) string {
+	var sb strings.Builder
+	if err := syntax.NewPrinter().Print(&sb, word); err != nil {
+		return GlobVariable
+	}
+
+	text := sb.String()
+	for i := 0; i+1 < len(text); i++ {
+		if strings.IndexByte(extGlobOps, text[i]) < 0 || text[i+1] != '(' {
+			continue
+		}
+
+		end := closingParen(text, i+1)
+		if form := globForm(text[i+2:end], end >= len(text)-1); form != "" {
+			return form
+		}
+	}
+
+	return ""
+}
+
+// extGlobOps are the characters that open an extended glob before a (.
+const extGlobOps = "*?+@!"
+
+// closingParen returns the offset of the ) closing the ( at text[open],
+// skipping quoted text and escapes, or len(text) when none closes it.
+func closingParen(text string, open int) int {
+	depth := 0
+
+	var quote byte
+
+	for i := open; i < len(text); i++ {
+		c := text[i]
+
+		switch {
+		case quote != 0:
+			if c == quote {
+				quote = 0
+			}
+		case c == '\\':
+			i++
+		case c == '\'' || c == '"':
+			quote = c
+		case c == '(':
+			depth++
+		case c == ')':
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+
+	return len(text)
+}
+
+// hasCommandSubst reports a $(...) or backtick command substitution in an
+// extended glob pattern, quoted or not, arithmetic included.
+func hasCommandSubst(pattern string) bool {
+	return strings.Contains(pattern, "$(") || strings.Contains(pattern, "`")
+}
+
+// qualifierCode reads pattern as a zsh glob qualifier list and returns the
+// code-running form it may hold, or "". It errs toward blocking: zsh accepts
+// many spellings of a qualifier, so it looks for the shape of one at every
+// offset instead of parsing the list. Only a plain pattern, free of quotes,
+// backslashes and $, holding | or ( is let through as a zsh pattern group,
+// as in @(a|b).
+func qualifierCode(pattern string, trailing bool) string {
+	list, hashQ := strings.CutPrefix(pattern, zshQualifierPrefix)
+	qualifierPlace := trailing || hashQ
+
+	quoted := strings.ContainsAny(list, shellQuoting)
+	if !hashQ && !quoted && strings.ContainsAny(list, "|(") {
+		return ""
+	}
+
+	list = unquote(list)
+
+	for i := range len(list) {
+		switch {
+		case list[i] == 'e' && closesLater(list, i+1):
+			return qualifierEval
+		case list[i] == '+' && i+1 < len(list) && isNameChar(list[i+1]) && !isSign(list, i):
+			return qualifierFunc
+		case list[i] == '[' && qualifierPlace && subscriptHasName(list[i+1:]):
+			return qualifierSubscript
+		}
+	}
+
+	return ""
+}
+
+// subscriptHasName reports whether the [...] subscript qualifier starting
+// at text names a variable. zsh evaluates the subscript as arithmetic, which
+// expands a variable's value, command substitutions included.
+func subscriptHasName(text string) bool {
+	if end := strings.IndexByte(text, ']'); end >= 0 {
+		text = text[:end]
+	}
+
+	return strings.ContainsFunc(text, func(r rune) bool {
+		return r == '_' || r >= utf8.RuneSelf || unicode.IsLetter(r)
+	})
+}
+
+// closesLater reports whether the character at list[open] appears again
+// after it, or its closing pair for [, {, ( and <, so it can delimit an e
+// argument.
+func closesLater(list string, open int) bool {
+	if open >= len(list) {
+		return false
+	}
+
+	closing := list[open]
+	if pair, ok := delimiterPairs[closing]; ok {
+		closing = pair
+	}
+
+	return strings.IndexByte(list[open+1:], closing) >= 0
+}
+
+var delimiterPairs = map[byte]byte{'[': ']', '{': '}', '(': ')', '<': '>'}
+
+// isSign reports whether the + at list[i] is the sign of a number: it
+// comes right after a size, time or count qualifier or its unit, and
+// nothing before it takes text. Anything else may be a function call, as
+// in *(gdwheeld+fn) or *(om+fn).
+func isSign(list string, i int) bool {
+	if i == 0 || strings.ContainsAny(list[:i], textQualifiers) {
+		return false
+	}
+
+	prev := list[i-1]
+	if strings.IndexByte(signedQualifiers, prev) >= 0 {
+		return true
+	}
+
+	return isUnit(list, i-1) && !isUnit(list, i-1-1)
+}
+
+// isUnit reports whether list[i] is a unit letter right after a size or
+// time qualifier, as the m of am.
+func isUnit(list string, i int) bool {
+	return i >= 1 && strings.IndexByte(unitLetters, list[i]) >= 0 &&
+		strings.IndexByte(signedQualifiers, list[i-1]) >= 0
+}
+
+// isNameChar reports a character zsh may accept in a function name after
+// +, any byte of a multibyte character included.
+func isNameChar(c byte) bool {
+	return c == '_' || c >= utf8.RuneSelf || (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') ||
+		(c >= 'A' && c <= 'Z')
+}
+
+// unquote drops quotes and backslashes the way zsh removes them before it
+// reads a qualifier list, so *('e':cmd:) reads as *(e:cmd:).
+func unquote(list string) string {
+	var sb strings.Builder
+
+	for i := 0; i < len(list); i++ {
+		switch c := list[i]; {
+		case c == '\\' && i+1 < len(list):
+			i++
+			sb.WriteByte(list[i])
+		case strings.IndexByte(shellQuoting, c) >= 0:
+		default:
+			sb.WriteByte(c)
+		}
+	}
+
+	return sb.String()
 }
