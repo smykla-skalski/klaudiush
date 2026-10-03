@@ -23,8 +23,12 @@ type Observation struct {
 	Released bool
 	Skipped  bool
 	Filtered bool
-	Elapsed  time.Duration
-	Time     time.Time
+
+	// ReleasedFindings marks, by index into Errors, the findings a released
+	// completion gate turned from blocking into warnings. Nil means all.
+	ReleasedFindings []bool
+	Elapsed          time.Duration
+	Time             time.Time
 }
 
 // hasher keys sessions and resources without storing them.
@@ -61,8 +65,10 @@ func build(obs *Observation, hash hasher) *Record {
 		rec.Resource = hash("resource", resource)
 	}
 
-	rec.Findings = findings(hookCtx, obs, rec, hash)
-	rec.Outcome = outcome(obs, rec.Findings)
+	all := findings(hookCtx, obs, rec, hash)
+	rec.Outcome = outcome(obs, all)
+	rec.Findings = all[:min(len(all), maxFindings)]
+	rec.Truncated = len(all) > maxFindings
 
 	if rec.Session != "" {
 		rec.Checked, rec.Other = checks(obs.Checks, rec.Resource, hash)
@@ -86,6 +92,8 @@ func eventName(hookCtx *hook.Context) string {
 	return "unknown"
 }
 
+// findings classifies every error. The hook's outcome is taken over all of
+// them; the record keeps the first maxFindings and marks itself truncated.
 func findings(
 	hookCtx *hook.Context,
 	obs *Observation,
@@ -97,23 +105,22 @@ func findings(
 	}
 
 	afterTool := hookCtx.IsAfterTool()
-	out := make([]Finding, 0, min(len(obs.Errors), maxFindings))
+	out := make([]Finding, 0, len(obs.Errors))
 
-	for _, verr := range obs.Errors {
+	for i, verr := range obs.Errors {
 		if verr == nil {
 			continue
 		}
 
-		if len(out) == maxFindings {
-			break
-		}
+		released := obs.Released && rec.Gate &&
+			(obs.ReleasedFindings == nil || i < len(obs.ReleasedFindings) && obs.ReleasedFindings[i])
 
 		f := Finding{
 			Code:      token(verr.Reference.Code()),
 			Validator: token(verr.Validator),
-			Class:     findingClass(verr, obs, rec.Gate, afterTool),
+			Class:     findingClass(verr, obs, rec.Gate, afterTool, released),
 			Violation: !verr.Bypassed && !verr.Unavailable &&
-				(verr.ShouldBlock || afterTool || obs.Released && rec.Gate),
+				(verr.ShouldBlock || afterTool || released),
 		}
 
 		if verr.Resource != "" {
@@ -139,7 +146,7 @@ func findings(
 func findingClass(
 	verr *dispatcher.ValidationError,
 	obs *Observation,
-	gate, afterTool bool,
+	gate, afterTool, released bool,
 ) Class {
 	switch {
 	case verr.Bypassed:
@@ -150,7 +157,7 @@ func findingClass(
 		return ClassPrevented
 	case verr.Unavailable:
 		return ClassUnavailable
-	case obs.Released && gate:
+	case released:
 		return ClassReleased
 	case verr.ShouldBlock || afterTool:
 		return ClassAdvisory

@@ -44,18 +44,19 @@ var classOrder = []Class{
 
 // Record is one hook invocation as stored on disk.
 type Record struct {
-	Time     time.Time        `json:"t"`
-	Provider string           `json:"p"`
-	Event    string           `json:"e"`
-	Session  string           `json:"s,omitempty"`
-	Resource string           `json:"r,omitempty"`
-	Outcome  Class            `json:"o"`
-	Micros   int64            `json:"us"`
-	Gate     bool             `json:"g,omitempty"`
-	Findings []Finding        `json:"f,omitempty"`
-	Checked  []string         `json:"c,omitempty"`
-	Other    []Check          `json:"cx,omitempty"`
-	Timings  map[string]int64 `json:"vt,omitempty"`
+	Time      time.Time        `json:"t"`
+	Provider  string           `json:"p"`
+	Event     string           `json:"e"`
+	Session   string           `json:"s,omitempty"`
+	Resource  string           `json:"r,omitempty"`
+	Outcome   Class            `json:"o"`
+	Micros    int64            `json:"us"`
+	Gate      bool             `json:"g,omitempty"`
+	Truncated bool             `json:"tr,omitempty"`
+	Findings  []Finding        `json:"f,omitempty"`
+	Checked   []string         `json:"c,omitempty"`
+	Other     []Check          `json:"cx,omitempty"`
+	Timings   map[string]int64 `json:"vt,omitempty"`
 }
 
 // Finding is one reported error of a hook. Violation marks findings that ask

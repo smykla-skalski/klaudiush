@@ -17,6 +17,9 @@ import (
 
 const hoursPerDay = 24
 
+// maxSinceDays keeps --since within what a time.Duration can hold.
+const maxSinceDays = 36500
+
 var (
 	metricsSince    string
 	metricsProvider string
@@ -146,7 +149,8 @@ func runMetricsPrune(cmd *cobra.Command, _ []string) error {
 		return errors.Wrap(err, "failed to prune metrics")
 	}
 
-	_, err = fmt.Fprintf(cmd.OutOrStdout(), "Dropped %d records older than %s\n",
+	_, err = fmt.Fprintf(cmd.OutOrStdout(),
+		"Dropped %d records older than %s or unreadable\n",
 		dropped, store.Retention())
 
 	return errors.Wrap(err, "failed to write output")
@@ -181,7 +185,7 @@ func loadMetricsConfig(log logger.Logger) *config.MetricsConfig {
 func parseSince(value string) (time.Duration, error) {
 	if days, ok := strings.CutSuffix(value, "d"); ok {
 		n, err := strconv.Atoi(days)
-		if err != nil || n <= 0 {
+		if err != nil || n <= 0 || n > maxSinceDays {
 			return 0, errors.Wrapf(errInvalidSince, "%q", value)
 		}
 

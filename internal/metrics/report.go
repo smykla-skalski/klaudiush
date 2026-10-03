@@ -156,7 +156,7 @@ func Summarize(records []Record, since, until time.Time, filter Filter) *Report 
 
 	for i := range sorted {
 		rec := &sorted[i]
-		if !filter.matches(rec) {
+		if !filter.matches(rec) || rec.Time.After(until) {
 			continue
 		}
 

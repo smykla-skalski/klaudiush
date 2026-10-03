@@ -291,6 +291,94 @@ var _ = Describe("Summarize", func() {
 		Expect(repairs.FirstTry).To(Equal(1))
 	})
 
+	It("does not count a recheck during an unrelated tool call as a retry", func() {
+		finding := &dispatcher.ValidationError{
+			Validator: mdValidator,
+			Reference: validator.RefGitConventionalCommit,
+			Resource:  fileResource,
+		}
+		mdCheck := []dispatcher.Check{{Validator: mdValidator, Resource: fileResource}}
+
+		record(&metrics.Observation{
+			Context: afterWrite(),
+			Errors:  []*dispatcher.ValidationError{finding},
+			Checks:  mdCheck,
+		})
+
+		for range 3 {
+			record(&metrics.Observation{
+				Context: ctxFor(hook.ProviderClaude, hook.CanonicalEventAfterTool, "PostToolUse"),
+				Errors:  []*dispatcher.ValidationError{finding},
+				Checks:  mdCheck,
+			})
+		}
+
+		repairs := summarize(metrics.Filter{}).Repairs
+		Expect(repairs.Violations).To(Equal(1))
+		Expect(repairs.Retries).To(BeZero())
+		Expect(repairs.Recurring).To(BeZero())
+		Expect(repairs.Unresolved).To(Equal(1))
+
+		record(&metrics.Observation{
+			Context: afterWrite(),
+			Errors:  []*dispatcher.ValidationError{finding},
+			Checks:  mdCheck,
+		})
+
+		Expect(summarize(metrics.Filter{}).Repairs.Retries).To(Equal(1))
+	})
+
+	It("classifies a hook by all its findings, past the stored cap", func() {
+		errs := make([]*dispatcher.ValidationError, 0, 41)
+		for range 40 {
+			errs = append(errs, &dispatcher.ValidationError{
+				Validator: mdValidator,
+				Reference: validator.RefGitConventionalCommit,
+				Resource:  hook.ResourceCommand,
+			})
+		}
+
+		errs = append(errs, blocking(validator.RefGitMissingFlags))
+
+		record(&metrics.Observation{
+			Context: preTool(),
+			Errors:  errs,
+			Checks:  commitCheck,
+			Stopped: true,
+		})
+
+		report := summarize(metrics.Filter{})
+		Expect(report.Outcomes.Prevented).To(Equal(1))
+		Expect(report.Repairs.Repaired).To(BeZero())
+	})
+
+	It("marks only the findings a released gate let through", func() {
+		warning := blocking(validator.RefGitConventionalCommit)
+		warning.ShouldBlock = false
+
+		released := blocking(validator.RefGitMissingFlags)
+		released.ShouldBlock = false
+
+		record(&metrics.Observation{
+			Context:          stop(),
+			Errors:           []*dispatcher.ValidationError{warning, released},
+			Released:         true,
+			ReleasedFindings: []bool{false, true},
+		})
+
+		report := summarize(metrics.Filter{})
+		Expect(report.Repairs.Violations).To(Equal(1))
+
+		for _, code := range report.Codes {
+			switch code.Code {
+			case "GIT013":
+				Expect(code.Outcomes.Warned).To(Equal(1))
+			case "GIT010":
+				Expect(code.Outcomes.Released).To(Equal(1))
+			}
+		}
+	})
+
 	It("closes a violation an exception accepted, and keeps a false-positive signal", func() {
 		record(&metrics.Observation{
 			Context: preTool(),

@@ -83,7 +83,9 @@ type hookRun struct {
 	metrics   atomic.Pointer[config.MetricsConfig]
 	outcome   atomic.Pointer[dispatcher.Outcome]
 	released  atomic.Bool
-	skipped   atomic.Bool
+
+	releasedFindings atomic.Pointer[[]bool]
+	skipped          atomic.Bool
 }
 
 func newHookRun(
@@ -513,19 +515,24 @@ func readConfigFile(path string) ([]byte, error) {
 
 // scanMode finds mode = "..." inside a [failure_policy] table.
 func scanMode(content string) string {
+	return scanKey(content, "failure_policy", "mode")
+}
+
+// scanKey finds name = "..." inside the [table] table, line by line.
+func scanKey(content, table, name string) string {
 	inSection := false
 
 	for line := range strings.Lines(content) {
 		line = withoutComment(line)
 
 		if strings.HasPrefix(line, "[") {
-			inSection = strings.Trim(line, "[] \t") == "failure_policy"
+			inSection = strings.Trim(line, "[] \t") == table
 
 			continue
 		}
 
 		key, value, ok := strings.Cut(line, "=")
-		if !inSection || !ok || strings.TrimSpace(key) != "mode" {
+		if !inSection || !ok || strings.TrimSpace(key) != name {
 			continue
 		}
 

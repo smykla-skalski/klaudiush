@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"strconv"
 	"time"
 
 	"github.com/smykla-skalski/klaudiush/internal/dispatcher"
@@ -9,6 +11,9 @@ import (
 	"github.com/smykla-skalski/klaudiush/pkg/config"
 	"github.com/smykla-skalski/klaudiush/pkg/hook"
 )
+
+// metricsEnabledEnv turns metrics off even when no configuration loads.
+const metricsEnabledEnv = "KLAUDIUSH_METRICS_ENABLED"
 
 // recordMetrics appends what the written response did to the local outcome
 // metrics. It runs after the response is on stdout, and a failure here only
@@ -26,8 +31,12 @@ func (h *hookRun) recordMetrics(
 		Skipped:  h.skipped.Load(),
 	}
 
+	if mask := h.releasedFindings.Load(); mask != nil {
+		obs.ReleasedFindings = *mask
+	}
+
 	if outcome := h.outcome.Load(); outcome != nil {
-		obs.Checks = outcome.Checks
+		obs.Checks = outcome.Ran
 		obs.Timings = outcome.Timings
 	}
 
@@ -60,10 +69,17 @@ func (h *hookRun) record(obs *metrics.Observation) {
 }
 
 // metricsConfig returns the loaded metrics settings, or what can be read of
-// the configuration when loading it failed.
+// the configuration when loading it failed. The environment switch is read
+// directly then, since a configuration that cannot be read cannot carry it.
 func (h *hookRun) metricsConfig() *config.MetricsConfig {
 	if cfg := h.metrics.Load(); cfg != nil {
 		return cfg
+	}
+
+	if value, ok := os.LookupEnv(metricsEnabledEnv); ok {
+		if enabled, err := strconv.ParseBool(value); err == nil && !enabled {
+			return &config.MetricsConfig{Enabled: &enabled}
+		}
 	}
 
 	workDir := ""
@@ -75,5 +91,29 @@ func (h *hookRun) metricsConfig() *config.MetricsConfig {
 		return cfg.GetMetrics()
 	}
 
+	if scannedMetricsDisabled(workDir) {
+		disabled := false
+
+		return &config.MetricsConfig{Enabled: &disabled}
+	}
+
 	return nil
+}
+
+// scannedMetricsDisabled reports whether a project or global config file
+// that does not parse says enabled = false inside [metrics].
+func scannedMetricsDisabled(workDir string) bool {
+	loader, err := configLoader(workDir)
+	if err != nil {
+		return false
+	}
+
+	for _, path := range append(loader.ProjectConfigPaths(), loader.GlobalConfigPath()) {
+		data, readErr := readConfigFile(path)
+		if readErr == nil && scanKey(string(data), cmdUseMetrics, "enabled") == valueFalse {
+			return true
+		}
+	}
+
+	return false
 }

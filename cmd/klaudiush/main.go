@@ -296,6 +296,7 @@ func (h *hookRun) validate() error {
 	h.errs.Store(&errs)
 	h.outcome.Store(&session.outcome)
 	h.released.Store(gateNotice != "")
+	h.releasedFindings.Store(&session.released)
 
 	bt.mark("dispatch")
 
@@ -411,10 +412,22 @@ func (h *hookRun) loadPolicyAndRegistry(
 // answer with, the cleanup to run after the response is written, the notice
 // of a released completion gate, and what the validators ran.
 type sessionDispatch struct {
-	errs    []*dispatcher.ValidationError
-	cleanup func()
-	notice  string
-	outcome dispatcher.Outcome
+	errs     []*dispatcher.ValidationError
+	cleanup  func()
+	notice   string
+	outcome  dispatcher.Outcome
+	released []bool
+}
+
+// releasedFindings marks the findings a released completion gate turned
+// into warnings: releaseBlocking keeps their order and count.
+func releasedFindings(errs []*dispatcher.ValidationError) []bool {
+	released := make([]bool, len(errs))
+	for i, verr := range errs {
+		released[i] = verr != nil && verr.ShouldBlock
+	}
+
+	return released
 }
 
 // dispatchInSession validates the hook and applies the session state: it
@@ -441,9 +454,14 @@ func dispatchInSession(
 	)
 	errs = evidenceGate.apply(ctx, hookCtx, errs)
 	errs = evidenceGate.toolPhase().apply(ctx, hookCtx, errs)
-	errs, gateNotice := applyCompletionGate(sessionStore, hookCtx, errs, log)
+	gated, gateNotice := applyCompletionGate(sessionStore, hookCtx, errs, log)
 
-	return sessionDispatch{errs: errs, cleanup: cleanup, notice: gateNotice, outcome: outcome}
+	result := sessionDispatch{errs: gated, cleanup: cleanup, notice: gateNotice, outcome: outcome}
+	if gateNotice != "" {
+		result.released = releasedFindings(errs)
+	}
+
+	return result
 }
 
 // answerToolSelection answers Gemini BeforeToolSelection. No validator

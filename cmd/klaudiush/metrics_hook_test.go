@@ -123,6 +123,38 @@ var _ = Describe("hook metrics", func() {
 		Expect(xdg.MetricsFile()).NotTo(BeAnExistingFile())
 	})
 
+	It("honors the environment switch when no configuration can be read", func() {
+		GinkgoT().Setenv(metricsEnabledEnv, "false")
+
+		configDir := filepath.Join(home, ".config", "klaudiush")
+		Expect(os.MkdirAll(configDir, 0o700)).To(Succeed())
+		Expect(os.WriteFile(filepath.Join(configDir, "config.toml"),
+			[]byte("[metrics\nbroken\n"), 0o600)).To(Succeed())
+
+		h := newRun(hook.ProviderClaude, "PreToolUse")
+		h.recordMetrics(&hook.Context{Provider: hook.ProviderClaude}, nil, false)
+
+		Expect(xdg.MetricsFile()).NotTo(BeAnExistingFile())
+	})
+
+	It("honors enabled = false in a configuration that does not parse", func() {
+		configDir := filepath.Join(home, ".config", "klaudiush")
+		Expect(os.MkdirAll(configDir, 0o700)).To(Succeed())
+		Expect(os.WriteFile(filepath.Join(configDir, "config.toml"),
+			[]byte("[metrics]\nenabled = false # off\n[broken\n"), 0o600)).To(Succeed())
+
+		h := newRun(hook.ProviderClaude, "PreToolUse")
+		h.recordMetrics(&hook.Context{Provider: hook.ProviderClaude}, nil, false)
+
+		Expect(xdg.MetricsFile()).NotTo(BeAnExistingFile())
+
+		Expect(os.WriteFile(filepath.Join(configDir, "config.toml"),
+			[]byte("[metrics\nbroken\n"), 0o600)).To(Succeed())
+		h.recordMetrics(&hook.Context{Provider: hook.ProviderClaude}, nil, false)
+
+		Expect(xdg.MetricsFile()).To(BeAnExistingFile())
+	})
+
 	It("records what validation found, with checks and timings", func() {
 		h := newRun(hook.ProviderClaude, "PreToolUse")
 		h.metrics.Store(&config.MetricsConfig{})
@@ -183,6 +215,12 @@ var _ = Describe("hook metrics", func() {
 		Expect(func() {
 			h.recordMetrics(&hook.Context{Provider: hook.ProviderClaude}, nil, false)
 		}).NotTo(Panic())
+	})
+
+	It("marks the findings a released gate downgraded", func() {
+		Expect(releasedFindings([]*dispatcher.ValidationError{
+			{ShouldBlock: true}, nil, {},
+		})).To(Equal([]bool{true, false, false}))
 	})
 
 	DescribeTable("parses report windows",

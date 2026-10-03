@@ -18,7 +18,7 @@ See what klaudiush hooks actually enforced, what they only advised, how agents r
 
 Every hook appends one line to a local log after it writes its response. The line records what that response did, the error codes it reported, which checks could not run, the session and resource keys needed to follow a violation across hooks, and how long the hook and each validator took. `klaudiush metrics` turns the log into a report.
 
-Recording is on by default and never leaves the machine. Nothing in a hook depends on it: a sample that cannot be written within 250ms is dropped and the hook answers as it would without metrics. `klaudiush doctor --category metrics` tells you when samples cannot be written.
+Recording is on by default and never leaves the machine. Nothing in a hook depends on it: the line is written after the response, a sample whose lock cannot be taken within 250ms is dropped, and any other write error only loses that sample. `klaudiush doctor --category metrics` tells you when samples cannot be written.
 
 ## Configuration
 
@@ -29,7 +29,9 @@ retention = "720h"      # default report window and prune age (30 days)
 max_file_size_mb = 8    # active log size before it rotates (at most 256)
 ```
 
-`KLAUDIUSH_METRICS_ENABLED=false` turns recording off for one shell. The report still reads what was recorded earlier.
+`KLAUDIUSH_METRICS_ENABLED=false` turns recording off for one shell, and is honored even when no configuration file can be read. `enabled = false` in a file that does not parse is honored too. The report still reads what was recorded earlier.
+
+The log is shared by every project, but `retention` and `max_file_size_mb` come from the effective configuration of the hook or command that uses them. Set them in the global configuration; a smaller project value makes hooks in that project rotate the shared log sooner.
 
 ## Outcomes
 
@@ -53,14 +55,14 @@ A check that could not run and blocked under `failure_policy` counts as prevente
 
 ## Repairs and retries
 
-A violation is a finding that asks the agent to change something: a blocking finding before the tool, or any unwaived finding after it. It is identified by session, validator, resource and code. For commands the resource is "a command", so a later command the same validator passes clears it; for files it is the file.
+A violation is a finding that asks the agent to change something: a blocking finding before the tool, or any unwaived finding after it. It is identified by session, validator, resource and code. For commands the resource is "a command", so a later command the same validator passes clears it; for files it is the file. A file a shell command writes is checked under that file, so rewriting it through the shell is not counted as a retry.
 
 | Field               | Meaning                                                                                                                   |
 |:--------------------|:--------------------------------------------------------------------------------------------------------------------------|
 | violations          | Distinct violations reported.                                                                                             |
 | repaired            | The validator checked the same resource again without reporting the code, or a completion gate that had held it passed.    |
 | repaired_first_try  | Repaired after a single report.                                                                                           |
-| retries             | Reports of a violation that was already open: failed repair attempts and completion attempts made while it was unresolved. |
+| retries             | Reports of an open violation by a hook that acted on its resource (the same command validator, or the same file) or tried to complete the turn. Rechecks of an unrepaired file during unrelated tool calls are not retries. |
 | recurring           | Violations reported more than once.                                                                                       |
 | closed_by_exception | Open violations an accepted exception waived.                                                                              |
 | unresolved          | Still open at the end of the window.                                                                                      |
@@ -74,13 +76,13 @@ Checks that could not run are counted by reason (`missing_tool`, `timeout`, `con
 
 ## Latency
 
-Hook latency runs from process start to the moment the response is written, per provider and event (p50, p95, max). Validator latency is each validator's run time, summed when it ran more than once in one hook (for example on several files of a patch). Writing the metrics line itself is not included; it takes well under a millisecond.
+Hook latency runs from the start of the hook pipeline (after flag parsing and first-run migration) until the response is written and session cleanup ran, per provider and event (p50, p95, max). Validator latency is each validator's run time, summed when it ran more than once in one hook (for example on several files of a patch). Writing the metrics line itself is not included. It usually takes well under a millisecond, but it holds the process open while it waits for the lock (at most 250ms, for example during `klaudiush metrics prune`).
 
 ## Privacy and storage
 
 - The log is `$XDG_STATE_HOME/klaudiush/metrics/outcomes.jsonl` (mode 0600, directory 0700).
 - No command, message, file path, content or session ID is stored. Sessions and resources are 64-bit keys from HMAC-SHA256 with a random salt kept next to the log, so they can be compared but not reversed or linked to another machine. Validator names, codes and event names are reduced to at most 64 characters of `[A-Za-z0-9._:-]`.
-- A line lists at most 32 findings, 64 checks and 64 validator timings.
+- A line lists at most 32 findings, 64 checks and 64 validator timings. The outcome is still taken over every finding; a line with more findings is marked truncated and never repairs anything.
 - When the active log reaches `max_file_size_mb` it becomes `outcomes.jsonl.1`, replacing the previous backup, so at most twice the cap is kept.
 - Writers hold `outcomes.jsonl.lock`, so concurrent hooks never interleave lines or lose a rotation. Lines that cannot be read (an interrupted write) are skipped and counted in the report.
 - `klaudiush metrics prune` drops records older than `retention`; `klaudiush metrics clear` removes the logs and the salt, so new keys cannot be linked to old ones.

@@ -1,0 +1,23 @@
+exec git init --initial-branch=main
+
+stdin bad.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+
+stdin good.json
+exec klaudiush --hook-type PreToolUse
+! stdout 'deny'
+
+! grep 'a.py' $HOME/.local/state/klaudiush/metrics/outcomes.jsonl
+
+exec klaudiush metrics --json
+stdout '"violations": 1'
+stdout '"repaired": 1'
+stdout '"repaired_first_try": 1'
+stdout '"unresolved": 0'
+
+-- bad.json --
+{"session_id":"file-session","tool_name":"Write","tool_input":{"file_path":"a.py","content":"x = 1  # no\u0071a\n"}}
+
+-- good.json --
+{"session_id":"file-session","tool_name":"Write","tool_input":{"file_path":"a.py","content":"x = 1\n"}}

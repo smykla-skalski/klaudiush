@@ -363,7 +363,7 @@ func parseOnOff(value string) (bool, error) {
 	switch strings.ToLower(value) {
 	case valueOn, valueTrue, "enable", "enabled":
 		return true, nil
-	case valueOff, "false", "disable", "disabled":
+	case valueOff, valueFalse, "disable", "disabled":
 		return false, nil
 	default:
 		return false, errors.Errorf("expected \"on\" or \"off\", got %q", value)

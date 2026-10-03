@@ -205,7 +205,10 @@ func (t *repairTracker) observe(rec *Record) {
 
 	t.closeExcepted(session, rec)
 	reported := t.report(session, rec)
-	t.closeChecked(session, rec, reported)
+
+	if !rec.Truncated {
+		t.closeChecked(session, rec, reported)
+	}
 
 	if rec.Gate && len(reported) == 0 && cleanGate(rec.Outcome) {
 		for key, item := range session {
@@ -218,6 +221,13 @@ func (t *repairTracker) observe(rec *Record) {
 	if len(session) == 0 {
 		delete(t.open, rec.Session)
 	}
+}
+
+// attempted reports whether rec is a new attempt at f's resource: the hook
+// acted on that resource, or tried to complete the turn. A recheck of an
+// unrepaired file during an unrelated tool call is not an attempt.
+func attempted(rec *Record, f *Finding) bool {
+	return rec.Gate || f.Resource == "" || f.Resource == rec.Resource
 }
 
 func cleanGate(outcome Class) bool {
@@ -273,8 +283,13 @@ func (t *repairTracker) report(
 			continue
 		}
 
-		item.reports++
 		item.gate = item.gate || rec.Gate
+
+		if !attempted(rec, f) {
+			continue
+		}
+
+		item.reports++
 		t.stats.Retries++
 		entry.Retries++
 

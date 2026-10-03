@@ -80,18 +80,21 @@ type Timing struct {
 	Elapsed   time.Duration
 }
 
-// Outcome is the result of one dispatch: the errors found and every check
-// that ran, so callers can tell a repaired resource from an unchecked one,
-// and how long each validator run took.
+// Outcome is the result of one dispatch: the errors found, every check that
+// proves its resource clean (Checks), every validator that ran to completion
+// on what the tool sends or left (Ran, which includes checks of a partial
+// edit before the tool), and how long each validator run took.
 type Outcome struct {
 	Errors  []*ValidationError
 	Checks  []Check
+	Ran     []Check
 	Timings []Timing
 }
 
 // runLog collects the checks and timings of one dispatch.
 type runLog struct {
 	checks  []Check
+	ran     []Check
 	timings []Timing
 }
 
@@ -231,7 +234,7 @@ func (d *Dispatcher) DispatchWithChecks(ctx context.Context, hookCtx *hook.Conte
 
 	errs := d.validate(ctx, hookCtx, &ran, newProgress(d.publish))
 
-	return Outcome{Errors: errs, Checks: ran.checks, Timings: ran.timings}
+	return Outcome{Errors: errs, Checks: ran.checks, Ran: ran.ran, Timings: ran.timings}
 }
 
 func (d *Dispatcher) validate(
@@ -703,17 +706,22 @@ func (d *Dispatcher) resolver() parser.Resolver {
 	return d.pathResolver
 }
 
-// record adds every run's timing, and the validators that ran on resource
-// to the checks. A cancelled run may have skipped validators, so it proves
-// nothing; on a file, only runs that report reading and checking the whole
-// file as the tool left it prove it clean.
+// record adds the timing of every run that started, and the validators
+// that ran on resource to ran and the checks. A cancelled run may have
+// skipped validators, so it proves nothing; on a file, only runs that report
+// reading and checking the whole file as the tool left it prove it clean.
 func (l *runLog) record(ctx context.Context, runs []ValidatorRun, resource string) {
 	if l == nil {
 		return
 	}
 
 	for _, run := range runs {
-		l.timings = append(l.timings, Timing{Validator: run.Validator.Name(), Elapsed: run.Elapsed})
+		if run.Elapsed > 0 {
+			l.timings = append(l.timings, Timing{
+				Validator: run.Validator.Name(),
+				Elapsed:   run.Elapsed,
+			})
+		}
 	}
 
 	if ctx.Err() != nil {
@@ -723,11 +731,16 @@ func (l *runLog) record(ctx context.Context, runs []ValidatorRun, resource strin
 	isFile := strings.HasPrefix(resource, hook.ResourceFilePrefix)
 
 	for _, run := range runs {
-		if run.Result.Unavailable || (isFile && !run.Result.Inspected) {
+		if run.Result.Unavailable {
 			continue
 		}
 
-		l.checks = append(l.checks, Check{Validator: run.Validator.Name(), Resource: resource})
+		check := Check{Validator: run.Validator.Name(), Resource: resource}
+		l.ran = append(l.ran, check)
+
+		if !isFile || run.Result.Inspected {
+			l.checks = append(l.checks, check)
+		}
 	}
 }
 

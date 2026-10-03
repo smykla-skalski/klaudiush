@@ -15,5 +15,6 @@ const (
 	valueOn      = "on"
 	valueOff     = "off"
 	valueTrue    = "true"
+	valueFalse   = "false"
 	scopeProject = "project"
 )

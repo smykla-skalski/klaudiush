@@ -102,7 +102,7 @@ func runDebugCrashView(cmd *cobra.Command, args []string) error {
 }
 
 func runDebugCrashClean(cmd *cobra.Command, _ []string) error {
-	dryRunStr := "false"
+	dryRunStr := valueFalse
 	if dryRun {
 		dryRunStr = valueTrue
 	}
