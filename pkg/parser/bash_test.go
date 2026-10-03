@@ -1,6 +1,7 @@
 package parser_test
 
 import (
+	"github.com/cockroachdb/errors"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -24,6 +25,33 @@ var _ = Describe("BashParser", func() {
 			It("returns error for whitespace-only", func() {
 				_, err := p.Parse("   \t\n")
 				Expect(err).To(MatchError(parser.ErrEmptyCommand))
+			})
+		})
+
+		Context("with zsh-only syntax", func() {
+			DescribeTable("reports the construct bash rejects",
+				func(command, construct string) {
+					_, err := p.Parse(command)
+
+					var zshErr *parser.ZshSyntaxError
+					Expect(errors.As(err, &zshErr)).To(BeTrue(), "error: %v", err)
+					Expect(zshErr.Construct).To(Equal(construct))
+					Expect(err).To(MatchError(parser.ErrParseFailed))
+				},
+				Entry("parameter expansion flags",
+					`typeset -A NUM; NUM[a]=1; list=a,b; for x in ${(s:,:)list}; do echo $x; done`,
+					"parameter expansion flags"),
+				Entry("anonymous function", `() { git push }`, "anonymous functions"),
+				Entry("=( process substitution", `diff =(git log) f`, "`=(` process substitutions"),
+				Entry("foreach loop, unnamed by bash", `foreach x (a b) echo $x; end`, ""),
+			)
+
+			It("keeps a command no shell parses a plain parse failure", func() {
+				_, err := p.Parse(`git commit -m "x" && (`)
+
+				var zshErr *parser.ZshSyntaxError
+				Expect(errors.As(err, &zshErr)).To(BeFalse())
+				Expect(err).To(MatchError(parser.ErrParseFailed))
 			})
 		})
 

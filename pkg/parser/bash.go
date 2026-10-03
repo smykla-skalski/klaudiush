@@ -3,6 +3,7 @@ package parser
 import (
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/cockroachdb/errors"
@@ -75,7 +76,7 @@ func (p *BashParser) Parse(command string) (*ParseResult, error) {
 	// Parse the command into an AST
 	file, err := p.parser.Parse(strings.NewReader(command), "")
 	if err != nil {
-		return nil, errors.Wrap(ErrParseFailed, err.Error())
+		return nil, parseFailure(command, err)
 	}
 
 	// Walk the AST to extract commands and file operations
@@ -106,6 +107,48 @@ func (p *BashParser) Parse(command string) (*ParseResult, error) {
 		DynamicWrites: walker.dynamicWrites,
 		DynamicVars:   walker.state.dynamicVars,
 	}, nil
+}
+
+// ZshSyntaxError reports a command that does not parse as bash but parses as
+// zsh. Commands are inspected as bash, so zsh-only syntax stays opaque even
+// though a zsh login shell runs it. errors.Is matches it as ErrParseFailed.
+type ZshSyntaxError struct {
+	// Construct names the zsh-only syntax bash rejected, such as "parameter
+	// expansion flags". It is empty when the bash error does not name it.
+	Construct string
+	cause     error
+}
+
+func (e *ZshSyntaxError) Error() string {
+	return e.cause.Error()
+}
+
+// Is matches ErrParseFailed, so callers that only check for a parse failure
+// still fail closed.
+func (*ZshSyntaxError) Is(target error) bool {
+	return target == ErrParseFailed
+}
+
+func (e *ZshSyntaxError) Unwrap() error {
+	return e.cause
+}
+
+// parseFailure wraps a bash syntax error, telling zsh-only syntax apart from
+// a command no shell klaudiush knows can parse.
+func parseFailure(command string, err error) error {
+	zshParser := syntax.NewParser(syntax.Variant(syntax.LangZsh))
+	if _, zshErr := zshParser.Parse(strings.NewReader(command), ""); zshErr != nil {
+		return errors.Wrap(ErrParseFailed, err.Error())
+	}
+
+	zerr := &ZshSyntaxError{cause: err}
+
+	var langErr syntax.LangError
+	if errors.As(err, &langErr) && slices.Contains(langErr.Langs, syntax.LangZsh) {
+		zerr.Construct = langErr.Feature
+	}
+
+	return zerr
 }
 
 // maxExpandPasses bounds variable expansion so a self-referential assignment

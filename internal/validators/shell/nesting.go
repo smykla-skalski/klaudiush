@@ -46,7 +46,12 @@ var parsePosition = regexp.MustCompile(`^(\d+):(\d+):`)
 func (*NestingValidator) Validate(_ context.Context, hookCtx *hook.Context) *validator.Result {
 	parsed, err := hookCtx.ParsedCommand()
 
+	var zshErr *parser.ZshSyntaxError
+
 	switch {
+	case errors.As(err, &zshErr):
+		return validator.FailWithRef(validator.RefShellNesting, zshSummary(zshErr.Construct)).
+			AddFinding(zshSyntaxFinding(err, zshErr.Construct))
 	case errors.Is(err, parser.ErrParseFailed):
 		return validator.FailWithRef(validator.RefShellNesting, parseFailedText).
 			AddFinding(parseFailedFinding(err))
@@ -85,6 +90,31 @@ func parseFailedFinding(err error) validator.Finding {
 		Required:  "valid shell syntax",
 		Repair:    "Fix the shell syntax at that position (unclosed quote, bracket or heredoc)",
 	}
+}
+
+// zshSummary names the zsh-only construct, so valid zsh is not reported as
+// broken syntax.
+func zshSummary(construct string) string {
+	if construct == "" {
+		return "Command uses zsh-only syntax, which klaudiush cannot inspect"
+	}
+
+	return "Command uses zsh-only syntax (" + construct + "), which klaudiush cannot inspect"
+}
+
+func zshSyntaxFinding(err error, construct string) validator.Finding {
+	f := parseFailedFinding(err)
+
+	if construct == "" {
+		construct = "this syntax"
+	}
+
+	f.Message = construct + " parses only as zsh, and klaudiush inspects commands as bash"
+	f.Required = "bash syntax"
+	f.Repair = "Rewrite the command in bash syntax; klaudiush parses every command " +
+		"as bash, whatever the login shell"
+
+	return f
 }
 
 // truncatedSummary names the single cause, or counts several.

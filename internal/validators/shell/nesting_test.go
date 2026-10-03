@@ -64,6 +64,29 @@ var _ = Describe("NestingValidator", func() {
 		)))
 	})
 
+	It("names zsh-only syntax instead of calling valid zsh broken", func() {
+		result := blocked(
+			`typeset -A NUM; NUM[a]=1; list=a,b; for x in ${(s:,:)list}; do echo $x; done`,
+		)
+
+		Expect(result.Message).To(ContainSubstring("zsh-only syntax (parameter expansion flags)"))
+		Expect(result.Message).NotTo(ContainSubstring("does not parse"))
+		Expect(result.Findings).To(ConsistOf(SatisfyAll(
+			HaveField("Location", "line 1, column 46"),
+			HaveField("Message", ContainSubstring("parses only as zsh")),
+			HaveField("Required", "bash syntax"),
+			HaveField("Repair", ContainSubstring("Rewrite the command in bash syntax")),
+		)))
+	})
+
+	It("reports zsh-only syntax bash cannot name without a construct", func() {
+		result := blocked(`foreach x (a b) git push; end`)
+
+		Expect(result.Message).To(
+			Equal("Command uses zsh-only syntax, which klaudiush cannot inspect"),
+		)
+	})
+
 	DescribeTable("explains each kind of opaque operation distinctly",
 		func(command, summary, location, message, repair string) {
 			result := blocked(command)
