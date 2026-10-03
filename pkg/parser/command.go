@@ -79,6 +79,7 @@ type Command struct {
 
 	startup      map[string]startupValue
 	dynamicWords map[string]bool
+	written      map[string]writtenArg
 }
 
 // anyWordDynamic reports whether any word takes part of its value from

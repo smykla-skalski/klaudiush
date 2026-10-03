@@ -1,0 +1,88 @@
+exec git init --initial-branch=feature
+exec git config user.email "test@test.com"
+exec git config user.name "Test User"
+exec git remote add origin https://example.com/repo.git
+
+stdin push-output.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+stdout 'git push argument comes from command output'
+
+stdin push-unknown-remote.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+stdout 'git push argument comes from a variable klaudiush cannot resolve'
+
+stdin push-glob.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+
+stdin push-split.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'splits into several words'
+
+stdin push-assigned-blocked.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'GIT'
+! stdout 'SHELL002'
+
+stdin push-assigned-feature.json
+exec klaudiush --hook-type PreToolUse
+! stdout 'deny'
+
+stdin commit-message-output.json
+exec klaudiush --hook-type PreToolUse
+! stdout 'SHELL002'
+
+stdin commit-flag-variable.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'git commit argument comes from a variable'
+
+stdin commit-flag-assigned.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+! stdout 'SHELL002'
+
+stdin log-output.json
+exec klaudiush --hook-type PreToolUse
+! stdout .
+
+-- .klaudiush/config.toml --
+[validators.git.push]
+blocked_branches = ["main"]
+
+-- push-output.json --
+{"tool_name": "Bash", "tool_input": {"command": "git push origin $(echo main)"}}
+
+-- push-unknown-remote.json --
+{"tool_name": "Bash", "tool_input": {"command": "git push $KLAUDIUSH_TEST_UNSET_REMOTE main"}}
+
+-- push-glob.json --
+{"tool_name": "Bash", "tool_input": {"command": "B='mai[n]'; git push origin $B"}}
+
+-- push-split.json --
+{"tool_name": "Bash", "tool_input": {"command": "B='origin main'; git push $B"}}
+
+-- push-assigned-blocked.json --
+{"tool_name": "Bash", "tool_input": {"command": "B=main; git push origin $B"}}
+
+-- push-assigned-feature.json --
+{"tool_name": "Bash", "tool_input": {"command": "B=feature; git push origin $B"}}
+
+-- commit-message-output.json --
+{"tool_name": "Bash", "tool_input": {"command": "git commit -sS -m \"$(echo 'fix(parser): x')\""}}
+
+-- commit-flag-variable.json --
+{"tool_name": "Bash", "tool_input": {"command": "git commit $KLAUDIUSH_TEST_UNSET_FLAG -sS -m 'fix(parser): x'"}}
+
+-- commit-flag-assigned.json --
+{"tool_name": "Bash", "tool_input": {"command": "F=--no-verify; git commit $F -sS -m 'fix(parser): x'"}}
+
+-- log-output.json --
+{"tool_name": "Bash", "tool_input": {"command": "git log $(git merge-base HEAD feature)..HEAD"}}

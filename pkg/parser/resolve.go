@@ -360,7 +360,13 @@ func (w *astWalker) expandGHAlias(cmd Command) (Command, []nestedScript) {
 		}
 
 		if line, shell := strings.CutPrefix(value, "!"); shell {
-			return cmd, []nestedScript{{name: "gh:" + name, text: line + " " + quoteArgs(rest)}}
+			return cmd, []nestedScript{
+				{
+					name:    "gh:" + name,
+					text:    line + " " + quoteArgs(rest),
+					forward: w.forwardQuoted(cmd, rest),
+				},
+			}
 		}
 
 		cmd.Args = slices.Concat(strings.Fields(value), rest)
@@ -411,8 +417,9 @@ func (w *astWalker) lineGHAlias(name string) (string, bool) {
 // alias or function, or a git or gh shell alias. The name keeps the
 // definition from being expanded inside itself.
 type nestedScript struct {
-	name string
-	text string
+	name    string
+	text    string
+	forward map[string]writtenArg
 }
 
 // programBehind returns git or gh for a program invoked with one of their
@@ -492,7 +499,13 @@ func (w *astWalker) expandGitAlias(cmd Command) (Command, []nestedScript) {
 		}
 
 		if line, shell := strings.CutPrefix(value, "!"); shell {
-			return cmd, []nestedScript{{name: "git:" + name, text: line + " " + quoteArgs(rest)}}
+			return cmd, []nestedScript{
+				{
+					name:    "git:" + name,
+					text:    line + " " + quoteArgs(rest),
+					forward: w.forwardQuoted(cmd, rest),
+				},
+			}
 		}
 
 		cmd.Args = slices.Concat(cmd.Args[:idx], strings.Fields(value), rest)
@@ -748,7 +761,11 @@ func (w *astWalker) definitionScripts(cmd Command) []nestedScript {
 	if value, ok := w.aliases[cmd.Invoked]; ok {
 		scripts = append(
 			scripts,
-			nestedScript{name: cmd.Invoked, text: value + " " + quoteArgs(cmd.Args)},
+			nestedScript{
+				name:    cmd.Invoked,
+				text:    value + " " + quoteArgs(cmd.Args),
+				forward: w.forwardQuoted(cmd, cmd.Args),
+			},
 		)
 	}
 
@@ -762,7 +779,11 @@ func (w *astWalker) definitionScripts(cmd Command) []nestedScript {
 
 		scripts = append(
 			scripts,
-			nestedScript{name: cmd.Invoked, text: substitutePositional(body, cmd.Args)},
+			nestedScript{
+				name:    cmd.Invoked,
+				text:    substitutePositional(body, cmd.Args),
+				forward: w.forwardPositional(cmd, body),
+			},
 		)
 	}
 
@@ -948,7 +969,8 @@ type scriptWalk struct {
 	// followed inside itself in the same state.
 	source string
 
-	prelude []startupScript
+	prelude   []startupScript
+	forwarded map[string]writtenArg
 }
 
 // walkScript records the commands of a script that parent runs. A cd inside
@@ -974,6 +996,8 @@ func (w *astWalker) walkScript(script string, parent Command, depth int, sw scri
 	if sw.name != "" {
 		child.expanding[sw.name] = true
 	}
+
+	child.forwarded = forwardedArgs(w.forwarded, sw.forwarded)
 
 	child.following = slices.Clone(w.following)
 	if sw.source != "" {
