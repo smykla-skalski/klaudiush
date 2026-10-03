@@ -795,17 +795,29 @@ func findExecCommands(cmd Command) []Command {
 	return cmds
 }
 
+// maxScannedRunners bounds the container runner names scanLaunch checks,
+// each a pass over the rest of the arguments. Past it the next one is
+// followed as a command, where the work budget applies.
+const maxScannedRunners = 8
+
 // scanLaunch finds a git, gh or shell invocation among the arguments of a
 // command that is not a known launcher, covering runners such as mise exec,
 // nix run, docker run and ssh without listing each one.
 func scanLaunch(cmd Command) launch {
+	runners := 0
+
 	for i, arg := range cmd.Args {
 		rest := cmd.Args[i+1:]
 		if len(rest) > 0 && rest[0] == endOfOptions {
 			rest = rest[1:]
 		}
 
-		if launchesTracked(arg, rest) || (i > 0 && runsScriptPath(cmd.Args[i-1], arg)) {
+		if isContainerRunner(commandName(arg)) {
+			runners++
+		}
+
+		if runners > maxScannedRunners || launchesTracked(arg, rest) ||
+			(i > 0 && runsScriptPath(cmd.Args[i-1], arg)) {
 			return launch{commands: append(
 				[]Command{childCommand(cmd, arg, rest)},
 				afterDirectoryOperand(cmd, arg, rest)...,
@@ -827,7 +839,8 @@ func scanLaunch(cmd Command) launch {
 
 // launchesTracked reports whether arg followed by rest runs something worth
 // following: a validated git or gh command, a shell given a script, an
-// interpreter, a launcher, eval or source, or a shell script given by path.
+// interpreter, a launcher, eval or source, a shell script given by path, or a
+// container run with --entrypoint.
 func launchesTracked(arg string, rest []string) bool {
 	name := commandName(arg)
 	_, isInterpreter := interpreters[name]
@@ -849,6 +862,8 @@ func launchesTracked(arg string, rest []string) bool {
 		_, _, ok := shellOperand(rest)
 
 		return ok
+	case isContainerRunner(name):
+		return containerRuns(rest).tracked() || mayHideEntrypoint(rest)
 	default:
 		return isInterpreter || isLauncher || name == evalBuiltin || name == sourceBuiltin
 	}
