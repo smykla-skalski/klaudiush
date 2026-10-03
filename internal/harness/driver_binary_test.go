@@ -297,6 +297,36 @@ exec asdf exec "tool" "$@"`)
 		Expect(driver.BinaryError()).NotTo(HaveOccurred())
 	})
 
+	It("resolves nothing for a harness the selection excludes", func() {
+		mise := writeScript(filepath.Join(root, "mise-bin"), "mise",
+			`: > '`+filepath.Join(root, "resolved")+`'; exit 1`)
+		symlink(mise, filepath.Join(root, "shims", "claude"))
+		setPath(filepath.Join(root, "shims"))
+
+		driver := harness.NewClaudeDriver()
+
+		binary, selected, err := harness.SelectBinary(driver, "codex,opencode")
+		Expect(binary).To(BeEmpty())
+		Expect(selected).To(BeFalse())
+		Expect(err).NotTo(HaveOccurred())
+		Expect(filepath.Join(root, "resolved")).NotTo(BeAnExistingFile())
+
+		_, selected, err = harness.SelectBinary(driver, "codex,claude")
+		Expect(selected).To(BeTrue())
+		Expect(err).To(MatchError(ContainSubstring("KLAUDIUSH_HARNESS_CLAUDE")))
+		Expect(filepath.Join(root, "resolved")).To(BeAnExistingFile())
+	})
+
+	It("selects every harness when the selection is empty", func() {
+		want := writeScript(filepath.Join(root, "bin"), "claude", "true")
+		setPath(filepath.Join(root, "bin"))
+
+		binary, selected, err := harness.SelectBinary(harness.NewClaudeDriver(), "")
+		Expect(binary).To(Equal(want))
+		Expect(selected).To(BeTrue())
+		Expect(err).NotTo(HaveOccurred())
+	})
+
 	It("reports a resolution error from the drivers", func() {
 		GinkgoT().Setenv("KLAUDIUSH_HARNESS_CLAUDE", filepath.Join(root, "dangling"))
 		GinkgoT().Setenv("KLAUDIUSH_HARNESS_CODEX", filepath.Join(root, "dangling"))

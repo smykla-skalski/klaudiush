@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"time"
 
@@ -115,27 +114,26 @@ var _ = Describe("Live harness enforcement", Ordered, ContinueOnFailure, Label("
 
 			BeforeAll(func() {
 				entry := report.Harness(driver.Name(), driver.Provider())
-				entry.Binary = driver.Binary()
 
-				if only := os.Getenv(envOnly); only != "" &&
-					!slices.Contains(strings.Split(only, ","), driver.Name()) {
+				binary, selected, err := harness.SelectBinary(driver, os.Getenv(envOnly))
+				entry.Binary = binary
+
+				if !selected {
 					entry.Reason = "not selected by " + envOnly
 					Skip(entry.Reason)
 				}
 
-				if err := driver.BinaryError(); err != nil {
+				if err != nil {
 					entry.Reason = err.Error()
 					Fail(entry.Reason)
 				}
 
-				if driver.Binary() == "" {
+				if binary == "" {
 					entry.Reason = driver.Name() + " is not installed"
 					Skip(entry.Reason)
 				}
 
-				var err error
-
-				version, err = probeVersion(runner.Base, driver.Binary())
+				version, err = probeVersion(runner.Base, binary)
 				if err != nil {
 					entry.Reason = err.Error()
 					Skip(entry.Reason)

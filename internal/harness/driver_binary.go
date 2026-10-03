@@ -106,6 +106,17 @@ func ResolveBinary(ctx context.Context, envVar, name string) (string, error) {
 	return "", nil
 }
 
+// SelectBinary resolves the driver's binary only when only (a
+// comma-separated list of harness names, "" for all) selects it, so an
+// excluded harness never runs a version manager.
+func SelectBinary(driver Driver, only string) (binary string, selected bool, err error) {
+	if only != "" && !slices.Contains(strings.Split(only, ","), driver.Name()) {
+		return "", false, nil
+	}
+
+	return driver.Binary(), true, driver.BinaryError()
+}
+
 func resolveOverride(ctx context.Context, override string) (string, error) {
 	abs, err := filepath.Abs(override)
 	if err != nil {
