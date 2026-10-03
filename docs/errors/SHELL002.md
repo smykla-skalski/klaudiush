@@ -2,7 +2,7 @@
 
 ## Error
 
-Klaudiush cannot see what the command finally runs. The command does not parse as bash, runs another command through more layers of launchers, scripts, aliases or functions than klaudiush follows, runs a script klaudiush cannot read, runs a git subcommand that is neither built in, installed, nor an alias klaudiush can see, or takes eval's command line or a git or gh command word from a variable or command output klaudiush cannot resolve.
+Klaudiush cannot see what the command finally runs. The command does not parse as bash, runs another command through more layers of launchers, scripts, aliases or functions than klaudiush follows, runs a script klaudiush cannot read, runs a git subcommand that is neither built in, installed, nor an alias klaudiush can see, or takes eval's command line, a git or gh command word, or a container `--entrypoint` from a variable or command output klaudiush cannot resolve.
 
 ## Why this matters
 
@@ -35,6 +35,7 @@ Each finding names the operation klaudiush could not see through, the programs t
 | git or gh word from command output    | `git $(echo commit)`, `git c?mmit`              | Write the subcommand literally                            |
 | eval of a variable or command output  | `eval "$LINE"`, `eval "$(tool init)"`           | Run the commands directly instead of through eval         |
 | eval of a known tool's shell setup    | `eval "$(mise activate bash)"`                  | Run the command through the tool (see below)              |
+| Container entrypoint not literal      | `docker run --entrypoint "$EP" img push`        | Write the entrypoint, options and image literally         |
 
 When eval runs the output of one command substitution whose program is a literal name from the list below, with arguments that make it print shell setup, the finding names the tool and a form klaudiush can inspect. The block stays. A computed program name (`$TOOL`, `$(which mise)`) or argument, a name that only contains a known one (`evil-mise`), or a tool or `eval` redefined as an alias or function on the same line gets the generic repair. A literal path is named by its last part (`/opt/homebrew/bin/brew` is `brew`); this changes only the text.
 
