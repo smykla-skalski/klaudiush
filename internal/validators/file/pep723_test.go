@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
+	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -99,6 +100,11 @@ var _ = Describe("AICommentValidator PEP 723 metadata", func() {
 			"# ///\n# a = 1\n# ///\n", 1, 2, 3),
 		Entry("block inside a docstring is not a comment", "/repo/fetch.py",
 			"DOC = \"\"\"\n# /// script\n# a = 1\n# ///\n\"\"\"\n"),
+		Entry("extension-less uv script", "/repo/bin/fetch", pep723Script),
+		Entry("comment in an extension-less uv script is flagged", "/repo/bin/fetch",
+			pep723Script+"# fetch the page\n", 7),
+		Entry("extension-less file without a python shebang", "/repo/bin/fetch",
+			"#!/bin/sh\n# /// script\n# a = 1\n# ///\n", 2, 3, 4),
 		Entry("only python files are exempt", "/repo/main.rb",
 			"# /// script\n# a = 1\n# ///\n", 1, 2, 3),
 	)
@@ -142,6 +148,23 @@ var _ = Describe("AICommentValidator PEP 723 metadata", func() {
 			Entry("block-like lines in an unterminated block", "# /// script\nimport sys\n",
 				"import sys", "# dependencies = []\nimport sys", 1),
 		)
+
+		It("exempts a line edited deep inside a long block", func() {
+			ctx.ToolInput.FilePath = writeSource("# /// script\n# dependencies = [\n" +
+				strings.Repeat("#   \"pkg\",\n", 300) + "#   \"target\",\n# ]\n# ///\nimport sys\n")
+			ctx.ToolInput.OldString = "#   \"target\","
+			ctx.ToolInput.NewString = "#   \"target2\","
+			Expect(flaggedLines(sv.Validate(context.Background(), ctx))).To(BeEmpty())
+		})
+
+		It("exempts a line edited inside an extension-less uv script", func() {
+			path := filepath.Join(dir, "fetch")
+			Expect(os.WriteFile(path, []byte(pep723Script), 0o600)).To(Succeed())
+			ctx.ToolInput.FilePath = path
+			ctx.ToolInput.OldString = "# dependencies = [\"requests>=2.31\"]"
+			ctx.ToolInput.NewString = "# dependencies = [\"requests>=2.32\"]"
+			Expect(flaggedLines(sv.Validate(context.Background(), ctx))).To(BeEmpty())
+		})
 
 		It("exempts a block in a patch-style Edit with no old_string", func() {
 			ctx.ToolInput.FilePath = writeSource("import sys\n")

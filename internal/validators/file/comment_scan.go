@@ -560,8 +560,9 @@ func newCommentScan(hookCtx *hook.Context) commentScan {
 	return scan
 }
 
-// pythonShebang matches a first line that runs the file with Python.
-var pythonShebang = regexp.MustCompile(`^#!.*\bpython[0-9.]*(\s|$)`)
+// pythonShebang matches a first line that runs the file with Python,
+// directly or as a uv script.
+var pythonShebang = regexp.MustCompile(`^#!.*(\bpython[0-9.]*|\buv\s+run\s.*--script)(\s|$)`)
 
 // shebangSyntax returns the Python syntax when text starts with a Python
 // shebang, for scripts without an extension, and the default syntax otherwise.
@@ -628,7 +629,7 @@ func editLeads(content, old string, syntax langSyntax, all bool) []editLead {
 		pos := from + rel
 		li := sort.SearchInts(lineOffsets, pos+1) - 1
 		from = pos + len(old)
-		first := max(0, li-maxDocContextLines)
+		first := commentRunStart(lines, lineStates, max(0, li-maxDocContextLines))
 
 		leads = append(leads, editLead{
 			state:       lineStates[li],
@@ -644,6 +645,18 @@ func editLeads(content, old string, syntax langSyntax, all bool) []editLead {
 	}
 
 	return leads
+}
+
+// commentRunStart moves first back to the start of the run of top-level
+// "#" lines it sits in, so a PEP 723 block longer than the lookback above an
+// Edit is still seen from its opening line.
+func commentRunStart(lines []string, states []stringState, first int) int {
+	for first > 0 && strings.HasPrefix(lines[first], "#") &&
+		states[first-1] == stateCode && strings.HasPrefix(lines[first-1], "#") {
+		first--
+	}
+
+	return first
 }
 
 // firstLines returns the first n lines of s.
