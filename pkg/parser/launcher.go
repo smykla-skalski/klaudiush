@@ -77,7 +77,7 @@ var launchers = map[string]launcher{
 		scriptFlags: strings.Fields("-S --split-string"),
 		assignments: true,
 	},
-	"exec": {valueFlags: strings.Fields("-a")},
+	execBuiltin: {valueFlags: strings.Fields("-a")},
 	"flock": {
 		valueFlags:  strings.Fields("-w -E --timeout --conflict-exit-code"),
 		scriptFlags: strings.Fields("-c --command"),
@@ -283,7 +283,7 @@ func launchedBy(cmd Command) (launch, bool) {
 	case cmd.Name == evalBuiltin:
 		return launch{scripts: []string{strings.Join(cmd.Args, " ")}}, true
 	case cmd.Name == sourceBuiltin || cmd.Name == dotBuiltin:
-		return sourceLaunch(cmd), true
+		return launch{}, true
 	case cmd.Name == "find":
 		return launch{commands: findExecCommands(cmd)}, true
 	case cmd.Name == "trap":
@@ -786,17 +786,6 @@ func shellOperand(args []string) (operand string, isScript, ok bool) {
 	}
 
 	return "", false, false
-}
-
-// sourceLaunch returns the file source or . reads.
-func sourceLaunch(cmd Command) launch {
-	if len(cmd.Args) == 0 {
-		return launch{}
-	}
-
-	return launch{files: []scriptFile{{
-		path: cmd.Args[0], explicit: true, args: cmd.Args[1:], withArgs: len(cmd.Args) > 1,
-	}}}
 }
 
 // interpreterLaunch returns the source a language interpreter runs: inline
