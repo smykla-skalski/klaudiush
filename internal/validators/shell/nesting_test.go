@@ -75,7 +75,10 @@ var _ = Describe("NestingValidator", func() {
 		Expect(result.Message).NotTo(ContainSubstring("does not parse as shell"))
 		Expect(result.Findings).To(ConsistOf(SatisfyAll(
 			HaveField("Location", "line 1, column 46"),
-			HaveField("Message", ContainSubstring("is zsh syntax bash does not parse")),
+			HaveField(
+				"Message",
+				ContainSubstring("zsh syntax bash does not parse (parameter expansion flags)"),
+			),
 			HaveField("Required", "valid bash syntax"),
 			HaveField("Repair", ContainSubstring("Rewrite the command in bash syntax")),
 		)))
