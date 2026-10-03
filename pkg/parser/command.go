@@ -71,7 +71,9 @@ type Command struct {
 	// Dynamic reports that a word of the command comes from command output,
 	// arithmetic or an extended glob, which Args leave out or render
 	// partially: rm "$(echo dir)/f" has the argument "/f".
-	Dynamic bool
+	Dynamic         bool
+	SubstitutedArgs []bool
+	DirComputed     bool
 	// Vars are the variables as they stood when the command ran.
 	Vars *VarScope
 

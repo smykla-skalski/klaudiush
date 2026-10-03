@@ -19,7 +19,8 @@ type astWalker struct {
 	fileWrites []FileWrite
 	// dynamicWrites counts output redirects whose target name comes from
 	// command output, so it is unknown until the command runs.
-	dynamicWrites int
+	dynamicWrites    int
+	dynamicWriteLocs []Location
 	// parent is the walker of the script that runs this one. What it recorded
 	// earlier on the line (writes, git config) is in place when this runs.
 	parent     *astWalker
@@ -36,6 +37,7 @@ type astWalker struct {
 	assignments map[string]string
 	unknownVars map[string]bool
 	safeAssigns map[*syntax.Assign]bool
+	certain     map[*syntax.Stmt]certainty
 	loopCalls   map[*syntax.CallExpr]bool
 	inLoop      bool
 	outerLoop   bool
@@ -516,6 +518,7 @@ func (w *astWalker) extractCommand(call *syntax.CallExpr) {
 		Type:             CmdTypeSimple,
 		WorkingDirectory: w.currentDir,
 		DirUnknown:       w.dirUnknown,
+		DirComputed:      w.dirComputed,
 		Dynamic:          anyWordDynamic(call.Args),
 		Stdin:            w.stdinByCall[call],
 		StdinFile:        w.stdinFileByCall[call],
@@ -555,7 +558,7 @@ func (w *astWalker) recordCommand(cmd Command, depth int) {
 
 	cmd, nested := w.resolveProgram(cmd)
 	followed := cmd
-	cmd.Args = storedArgs(cmd)
+	cmd.Args, cmd.SubstitutedArgs = storedArgs(cmd)
 
 	w.defineAliases(cmd)
 
@@ -901,6 +904,9 @@ func collectRedirs(stmt *syntax.Stmt) redirInfo {
 			info.hasHeredoc = true
 		case syntax.RdrIn:
 			info.inputPath = argWord(redir.Word)
+			if wordDynamic(redir.Word) {
+				info.inputPath = substitutedInput
+			}
 		default:
 			// Other redirection operators are not relevant here.
 		}
@@ -915,12 +921,22 @@ func (w *astWalker) extractRedirect(stmt *syntax.Stmt) {
 		return
 	}
 
+	defer w.markCertainty(stmt, len(w.fileWrites))
+
 	info := collectRedirs(stmt)
 	w.dynamicWrites += info.dynamicWrites
 
 	// A redirect happens as its command starts, before any later command.
 	seq := w.state.nextSeq()
 	info.outputLoc.Seq, info.heredocLoc.Seq = seq, seq
+
+	if info.dynamicWrites > 0 {
+		w.dynamicWriteLocs = append(w.dynamicWriteLocs, Location{
+			Line:   stmt.Pos().Line(),
+			Column: stmt.Pos().Col(),
+			Seq:    seq,
+		})
+	}
 
 	// A heredoc always feeds the command's stdin, regardless of any output
 	// redirection on the same statement. Record it so validators can inspect

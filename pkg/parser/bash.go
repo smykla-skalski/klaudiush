@@ -3,6 +3,7 @@ package parser
 import (
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/cockroachdb/errors"
@@ -37,7 +38,8 @@ type ParseResult struct {
 	// DynamicVars names variables assigned a value from command output,
 	// arithmetic or an append, whose rendered value in Assignments is
 	// partial or stale.
-	DynamicVars map[string]bool
+	DynamicVars           map[string]bool
+	dynamicWriteLocations []Location
 }
 
 // BashParser parses Bash commands using mvdan.cc/sh.
@@ -105,6 +107,8 @@ func (p *BashParser) Parse(command string) (*ParseResult, error) {
 		MoreOpacities: walker.state.moreOpacities,
 		DynamicWrites: walker.dynamicWrites,
 		DynamicVars:   walker.state.dynamicVars,
+
+		dynamicWriteLocations: walker.dynamicWriteLocs,
 	}, nil
 }
 
@@ -254,6 +258,58 @@ func (r *ParseResult) GetFirstGitWorkingDir() string {
 // exist on disk yet when the PreToolUse hook runs.
 func (r *ParseResult) InlineFileContent(path, workDir string, before Location) (string, bool) {
 	return lastCapturedWrite(r.FileWrites, resolvePath(workDir, path), &before)
+}
+
+// FileWrittenBefore reports whether any write before the consumer at source
+// position "before" changes path, captured or not. When InlineFileContent
+// finds no exact content but this is true, the file on disk is not what the
+// consumer will read.
+func (r *ParseResult) FileWrittenBefore(path, workDir string, before Location) bool {
+	_, found, _ := lastWrite(r.FileWrites, resolvePath(workDir, path), &before)
+
+	return found
+}
+
+// WritesBefore returns the file writes that happen before source position
+// "before", for consumers that must compare targets themselves.
+func (r *ParseResult) WritesBefore(before Location) []FileWrite {
+	writes := make([]FileWrite, 0, len(r.FileWrites))
+
+	for _, fw := range r.FileWrites {
+		if locationBefore(fw.Location, before) {
+			writes = append(writes, fw)
+		}
+	}
+
+	return writes
+}
+
+// CommandsBefore returns the commands that run before source position
+// "before".
+func (r *ParseResult) CommandsBefore(before Location) []Command {
+	commands := make([]Command, 0, len(r.Commands))
+
+	for _, cmd := range r.Commands {
+		if locationBefore(cmd.Location, before) {
+			commands = append(commands, cmd)
+		}
+	}
+
+	return commands
+}
+
+// DynamicWritesBetween reports an output redirect, whose target name comes
+// from command output, that happens after "after" and before "before". A
+// zero "after" starts at the beginning of the line.
+func (r *ParseResult) DynamicWritesBetween(after, before Location) bool {
+	return slices.ContainsFunc(r.dynamicWriteLocations, func(loc Location) bool {
+		return (after == Location{} || locationBefore(after, loc)) && locationBefore(loc, before)
+	})
+}
+
+// Before reports whether l happens strictly before other.
+func (l Location) Before(other Location) bool {
+	return locationBefore(l, other)
 }
 
 // lastCapturedWrite returns what the writes leave in target, when the last of
