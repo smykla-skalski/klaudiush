@@ -1,6 +1,7 @@
 package parser_test
 
 import (
+	"github.com/cockroachdb/errors"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -25,6 +26,76 @@ var _ = Describe("BashParser", func() {
 				_, err := p.Parse("   \t\n")
 				Expect(err).To(MatchError(parser.ErrEmptyCommand))
 			})
+		})
+
+		Context("with zsh syntax", func() {
+			DescribeTable(
+				"reports the construct bash rejects",
+				func(command, construct string, possible bool) {
+					_, err := p.Parse(command)
+
+					var zshErr *parser.ZshSyntaxError
+					Expect(errors.As(err, &zshErr)).To(BeTrue(), "error: %v", err)
+					Expect(zshErr.Construct).To(Equal(construct))
+					Expect(zshErr.Possible).To(Equal(possible))
+					Expect(err).To(MatchError(parser.ErrParseFailed))
+				},
+				Entry("parameter expansion flags",
+					`typeset -A NUM; NUM[a]=1; list=a,b; for x in ${(s:,:)list}; do echo $x; done`,
+					"parameter expansion flags", false),
+				Entry("anonymous function", `() { git push }`, "anonymous functions", false),
+				Entry("=( process substitution", `diff =(git log) f`,
+					"`=(` process substitutions", false),
+				Entry("foreach loop", `foreach x (a b) echo $x; end`, "foreach loops", false),
+				Entry("glob qualifiers", `ls **/*.go(N)`, "glob qualifiers", false),
+				Entry("split modifier", `echo ${=x}`, "`${=var}` word splitting", false),
+				Entry("glob substitution", `echo ${~pat}`, "`${~var}` glob substitution", false),
+				Entry("array expansion", `echo ${^arr}`, "`${^var}` array expansion", false),
+				Entry("disown", `git push &|`, "`&|` and `&!` disowning", false),
+				Entry("glob qualifier before a disown marker", `ls *.go(N) &|`,
+					"glob qualifiers", false),
+				Entry("disown marker before a later glob qualifier", "git push &|\nls *.go(N)",
+					"`&|` and `&!` disowning", false),
+				Entry("zsh grammar accepts, nothing named", `{ echo a }`, "", false),
+				Entry("zsh construct before the bash error is not named",
+					`echo ${PWD:t}; { git push }`, "", false),
+				Entry("escaped paren is no glob qualifier",
+					`git commit -m fix\(scope\): x; { git push }`, "", false),
+				Entry("flags zsh itself rejects, still bash-unparseable", `echo ${(Y)x}`,
+					"parameter expansion flags", false),
+				Entry("short for loop", `for x (a b) git push`, "short for loops", true),
+				Entry("short for loop after another command",
+					`echo hi; for x (a b) echo $x`, "short for loops", true),
+				Entry("short for loop with two names", `for x y (a b c d) echo $x $y`,
+					"short for loops", true),
+				Entry("short for loop with a brace body", `for x (a b) { git push }`,
+					"short for loops", true),
+				Entry("broken short for loop, still only possible zsh",
+					`for x (a b) git push; echo "unclosed`, "short for loops", true),
+				Entry("for loop with braces", `for x in a b; { git push }`,
+					"for loops with braces", true),
+				Entry("broken for loop with braces, still only possible zsh",
+					`for x in a; { echo (`, "for loops with braces", true),
+			)
+
+			DescribeTable("keeps a command no shell parses a plain parse failure",
+				func(command string) {
+					_, err := p.Parse(command)
+
+					var zshErr *parser.ZshSyntaxError
+					Expect(errors.As(err, &zshErr)).To(BeFalse(), "error: %v", err)
+					Expect(err).To(MatchError(parser.ErrParseFailed))
+				},
+				Entry("unclosed subshell", `git commit -m "x" && (`),
+				Entry("for without a list", `for x y`),
+				Entry("for with a stray paren later", `for x in a; do echo (; done`),
+				Entry("word ending in for before a paren", `echo xfor (`),
+				Entry("foreach without end", `foreach x (a b) echo $x`),
+				Entry("broken command with a zsh construct before the break",
+					`echo ${(s:,:)list} && (`),
+				Entry("short for loop text inside quotes",
+					`git commit -m "fix for bar (x)" && (`),
+			)
 		})
 
 		Context("with simple commands", func() {

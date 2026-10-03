@@ -34,9 +34,10 @@ func NewNestingValidator(log logger.Logger) *NestingValidator {
 const (
 	locationCommand = "command"
 	originSeparator = " > "
-	parseFailedText = "Command does not parse as shell, so what it runs cannot be inspected"
-	truncatedText   = "Command cannot be fully inspected, so what it runs is unknown"
-	kibibyte        = 1 << 10
+	parseFailedText = "Command does not parse as bash, so what it runs cannot be inspected " +
+		"(klaudiush parses commands as bash, not zsh)"
+	truncatedText = "Command cannot be fully inspected, so what it runs is unknown"
+	kibibyte      = 1 << 10
 )
 
 // parsePosition matches the line:column prefix of a shell syntax error.
@@ -46,7 +47,12 @@ var parsePosition = regexp.MustCompile(`^(\d+):(\d+):`)
 func (*NestingValidator) Validate(_ context.Context, hookCtx *hook.Context) *validator.Result {
 	parsed, err := hookCtx.ParsedCommand()
 
+	var zshErr *parser.ZshSyntaxError
+
 	switch {
+	case errors.As(err, &zshErr):
+		return validator.FailWithRef(validator.RefShellNesting, zshSummary(zshErr)).
+			AddFinding(zshSyntaxFinding(err, zshErr))
 	case errors.Is(err, parser.ErrParseFailed):
 		return validator.FailWithRef(validator.RefShellNesting, parseFailedText).
 			AddFinding(parseFailedFinding(err))
@@ -81,10 +87,52 @@ func parseFailedFinding(err error) validator.Finding {
 	return validator.Finding{
 		Reference: validator.RefShellNesting,
 		Location:  location,
-		Message:   "command does not parse as shell",
-		Required:  "valid shell syntax",
-		Repair:    "Fix the shell syntax at that position (unclosed quote, bracket or heredoc)",
+		Message:   "command does not parse as bash",
+		Required:  "valid bash syntax",
+		Repair: "If the syntax at that position is broken (unclosed quote, bracket or " +
+			"heredoc), fix it. Commands are parsed as bash, not zsh, so rewrite zsh syntax in bash",
 	}
+}
+
+// zshSummary names the zsh construct, so zsh syntax is not reported as
+// broken syntax.
+func zshSummary(zshErr *parser.ZshSyntaxError) string {
+	switch {
+	case zshErr.Possible:
+		return "Command does not parse as bash and uses zsh syntax (" + zshErr.Construct +
+			") klaudiush cannot inspect"
+	case zshErr.Construct == "":
+		return "Command does not parse as bash and may use zsh syntax, " +
+			"so klaudiush cannot inspect it"
+	default:
+		return "Command uses zsh syntax (" + zshErr.Construct + ") that bash does not parse, " +
+			"so klaudiush cannot inspect it"
+	}
+}
+
+func zshSyntaxFinding(err error, zshErr *parser.ZshSyntaxError) validator.Finding {
+	f := parseFailedFinding(err)
+
+	if zshErr.Possible {
+		f.Message = "command does not parse as bash; " + zshErr.Construct +
+			" are zsh syntax klaudiush cannot inspect"
+		f.Repair = "Rewrite " + zshErr.Construct + " in bash, and fix the syntax at " +
+			"that position if it is broken; klaudiush parses every command as bash"
+
+		return f
+	}
+
+	if zshErr.Construct == "" {
+		f.Message = "command does not parse as bash, though the zsh grammar accepts it"
+	} else {
+		f.Message = "zsh syntax bash does not parse (" + zshErr.Construct + "), and " +
+			"klaudiush inspects commands as bash"
+	}
+
+	f.Repair = "Rewrite the command in bash syntax, fixing any syntax error at that " +
+		"position; klaudiush parses every command as bash, whatever the login shell"
+
+	return f
 }
 
 // truncatedSummary names the single cause, or counts several.
@@ -116,7 +164,7 @@ func causeSummary(cause parser.OpacityCause) string {
 	case parser.OpacityUnreadableScript:
 		return "it runs a script klaudiush cannot read"
 	case parser.OpacityScriptSyntax:
-		return "it runs a script that does not parse as shell"
+		return "it runs a script that does not parse as bash"
 	case parser.OpacityUnresolvedProgram:
 		return "it runs a git subcommand klaudiush cannot resolve"
 	case parser.OpacityUnresolvedArgs:
@@ -166,9 +214,10 @@ func opacityFinding(o parser.Opacity) validator.Finding {
 		)
 		f.Repair = unreadableScriptRepair(o.Detail)
 	case parser.OpacityScriptSyntax:
-		f.Message = o.Operation + " does not parse as shell, so what follows the error is unknown"
-		f.Required = "valid shell syntax in every nested script"
-		f.Repair = "Fix the syntax of the nested script, or run its commands directly"
+		f.Message = o.Operation + " does not parse as bash, so what follows the error is unknown"
+		f.Required = "valid bash syntax in every nested script"
+		f.Repair = "Fix the syntax of the nested script if it is broken, rewrite zsh syntax " +
+			"in it in bash (scripts are parsed as bash, not zsh), or run its commands directly"
 	case parser.OpacityUnresolvedProgram:
 		f.Message = o.Operation + " is not a git builtin, an installed git command " +
 			"or an alias klaudiush can see"

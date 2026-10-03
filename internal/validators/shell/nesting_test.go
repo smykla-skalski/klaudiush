@@ -57,10 +57,80 @@ var _ = Describe("NestingValidator", func() {
 	It("blocks a command that does not parse and says where", func() {
 		result := blocked(`git commit -m "x" && (`)
 
-		Expect(result.Message).To(ContainSubstring("does not parse as shell"))
+		Expect(result.Message).To(ContainSubstring("does not parse as bash"))
+		Expect(result.Message).To(ContainSubstring("parses commands as bash, not zsh"))
 		Expect(result.Findings).To(ConsistOf(SatisfyAll(
 			HaveField("Location", MatchRegexp(`^line 1, column \d+$`)),
-			HaveField("Repair", ContainSubstring("Fix the shell syntax")),
+			HaveField("Repair", ContainSubstring("fix it")),
+			HaveField("Repair", ContainSubstring("rewrite zsh syntax in bash")),
+		)))
+	})
+
+	It("names zsh syntax instead of calling it broken shell", func() {
+		result := blocked(
+			`typeset -A NUM; NUM[a]=1; list=a,b; for x in ${(s:,:)list}; do echo $x; done`,
+		)
+
+		Expect(result.Message).To(ContainSubstring("zsh syntax (parameter expansion flags)"))
+		Expect(result.Message).NotTo(ContainSubstring("does not parse as shell"))
+		Expect(result.Findings).To(ConsistOf(SatisfyAll(
+			HaveField("Location", "line 1, column 46"),
+			HaveField(
+				"Message",
+				ContainSubstring("zsh syntax bash does not parse (parameter expansion flags)"),
+			),
+			HaveField("Required", "valid bash syntax"),
+			HaveField("Repair", ContainSubstring("Rewrite the command in bash syntax")),
+		)))
+	})
+
+	It("reports zsh syntax bash cannot name without a construct", func() {
+		result := blocked(`{ git push }`)
+
+		Expect(result.Message).To(
+			Equal(
+				"Command does not parse as bash and may use zsh syntax, so klaudiush cannot inspect it",
+			),
+		)
+	})
+
+	It("does not call a zsh short form it cannot recognize broken shell", func() {
+		result := blocked(`if [[ -n x ]] { git push }`)
+
+		Expect(result.Message).To(ContainSubstring("parses commands as bash, not zsh"))
+		Expect(result.Message).NotTo(ContainSubstring("does not parse as shell"))
+	})
+
+	It("points a broken command with zsh syntax at the real break", func() {
+		result := blocked(`echo ${(s:,:)list} && (`)
+
+		Expect(result.Message).To(ContainSubstring("does not parse as bash"))
+		Expect(result.Findings).To(ConsistOf(
+			HaveField("Location", "line 1, column 23"),
+		))
+	})
+
+	It("points a broken command with a glob qualifier at the real break", func() {
+		result := blocked(`ls *.go(N) && (`)
+
+		Expect(result.Findings).To(ConsistOf(
+			HaveField("Location", "line 1, column 15"),
+		))
+	})
+
+	It("hedges a zsh loop form the zsh grammar does not know", func() {
+		result := blocked(`for x (a b) git push`)
+
+		Expect(result.Message).To(Equal(
+			"Command does not parse as bash and uses zsh syntax (short for loops) " +
+				"klaudiush cannot inspect",
+		))
+		Expect(result.Findings).To(ConsistOf(SatisfyAll(
+			HaveField("Location", MatchRegexp(`^line 1, column \d+$`)),
+			HaveField("Message", ContainSubstring("short for loops are zsh syntax")),
+			HaveField("Repair", ContainSubstring(
+				"Rewrite short for loops in bash, and fix the syntax at that position if it is broken",
+			)),
 		)))
 	})
 
@@ -99,9 +169,9 @@ var _ = Describe("NestingValidator", func() {
 		),
 		Entry("a nested script that does not parse",
 			`env bash -c 'git status && ('`,
-			"runs a script that does not parse as shell",
+			"runs a script that does not parse as bash",
 			"via env > bash",
-			"inline script does not parse as shell",
+			"inline script does not parse as bash",
 			"Fix the syntax of the nested script",
 		),
 		Entry("an unknown git subcommand",

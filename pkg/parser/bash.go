@@ -75,7 +75,7 @@ func (p *BashParser) Parse(command string) (*ParseResult, error) {
 	// Parse the command into an AST
 	file, err := p.parser.Parse(strings.NewReader(command), "")
 	if err != nil {
-		return nil, errors.Wrap(ErrParseFailed, err.Error())
+		return nil, parseFailure(command, err)
 	}
 
 	// Walk the AST to extract commands and file operations
