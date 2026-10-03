@@ -106,8 +106,7 @@ type parseState struct {
 	// the call's seq.
 	evalSetups map[int]string
 
-	namesUnknown  bool
-	startupWalked map[string]bool
+	namesUnknown bool
 }
 
 // spend takes one unit of work, reporting false once the budget is gone.
@@ -506,6 +505,7 @@ func (w *astWalker) extractCommand(call *syntax.CallExpr) {
 		Stdin:            w.stdinByCall[call],
 		StdinFile:        w.stdinFileByCall[call],
 		startup:          prefixStartup(call),
+		dynamicWords:     dynamicArgs(call.Args[1:]),
 	}, w.depth)
 }
 
@@ -557,7 +557,7 @@ func (w *astWalker) recordCommand(cmd Command, depth int) {
 	l.scripts = append(l.scripts, w.gitEnvScripts(cmd)...)
 	l.files = append(l.files, w.pathScripts(cmd, l)...)
 	nested = append(nested, w.definitionScripts(followed)...)
-	startup := w.startupScripts(cmd)
+	startup := w.startupScripts(cmd, followed.Args)
 
 	if l.empty() && len(nested) == 0 && len(startup) == 0 {
 		return

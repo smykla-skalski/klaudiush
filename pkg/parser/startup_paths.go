@@ -11,6 +11,31 @@ import (
 // would otherwise read from its own process.
 var movedDir = nameSet("PWD OLDPWD")
 
+// RCFileOption is the Opacity.Operation of a startup file named by bash
+// --rcfile or --init-file, which takes a path rather than a variable.
+const RCFileOption = rcfileLabel
+
+// dynamicArgs returns the rendered arguments whose words take part of their
+// value from command output, a process substitution or arithmetic, so an
+// env operand is judged by its own word rather than the whole command.
+func dynamicArgs(words []*syntax.Word) map[string]bool {
+	var args map[string]bool
+
+	for _, word := range words {
+		if !wordDynamic(word) {
+			continue
+		}
+
+		if args == nil {
+			args = make(map[string]bool)
+		}
+
+		args[argWord(word)] = true
+	}
+
+	return args
+}
+
 // setBuiltin turns on keyword mode with -k or with setOption keyword.
 const setBuiltin = "set"
 

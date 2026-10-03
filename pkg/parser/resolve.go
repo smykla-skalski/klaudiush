@@ -774,19 +774,10 @@ func (w *astWalker) follow(cmd Command, l launch, depth int, startup []startupSc
 }
 
 // walkStartup records the commands of the startup files a program's own
-// shells read, each file once per parse.
+// shells read. Each run is walked on its own, since the directory and
+// variables it sees may differ; the work budget bounds repetition.
 func (w *astWalker) walkStartup(cmd Command, startup []startupScript, depth int) {
 	for _, script := range startup {
-		seen := script.key + "\x00" + script.text
-		if w.state.startupWalked[seen] {
-			continue
-		}
-
-		if w.state.startupWalked == nil {
-			w.state.startupWalked = make(map[string]bool)
-		}
-
-		w.state.startupWalked[seen] = true
 		w.walkScript("", cmd, depth, scriptWalk{prelude: []startupScript{script}})
 	}
 }

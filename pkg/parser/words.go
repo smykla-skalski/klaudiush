@@ -487,6 +487,7 @@ func (w *astWalker) forgetWritten(cmd Command) {
 
 	if declWriters[cmd.Name] {
 		w.forgetDeclared(cmd)
+		w.caseChanged = false
 
 		return
 	}

@@ -111,7 +111,14 @@ func withEnvOperands(child, parent Command, operands []string) Command {
 				set(startupVar, startupValue{dynamic: true, anyName: true})
 			}
 		case ok && startupVars[name]:
-			set(name, startupValue{value: value, dynamic: parent.Dynamic || marked(value)})
+			set(
+				name,
+				startupValue{
+					value: value,
+					dynamic: marked(value) ||
+						parent.dynamicWords[strings.ReplaceAll(arg, unresolvedWord, "")],
+				},
+			)
 		}
 	}
 
@@ -132,7 +139,7 @@ func unknownOperand(name string, hasValue bool, arg string) bool {
 // BASH_ENV for any program that may start bash, ENV for an interactive shell
 // and the --rcfile of bash. A file whose path or content cannot be known is
 // recorded as opaque instead.
-func (w *astWalker) startupScripts(cmd Command) []startupScript {
+func (w *astWalker) startupScripts(cmd Command, args []string) []startupScript {
 	_, isLauncher := launchers[cmd.Name]
 	if shellBuiltins[cmd.Name] || dataCommands[cmd.Name] || isLauncher ||
 		w.defined(cmd.Invoked) {
@@ -154,26 +161,50 @@ func (w *astWalker) startupScripts(cmd Command) []startupScript {
 		return scripts
 	}
 
-	if interactiveShell(cmd.Args) {
-		v, set = w.startupSetting(cmd, envVar)
-		add(envVar, v, set)
+	if !interactiveShell(args) {
+		return scripts
 	}
 
-	for _, rcfile := range rcfiles(cmd.Args) {
+	v, set = w.startupSetting(cmd, envVar)
+	add(envVar, v, set)
+
+	if !bashShells[cmd.Name] {
+		return scripts
+	}
+
+	for _, rcfile := range rcfiles(args) {
 		add(rcfileLabel, startupValue{value: rcfile, dynamic: marked(rcfile)}, true)
 	}
 
 	return scripts
 }
 
-// rcfiles returns the files bash --rcfile and --init-file name.
+// bashShells read --rcfile and --init-file.
+var bashShells = nameSet("bash rbash")
+
+// rcfiles returns the files bash --rcfile and --init-file name among its
+// options. Anything after the first operand, which -c takes as the command,
+// is a positional parameter.
 func rcfiles(args []string) []string {
 	var files []string
 
-	for i := 0; i+1 < len(args); i++ {
-		if args[i] == rcfileLabel || args[i] == "--init-file" {
-			files = append(files, args[i+1])
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+
+		switch {
+		case arg == endOfOptions:
+			return files
+		case arg == rcfileLabel || arg == "--init-file":
+			if i+1 < len(args) {
+				files = append(files, args[i+1])
+			}
+
 			i++
+		case slices.Contains(shellValueFlags, arg):
+			i++
+		case strings.HasPrefix(arg, "-"), strings.HasPrefix(arg, "+"):
+		default:
+			return files
 		}
 	}
 
@@ -492,12 +523,24 @@ func runsBefore(loc Location, end syntax.Pos) bool {
 // noteKeywordMode stops trusting names after set -k, which makes any
 // NAME=value argument of a later command an assignment for it.
 func (w *astWalker) noteKeywordMode(args []string) {
-	for i, arg := range args {
-		short := strings.HasPrefix(arg, "-") && !strings.HasPrefix(arg, "--") &&
-			strings.Contains(arg, "k")
-		long := arg == setOption && i+1 < len(args) && args[i+1] == "keyword"
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
 
-		if short || long {
+		switch {
+		case arg == endOfOptions || arg == "-" ||
+			(!strings.HasPrefix(arg, "-") && !strings.HasPrefix(arg, "+")):
+			return
+		case arg == setOption:
+			if i+1 < len(args) && args[i+1] == "keyword" {
+				w.distrustNames()
+
+				return
+			}
+
+			i++
+		case arg == "+o":
+			i++
+		case strings.HasPrefix(arg, "-") && strings.Contains(arg[1:], "k"):
 			w.distrustNames()
 
 			return

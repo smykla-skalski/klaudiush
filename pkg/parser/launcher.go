@@ -913,5 +913,6 @@ func childCommand(parent Command, name string, args []string) Command {
 		Stdin:            parent.Stdin,
 		StdinFile:        parent.StdinFile,
 		startup:          parent.startup,
+		dynamicWords:     parent.dynamicWords,
 	}
 }

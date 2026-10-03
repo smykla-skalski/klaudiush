@@ -299,10 +299,18 @@ var evalSetupRepairs = map[string]string{
 }
 
 func startupFileRepair(o parser.Opacity) string {
+	unknownValue := o.Detail == parser.DetailStartupValue ||
+		o.Detail == parser.DetailScriptVariable || o.Detail == parser.DetailStartupExpansion
+
+	switch {
+	case unknownValue && o.Operation == parser.RCFileOption:
+		return "Pass --rcfile a literal path of a readable file, or drop the option"
+	case unknownValue:
+		return "Assign " + o.Operation + " a literal file path, or an empty value, " +
+			"earlier on the same line before starting the shell"
+	}
+
 	switch o.Detail {
-	case parser.DetailStartupValue, parser.DetailScriptVariable, parser.DetailStartupExpansion:
-		return "Set " + o.Operation + " to a literal file path, or unset it, before " +
-			"starting the shell"
 	case parser.DetailScriptDirectory:
 		return "Use an absolute path for " + o.Operation + ", or cd to a literal directory first"
 	case parser.DetailScriptWritten:

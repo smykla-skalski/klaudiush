@@ -29,6 +29,9 @@ var _ = Describe("Shell startup files", func() {
 			"/abs/benign.sh":   "echo hi",
 			"script.sh":        "true",
 			"/abs/runs-env.sh": "BASH_ENV=/abs/x.sh bash -c true",
+			"/abs/rel.sh":      "bash ./run.sh",
+			"/safe/run.sh":     "true",
+			"/evil/run.sh":     payload,
 		},
 		opaque: map[string]bool{"/opaque.sh": true},
 	}
@@ -85,6 +88,10 @@ var _ = Describe("Shell startup files", func() {
 		Entry("bash --rcfile", `bash --rcfile /abs/x.sh -i -c true`),
 		Entry("bash --init-file", `bash --init-file /abs/x.sh -i`),
 		Entry("relative path for a program", `BASH_ENV=./x.sh git commit -m x`),
+		Entry("env operand beside a dynamic one",
+			`env FOO=$(id) BASH_ENV=/abs/x.sh bash -c true`),
+		Entry("literal export after declare -u as a command",
+			`builtin declare -u NAME=x; export BASH_ENV=/abs/x.sh; bash -c true`),
 		Entry("shell inside a substitution", `X=$(BASH_ENV=/abs/x.sh bash -c true)`),
 		Entry("inherited by a nested shell", `export BASH_ENV=/abs/x.sh; bash -c 'bash -c true'`),
 		Entry("function the startup file defines", `BASH_ENV=/abs/fn.sh bash -c 'git status'`),
@@ -119,11 +126,18 @@ var _ = Describe("Shell startup files", func() {
 		)))
 	})
 
-	It("reads a startup file once for programs that start shells themselves", func() {
+	It("reads a startup file again for each program that starts shells itself", func() {
 		result := parse(`export BASH_ENV=/abs/x.sh; git status; git log; make`)
 
 		Expect(result.Truncated).To(BeFalse())
-		Expect(result.GetCommands("git")).To(HaveLen(3))
+		Expect(result.GetCommands("git")).To(HaveLen(5))
+	})
+
+	It("reads a startup file in the directory of each run", func() {
+		result := parse(`export BASH_ENV=/abs/rel.sh; cd /safe; make; cd /evil; make`)
+
+		Expect(result.Truncated).To(BeFalse())
+		Expect(pushed(result)).To(BeTrue())
 	})
 
 	DescribeTable("fails closed on a startup file it cannot see",
@@ -230,6 +244,8 @@ var _ = Describe("Shell startup files", func() {
 			"ENV", parser.DetailStartupValue),
 		Entry("unknown --rcfile", `bash --rcfile "$RC" -i -c true`,
 			"--rcfile", parser.DetailScriptVariable),
+		Entry("--rcfile from command output", `bash --rcfile "$(mktemp)" -i -c true`,
+			"--rcfile", parser.DetailStartupValue),
 		Entry("inside a script", `bash -c 'BASH_ENV=$(mktemp) bash -c true'`,
 			"BASH_ENV", parser.DetailStartupValue),
 	)
@@ -260,6 +276,12 @@ var _ = Describe("Shell startup files", func() {
 		Entry("program after computed env operands", `env $(cat .env) npm start`),
 		Entry("literal env operand from command output", `env FOO=$(id -u) bash -c true`),
 		Entry("set without keyword mode", `set -euo pipefail; bash -c true`),
+		Entry("keyword flag as a positional parameter", `set -- -k; bash -c true BASH_ENV=/x`),
+		Entry("keyword turned off", `set +o keyword; bash -c true BASH_ENV=/x`),
+		Entry("--rcfile without -i", `bash --rcfile /opaque.sh -c true`),
+		Entry("--rcfile for a shell other than bash", `zsh -i --rcfile /opaque.sh -c true`),
+		Entry("--rcfile after the command", `bash -i -c true --rcfile /opaque.sh`),
+		Entry("--rcfile after --", `bash -i -- --rcfile /opaque.sh`),
 		Entry("declare -l with a literal name", `declare -l lower=X; ./build.sh`),
 		Entry("declare -u as a command", `builtin declare -u NAME=x; bash script.sh`),
 		Entry("loop with literal writes", `for i in 1 2; do bash -c true; export N=$i; done`),
