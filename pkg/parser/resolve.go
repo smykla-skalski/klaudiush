@@ -45,10 +45,10 @@ var (
 	)
 	// configParameter matches one 'key'='value' pair in GIT_CONFIG_PARAMETERS.
 	configParameter = regexp.MustCompile(`'([^'=]+)'?=?'([^']*)'`)
-	// lookupCommands print the program named by their last operand. echo,
+	// lookupCommands print the path of the one program they name. echo,
 	// printf and command without -v print any text, so their output is
 	// unknown.
-	lookupCommands = nameSet("readlink realpath type which whereis")
+	lookupCommands = nameSet("readlink realpath which")
 )
 
 // newAstWalker returns a walker ready to record commands.
@@ -152,7 +152,7 @@ func commandWordParts(parts []syntax.WordPart) string {
 		switch p := part.(type) {
 		case *syntax.CmdSubst:
 			b.WriteString(substitutedProgram(p))
-		case *syntax.ExtGlob, *syntax.ProcSubst:
+		case *syntax.ExtGlob, *syntax.ProcSubst, *syntax.ArithmExp:
 			b.WriteString(unresolvedProgram)
 		case *syntax.DblQuoted:
 			b.WriteString(commandWordParts(p.Parts))
@@ -208,18 +208,48 @@ func substitutedProgram(sub *syntax.CmdSubst) string {
 		return unresolvedProgram
 	}
 
-	name, operand := commandName(args[0]), args[len(args)-1]
-
-	switch {
-	case name == gitProgram && slices.Contains(args[1:], "--exec-path"):
+	name := commandName(args[0])
+	if name == gitProgram && slices.Contains(args[1:], "--exec-path") {
 		return "/git-core"
-	case strings.HasPrefix(operand, "-"):
+	}
+
+	flags, operands := splitLookup(args[1:])
+	if len(operands) != 1 || !lookupFlags(name, flags) {
 		return unresolvedProgram
-	case lookupCommands[name],
-		name == "command" && (slices.Contains(args[1:], "-v") || slices.Contains(args[1:], "-V")):
-		return operand
+	}
+
+	return operands[0]
+}
+
+// splitLookup separates a lookup's flags from its operands.
+func splitLookup(args []string) (flags, operands []string) {
+	for i, arg := range args {
+		if arg == endOfOptions {
+			return flags, append(operands, args[i+1:]...)
+		}
+
+		if strings.HasPrefix(arg, "-") {
+			flags = append(flags, arg)
+		} else {
+			operands = append(operands, arg)
+		}
+	}
+
+	return flags, operands
+}
+
+// lookupFlags reports whether name with flags prints only the path of the
+// program it names: command and type print other text without -v or -p.
+func lookupFlags(name string, flags []string) bool {
+	switch name {
+	case "command":
+		return slices.Contains(flags, "-v")
+	case "type":
+		return slices.ContainsFunc(flags, func(f string) bool {
+			return f == "-p" || f == "-P"
+		})
 	default:
-		return unresolvedProgram
+		return lookupCommands[name]
 	}
 }
 

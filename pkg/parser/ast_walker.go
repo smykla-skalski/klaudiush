@@ -127,6 +127,8 @@ func (w *astWalker) visit(node syntax.Node) bool {
 		return false
 	case *syntax.DeclClause:
 		w.extractDecl(n)
+	case *syntax.ParamExp:
+		w.forgetAssigned(n)
 	case *syntax.ForClause:
 		if iter, ok := n.Loop.(*syntax.WordIter); ok {
 			w.forget(iter.Name.Value)
@@ -683,6 +685,12 @@ func (w *astWalker) extractDecl(decl *syntax.DeclClause) {
 
 		w.noteDynamic(assign)
 
+		if elementAssign(assign) {
+			w.forget(assign.Name.Value)
+
+			continue
+		}
+
 		if assign.Value != nil && !assign.Append {
 			w.assign(assign.Name.Value, wordToString(assign.Value))
 		}
@@ -715,6 +723,7 @@ func (w *astWalker) noteDynamic(assign *syntax.Assign) {
 
 // assign records a literal assignment.
 func (w *astWalker) assign(name, value string) {
+	w.distrustSplitting(name)
 	w.assignments[name] = value
 	w.scope = nil
 
@@ -993,8 +1002,14 @@ func (w *astWalker) extractAssigns(call *syntax.CallExpr) {
 			w.state.pathChanged = true
 		}
 
+		if elementAssign(assign) {
+			w.forget(assign.Name.Value)
+
+			continue
+		}
+
 		switch {
-		case assign.Value != nil:
+		case assign.Value != nil || assign.Array == nil:
 			w.assign(assign.Name.Value, wordToString(assign.Value))
 		case assign.Array != nil:
 			// An array is kept as its elements joined by spaces, which is what
