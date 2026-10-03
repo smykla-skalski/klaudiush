@@ -33,10 +33,7 @@ var AllowedLookups = [][]string{
 	{gitProgram, "rev-parse", "--show-toplevel"},
 }
 
-const (
-	goEnv      = "env"
-	setBuiltin = "set"
-)
+const goEnv = "env"
 
 // AllowedLookup reports whether argv is one of AllowedLookups.
 func AllowedLookup(argv []string) bool {
@@ -126,7 +123,7 @@ func (w *astWalker) lookupOutput(words []*syntax.Word) (string, bool) {
 // earlier on the line changes the environment, PATH, git or go, or the files
 // a lookup reads. Commands that launched this script are part of running it.
 func (w *astWalker) lookupUnchanged() bool {
-	if w.inLoop || w.dirUnknown || w.state.pathChanged || w.state.untrusted ||
+	if w.inLoop || w.dirUnknown || w.dirComputed || w.state.pathChanged || w.state.untrusted ||
 		w.defined(gitProgram) || w.defined("go") || w.lookupEnvChanged() {
 		return false
 	}

@@ -29,6 +29,7 @@ type scriptSourceText struct {
 	text    string
 	literal bool // interpreter code rather than shell
 	run     scriptRun
+	prelude []startupScript
 }
 
 // sourceKey identifies the state a script's text is followed in from cmd:
@@ -180,8 +181,12 @@ func writeParts(h hash.Hash, parts ...string) {
 // when literal.
 func (w *astWalker) walkSource(cmd Command, src scriptSourceText, depth int, key string) {
 	sw := scriptWalk{
-		literal: src.literal, label: scriptName(src.path), source: key,
-		run: src.run, file: !src.literal,
+		literal: src.literal,
+		label:   scriptName(src.path),
+		source:  key,
+		prelude: src.prelude,
+		run:     src.run,
+		file:    !src.literal,
 	}
 	text := src.text
 

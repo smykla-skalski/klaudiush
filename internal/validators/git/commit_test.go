@@ -1301,7 +1301,7 @@ Signed-off-by: Test User <test@klaudiu.sh>`
 			).To(ContainSubstring("doesn't follow conventional commits format"))
 		})
 
-		It("should warn when file does not exist", func() {
+		It("should block when file does not exist", func() {
 			ctx := &hook.Context{
 				EventType: hook.EventTypePreToolUse,
 				ToolName:  hook.ToolTypeBash,
@@ -1310,13 +1310,10 @@ Signed-off-by: Test User <test@klaudiu.sh>`
 				},
 			}
 
-			result := validator.Validate(context.Background(), ctx)
-			Expect(result.Passed).To(BeFalse())
-			Expect(result.ShouldBlock).To(BeFalse())
-			Expect(result.Message).To(ContainSubstring("Failed to read commit message"))
+			expectOpaqueMessage(validator.Validate(context.Background(), ctx), "does not exist")
 		})
 
-		It("should not warn when -F - has no stdin (message from editor)", func() {
+		It("should block -F - with no stdin it can see", func() {
 			ctx := &hook.Context{
 				EventType: hook.EventTypePreToolUse,
 				ToolName:  hook.ToolTypeBash,
@@ -1325,10 +1322,7 @@ Signed-off-by: Test User <test@klaudiu.sh>`
 				},
 			}
 
-			result := validator.Validate(context.Background(), ctx)
-			Expect(result.Passed).To(BeTrue())
-			Expect(result.ShouldBlock).To(BeFalse())
-			Expect(result.Message).ToNot(ContainSubstring("Failed to read commit message"))
+			expectOpaqueMessage(validator.Validate(context.Background(), ctx), "reads stdin")
 		})
 
 		It("should validate message from a heredoc fed to -F -", func() {
@@ -1437,9 +1431,7 @@ Signed-off-by: Test User <test@klaudiu.sh>`
 				},
 			}
 
-			result := validator.Validate(context.Background(), ctx)
-			Expect(result.Passed).To(BeTrue())
-			Expect(result.Message).ToNot(ContainSubstring("conventional commits format"))
+			expectOpaqueMessage(validator.Validate(context.Background(), ctx), "reads stdin")
 		})
 
 		It("should not capture echo -e output (escape interpretation)", func() {
@@ -1454,9 +1446,7 @@ Signed-off-by: Test User <test@klaudiu.sh>`
 				},
 			}
 
-			result := validator.Validate(context.Background(), ctx)
-			Expect(result.Passed).To(BeTrue())
-			Expect(result.Message).ToNot(ContainSubstring("conventional commits format"))
+			expectOpaqueMessage(validator.Validate(context.Background(), ctx), "reads stdin")
 		})
 
 		It("should pass with empty file (message from editor)", func() {
@@ -1596,11 +1586,7 @@ Signed-off-by: Test User <test@klaudiu.sh>`
 			Expect(result.Message).To(ContainSubstring("AI attribution"))
 		})
 
-		It("falls back to disk (warns) for an append heredoc", func() {
-			// "cat >> f <<EOF" appends, so the heredoc body is not the full file
-			// content (the file may already exist). The validator must not treat
-			// it as the message; it reads disk and warns since the file is
-			// missing at PreToolUse.
+		It("blocks a message file an append heredoc leaves unknown", func() {
 			cmd := "cat >> /nonexistent/dir/msg.txt <<'EOF'\n" +
 				"this is not conventional\n" +
 				"EOF\n" +
@@ -1612,10 +1598,10 @@ Signed-off-by: Test User <test@klaudiu.sh>`
 				ToolInput: hook.ToolInput{Command: cmd},
 			}
 
-			result := validator.Validate(context.Background(), ctx)
-			Expect(result.Passed).To(BeFalse())
-			Expect(result.ShouldBlock).To(BeFalse())
-			Expect(result.Message).To(ContainSubstring("Failed to read commit message"))
+			expectOpaqueMessage(
+				validator.Validate(context.Background(), ctx),
+				"written earlier in the command",
+			)
 		})
 
 		It("resolves a relative -F path against the commit working directory", func() {
@@ -1680,9 +1666,6 @@ Signed-off-by: Test User <test@klaudiu.sh>`
 		})
 
 		It("ignores a message file rewritten after the commit", func() {
-			// The file is written after "git commit -F", so at execution time
-			// the commit does not see this content. The validator must not use
-			// it; the file is missing on disk, so this warns.
 			cmd := "git commit -sS -a -F /nonexistent/dir/msg.txt\n" +
 				"cat > /nonexistent/dir/msg.txt <<'EOF'\n" +
 				"feat(api): add endpoint\n" +
@@ -1694,10 +1677,7 @@ Signed-off-by: Test User <test@klaudiu.sh>`
 				ToolInput: hook.ToolInput{Command: cmd},
 			}
 
-			result := validator.Validate(context.Background(), ctx)
-			Expect(result.Passed).To(BeFalse())
-			Expect(result.ShouldBlock).To(BeFalse())
-			Expect(result.Message).To(ContainSubstring("Failed to read commit message"))
+			expectOpaqueMessage(validator.Validate(context.Background(), ctx), "does not exist")
 		})
 
 		It("validates a message written via an echo redirect", func() {
@@ -1850,17 +1830,14 @@ Signed-off-by: Test User <test@klaudiu.sh>`
 			Expect(result.Passed).To(BeTrue())
 		})
 
-		It("skips an unresolved -F variable path with no inline write", func() {
-			// "$MSG" was never written in this command, so there is nothing to
-			// recover and no real path to read. Skip rather than warn.
+		It("blocks an unresolved -F variable path with no inline write", func() {
 			ctx := &hook.Context{
 				EventType: hook.EventTypePreToolUse,
 				ToolName:  hook.ToolTypeBash,
 				ToolInput: hook.ToolInput{Command: `git commit -sS -a -F "$MSG"`},
 			}
 
-			result := validator.Validate(context.Background(), ctx)
-			Expect(result.Passed).To(BeTrue())
+			expectOpaqueMessage(validator.Validate(context.Background(), ctx), "variable")
 		})
 	})
 

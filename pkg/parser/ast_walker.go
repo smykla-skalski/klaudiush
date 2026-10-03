@@ -19,7 +19,8 @@ type astWalker struct {
 	fileWrites []FileWrite
 	// dynamicWrites counts output redirects whose target name comes from
 	// command output, so it is unknown until the command runs.
-	dynamicWrites int
+	dynamicWrites    int
+	dynamicWriteLocs []Location
 	// parent is the walker of the script that runs this one. What it recorded
 	// earlier on the line (writes, git config) is in place when this runs.
 	parent     *astWalker
@@ -36,6 +37,7 @@ type astWalker struct {
 	assignments map[string]string
 	unknownVars map[string]bool
 	safeAssigns map[*syntax.Assign]bool
+	certain     map[*syntax.Stmt]certainty
 	loopCalls   map[*syntax.CallExpr]bool
 	inLoop      bool
 	outerLoop   bool
@@ -76,6 +78,12 @@ type astWalker struct {
 	// scopeDynamic is the dynamicVersion it was taken at.
 	scope        *VarScope
 	scopeDynamic int
+
+	startupUnset    map[string]bool
+	loopStartup     map[string]bool
+	startupPending  map[string]syntax.Pos
+	startupDeferred map[string]bool
+	caseChanged     bool
 }
 
 // parseState is shared by a walker and all the child walkers of one parse.
@@ -117,6 +125,8 @@ type parseState struct {
 	repeated map[string]bool
 	// uniqueKeys counts the script states given keys that match nothing.
 	uniqueKeys int
+
+	namesUnknown bool
 }
 
 // spend takes one unit of work, reporting false once the budget is gone.
@@ -517,9 +527,12 @@ func (w *astWalker) extractCommand(call *syntax.CallExpr) {
 		Type:             CmdTypeSimple,
 		WorkingDirectory: w.currentDir,
 		DirUnknown:       w.dirUnknown,
+		DirComputed:      w.dirComputed,
 		Dynamic:          anyWordDynamic(call.Args),
 		Stdin:            w.stdinByCall[call],
 		StdinFile:        w.stdinFileByCall[call],
+		startup:          prefixStartup(call),
+		dynamicWords:     dynamicArgs(call.Args[1:]),
 	}, w.depth, view)
 }
 
@@ -554,7 +567,7 @@ func (w *astWalker) record(cmd Command, depth int, view string) {
 
 	cmd, nested := w.resolveProgram(cmd)
 	followed := cmd
-	cmd.Args = storedArgs(cmd)
+	cmd.Args, cmd.SubstitutedArgs = storedArgs(cmd)
 
 	w.defineAliases(cmd)
 
@@ -577,8 +590,9 @@ func (w *astWalker) record(cmd Command, depth int, view string) {
 	l.files = append(l.files, w.pathScripts(cmd, l)...)
 	l.files = withoutPartialArgs(l.files, followed)
 	nested = append(nested, w.definitionScripts(followed)...)
+	startup := w.startupScripts(cmd, followed.Args)
 
-	if l.empty() && len(nested) == 0 {
+	if l.empty() && len(nested) == 0 && len(startup) == 0 {
 		return
 	}
 
@@ -592,7 +606,7 @@ func (w *astWalker) record(cmd Command, depth int, view string) {
 
 	defer w.enter(cmd)()
 
-	w.follow(cmd, l, depth+1)
+	w.follow(cmd, l, depth+1, startup)
 
 	for _, script := range nested {
 		w.walkScript(script.text, cmd, depth+1, scriptWalk{name: script.name})
@@ -636,7 +650,7 @@ func literalCommand(name string) bool {
 // (cd, pushd, popd) and the programs bare names run (hash -p, enable).
 func (w *astWalker) trackShellState(cmd Command) {
 	switch cmd.Name {
-	case setBuiltin, "shift":
+	case "shift":
 		w.trackPositional(cmd)
 	case "cd":
 		w.dirComputed = w.dirComputed || cmd.Dynamic
@@ -657,6 +671,9 @@ func (w *astWalker) trackShellState(cmd Command) {
 		}
 	case "enable":
 		w.state.pathChanged = true
+	case setBuiltin:
+		w.trackPositional(cmd)
+		w.noteKeywordMode(cmd.Args)
 	}
 }
 
@@ -739,6 +756,8 @@ func (w *astWalker) extractDecl(decl *syntax.DeclClause) {
 
 		w.forgetUnlessSafe(assign)
 	}
+
+	w.forgetCaseChanged(decl)
 }
 
 // noteDynamic records whether an assignment's value is known: one from
@@ -755,10 +774,12 @@ func (w *astWalker) noteDynamic(assign *syntax.Assign) {
 	}
 
 	w.state.dynamicVersion++
+	w.noteStartupDeferred(assign)
 
 	if assign.Append || (assign.Value != nil && wordDynamic(assign.Value)) ||
 		dynamicElements(assign.Array) {
 		w.state.dynamicVars[assign.Name.Value] = true
+		w.noteStartupPending(assign)
 
 		return
 	}
@@ -773,6 +794,7 @@ func (w *astWalker) assign(name, value string) {
 	w.scope = nil
 
 	delete(w.unknownVars, name)
+	delete(w.startupUnset, name)
 
 	if w.parent != nil {
 		w.parent.forget(name)
@@ -911,6 +933,9 @@ func collectRedirs(stmt *syntax.Stmt) redirInfo {
 			info.hasHeredoc = true
 		case syntax.RdrIn:
 			info.inputPath = argWord(redir.Word)
+			if wordDynamic(redir.Word) {
+				info.inputPath = substitutedInput
+			}
 		default:
 			// Other redirection operators are not relevant here.
 		}
@@ -925,12 +950,22 @@ func (w *astWalker) extractRedirect(stmt *syntax.Stmt) {
 		return
 	}
 
+	defer w.markCertainty(stmt, len(w.fileWrites))
+
 	info := collectRedirs(stmt)
 	w.dynamicWrites += info.dynamicWrites
 
 	// A redirect happens as its command starts, before any later command.
 	seq := w.state.nextSeq()
 	info.outputLoc.Seq, info.heredocLoc.Seq = seq, seq
+
+	if info.dynamicWrites > 0 {
+		w.dynamicWriteLocs = append(w.dynamicWriteLocs, Location{
+			Line:   stmt.Pos().Line(),
+			Column: stmt.Pos().Col(),
+			Seq:    seq,
+		})
+	}
 
 	// A heredoc always feeds the command's stdin, regardless of any output
 	// redirection on the same statement. Record it so validators can inspect
@@ -1036,7 +1071,13 @@ func copiesStdinVerbatim(call *syntax.CallExpr) bool {
 // (NAME+=value) and naked assignments carry no complete value, so they are
 // skipped rather than recorded with a partial one.
 func (w *astWalker) extractAssigns(call *syntax.CallExpr) {
+	commandOnly := len(call.Args) > 0 && !w.keepsPrefix(w.commandWord(call.Args[0]))
+
 	for _, assign := range call.Assigns {
+		if commandOnly && assign.Name != nil && startupVars[assign.Name.Value] {
+			continue
+		}
+
 		w.noteDynamic(assign)
 
 		if assign.Name == nil || assign.Append || assign.Naked {

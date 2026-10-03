@@ -1087,6 +1087,86 @@ EOF`
 			Expect(ok).To(BeFalse())
 		})
 
+		DescribeTable("FileWrittenBefore reports any earlier write",
+			func(cmd, path string, written bool) {
+				result, err := p.Parse(cmd)
+				Expect(err).NotTo(HaveOccurred())
+
+				Expect(result.FileWrittenBefore(path, "", afterAll)).To(Equal(written))
+			},
+			Entry("append heredoc", "cat >> msg.txt <<'EOF'\nbody\nEOF", "msg.txt", true),
+			Entry("uncaptured echo", `echo "$X" > msg.txt`, "msg.txt", true),
+			Entry("captured heredoc", "cat > msg.txt <<'EOF'\nbody\nEOF", "msg.txt", true),
+			Entry("other file", `echo "$X" > other.txt`, "msg.txt", false),
+			Entry("no write", "git status", "msg.txt", false),
+		)
+
+		DescribeTable("DynamicWritesBetween locates substituted redirect targets",
+			func(cmd string, before bool) {
+				result, err := p.Parse(cmd)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result.GitOperations).NotTo(BeEmpty())
+
+				commit := result.GitOperations[0].Location
+				Expect(result.DynamicWritesBetween(parser.Location{}, commit)).To(Equal(before))
+			},
+			Entry("before the commit", `echo x > "$(mktemp)"; git commit -F m`, true),
+			Entry("after the commit", `git commit -F m; echo x > "$(mktemp)"`, false),
+			Entry("none", `echo x > out.txt; git commit -F m`, false),
+		)
+
+		DescribeTable(
+			"FileWrite.Certain says whether a write has run by the commit",
+			func(cmd string, certain bool) {
+				result, err := p.Parse(cmd)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result.GitOperations).NotTo(BeEmpty())
+				Expect(result.FileWrites).NotTo(BeEmpty())
+
+				commit := result.GitOperations[0].Location
+				Expect(result.FileWrites[0].Certain(commit)).To(Equal(certain))
+			},
+			Entry("plain statement", "echo x > m; git commit -F m", true),
+			Entry("earlier link of the commit's && chain", "echo x > m && git commit -F m", true),
+			Entry(
+				"middle link of the commit's && chain",
+				"cd d && echo x > m && git commit -F m",
+				true,
+			),
+			Entry("skipped by && before ;", "false && echo x > m; git commit -F m", false),
+			Entry("skipped by ||", "true || echo x > m; git commit -F m", false),
+			Entry("if body", "if false; then echo x > m; fi; git commit -F m", false),
+			Entry("same if body", "if true; then echo x > m; git commit -F m; fi", true),
+			Entry("background", "echo x > m & git commit -F m", false),
+			Entry("loop body", "for i in a; do echo x > m; done; git commit -F m", false),
+			Entry("function body run by a call", "f() { echo x > m; }; f; git commit -F m", false),
+			Entry("pipeline", "echo x > m | git commit -F m", false),
+		)
+
+		DescribeTable("commit context the validator relies on",
+			func(cmd string, check func(parser.Command)) {
+				result, err := p.Parse(cmd)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result.GitOperations).NotTo(BeEmpty())
+				check(result.GitOperations[0])
+			},
+			Entry("cd to a computed directory", `cd "$(printf sub/)repo" && git commit -F m`,
+				func(c parser.Command) { Expect(c.DirComputed).To(BeTrue()) }),
+			Entry("literal cd", `cd repo && git commit -F m`,
+				func(c parser.Command) { Expect(c.DirComputed).To(BeFalse()) }),
+			Entry("substituted stdin redirect", `git commit -F - < "$(printf sub/)m"`,
+				func(c parser.Command) { Expect(c.StdinFile).To(HavePrefix("/dev/fd/")) }),
+			Entry("literal stdin redirect", `git commit -F - < m`,
+				func(c parser.Command) { Expect(c.StdinFile).To(Equal("m")) }),
+		)
+
+		It("FileWrittenBefore ignores a write after the consumer", func() {
+			result, err := p.Parse("echo \"$X\" > msg.txt")
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(result.FileWrittenBefore("msg.txt", "", parser.Location{Line: 1})).To(BeFalse())
+		})
+
 		It("is uncertain when a captured heredoc is appended to", func() {
 			cmd := "cat > msg.txt <<'EOF'\nbody\nEOF\n" +
 				"echo more >> msg.txt"

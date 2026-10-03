@@ -473,6 +473,10 @@ func launcherLaunch(cmd Command, spec launcher) launch {
 	}
 
 	child := childCommand(cmd, cmd.Args[idx], cmd.Args[idx+1:])
+	if spec.assignments {
+		child = withEnvOperands(child, cmd, cmd.Args[:idx])
+	}
+
 	if spec.stdinArgs && cmd.Stdin != "" {
 		l.commands = xargsCommands(child, cmd.Stdin, xargsReplace(cmd.Args[:idx]))
 	} else {
@@ -491,7 +495,7 @@ func commandIndex(spec launcher, args []string) (int, bool) {
 
 		switch {
 		case arg == endOfOptions:
-			return i + 1, i+1 < len(args)
+			return operandsEnd(spec, args, i+1, operands)
 		case slices.Contains(spec.stopFlags, arg):
 			return 0, false
 		case slices.Contains(spec.valueFlags, arg), slices.Contains(spec.scriptFlags, arg):
@@ -931,8 +935,11 @@ func childCommand(parent Command, name string, args []string) Command {
 		Type:             parent.Type,
 		WorkingDirectory: parent.WorkingDirectory,
 		DirUnknown:       parent.DirUnknown,
+		DirComputed:      parent.DirComputed,
 		Dynamic:          parent.Dynamic,
 		Stdin:            parent.Stdin,
 		StdinFile:        parent.StdinFile,
+		startup:          parent.startup,
+		dynamicWords:     parent.dynamicWords,
 	}
 }

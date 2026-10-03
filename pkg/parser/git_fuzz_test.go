@@ -31,6 +31,7 @@ func FuzzParseGitCommand(f *testing.F) {
 	f.Add("${UNSET}\torigin\tmain")
 	f.Add("$(...)\tpush")
 	f.Add("git\t${G}\tstatus")
+	f.Add("git\tcommit\t-m\tBASH_ENV=$(id)")
 
 	f.Fuzz(func(t *testing.T, input string) {
 		parts := strings.Split(input, "\t")
