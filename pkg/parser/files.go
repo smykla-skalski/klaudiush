@@ -20,6 +20,10 @@ const (
 	WriteOpMove
 	// WriteOpHeredoc indicates heredoc (<<).
 	WriteOpHeredoc
+	WriteOpLink
+	WriteOpEdit
+	WriteOpOutput
+	WriteOpUnpack
 )
 
 // String returns string representation of WriteOp.
@@ -39,12 +43,22 @@ func (w WriteOp) String() string {
 		return "Move"
 	case WriteOpHeredoc:
 		return "Heredoc"
+	case WriteOpLink:
+		return "Link"
+	case WriteOpEdit:
+		return "Edit"
+	case WriteOpOutput:
+		return "Output"
+	case WriteOpUnpack:
+		return "Unpack"
 	default:
 		return "Unknown"
 	}
 }
 
 // FileWrite represents a file write operation detected in the command.
+// TargetUnknown marks a program that changes files it does not name (unzip,
+// patch, git reset --hard, git stash); its Path is empty.
 type FileWrite struct {
 	Path      string   // Target file path
 	Operation WriteOp  // Type of write operation
@@ -83,6 +97,7 @@ type FileWrite struct {
 	RedirectContentCaptured bool
 	Unconditional           bool
 	CertainUntil            Location
+	TargetUnknown           bool
 	// Vars are the variables as they stood when the write happened.
 	Vars *VarScope
 }

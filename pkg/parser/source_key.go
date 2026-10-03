@@ -115,7 +115,7 @@ func (w *astWalker) lineWrites() (versions map[string][]string, ok bool) {
 
 	for _, p := range slices.Backward(chain) {
 		for _, fw := range p.fileWrites {
-			if fw.DirUnknown {
+			if fw.DirUnknown || fw.TargetUnknown {
 				return nil, false
 			}
 

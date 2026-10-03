@@ -163,20 +163,20 @@ var _ = Describe("CommitValidator message sources", func() {
 		Entry(
 			"sed -i on the file",
 			`sed -i '' 's/fix/bad/' {good} && git commit -sS -F {good}`,
-			"may change",
+			"written earlier",
 		),
-		Entry("ln over the file", `ln -sf {bad} {good} && git commit -sS -F {good}`, "may change"),
+		Entry("ln over the file", `ln -sf {bad} {good} && git commit -sS -F {good}`, "written earlier"),
 		Entry(
 			"dd onto the file",
 			`dd if={bad} of={good} && git commit -sS -F {good}`,
-			"may change",
+			"written earlier",
 		),
 		Entry("copy into the file's directory",
 			`cp /elsewhere/good.txt {dir} && git commit -sS -F {good}`, "may change"),
 		Entry("copy into the directory as .",
 			`cd {dir} && cp sub/good.txt . && git commit -sS -F good.txt`, "may change"),
 		Entry("copy to a substituted destination",
-			`cd {dir} && cp sub/good.txt "$(pwd)" && git commit -sS -F good.txt`, "may change"),
+			`cd {dir} && cp sub/good.txt "$(pwd)" && git commit -sS -F good.txt`, "whose name"),
 		Entry(
 			"dd to ~+ after of=",
 			`cd {dir} && dd if=sub/good.txt of=~+/good.txt && git commit -sS -F good.txt`,
@@ -205,7 +205,7 @@ var _ = Describe("CommitValidator message sources", func() {
 		Entry(
 			"captured write then sed -i",
 			"echo '"+goodMessage+"' > {dir}/m.txt; sed -i 's/.*/bad/' {dir}/m.txt; git commit -sS -F {dir}/m.txt",
-			"may change",
+			"written earlier",
 		),
 		Entry(
 			"captured write then uncaptured write through a variable",

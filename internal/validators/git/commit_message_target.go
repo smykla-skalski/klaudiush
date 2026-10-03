@@ -132,6 +132,10 @@ func (t messageTarget) unresolvedReason() string {
 
 // matchesWrite reports a write to the message file.
 func (src messageSource) matchesWrite(t messageTarget, fw parser.FileWrite) bool {
+	if fw.TargetUnknown {
+		return false
+	}
+
 	if t.abs != "" {
 		target, ok := src.absolute(fw.Vars, fw.Path, fw.WorkingDirectory, fw.DirUnknown)
 
@@ -243,6 +247,10 @@ func (src messageSource) changedBetween(t messageTarget, from, before parser.Loc
 	for _, fw := range src.parsed.WritesBefore(before) {
 		if !after(fw.Location) || src.matchesWrite(t, fw) {
 			continue
+		}
+
+		if fw.TargetUnknown {
+			return opaqueSourceWith(reasonUnknownWrite, repairSeparate)
 		}
 
 		if _, ok := src.absolute(

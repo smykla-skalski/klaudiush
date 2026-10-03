@@ -944,6 +944,14 @@ func (w *astWalker) scriptSource(path string, cmd Command) (string, ScriptStatus
 	}
 
 	target := resolvePath(cmd.WorkingDirectory, path)
+	if w.unplacedWriteBefore() {
+		return "", ScriptOpaque, DetailScriptUnplacedWrite
+	}
+
+	if w.lineWriteAbove(target) {
+		return "", ScriptOpaque, DetailScriptWritten
+	}
+
 	if text, found, captured := w.lastLineWrite(target); found {
 		if !captured {
 			return "", ScriptOpaque, DetailScriptWritten

@@ -87,6 +87,10 @@ func (c *commandCheck) add(v Violation) {
 }
 
 func (c *commandCheck) checkWrite(fw parser.FileWrite) {
+	if fw.TargetUnknown {
+		return
+	}
+
 	c.scope = fw.Vars
 	dir := c.dir(fw.WorkingDirectory, fw.DirUnknown)
 	target := fw.Path
