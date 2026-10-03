@@ -37,11 +37,17 @@ var (
 // change to another repository, a PATH that finds other git commands, or
 // output piped or redirected into a program (popen, a process's stdin, a
 // replaced stdout, dup2 onto a pipe after fork) or captured as a value (print
-// or a log stream into a buffer, redirect_stdout). PATH counts only as a key
-// or assignment, since messages name it ("not found on PATH"). Reading a
+// or a log stream into a buffer, redirect_stdout). Code that can run a shell
+// string at all (os.system, shell=True, execSync, exec, shlex) or rebind
+// names dynamically (setattr, builtins, globals, :=) reads no prose: any
+// message it builds could reach that call. PATH counts only as a key or
+// assignment, since messages name it ("not found on PATH"). Reading a
 // result's stdout or printing to sys.stderr does not count.
 var proseUnsafe = regexp.MustCompile(
-	`(?i)alias\.|\[alias|\[include|include(?:if)?\.|gitconfig|git/config|` +
+	`(?i)os\.system|shell\s*=\s*true|getoutput|child_process|execsync|\bexec\w*\s*\(|` +
+		`\beval\s*\(|shlex|spawn|setattr|builtins|globals\s*\(|locals\s*\(|__dict__|` +
+		`\bvars\s*\(|:=|__import__|importlib|` +
+		`alias\.|\[alias|\[include|include(?:if)?\.|gitconfig|git/config|` +
 		`GIT_CONFIG|GIT_DIR|GIT_COMMON_DIR|GIT_WORK_TREE|GIT_EXEC_PATH|XDG_CONFIG_HOME|` +
 		`chdir|\bcwd\b|popen|open3|\bstdin\b|\$stdout\s*=|\bstdout\s*=[^=]|` +
 		`\bstd(?:out|err)\.write\s*=[^=]|` +
@@ -69,7 +75,8 @@ var messageAlternation = `\b(` + strings.ReplaceAll(messageCallNames, " ", "|") 
 // ({execSync: log}).
 var messageRebound = regexp.MustCompile(
 	`(?:\bimport\b[^\n;]*|\bas\s+|\bfunction\s*\*?\s*|\b(?:const|let|var)\s+|[{,][ \t]*|` +
-		`\{[^{}]*:[ \t]*)` + messageAlternation + `|` + messageAlternation + `\s*=[^=>]`,
+		`\{[^{}]*:[ \t]*|\blambda\b[^:\n]*|\bfor\b[^\n:]*)` + messageAlternation + `|` +
+		messageAlternation + `\s*=[^=>]`,
 )
 
 // pythonDef matches a Python def line, capturing its indent and name.

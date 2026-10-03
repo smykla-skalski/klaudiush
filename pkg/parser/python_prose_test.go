@@ -431,6 +431,31 @@ with contextlib.redirect_stdout(b): print("git zz")'`),
 			`node -e 'const {execSync: log} = require("child_process"); log("git zz")'`),
 		Entry("a js function named like a message",
 			`node -e 'function log(c) { require("child_process").execSync(c) }; log("git zz")'`),
+		Entry(
+			"a walrus rebinding after a split config write",
+			"python3 -c 'import os\nopen(\".git/con\" + \"fig\", \"a\").write(\"[al\" + \"ias]\")\n(warn := os.system)\nwarn(\"git zz\")'",
+		),
+		Entry(
+			"a lambda parameter",
+			"python3 -c 'import os\n(lambda warn: warn(\"git zz\"))(os.system)'",
+		),
+		Entry(
+			"a for loop target",
+			"python3 -c 'import os\nfor print in (os.system,):\n    print(\"git zz\")'",
+		),
+		Entry(
+			"setattr on builtins",
+			"python3 -c 'import os, builtins\nsetattr(builtins, \"print\", os.system)\nprint(\"git zz\")'",
+		),
+		Entry(
+			"the builtins dict",
+			"python3 -c 'import os\n__builtins__.__dict__[\"print\"] = os.system\nprint(\"git zz\")'",
+		),
+		Entry("globals", "python3 -c 'import os\nglobals()[\"log\"] = os.system\nlog(\"git zz\")'"),
+		Entry(
+			"a lambda splitting into argv",
+			"python3 -c 'import subprocess\n(lambda print: print(\"git zz\"))(lambda s: subprocess.run(s.split()))'",
+		),
 	)
 
 	It("keeps prose in a message function that only prints and exits", func() {
