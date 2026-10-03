@@ -8,8 +8,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/cockroachdb/errors"
-
 	"github.com/smykla-skalski/klaudiush/internal/templates"
 	"github.com/smykla-skalski/klaudiush/internal/validator"
 	"github.com/smykla-skalski/klaudiush/pkg/config"
@@ -110,9 +108,11 @@ func (v *CommitValidator) validateCommits(
 			continue
 		}
 
-		res := v.validateGitCommit(ctx, gitCmd, hasGitAdd, result)
+		src := messageSource{cmd: cmd, parsed: result, command: hookCtx.GetCommand()}
+
+		res := v.validateGitCommit(ctx, gitCmd, hasGitAdd, src)
 		if attribution != nil {
-			return v.withAttribution(res, attribution, hookCtx.GetCommand(), gitCmd, result)
+			return v.withAttribution(res, attribution, gitCmd, src)
 		}
 
 		switch {
@@ -137,9 +137,8 @@ func (v *CommitValidator) validateCommits(
 // finding, attribution elsewhere on the command gets its own finding.
 func (v *CommitValidator) withAttribution(
 	res, attribution *validator.Result,
-	command string,
 	gitCmd *parser.GitCommand,
-	parsed *parser.ParseResult,
+	src messageSource,
 ) *validator.Result {
 	if !res.ShouldBlock || len(res.Findings) == 0 {
 		return attribution
@@ -150,8 +149,8 @@ func (v *CommitValidator) withAttribution(
 	if slices.ContainsFunc(res.Findings, func(f validator.Finding) bool {
 		return f.Reference == validator.RefGitClaudeAttr
 	}) {
-		msg, err := v.extractCommitMessage(gitCmd, parsed)
-		if err != nil || !containsAIAttribution(withoutMessage(command, msg)) {
+		msg, err := v.extractCommitMessage(gitCmd, src)
+		if err != nil || !containsAIAttribution(withoutMessage(src.command, msg)) {
 			return res
 		}
 
@@ -196,7 +195,7 @@ func (v *CommitValidator) validateGitCommit(
 	ctx context.Context,
 	gitCmd *parser.GitCommand,
 	hasGitAdd bool,
-	parsed *parser.ParseResult,
+	src messageSource,
 ) *validator.Result {
 	log := v.Logger()
 
@@ -218,9 +217,14 @@ func (v *CommitValidator) validateGitCommit(
 		return validator.Pass()
 	}
 
-	commitMsg, err := v.extractCommitMessage(gitCmd, parsed)
+	commitMsg, err := v.extractCommitMessage(gitCmd, src)
 	if err != nil {
-		log.Error("Failed to extract commit message", "error", err)
+		log.Debug("Commit message cannot be inspected", "error", err)
+
+		if res, ok := opaqueMessageResult(err); ok {
+			return res
+		}
+
 		return validator.Warn(fmt.Sprintf("Failed to read commit message: %v", err))
 	}
 
@@ -389,11 +393,10 @@ func (*CommitValidator) hasGitAddInChain(commands []parser.Command) bool {
 // extractCommitMessage extracts commit message from -m/--message or -F/--file flags.
 func (v *CommitValidator) extractCommitMessage(
 	gitCmd *parser.GitCommand,
-	parsed *parser.ParseResult,
+	src messageSource,
 ) (string, error) {
-	// Check for file flags first (-F/--file)
-	if filePath := v.getFlagValue(gitCmd, commitFileFlags); filePath != "" {
-		return v.extractMessageFromFile(gitCmd, parsed, filePath)
+	if hasFileFlag(gitCmd) {
+		return v.readMessageFile(gitCmd, src, v.getFlagValue(gitCmd, commitFileFlags))
 	}
 
 	// Check for inline message flags (-m/--message)
@@ -413,85 +416,6 @@ func (v *CommitValidator) extractCommitMessage(
 	}
 
 	return "", nil
-}
-
-// extractMessageFromFile resolves the commit message for a -F/--file flag.
-// It handles stdin ("-"), content written to the file earlier in the same
-// command, and finally the file on disk.
-func (v *CommitValidator) extractMessageFromFile(
-	gitCmd *parser.GitCommand,
-	parsed *parser.ParseResult,
-	filePath string,
-) (string, error) {
-	// "-" means read from stdin. The parser captures stdin fed via a heredoc or
-	// a piped echo/printf, so validate that when available.
-	if filePath == "-" {
-		stdin := strings.TrimSpace(gitCmd.Stdin)
-		if stdin == "" {
-			// Stdin wasn't capturable (e.g. message piped from a process the
-			// parser can't read); treat it like no inline message.
-			v.Logger().Debug("Commit message comes from uncaptured stdin (-F -)")
-
-			return "", nil
-		}
-
-		v.Logger().Debug("Reading commit message from stdin (-F -)")
-
-		return stdin, nil
-	}
-
-	// Prefer content written to the file earlier in the same command. At
-	// PreToolUse time the file usually doesn't exist on disk yet (e.g.
-	// "cat > msg.txt <<EOF ... EOF; git commit -F msg.txt"), so reading it
-	// directly would fail and silently skip message validation. Only writes
-	// before this commit are considered, so a later rewrite is ignored.
-	if parsed != nil {
-		content, ok := parsed.InlineFileContent(
-			filePath,
-			gitCmd.GetWorkingDirectory(),
-			gitCmd.Location,
-		)
-		if ok {
-			v.Logger().Debug("Reading commit message from inline file write", "path", filePath)
-
-			return strings.TrimSpace(content), nil
-		}
-	}
-
-	// A bare variable path (e.g. -F "$MSG") that did not resolve to inline
-	// content names a file whose runtime location the hook cannot determine.
-	// Skip rather than attempt a literal "$MSG" disk read that always fails.
-	if isBareExpansion(filePath) {
-		v.Logger().
-			Debug("commit message file path is an unresolved variable; skipping validation", "path", filePath)
-
-		return "", nil
-	}
-
-	// Resolve the path the way the shell would: expand a leading ~ and, for a
-	// relative path, join it onto the commit's effective working directory (from
-	// cd or git -C), since git reads -F relative to where it runs, not the hook's
-	// cwd. Resolution is best-effort; an unresolved path just fails the read
-	// below and warns, as before.
-	readPath := expandTilde(filePath)
-	if !filepath.IsAbs(readPath) {
-		if workDir := expandTilde(gitCmd.GetWorkingDirectory()); workDir != "" {
-			readPath = filepath.Join(workDir, readPath)
-		}
-	}
-
-	readPath = filepath.Clean(readPath)
-
-	v.Logger().Debug("Reading commit message from file", "path", readPath)
-
-	content, err := os.ReadFile(
-		readPath,
-	) //#nosec G304 -- file path is user-provided from git commit -F flag
-	if err != nil {
-		return "", errors.Wrapf(err, "failed to read commit message file %s", readPath)
-	}
-
-	return strings.TrimSpace(string(content)), nil
 }
 
 // expandTilde best-effort expands a leading ~ or ~/ to the user's home
