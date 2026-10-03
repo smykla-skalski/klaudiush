@@ -32,6 +32,9 @@ type Result struct {
 	RunErr   error
 	TimedOut bool
 	Captures []Capture
+	// Lingering lists the processes still running when the harness exited;
+	// Run kills them.
+	Lingering []int
 }
 
 // Runner sets up a sandbox per scenario, installs klaudiush hooks with
@@ -45,26 +48,30 @@ type Runner struct {
 	Keep    bool
 }
 
-// Run executes one scenario. The returned cleanup removes the sandbox and
-// stops the model; call it even when Run fails.
+// Run executes one scenario. Processes the harness left running are killed
+// before Run returns. The returned cleanup stops the model and removes the
+// sandbox (with Keep, it only stops what is still running); call it even
+// when Run fails.
 func (r Runner) Run(
 	ctx context.Context,
 	d Driver,
 	version string,
 	sc Scenario,
-) (*Result, func(), error) {
+) (*Result, func() error, error) {
 	sb, err := NewSandbox(r.Base)
 	if err != nil {
-		return nil, func() {}, err
+		return nil, func() error { return nil }, err
 	}
 
 	model := NewScriptedModel()
-	cleanup := func() {
+	cleanup := func() error {
 		model.Close()
 
-		if !r.Keep {
-			_ = sb.Close()
+		if r.Keep {
+			return sb.StopProcesses()
 		}
+
+		return sb.Close()
 	}
 
 	result := &Result{Driver: d, Version: version, Scenario: sc, Sandbox: sb, Model: model}
@@ -91,10 +98,14 @@ func (r Runner) Run(
 	result.Output, result.RunErr = d.Run(runCtx, sb, prompt, opts)
 	result.TimedOut = errors.Is(runCtx.Err(), context.DeadlineExceeded)
 
+	lingering, listErr := sb.Processes()
+	result.Lingering = lingering
+	stopErr := errors.CombineErrors(listErr, sb.StopProcesses())
+
 	captures, err := sb.ReadCaptures()
 	result.Captures = captures
 
-	return result, cleanup, err
+	return result, cleanup, errors.CombineErrors(stopErr, err)
 }
 
 func (r Runner) setup(ctx context.Context, d Driver, sc Scenario, result *Result) error {

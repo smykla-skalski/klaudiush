@@ -67,12 +67,18 @@ type OptionsRunner interface {
 
 // RunOptions configures one command run. Zero values inherit the current
 // directory and environment and capture output into the CommandResult.
+//
+// NewSession starts the command as the leader of a new session on unix, so
+// the processes it leaves behind can be found by session id after it exits.
+// Started, when set, receives the process id once the command runs.
 type RunOptions struct {
-	Dir    string
-	Env    []string
-	Stdin  io.Reader
-	Stdout io.Writer
-	Stderr io.Writer
+	Dir        string
+	Env        []string
+	Stdin      io.Reader
+	Stdout     io.Writer
+	Stderr     io.Writer
+	NewSession bool
+	Started    func(pid int)
 }
 
 // commandRunner implements CommandRunner.
@@ -135,7 +141,18 @@ func (*commandRunner) RunWithOptions(
 
 	cmd.WaitDelay = pipeWaitDelay
 
-	err := cmd.Run()
+	if opts.NewSession {
+		startNewSession(cmd)
+	}
+
+	err := cmd.Start()
+	if err == nil {
+		if opts.Started != nil {
+			opts.Started(cmd.Process.Pid)
+		}
+
+		err = cmd.Wait()
+	}
 
 	result := CommandResult{
 		Stdout: stdout.String(),

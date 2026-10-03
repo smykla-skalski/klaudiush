@@ -170,7 +170,7 @@ func causeSummary(cause parser.OpacityCause) string {
 	case parser.OpacityUnresolvedArgs:
 		return "it calls a function whose arguments klaudiush cannot follow"
 	case parser.OpacityUnresolvedWord:
-		return "it runs eval, git or gh with a word klaudiush cannot resolve"
+		return "it runs eval, git, gh or a container entrypoint with a word klaudiush cannot resolve"
 	case parser.OpacityStartupFile:
 		return "it starts a shell whose startup file klaudiush cannot read"
 	default:
@@ -258,6 +258,24 @@ func unresolvedWordFinding(o parser.Opacity) (message, required, repair string) 
 			message = "eval runs the shell setup " + o.Tool + " prints, which klaudiush cannot see"
 			repair = setup + "; or, if your exception policy allows it, add " +
 				"# EXC:SHELL002:<reason> to the command"
+		}
+
+		return message, required, repair
+	}
+
+	if o.Operation == parser.EntrypointOperation {
+		message = "the container --entrypoint or a word before it " + strings.TrimPrefix(
+			o.Detail,
+			"it ",
+		)
+		required = "a literal --entrypoint, options and image, or ones from variables " +
+			"assigned literally on the same line"
+		repair = "Write the entrypoint, options and image literally"
+
+		if o.Detail == parser.DetailEntrypointOptions {
+			required = "container options klaudiush can read up to the image"
+			repair = "Attach option values with = (--opt=value), or drop options " +
+				"before the image"
 		}
 
 		return message, required, repair
