@@ -32,6 +32,23 @@ Each finding names the operation klaudiush could not see through, the programs t
 | git or gh word from a variable        | `git $SUB`, `gh pr $ACTION`                     | Write it literally, or assign it literally on the line    |
 | git or gh word from command output    | `git $(echo commit)`, `git c?mmit`              | Write the subcommand literally                            |
 | eval of a variable or command output  | `eval "$LINE"`, `eval "$(tool init)"`           | Run the commands directly instead of through eval         |
+| eval of a known tool's shell setup    | `eval "$(mise activate bash)"`                  | Run the command through the tool (see below)              |
+
+When eval runs the output of one command substitution whose program is a literal name from the list below, with arguments that make it print shell setup, the finding names the tool and a form klaudiush can inspect. The block stays. A computed program name (`$TOOL`, `$(which mise)`) or argument, a name that only contains a known one (`evil-mise`), or a tool or `eval` redefined as an alias or function on the same line gets the generic repair. A literal path is named by its last part (`/opt/homebrew/bin/brew` is `brew`); this changes only the text.
+
+| Tool                                                               | Instead of eval                                      |
+|:-------------------------------------------------------------------|:-----------------------------------------------------|
+| `ssh-agent [-s\|-c]`                                               | `ssh-agent <command>`, the command runs as its child |
+| `mise activate`, `mise env`, `mise hook-env`                       | `mise exec -- <command>`                             |
+| `direnv export`, `direnv hook`                                     | `direnv exec . <command>`                            |
+| `rbenv init`, `pyenv init`, `pyenv virtualenv-init`, `nodenv init` | `rbenv exec <command>` (and `pyenv`, `nodenv`)       |
+| `conda shell.<shell> hook`                                         | `conda run -n <env> <command>`                       |
+| `brew shellenv`                                                    | the program's path under `brew --prefix`'s `bin`     |
+| `starship init`                                                    | nothing: it only sets up the interactive prompt      |
+| `zoxide init`                                                      | `zoxide query <keywords>`, then a literal `cd`       |
+| `fnm env`                                                          | `fnm exec --using=<version> <command>`               |
+
+If the eval is really needed and your exception policy allows it, add `# EXC:SHELL002:<reason>` to the command.
 
 A variable assigned a literal value earlier on the same line, or set in the environment klaudiush runs in, is resolved: `X=status; git $X` is checked as `git status`. Only a plain assignment statement counts. A variable also assigned in a subshell, pipeline, condition, loop, function or background job, or as a command prefix, or set by `read`, `printf -v`, `mapfile`, `getopts`, a `for` loop, `eval` or a sourced script, is treated as unknown, and so is every variable used inside a loop. After a write to a name klaudiush cannot read (`declare "$v"`, `printf -v "$v"`) a `declare -l`, `-u` or `-n`, a `source`, a `mapfile -C` callback, or a program named by a variable or command output, no variable is resolved. Inside a new shell (`bash -c`, a script file), which sees only exported variables and may source `BASH_ENV` first, no variable is resolved either. A subcommand that is not a valid git command name, such as `'push '` or `$'push\n'`, is checked as the builtin git autocorrect would run, or blocked as an unknown subcommand.
 

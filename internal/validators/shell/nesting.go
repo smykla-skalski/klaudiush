@@ -248,6 +248,12 @@ func unresolvedWordFinding(o parser.Opacity) (message, required, repair string) 
 		required = "eval of literal text or variables assigned literally on the same line"
 		repair = "Run the commands directly instead of through eval"
 
+		if setup, ok := evalSetupRepairs[o.Tool]; ok {
+			message = "eval runs the shell setup " + o.Tool + " prints, which klaudiush cannot see"
+			repair = setup + "; or, if your exception policy allows it, add " +
+				"# EXC:SHELL002:<reason> to the command"
+		}
+
 		return message, required, repair
 	}
 
@@ -263,6 +269,27 @@ func unresolvedWordFinding(o parser.Opacity) (message, required, repair string) 
 	}
 
 	return message, required, repair
+}
+
+// evalSetupRepairs replace eval of a tool's printed shell setup with a form
+// klaudiush can inspect, keyed by parser.EvalSetupTools.
+var evalSetupRepairs = map[string]string{
+	"ssh-agent": "Run the command as the agent's child instead: ssh-agent <command>, " +
+		"or ssh-agent bash -c 'ssh-add && <command>' when it needs a key " +
+		"(ssh-add has no terminal there, so use a key without a passphrase or SSH_ASKPASS)",
+	"mise":   "Run the command through mise instead: mise exec -- <command>",
+	"direnv": "Run the command with the directory's environment instead: direnv exec . <command>",
+	"rbenv":  "Run the command with the selected Ruby instead: rbenv exec <command>",
+	"pyenv":  "Run the command with the selected Python instead: pyenv exec <command>",
+	"nodenv": "Run the command with the selected Node instead: nodenv exec <command>",
+	"conda":  "Run the command in the environment instead: conda run -n <env> <command>",
+	"brew": "Call the program by its path instead: <prefix>/bin/<program>, " +
+		"where brew --prefix prints <prefix>",
+	"starship": "Drop the eval: starship init only sets up the interactive prompt, " +
+		"which a single command does not need",
+	"zoxide": "Drop the eval: run zoxide query <keywords> to print the directory, " +
+		"then cd to that path literally",
+	"fnm": "Run the command with fnm's Node instead: fnm exec --using=<version> <command>",
 }
 
 func unreadableScriptRepair(detail string) string {

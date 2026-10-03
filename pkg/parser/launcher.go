@@ -806,7 +806,10 @@ func scanLaunch(cmd Command) launch {
 		}
 
 		if launchesTracked(arg, rest) || (i > 0 && runsScriptPath(cmd.Args[i-1], arg)) {
-			return launch{commands: []Command{childCommand(cmd, arg, rest)}}
+			return launch{commands: append(
+				[]Command{childCommand(cmd, arg, rest)},
+				afterDirectoryOperand(cmd, arg, rest)...,
+			)}
 		}
 
 		// One argument holding a whole command line, as tmux, parallel and
@@ -857,6 +860,23 @@ func launchesTracked(arg string, rest []string) bool {
 func runsScriptPath(prev, arg string) bool {
 	return execMarkers[prev] && strings.Contains(arg, "/") && shellScriptExtensions[path.Ext(arg)]
 }
+
+// afterDirectoryOperand returns the command a runner's exec subcommand runs
+// after its directory operand: direnv exec . git push takes "." (or ./, or
+// any path) as a directory, not as the program exec runs. Only the word
+// after the directory is the program, so direnv exec . echo git runs echo.
+func afterDirectoryOperand(cmd Command, arg string, rest []string) []Command {
+	if !dirOperandRunners[cmd.Name] || arg != "exec" || len(rest) < 2 ||
+		strings.HasPrefix(rest[0], "-") {
+		return nil
+	}
+
+	return []Command{childCommand(cmd, rest[1], rest[2:])}
+}
+
+// dirOperandRunners take a directory before the command their exec
+// subcommand runs.
+var dirOperandRunners = nameSet("direnv")
 
 var (
 	// execMarkers precede the command a runner executes.
