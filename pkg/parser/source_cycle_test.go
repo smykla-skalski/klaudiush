@@ -31,12 +31,14 @@ def main():
 			"print('python3 /s/push.py; git log')\n" +
 			"subprocess.run(['git', 'push', '--force'])\n",
 		"/s/again.sh": "git status\nbash /s/again.sh\n",
-		"/s/a.py":     "import os\nos.system('sh -c \"python3 /s/b.py\"')\n",
-		"/s/b.py": "import os\nos.system('sh -c \"python3 /s/a.py\"')\n" +
+		"/s/a.py":     "import os\nos.system('python3 /s/b.py  # then gh')\n",
+		"/s/b.py": "import os\nos.system('python3 /s/a.py  # then gh')\n" +
 			"os.system('git push --force')\n",
 		"/s/move.sh": "if [ \"$1\" = inner ]; then git push --force; " +
 			"else cd /other && bash /s/move.sh inner; fi\n",
-		"/s/vars.sh": "git status\nX=1 bash /s/vars.sh\n",
+		"/s/vars.sh":  "git status\nX=1 bash /s/vars.sh\n",
+		"/s/hash.sh":  "ls push --force\nhash -p /usr/bin/git ls\n. /s/hash.sh\n",
+		"/s/alias.sh": "git config alias.ls push\ngit ls --force\n. /s/alias.sh\n",
 	}
 
 	for i := range chainLength {
@@ -119,6 +121,19 @@ def main():
 
 		Expect(result.Truncated).To(BeFalse(), "opacities: %v", result.Opacities)
 		Expect(len(gitRuns(result, "status"))).To(BeNumerically(">=", 2))
+	})
+
+	It("follows a sourced script into itself again after it changes the command table", func() {
+		result := parse(". /s/hash.sh")
+
+		Expect(gitRuns(result, "push")).NotTo(BeEmpty(), "truncated=%v", result.Truncated)
+	})
+
+	It("follows a sourced script into itself again after it records new commands", func() {
+		result := parse(". /s/alias.sh")
+
+		Expect(result.HasGitCommand()).To(BeTrue())
+		Expect(result.Truncated).To(BeFalse(), "opacities: %v", result.Opacities)
 	})
 
 	It("still fails closed on a chain of distinct scripts past the limit", func() {

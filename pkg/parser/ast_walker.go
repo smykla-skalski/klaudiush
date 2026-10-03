@@ -96,6 +96,11 @@ type parseState struct {
 	pathChanged   bool
 	untrusted     bool
 	expandedWords map[string]bool
+	// recorded holds every distinct command recorded so far and novel counts
+	// them, so a script followed into itself can tell whether the pass
+	// before changed anything.
+	recorded map[string]bool
+	novel    int
 }
 
 // spend takes one unit of work, reporting false once the budget is gone.
@@ -532,6 +537,7 @@ func (w *astWalker) recordCommand(cmd Command, depth int) {
 		cmd.Vars = w.varScope()
 	}
 
+	w.noteRecorded(cmd)
 	w.commands = append(w.commands, cmd)
 	w.trackShellState(cmd)
 	w.forgetWritten(followed)

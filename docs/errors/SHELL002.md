@@ -12,7 +12,7 @@ Klaudiush follows `env`, `sudo`, `nice`, `bash -c`, `eval`, script files, aliase
 env env env env env env env env env git commit -m "message"
 ```
 
-A script that names itself, such as a Python helper whose usage text shows `python3 helper.py --dry-run` or a shell script that reruns itself, does not count as nesting. Klaudiush reads the script once and checks the commands it finds in it, including any `git` or `gh` call. It follows the script into itself again only when the directory, variables, aliases or functions in scope have changed, so a script that `cd`s elsewhere and reruns itself is still checked in the new directory.
+A script that names itself, such as a Python helper whose usage text shows `python3 helper.py --dry-run` or a shell script that reruns itself, does not count as nesting. Klaudiush reads the script once and checks the commands it finds in it, including any `git` or `gh` call. It follows the script into itself again whenever something has changed since the last pass: the directory, the variables, aliases or functions in scope, the command table (`hash -p`, `enable`), or the commands recorded so far. A script that `cd`s elsewhere and reruns itself is still checked in the new directory.
 
 ## What the message says
 
