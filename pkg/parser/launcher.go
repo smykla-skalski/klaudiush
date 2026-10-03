@@ -271,7 +271,7 @@ func launchedBy(cmd Command) (launch, bool) {
 		return launch{}, true
 	case shells[cmd.Name]:
 		return shellLaunch(cmd), true
-	case cmd.Name == "eval":
+	case cmd.Name == evalBuiltin:
 		return launch{scripts: []string{strings.Join(cmd.Args, " ")}}, true
 	case cmd.Name == "source" || cmd.Name == ".":
 		return sourceLaunch(cmd), true
@@ -492,6 +492,7 @@ func commandIndex(spec launcher, args []string) (int, bool) {
 		case strings.HasPrefix(arg, "-"):
 			// A flag, with any value attached (-uroot, --user=root).
 		case spec.assignments && assignmentPattern.MatchString(arg):
+		case arg == unresolvedWord && operands == 0:
 		case operands > 0:
 			operands--
 		default:
@@ -843,7 +844,7 @@ func launchesTracked(arg string, rest []string) bool {
 
 		return ok
 	default:
-		return isInterpreter || isLauncher || name == "eval" || name == "source"
+		return isInterpreter || isLauncher || name == evalBuiltin || name == "source"
 	}
 }
 

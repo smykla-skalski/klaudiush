@@ -33,6 +33,10 @@ const OpacityUnresolvedProgram OpacityCause = "unresolved-program"
 // parser does not substitute.
 const OpacityUnresolvedArgs OpacityCause = "unresolved-args"
 
+// OpacityUnresolvedWord means the line eval runs, or the command word of git
+// or gh, comes from a variable or command output the parser cannot resolve.
+const OpacityUnresolvedWord OpacityCause = "unresolved-word"
+
 // Opacity describes one operation the parser could not see through: why
 // (Cause), what (Operation), the programs that led to it, outermost first
 // (Origin), and for some causes a fixed explanation (Detail). It names
@@ -67,6 +71,13 @@ const (
 	DetailScriptDirectory = "it is a relative path after a cd to a directory klaudiush cannot resolve"
 	DetailScriptWritten   = "it is written earlier on the line with content klaudiush cannot see"
 	DetailScriptRead      = "the file cannot be read in full (too large, unreadable or not a regular file)"
+)
+
+// Fixed reasons, set as Opacity.Detail, that eval or a git or gh command
+// word is opaque.
+const (
+	DetailWordVariable = "it comes from a variable klaudiush cannot resolve"
+	DetailWordOutput   = "it comes from command output, arithmetic or a glob"
 )
 
 // shownName matches a name plain enough to show: no expansions, quotes,

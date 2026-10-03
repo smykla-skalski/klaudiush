@@ -52,6 +52,12 @@ func FuzzBashParse(f *testing.F) {
 	f.Add(`f() { git "${@:1}"; }; f commit`)
 	f.Add("HOME=/x git zz")
 	f.Add(`git -c alias.abcdefghijklmnopqrstuvwx='!git zz' abcdefghijklmnopqrstuvwx`)
+	f.Add(`git $SECRET; gh pr $A; eval "$UNSET"`)
+	f.Add(`git ${!x} "${X:-status}" "${arr[0]}"; X=$(echo commit); git $X`)
+	f.Add(`sudo git $(echo commit) -m x; env $(cat .env) git "$(echo push)"`)
+	f.Add(`git {commit,-m,x}; git c?mmit; git 'push '; git $'push\n'`)
+	f.Add(`X=status; git $X; Y="commit -m x"; git $Y; eval "$Y"; eval 'git $X'`)
+	f.Add(`f() { git "$1"; }; f $(echo commit); alias g=git; g $(echo push)`)
 
 	f.Fuzz(func(t *testing.T, command string) {
 		p := parser.NewBashParser()

@@ -226,9 +226,19 @@ func (w *astWalker) resolveProgram(cmd Command) (Command, []nestedScript) {
 
 	switch cmd.Name {
 	case gitProgram:
-		return w.expandGitAlias(cmd)
+		resolved, ok := w.resolveGitSubcommand(cmd)
+		if !ok {
+			return resolved, nil
+		}
+
+		return w.expandGitAlias(resolved)
 	case ghCLI:
-		return w.expandGHAlias(ghCommandFirst(cmd))
+		resolved, ok := w.resolveGHCommand(ghCommandFirst(cmd))
+		if !ok {
+			return resolved, nil
+		}
+
+		return w.expandGHAlias(resolved)
 	default:
 		return cmd, nil
 	}
@@ -384,8 +394,12 @@ func (w *astWalker) programBehind(cmd Command) string {
 func (w *astWalker) expandGitAlias(cmd Command) (Command, []nestedScript) {
 	for range maxAliasDepth {
 		idx := gitSubcommandIndex(cmd.Args)
-		if idx < 0 || gitBuiltins[cmd.Args[idx]] || !gitAliasName.MatchString(cmd.Args[idx]) {
+		if idx < 0 || gitBuiltins[cmd.Args[idx]] {
 			return cmd, nil
+		}
+
+		if !gitAliasName.MatchString(cmd.Args[idx]) {
+			return w.unknownGitCommand(cmd, idx), nil
 		}
 
 		name, rest := cmd.Args[idx], cmd.Args[idx+1:]
@@ -436,7 +450,7 @@ func (w *astWalker) unknownGitCommand(cmd Command, idx int) Command {
 		return cmd
 	}
 
-	if !w.resolver.GitCommand(name) {
+	if !gitAliasName.MatchString(name) || !w.resolver.GitCommand(name) {
 		w.opaque(OpacityUnresolvedProgram, gitProgram+" "+safeName(name), "")
 	}
 
@@ -874,8 +888,13 @@ func (w *astWalker) argStrings(words []*syntax.Word) []string {
 			continue
 		}
 
-		if s := argWord(word); s != "" {
+		s := argWord(word)
+
+		switch {
+		case s != "":
 			args = append(args, s)
+		case substitutionOnly(word, s):
+			args = append(args, unresolvedWord)
 		}
 	}
 

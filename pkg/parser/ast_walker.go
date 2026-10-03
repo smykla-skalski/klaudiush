@@ -509,6 +509,8 @@ func (w *astWalker) recordCommand(cmd Command, depth int) {
 	}
 
 	cmd, nested := w.resolveProgram(cmd)
+	followed := cmd
+	cmd.Args = withoutUnresolvedWords(cmd.Args)
 
 	w.defineAliases(cmd)
 
@@ -520,10 +522,10 @@ func (w *astWalker) recordCommand(cmd Command, depth int) {
 	w.trackShellState(cmd)
 	w.extractFileWriteCommand(cmd)
 
-	l := launched(cmd)
+	l := w.launchedFrom(cmd, followed)
 	l.scripts = append(l.scripts, w.gitEnvScripts(cmd)...)
 	l.files = append(l.files, w.pathScripts(cmd, l)...)
-	nested = append(nested, w.definitionScripts(cmd)...)
+	nested = append(nested, w.definitionScripts(followed)...)
 
 	if l.empty() && len(nested) == 0 {
 		return

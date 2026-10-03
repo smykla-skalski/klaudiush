@@ -118,7 +118,34 @@ var _ = Describe("NestingValidator", func() {
 			"function f forwards arguments",
 			`forward arguments with plain "$@"`,
 		),
+		Entry("a git subcommand from an unknown variable",
+			`sudo git "$KLAUDIUSH_TEST_UNSET_SUB"`,
+			"runs eval, git or gh with a word klaudiush cannot resolve",
+			"via sudo",
+			"the git command word comes from a variable klaudiush cannot resolve",
+			"assign the variable a literal value earlier on the same line",
+		),
+		Entry("a gh action from command output",
+			`gh pr $(echo create)`,
+			"runs eval, git or gh with a word klaudiush cannot resolve",
+			"command",
+			"the gh command word comes from command output",
+			"Write the subcommand literally instead of computing it",
+		),
+		Entry("eval of an unknown variable",
+			`eval "$KLAUDIUSH_TEST_UNSET_LINE"`,
+			"runs eval, git or gh with a word klaudiush cannot resolve",
+			"command",
+			"eval runs a command line that comes from a variable",
+			"Run the commands directly instead of through eval",
+		),
 	)
+
+	It("passes eval and git words it can resolve", func() {
+		for _, command := range []string{`X=status; git $X`, `eval "echo hi"`} {
+			Expect(v.Validate(context.Background(), bash(command)).Passed).To(BeTrue(), command)
+		}
+	})
 
 	It("explains a script that cannot be read in full", func() {
 		script := filepath.Join(GinkgoT().TempDir(), "huge.sh")

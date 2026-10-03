@@ -7,6 +7,8 @@ const (
 	gitProgram = "git"
 	// hubCLI is GitHub's git wrapper, which runs git for any git command.
 	hubCLI = "hub"
+
+	evalBuiltin = "eval"
 )
 
 // nameSet builds a set from a space-separated list of names.
