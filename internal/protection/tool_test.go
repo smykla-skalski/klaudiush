@@ -126,10 +126,25 @@ var _ = Describe("PolicyCommand", func() {
 
 var _ = Describe("ToolTargets for MCP and opencode", func() {
 	It("checks MCP tools whatever their name says", func() {
-		for _, name := range []string{"mcp__x__find_and_replace", "mcp__x__get_and_write", "mcp__fs__read_file"} {
+		for _, name := range []string{"mcp__x__find_and_replace", "mcp__x__get_and_write", "mcp__x__read_then_overwrite"} {
 			ctx := toolContext(name, map[string]any{"path": ".claude/settings.json"})
 			Expect(protection.ToolTargets(ctx)).To(ContainElement(".claude/settings.json"), name)
 		}
+	})
+
+	It("skips MCP tools that only read", func() {
+		for _, name := range []string{"mcp__fs__read_text_file", "mcp__fs__list_directory", "mcp__github__get_file_contents"} {
+			ctx := toolContext(name, map[string]any{"path": ".claude/settings.json"})
+			Expect(protection.ToolTargets(ctx)).To(BeEmpty(), name)
+		}
+	})
+
+	It("reads file URIs", func() {
+		ctx := toolContext(
+			"mcp__fs__edit_file",
+			map[string]any{"uri": "file:///p/.klaudiush/config.toml"},
+		)
+		Expect(protection.ToolTargets(ctx)).To(ContainElement("/p/.klaudiush/config.toml"))
 	})
 
 	It("reads opencode patchText and paths with spaces", func() {

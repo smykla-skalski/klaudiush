@@ -144,7 +144,7 @@ func NewSet(opts Options) (*Set, error) {
 			return nil, err
 		}
 
-		s.rules = append(s.rules, s.withCanonical(r)...)
+		s.rules = append(s.rules, s.withCanonical(r, true)...)
 	}
 
 	for _, pattern := range opts.Config.GetAllow() {
@@ -153,7 +153,7 @@ func NewSet(opts Options) (*Set, error) {
 			return nil, err
 		}
 
-		s.allow = append(s.allow, s.withCanonical(r)...)
+		s.allow = append(s.allow, s.withCanonical(r, false)...)
 	}
 
 	s.materialize()
@@ -228,6 +228,13 @@ func (s *Set) addBuiltins(opts Options) {
 	s.addAbs(opts.LegacyDir, true, ReasonKlaudiushConfig)
 	s.addAbs(opts.StateDir, true, ReasonKlaudiushState)
 	s.addAbs(opts.DataDir, true, ReasonKlaudiushState)
+
+	for _, name := range klaudiushNames {
+		pathList, _ := opts.LookupEnv("PATH")
+		for _, dir := range filepath.SplitList(pathList) {
+			s.addAbs(filepath.Join(dir, name), false, ReasonKlaudiushBinary)
+		}
+	}
 
 	for _, exe := range opts.Executables {
 		s.addAbs(exe, false, ReasonKlaudiushBinary)
@@ -422,13 +429,19 @@ func (s *Set) compileUserPattern(pattern, reason string) (rule, error) {
 }
 
 // withCanonical returns r, and for an absolute rule also the rule for the
-// path with symlinks resolved, so both spellings match.
-func (s *Set) withCanonical(r rule) []rule {
+// path with symlinks resolved, so both spellings match. An allow entry
+// resolves only its directories: an allowed name that is a symlink to a
+// protected file must not allow that file.
+func (s *Set) withCanonical(r rule, followLast bool) []rule {
 	if r.kind != ruleAbs {
 		return []rule{r}
 	}
 
 	canon := canonical(r.display)
+	if !followLast {
+		canon = filepath.Join(canonical(filepath.Dir(r.display)), filepath.Base(r.display))
+	}
+
 	if canon == r.display {
 		return []rule{r}
 	}

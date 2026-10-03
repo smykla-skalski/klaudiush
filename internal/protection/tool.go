@@ -51,8 +51,9 @@ func ToolTargets(ctx *hook.Context) []string {
 	case hook.ToolFamilyShell, hook.ToolFamilyUnknown:
 	}
 
+	own := toolOwnName(ctx.RawToolName)
 	if nonFileTools[normalizeName(ctx.RawToolName)] ||
-		(!ctx.IsMCPTool() && readsOnly(toolOwnName(ctx.RawToolName))) {
+		(readsOnly(own) && (!ctx.IsMCPTool() || !mentionsWrite(own))) {
 		return nil
 	}
 
@@ -205,6 +206,28 @@ func toolOwnName(raw string) string {
 	}
 
 	return raw
+}
+
+// writeVerbs mark a tool name that writes whatever verb it starts with,
+// such as find_and_replace or read_then_overwrite. MCP servers name their
+// own tools, so a read-only prefix alone does not exempt one.
+var writeVerbs = []string{
+	"write", "edit", "replace", "delete", "remove", "move", "rename", "create",
+	"update", "put", "set", "patch", "append", "save", "upload", "copy", "mkdir",
+	programRm, "unlink", "truncate", "chmod", "link", "modify", "change", "apply",
+	"insert", "overwrite", "store", "exec", "run",
+}
+
+func mentionsWrite(name string) bool {
+	lower := strings.ToLower(name)
+
+	for _, verb := range writeVerbs {
+		if strings.Contains(lower, verb) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func readsOnly(name string) bool {

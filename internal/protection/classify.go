@@ -25,6 +25,9 @@ const (
 	programDitto     = "ditto"
 	programPatch     = "patch"
 	programKlaudiush = "klaudiush"
+	programRm        = "rm"
+	gitHead          = "HEAD"
+	wordStatus       = "status"
 )
 
 // Option spellings shared by several programs.
@@ -61,7 +64,7 @@ var readOnlyPrograms = map[string]bool{
 var broadPrograms = map[string]bool{
 	"chattr": true, "chflags": true, "chgrp": true, "chmod": true, "chown": true,
 	"cp": true, "cpio": true, "dd": true, programDitto: true, programFind: true, programGit: true,
-	"install": true, "ln": true, "mv": true, "perl": true, "rm": true, "rmdir": true,
+	"install": true, "ln": true, "mv": true, "perl": true, programRm: true, "rmdir": true,
 	"rsync": true, "sed": true, "setfacl": true, "shred": true, "srm": true,
 	"tar": true, "touch": true, "trash": true, "truncate": true, "unlink": true,
 	"unzip": true, "xattr": true,
@@ -78,7 +81,7 @@ var destOnlyPrograms = map[string]bool{
 var gitPathCommands = map[string]bool{
 	"am": true, gitSubApply: true, "checkout": true, "checkout-index": true, "clean": true,
 	"config": true, "mv": true, "read-tree": true, "reset": true, "restore": true,
-	"rm": true, "stash": true, "switch": true, "update-index": true, "worktree": true,
+	programRm: true, "stash": true, "switch": true, "update-index": true, "worktree": true,
 }
 
 // gitOptionsWithValue are git global options that take the next word.
@@ -214,15 +217,21 @@ func gitSubcommand(args []string) string {
 // gitDir returns the directory git -C moves to, relative to dir.
 func gitDir(args []string, dir string) string {
 	for i := 0; i+1 < len(args); i++ {
-		if args[i] == optDir {
-			next := args[i+1]
-			if filepath.IsAbs(next) {
+		arg := args[i]
+
+		switch {
+		case arg == optDir:
+			if next := args[i+1]; filepath.IsAbs(next) {
 				dir = next
 			} else {
 				dir = filepath.Join(dir, next)
 			}
 
 			i++
+		case gitOptionsWithValue[arg]:
+			i++
+		case !strings.HasPrefix(arg, "-"):
+			return dir
 		}
 	}
 

@@ -41,8 +41,8 @@ var readOnlyKlaudiush = map[string][]string{
 	"doctor":     {"*"},
 	"debug":      {"", "config", "rules", "exceptions", "overrides", "patterns", "crash"},
 	"audit":      {"", subList, subStats},
-	"backup":     {"", subList, "status", "audit"},
-	"bypass":     {"", "status"},
+	"backup":     {"", subList, wordStatus, "audit"},
+	"bypass":     {"", wordStatus},
 	"patterns":   {"", subList, subStats},
 	"overrides":  {""},
 }
@@ -179,6 +179,12 @@ func (s *Set) runsKlaudiushBinary(cmd parser.Command, dir string) bool {
 		return false
 	}
 
+	return s.isKlaudiushFile(program)
+}
+
+// isKlaudiushFile reports whether path is a klaudiush binary: the same file
+// or a byte-identical copy.
+func (s *Set) isKlaudiushFile(program string) bool {
 	info, err := os.Stat(program)
 	if err != nil || !info.Mode().IsRegular() {
 		return false

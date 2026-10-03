@@ -239,9 +239,15 @@ func parentKey(key string) string {
 	return key[:i]
 }
 
-// Allowed reports whether protection.allow exempts path.
+// Allowed reports whether protection.allow exempts path: it is allowed,
+// and it does not lead to a protected file through a symlink or hard link.
 func (s *Set) Allowed(path string) bool {
-	for _, variant := range variants(s.Resolve(path)) {
+	resolved := s.Resolve(path)
+	if _, protected := s.Check(resolved); protected {
+		return false
+	}
+
+	for _, variant := range variants(resolved) {
 		if s.allowedKey(s.key(variant)) {
 			return true
 		}

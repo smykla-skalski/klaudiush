@@ -36,7 +36,8 @@ func foldRune(r rune) rune {
 	return smallest
 }
 
-// foldString folds every rune of s with foldRune.
+// foldString folds every rune of s with foldRune, lower-cased so glob
+// character classes such as [:alpha:] keep their spelling.
 func foldString(s string) string {
 	if s == "" {
 		return s
@@ -53,7 +54,7 @@ func foldString(s string) string {
 			continue
 		}
 
-		b.WriteRune(foldRune(r))
+		b.WriteRune(unicode.ToLower(foldRune(r)))
 	}
 
 	return b.String()

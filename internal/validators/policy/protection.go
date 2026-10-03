@@ -153,12 +153,7 @@ func commandResult(violations []protection.Violation) *validator.Result {
 
 	for _, violation := range violations {
 		if violation.Command != "" {
-			commands = append(commands, validator.Finding{
-				Reference: validator.RefPolicyCommand,
-				Location:  "klaudiush " + violation.Command,
-				Message:   "klaudiush " + violation.Command + " changes klaudiush policy",
-				Repair:    policyRepair,
-			})
+			commands = append(commands, policyFinding(violation))
 
 			continue
 		}
@@ -178,6 +173,24 @@ func commandResult(violations []protection.Violation) *validator.Result {
 		validator.RefProtectedFile,
 		"Command would change protected policy files: "+strings.Join(names, ", "),
 	).AddFinding(append(files, commands...)...)
+}
+
+func policyFinding(violation protection.Violation) validator.Finding {
+	if violation.Program != "klaudiush" {
+		return validator.Finding{
+			Reference: validator.RefPolicyCommand,
+			Location:  violation.Command,
+			Message:   "Copies or links the klaudiush binary, which would run it under another name",
+			Repair:    policyRepair,
+		}
+	}
+
+	return validator.Finding{
+		Reference: validator.RefPolicyCommand,
+		Location:  "klaudiush " + violation.Command,
+		Message:   "klaudiush " + violation.Command + " changes klaudiush policy",
+		Repair:    policyRepair,
+	}
 }
 
 func fileFinding(m protection.Match, actual string) validator.Finding {

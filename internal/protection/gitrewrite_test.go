@@ -61,7 +61,16 @@ var _ = Describe("CheckCommand for commands that rewrite the work tree", func() 
 		Expect(checkCommand(set, `git cherry-pick changed`)).NotTo(BeEmpty())
 
 		Expect(checkCommand(set, `git checkout same`)).To(BeEmpty())
-		Expect(checkCommand(set, `git reset --soft changed`)).To(BeEmpty())
+		Expect(checkCommand(set, `git reset --soft changed`)).NotTo(BeEmpty())
+		Expect(checkCommand(set, `git checkout -B main changed`)).NotTo(BeEmpty())
+		Expect(checkCommand(set, `git switch -C main changed`)).NotTo(BeEmpty())
+		Expect(checkCommand(set, `git branch -f main changed`)).NotTo(BeEmpty())
+		Expect(checkCommand(set, `git update-ref refs/heads/main changed`)).NotTo(BeEmpty())
+		Expect(checkCommand(set, `git read-tree -u --reset changed`)).NotTo(BeEmpty())
+		Expect(checkCommand(set, `git update-ref refs/heads/main $(git commit-tree x -p HEAD)`)).
+			NotTo(BeEmpty())
+		Expect(checkCommand(set, `git branch -f other same`)).To(BeEmpty())
+		Expect(checkCommand(set, `git reset --soft same`)).To(BeEmpty())
 		Expect(checkCommand(set, `git checkout -b new`)).To(BeEmpty())
 	})
 
@@ -76,6 +85,15 @@ var _ = Describe("CheckCommand for commands that rewrite the work tree", func() 
 		Expect(checkCommand(set, `git reset --hard`)).NotTo(BeEmpty())
 		Expect(checkCommand(set, `git clean -fd`)).NotTo(BeEmpty())
 		Expect(checkCommand(set, `git stash list`)).To(BeEmpty())
+		Expect(checkCommand(set, `git checkout -f`)).NotTo(BeEmpty())
+		Expect(checkCommand(set, `git switch -f main`)).NotTo(BeEmpty())
+		Expect(checkCommand(set, `git checkout-index -f -a`)).NotTo(BeEmpty())
+		Expect(checkCommand(set, `git read-tree -u --reset HEAD`)).NotTo(BeEmpty())
+		Expect(checkCommand(set, `git clean -n`)).To(BeEmpty())
+		Expect(checkCommand(set, `git clean -fd build`)).To(BeEmpty())
+		Expect(
+			checkCommand(set, `git stash push -- main.go`),
+		).To(BeEmpty(), "%v", checkCommand(set, `git stash push -- main.go`))
 	})
 
 	It("blocks a stash that brings policy files back", func() {

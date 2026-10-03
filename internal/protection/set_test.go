@@ -348,3 +348,22 @@ var _ = Describe("missing hook scripts", func() {
 		Expect(ok).To(BeTrue())
 	})
 })
+
+var _ = Describe("allowed symlinks", func() {
+	It("does not allow the protected file an allowed symlink points to", func() {
+		e := newEnv(GinkgoT().TempDir(), "linux", &config.ProtectionConfig{
+			Allow: []string{".claude/settings.local.json"},
+		})
+		link := filepath.Join(e.project, ".claude", "settings.local.json")
+		Expect(os.Symlink("settings.json", link)).To(Succeed())
+
+		set := e.set()
+
+		_, ok := set.Check(filepath.Join(e.project, ".claude", "settings.json"))
+		Expect(ok).To(BeTrue())
+		_, ok = set.Check(link)
+		Expect(ok).To(BeTrue())
+		Expect(set.Allowed(link)).To(BeFalse())
+		Expect(set.Allowed(filepath.Join(e.project, ".claude", "settings.json"))).To(BeFalse())
+	})
+})

@@ -25,7 +25,7 @@ var projectDirVars = []string{"CLAUDE_PROJECT_DIR", "GEMINI_PROJECT_DIR", "GEMIN
 // hook enforces without touching any configuration file.
 func (s *Set) addScripts(opts Options) {
 	for _, command := range opts.EvidenceCommands {
-		for _, path := range s.commandFiles(command, true) {
+		for _, path := range s.commandFiles(command, false) {
 			s.addAbs(path, false, ReasonEvidenceScript)
 		}
 	}

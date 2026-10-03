@@ -50,6 +50,10 @@ func newEnv(root string, goos string, cfg *config.ProtectionConfig) *env {
 				return e.home, true
 			}
 
+			if name == "PATH" {
+				return filepath.Join(e.home, "bin") + ":relative", true
+			}
+
 			return "", false
 		},
 		GOOS: goos,

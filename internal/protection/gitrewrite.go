@@ -37,10 +37,16 @@ type gitRewrite struct {
 	untracked bool
 	ignored   bool
 	modified  bool
+	opaque    bool
 	stash     string
+	pathspecs []string
 	diffs     [][]string
 	patches   []string
 }
+
+// ReasonGitRevision names a git ref update to a revision klaudiush cannot
+// see, such as one a command substitution creates.
+const ReasonGitRevision = "git ref update to an unknown revision"
 
 // checkGitRewrite reports a protected file a git command would rewrite
 // although the command names no path: clean, stash, reset --hard,
@@ -56,6 +62,10 @@ func (c *commandCheck) checkGitRewrite(cmd parser.Command, dir string) (Match, b
 		return Match{}, false
 	}
 
+	if rewrite.opaque || (cmd.Dynamic && len(rewrite.diffs) > 0) {
+		return Match{Path: strings.Join(cmd.Args, " "), Reason: ReasonGitRevision}, true
+	}
+
 	top := c.git(dir, "rev-parse", "--show-toplevel")
 	if top == "" {
 		return Match{}, false
@@ -63,7 +73,7 @@ func (c *commandCheck) checkGitRewrite(cmd parser.Command, dir string) (Match, b
 
 	top = strings.TrimSpace(top)
 
-	if m, found := c.checkGitStatus(top, rewrite); found {
+	if m, found := c.checkGitStatus(top, dir, rewrite); found {
 		return m, true
 	}
 
@@ -105,45 +115,126 @@ func gitRewriteOf(args []string) (gitRewrite, bool) {
 
 	switch sub {
 	case "clean":
+		if hasShortFlag(rest, 'n') || slices.Contains(rest, "--dry-run") {
+			return gitRewrite{}, false
+		}
+
 		return gitRewrite{
 			untracked: true,
 			ignored:   hasShortFlag(rest, 'x') || hasShortFlag(rest, 'X'),
+			pathspecs: operands,
 		}, true
 	case "stash":
 		return stashRewrite(rest, operands), true
 	case "reset":
-		if !slices.ContainsFunc(rest, func(arg string) bool {
-			return arg == "--hard" || arg == "--merge" || arg == "--keep"
-		}) {
-			return gitRewrite{}, false
-		}
-
-		return gitRewrite{modified: true, diffs: revDiffs(operands)}, true
+		return resetRewrite(rest, operands)
 	case "checkout", "switch":
-		if slices.Contains(rest, optEndOfOpts) {
+		return checkoutRewrite(rest, operands)
+	case "read-tree":
+		if !hasShortFlag(rest, 'u') {
 			return gitRewrite{}, false
 		}
 
-		return gitRewrite{diffs: revDiffs(operands)}, len(operands) > 0
+		return gitRewrite{modified: true, diffs: lastRevDiff(operands)}, true
+	case "checkout-index":
+		return gitRewrite{
+			modified: true,
+		}, hasShortFlag(rest, 'f') ||
+			slices.Contains(rest, "--force")
+	case "update-ref":
+		return refMoveRewrite(operands, 1)
+	case "symbolic-ref":
+		return refMoveRewrite(operands, 1)
+	case "branch":
+		if !hasShortFlag(rest, 'f') && !slices.Contains(rest, "--force") {
+			return gitRewrite{}, false
+		}
+
+		return refMoveRewrite(operands, 1)
+	default:
+		return historyRewrite(sub, operands)
+	}
+}
+
+// historyRewrite covers commands that bring in other commits or patches.
+func historyRewrite(sub string, operands []string) (gitRewrite, bool) {
+	var diffs [][]string
+
+	switch sub {
 	case "merge", "rebase":
-		var diffs [][]string
 		for _, rev := range operands {
 			diffs = append(diffs, []string{"HEAD..." + rev})
 		}
-
-		return gitRewrite{diffs: diffs}, len(diffs) > 0
 	case "cherry-pick", "revert":
-		var diffs [][]string
 		for _, rev := range operands {
 			diffs = append(diffs, []string{rev + "^", rev})
 		}
-
-		return gitRewrite{diffs: diffs}, len(diffs) > 0
 	case gitSubApply, "am":
 		return gitRewrite{patches: operands}, len(operands) > 0
 	default:
 		return gitRewrite{}, false
 	}
+
+	return gitRewrite{diffs: diffs}, len(diffs) > 0
+}
+
+// resetRewrite: any reset to another revision moves HEAD, after which a
+// protected file differs from it and the next forced checkout reverts it;
+// --hard, --merge and --keep also discard changed files now.
+func resetRewrite(rest, operands []string) (gitRewrite, bool) {
+	if slices.Contains(rest, optEndOfOpts) {
+		return gitRewrite{}, false
+	}
+
+	discards := slices.ContainsFunc(rest, func(arg string) bool {
+		return arg == "--hard" || arg == "--merge" || arg == "--keep"
+	})
+
+	return gitRewrite{modified: discards, diffs: revDiffs(operands)},
+		discards || len(operands) > 0
+}
+
+// checkoutRewrite: moving to another revision rewrites the files that
+// differ, and --force also discards changed files. With -b, -B, -c or -C
+// the revision is the start point after the new branch name.
+func checkoutRewrite(rest, operands []string) (gitRewrite, bool) {
+	if slices.Contains(rest, optEndOfOpts) {
+		return gitRewrite{}, false
+	}
+
+	force := hasShortFlag(rest, 'f') || slices.Contains(rest, "--force") ||
+		slices.Contains(rest, "--discard-changes")
+
+	revs := operands
+	if hasShortFlag(rest, 'b') || hasShortFlag(rest, 'B') || hasShortFlag(rest, 'c') ||
+		hasShortFlag(rest, 'C') || slices.Contains(rest, "--orphan") {
+		revs = nil
+		if len(operands) > 1 {
+			revs = operands[1:]
+		}
+	}
+
+	return gitRewrite{modified: force, diffs: revDiffs(revs)}, force || len(revs) > 0
+}
+
+// refMoveRewrite compares HEAD with the revision a ref is set to, the
+// operand after the ref name. A missing revision (one made by a command
+// substitution) cannot be compared, so it counts.
+func refMoveRewrite(operands []string, revIndex int) (gitRewrite, bool) {
+	if len(operands) <= revIndex {
+		return gitRewrite{opaque: len(operands) > 0}, len(operands) > 0
+	}
+
+	return gitRewrite{diffs: [][]string{{gitHead, operands[revIndex]}}}, true
+}
+
+// lastRevDiff compares HEAD with the last operand, the tree read-tree reads.
+func lastRevDiff(operands []string) [][]string {
+	if len(operands) == 0 {
+		return nil
+	}
+
+	return [][]string{{gitHead, operands[len(operands)-1]}}
 }
 
 func stashRewrite(rest, operands []string) gitRewrite {
@@ -169,9 +260,19 @@ func stashRewrite(rest, operands []string) gitRewrite {
 			modified: true,
 			untracked: all || slices.Contains(rest, "--include-untracked") ||
 				hasShortFlag(rest, 'u'),
-			ignored: all,
+			ignored:   all,
+			pathspecs: afterDoubleDash(rest),
 		}
 	}
+}
+
+// afterDoubleDash returns the words after "--".
+func afterDoubleDash(args []string) []string {
+	if i := slices.Index(args, optEndOfOpts); i >= 0 {
+		return args[i+1:]
+	}
+
+	return nil
 }
 
 // revDiffs compares HEAD with the first operand, the revision a reset or
@@ -181,7 +282,7 @@ func revDiffs(operands []string) [][]string {
 		return nil
 	}
 
-	return [][]string{{"HEAD", operands[0]}}
+	return [][]string{{gitHead, operands[0]}}
 }
 
 // gitSplit returns the subcommand and the words after it.
@@ -226,19 +327,23 @@ func hasShortFlag(args []string, flag rune) bool {
 }
 
 // checkGitStatus reports a protected file in a state the command discards.
-func (c *commandCheck) checkGitStatus(top string, rewrite gitRewrite) (Match, bool) {
+func (c *commandCheck) checkGitStatus(top, dir string, rewrite gitRewrite) (Match, bool) {
 	if !rewrite.untracked && !rewrite.ignored && !rewrite.modified {
 		return Match{}, false
 	}
 
-	status := c.git(
-		top,
-		"status",
+	args := []string{
+		wordStatus,
 		"--porcelain=v1",
 		"-z",
 		"--untracked-files=all",
 		"--ignored=matching",
-	)
+	}
+	if len(rewrite.pathspecs) > 0 {
+		args = append(append(args, optEndOfOpts), rewrite.pathspecs...)
+	}
+
+	status := c.git(dir, args...)
 
 	for entry := range strings.SplitSeq(status, "\x00") {
 		if len(entry) <= statusPrefix {

@@ -13,7 +13,7 @@ const unknownPart = "\x00"
 // hasGlobMeta reports whether s has a glob character, brace list or
 // unknown part, so it names paths by pattern rather than one path.
 func hasGlobMeta(s string) bool {
-	return strings.ContainsAny(s, "*?[{"+unknownPart)
+	return strings.ContainsAny(s, "*?[{^"+unknownPart)
 }
 
 // globRegexp converts a shell glob into a regular expression body matching
@@ -56,6 +56,14 @@ func writeGlobAt(b *strings.Builder, pattern string, i int) int {
 		b.WriteString("[^/]*")
 	case '?':
 		b.WriteString("[^/]")
+	case '^':
+		if i == 0 || pattern[i-1] == '/' {
+			b.WriteString("[^/]*")
+
+			return componentEnd(pattern, i) - 1
+		}
+
+		b.WriteString(regexp.QuoteMeta("^"))
 	case '[':
 		end := bracketEnd(pattern, i)
 		if end < 0 {
@@ -120,6 +128,14 @@ func bracketEnd(pattern string, start int) int {
 	}
 
 	for ; i < len(pattern); i++ {
+		if strings.HasPrefix(pattern[i:], "[:") {
+			if end := strings.Index(pattern[i+2:], ":]"); end >= 0 {
+				i += end + len("[::")
+
+				continue
+			}
+		}
+
 		if pattern[i] == ']' {
 			return i
 		}
@@ -144,13 +160,23 @@ func bracketClass(inner string) string {
 		b.WriteString("^/")
 	}
 
-	for _, r := range inner {
-		switch r {
+	for i := 0; i < len(inner); i++ {
+		if strings.HasPrefix(inner[i:], "[:") {
+			if end := strings.Index(inner[i+2:], ":]"); end >= 0 {
+				b.WriteString(inner[i : i+end+len("[::]")])
+
+				i += end + len("[::")
+
+				continue
+			}
+		}
+
+		switch c := inner[i]; c {
 		case '\\', ']', '[', '^':
 			b.WriteByte('\\')
-			b.WriteRune(r)
+			b.WriteByte(c)
 		default:
-			b.WriteRune(r)
+			b.WriteByte(c)
 		}
 	}
 
@@ -178,7 +204,7 @@ func braceAlternatives(pattern string, start int) (int, []string) {
 			depth--
 			if depth == 0 {
 				if alternatives == nil {
-					return -1, nil
+					return braceRange(pattern[start+1:i], i)
 				}
 
 				return i, append(alternatives, pattern[last:i])
@@ -192,4 +218,39 @@ func braceAlternatives(pattern string, start int) (int, []string) {
 	}
 
 	return -1, nil
+}
+
+// braceRange expands a {a..e} or {1..3} sequence, which the shell treats as
+// a list of every letter or number between the ends.
+func braceRange(inner string, end int) (int, []string) {
+	from, to, ok := strings.Cut(inner, "..")
+	if !ok || len(from) != 1 || len(to) != 1 {
+		return -1, nil
+	}
+
+	lo, hi := from[0], to[0]
+	if lo > hi {
+		lo, hi = hi, lo
+	}
+
+	alternatives := make([]string, 0, int(hi-lo)+1)
+	for c := lo; ; c++ {
+		alternatives = append(alternatives, string(rune(c)))
+
+		if c == hi {
+			break
+		}
+	}
+
+	return end, alternatives
+}
+
+// componentEnd returns the index of the slash ending the path component at
+// i, or the pattern length.
+func componentEnd(pattern string, i int) int {
+	if j := strings.IndexByte(pattern[i:], '/'); j >= 0 {
+		return i + j
+	}
+
+	return len(pattern)
 }

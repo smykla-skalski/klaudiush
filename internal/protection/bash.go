@@ -27,7 +27,7 @@ var varRef = regexp.MustCompile(`\$\{[^}]*\}`)
 
 // wordBreaks split command text into words that may be paths: code
 // passed to an interpreter, or a whole command line.
-var wordBreaks = " \t\n\r\"'`()[]{},;|&<>=:$"
+var wordBreaks = " \t\n\r\x00\"'`(),;|&<>=:$"
 
 // commandCheck holds what one shell command check needs.
 type commandCheck struct {
@@ -90,6 +90,10 @@ func (c *commandCheck) checkWrite(fw parser.FileWrite) {
 		target = unknownPart + target
 	}
 
+	if target == "!" || target == "|" {
+		target = unknownPart
+	}
+
 	program := strings.ToLower(fw.Operation.String())
 	if m, ok := c.checkWord(target, dir, false, program); ok {
 		c.add(Violation{Match: m, Program: program, Target: fw.Path})
@@ -114,6 +118,7 @@ func (c *commandCheck) checkCommand(cmd parser.Command) {
 
 	if eff := commandEffect(cmd); eff != effectNone {
 		c.checkCandidates(cmd, eff, program, dir)
+		c.checkBinaryCopies(cmd, program, dir)
 	}
 
 	if program == programFind {
@@ -122,8 +127,38 @@ func (c *commandCheck) checkCommand(cmd parser.Command) {
 		}
 	}
 
-	if cmd.Dynamic && c.mentionsProtected() {
+	if (cmd.Dynamic || readsArgsFromUnknownInput(cmd, program)) &&
+		commandEffect(cmd) != effectNone && c.mentionsProtected() {
 		c.add(Violation{Match: c.firstMention(), Program: program, Target: "$(...)"})
+	}
+}
+
+// readsArgsFromUnknownInput reports xargs or parallel reading arguments
+// from input klaudiush could not reconstruct, such as printf output with
+// NUL separators.
+func readsArgsFromUnknownInput(cmd parser.Command, program string) bool {
+	return (program == "xargs" || program == "parallel") && cmd.Stdin == ""
+}
+
+// checkBinaryCopies blocks commands that copy or link the klaudiush binary:
+// a copy under another name runs policy commands klaudiush does not
+// recognize by name.
+func (c *commandCheck) checkBinaryCopies(cmd parser.Command, program, dir string) {
+	if len(c.set.executables) == 0 {
+		return
+	}
+
+	for _, arg := range cmd.Args {
+		expanded := c.expand(arg)
+		if strings.HasPrefix(arg, "-") || expanded == "" || hasGlobMeta(expanded) {
+			continue
+		}
+
+		if c.set.isKlaudiushFile(c.set.absolute(expanded, dir)) {
+			c.add(Violation{Program: program, Command: program + " " + arg})
+
+			return
+		}
 	}
 }
 
@@ -245,7 +280,7 @@ func candidates(cmd parser.Command, eff effect) []candidate {
 
 	words = append(words, linkTargets(cmd)...)
 
-	for word := range strings.FieldsSeq(cmd.Stdin) {
+	for _, word := range codeWords(cmd.Stdin) {
 		words = append(words, candidate{word: word, tree: true})
 	}
 
@@ -334,7 +369,38 @@ func argWords(arg string) []string {
 	}
 
 	if strings.ContainsAny(arg, " \t\n\"'`();,") {
-		words = append(words, splitTokens(arg)...)
+		words = append(words, codeWords(arg)...)
+	}
+
+	return words
+}
+
+// maxCodeTokens bounds how many words of program text are paired up.
+const maxCodeTokens = 64
+
+// codeWords returns the words of program text, and each relative word also
+// joined to the directory of every other word: code such as
+// os.symlink("settings.json", ".claude/settings.local.json") resolves the
+// first name next to the second.
+func codeWords(text string) []string {
+	tokens := splitTokens(text)
+	if len(tokens) > maxCodeTokens {
+		return tokens
+	}
+
+	words := append([]string{}, tokens...)
+
+	for _, base := range tokens {
+		dir := filepath.Dir(base)
+		if !strings.Contains(base, "/") || dir == "." {
+			continue
+		}
+
+		for _, name := range tokens {
+			if name != base && !filepath.IsAbs(name) && !strings.HasPrefix(name, "~") {
+				words = append(words, filepath.Join(dir, name))
+			}
+		}
 	}
 
 	return words
@@ -483,6 +549,8 @@ func (c *commandCheck) checkPattern(word, dir string) (Match, bool) {
 		word = strings.TrimSuffix(dir, "/") + "/" + word
 	}
 
+	word = filepath.Clean(word)
+
 	key := c.set.key(filepath.ToSlash(word))
 
 	expr, err := globRegexp(key)
@@ -556,7 +624,15 @@ func (c *commandCheck) firstMention() Match {
 func (c *commandCheck) findMention() (Match, bool) {
 	for _, token := range splitTokens(c.raw) {
 		expanded := c.expand(token)
-		if !meaningful(expanded) || hasGlobMeta(expanded) {
+		if !meaningful(expanded) {
+			continue
+		}
+
+		if hasGlobMeta(expanded) {
+			if m, ok := c.checkPattern(expanded, c.set.workDir); ok {
+				return m, true
+			}
+
 			continue
 		}
 
