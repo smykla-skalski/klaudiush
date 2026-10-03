@@ -110,6 +110,12 @@ var _ = Describe("Container --entrypoint", func() {
 				`"__import__('os').system('git push --force')"`),
 		Entry("mixed quoting of resolved variables",
 			`V="A=1 B"; X="--entrypoint git"; docker run -e "$V" $X img push --force`),
+		Entry("a global option value named run before compose",
+			"docker --context run compose run --entrypoint git app push --force"),
+		Entry(
+			"a compose project named run with a file option",
+			"docker compose --project-name run -f compose.yml run --entrypoint=git svc push --force",
+		),
 		Entry("a runner from a variable", `"$DOCKER" run --entrypoint git img push --force`),
 		Entry("apple container", "container run --entrypoint git img push --force"),
 		Entry("docker.exe", "docker.exe run --entrypoint git img push --force"),
@@ -174,6 +180,22 @@ var _ = Describe("Container --entrypoint", func() {
 		Entry("variables", strings.Repeat("$A ", 10000)+"run"),
 	)
 
+	It("leaves a quoted script's variables to the container's shell", func() {
+		result := parse(
+			`SUB=status; docker run --entrypoint=sh alpine -c 'SUB=push; git ${SUB} --force'`,
+		)
+
+		Expect(result.Truncated).To(BeTrue())
+		Expect(result.Opacities).To(ContainElement(SatisfyAll(
+			HaveField("Operation", "git"),
+			HaveField("Origin", HaveExactElements("docker", "sh")),
+		)))
+
+		for _, op := range result.GitOperations {
+			Expect(op.Args).NotTo(ContainElement("status"))
+		}
+	})
+
 	It("reads a variable holding the entrypoint both quoted and split", func() {
 		command := `EP="git push"; docker run --entrypoint "$EP" img --force`
 
@@ -209,6 +231,8 @@ var _ = Describe("Container --entrypoint", func() {
 			"docker run --entrypoint /bin/echo alpine run --entrypoint git img push --force"),
 		Entry("run words after a plain image",
 			"docker run --rm alpine run --entrypoint git img push --force"),
+		Entry("a glob in the container's command line",
+			"docker run --rm --entrypoint ls alpine *.go"),
 		Entry("an image tag from a variable",
 			"docker run --rm --entrypoint /app/server myrepo/app:$TAG --port 80"),
 		Entry("env options and an unknown image",
@@ -269,6 +293,12 @@ var _ = Describe("Container --entrypoint", func() {
 		Entry("too many entrypoints",
 			"docker run"+strings.Repeat(" --entrypoint -a", 10)+" img push",
 			parser.DetailEntrypointOptions),
+		Entry("a glob in an option's place",
+			"docker run *rm --entrypoint git img push --force", parser.DetailWordOutput),
+		Entry("a glob naming the entrypoint option",
+			"docker run --entrypoin* git img push --force", parser.DetailWordOutput),
+		Entry("a glob in the image's place",
+			"docker run --entrypoint git * push --force", parser.DetailWordOutput),
 		Entry("too many variables holding several words",
 			`A="a b"; docker run -e $A -e $A -e $A -e $A -e $A --entrypoint git img push`,
 			parser.DetailEntrypointOptions),

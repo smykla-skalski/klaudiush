@@ -88,13 +88,21 @@ var containerBoolFlags = nameSet(`--build --detach --disable-content-trust --env
 
 // containerShortValueFlags are the short run options that take a value
 // (-e, -v, -w, ...). The rest (-d, -i, -t, -P, -q, -T) are boolean.
-const containerShortValueFlags = "acehlmpuvw"
+const containerShortValueFlags = "acefhlmpuvwH"
+
+// containerGroupWords are subcommands that come before run or create
+// (docker compose run, docker container run). Read as an image, one shows
+// that the run word before it was an option value (docker --context run
+// compose run), so it does not end where run words are looked for.
+var containerGroupWords = nameSet("compose container run create")
 
 // containerRun is a container start that replaces the image's entrypoint:
-// every --entrypoint value in order, and the arguments after the image.
+// every --entrypoint value in order, the arguments after the image, and the
+// image's index among the runner's arguments.
 type containerRun struct {
 	entrypoints []string
 	args        []string
+	image       int
 }
 
 func (run containerRun) equal(other containerRun) bool {
@@ -113,6 +121,7 @@ type runReader struct {
 	args      []string
 	runs      []containerRun
 	readings  int
+	offset    int
 	lastImage int
 	exhausted bool
 	dynamic   string
@@ -148,7 +157,7 @@ func containerRuns(args []string) *runReader {
 			break
 		}
 
-		r.args, r.lastImage = args[i+1:], -1
+		r.args, r.offset, r.lastImage = args[i+1:], i+1, -1
 		r.fork(0, nil)
 
 		if r.lastImage >= 0 {
@@ -202,8 +211,17 @@ func entrypointOption(arg string) (value string, attached, ok bool) {
 func mentionsEntrypoint(arg string) bool {
 	_, _, ok := entrypointOption(arg)
 
-	return ok || (dynamicWord(arg) != "" &&
+	return ok || globsOptions(arg) || (dynamicWord(arg) != "" &&
 		strings.Contains(arg, EntrypointOperation[:minEntrypointAbbrev]))
+}
+
+// globsOptions reports a glob that may match files named like options
+// (*rm, --entrypoin*): one starting with - or with the glob itself. Whether
+// it was quoted is not known, so it is taken as unquoted.
+func globsOptions(arg string) bool {
+	at := strings.IndexAny(arg, globChars)
+
+	return at == 0 || (at > 0 && strings.HasPrefix(arg, "-"))
 }
 
 // read continues a reading at i with the entrypoints found so far.
@@ -220,6 +238,10 @@ func (r *runReader) read(i int, entrypoints []string) {
 		switch {
 		case arg == endOfOptions:
 			r.image(i+1, entrypoints)
+
+			return
+		case globsOptions(arg):
+			r.dynamic = DetailWordOutput
 
 			return
 		case strings.HasPrefix(arg, "--"):
@@ -304,7 +326,9 @@ func (r *runReader) image(idx int, entrypoints []string) {
 		return
 	}
 
-	r.lastImage = max(r.lastImage, idx)
+	if !containerGroupWords[r.args[idx]] {
+		r.lastImage = max(r.lastImage, idx)
+	}
 
 	if len(entrypoints) == 0 {
 		return
@@ -316,7 +340,7 @@ func (r *runReader) image(idx int, entrypoints []string) {
 		return
 	}
 
-	run := containerRun{entrypoints: entrypoints, args: r.args[idx+1:]}
+	run := containerRun{entrypoints: entrypoints, args: r.args[idx+1:], image: r.offset + idx}
 	if !slices.ContainsFunc(r.runs, run.equal) {
 		r.runs = append(r.runs, run)
 	}
@@ -330,7 +354,7 @@ func leadingExpansion(word string) string {
 	switch {
 	case strings.HasPrefix(word, "${"):
 		return DetailWordVariable
-	case marked(word) || bracesExpand(word):
+	case marked(word) || bracesExpand(word) || globsOptions(word):
 		return DetailWordOutput
 	default:
 		return ""
@@ -438,14 +462,18 @@ func (w *astWalker) entrypointCommands(cmd Command) []Command {
 	r := &runReader{}
 
 	readings, complete := w.expandedArgs(cmd.Args)
-	if !complete && slices.ContainsFunc(readings[1], mentionsEntrypoint) {
+	if !complete && slices.ContainsFunc(readings[1].args, mentionsEntrypoint) {
 		r.exhausted = true
 	}
 
-	for _, args := range readings {
-		read := containerRuns(args)
-		if !w.spendArgs(cmd, read.readings*len(args)) {
+	for _, reading := range readings {
+		read := containerRuns(reading.args)
+		if !w.spendArgs(cmd, read.readings*len(reading.args)) {
 			return nil
+		}
+
+		for i := range read.runs {
+			read.runs[i].args = reading.payload(cmd.Args, read.runs[i].image)
 		}
 
 		r.merge(read)
@@ -529,9 +557,14 @@ func (c Command) sameCall(other Command) bool {
 // several words is read both whole and split, in every combination. Past
 // maxSplitChoices such arguments it returns only the all-whole and all-split
 // readings and reports false.
-func (w *astWalker) expandedArgs(args []string) ([][]string, bool) {
+func (w *astWalker) expandedArgs(args []string) ([]argReading, bool) {
 	if !slices.ContainsFunc(args, HasUnresolvedVars) {
-		return [][]string{args}, true
+		origins := make([]int, len(args))
+		for i := range origins {
+			origins[i] = i
+		}
+
+		return []argReading{{args: args, origins: origins}}, true
 	}
 
 	choices := make([][][]string, 0, len(args))
@@ -557,10 +590,10 @@ func (w *astWalker) expandedArgs(args []string) ([][]string, bool) {
 	}
 
 	if splits > maxSplitChoices {
-		return [][]string{pickChoices(choices, 0, false), pickChoices(choices, 0, true)}, false
+		return []argReading{pickChoices(choices, 0, false), pickChoices(choices, 0, true)}, false
 	}
 
-	readings := make([][]string, 0, 1<<splits)
+	readings := make([]argReading, 0, 1<<splits)
 	for mask := range 1 << splits {
 		readings = append(readings, pickChoices(choices, mask, false))
 	}
@@ -568,15 +601,37 @@ func (w *astWalker) expandedArgs(args []string) ([][]string, bool) {
 	return readings, true
 }
 
+// argReading is one reading of a runner's arguments with variables
+// substituted, and for each word the index of the argument it came from.
+type argReading struct {
+	args    []string
+	origins []int
+}
+
+// payload returns the container's command line after the image at index
+// image: the rest of the image's own expansion, then the original arguments.
+// Those are not substituted here, since the outer shell leaves a quoted
+// script ('git ${SUB}') for the container's shell to expand.
+func (a argReading) payload(original []string, image int) []string {
+	origin := a.origins[image]
+
+	end := image + 1
+	for end < len(a.args) && a.origins[end] == origin {
+		end++
+	}
+
+	return slices.Concat(a.args[image+1:end], original[origin+1:])
+}
+
 // pickChoices builds one reading of args: bit n of mask, or allSplit, picks
 // the split form of the nth argument that has one.
-func pickChoices(choices [][][]string, mask int, allSplit bool) []string {
+func pickChoices(choices [][][]string, mask int, allSplit bool) argReading {
 	var (
-		out []string
+		out argReading
 		bit int
 	)
 
-	for _, options := range choices {
+	for origin, options := range choices {
 		pick := options[0]
 
 		if len(options) > 1 {
@@ -587,7 +642,11 @@ func pickChoices(choices [][][]string, mask int, allSplit bool) []string {
 			bit++
 		}
 
-		out = append(out, pick...)
+		out.args = append(out.args, pick...)
+
+		for range pick {
+			out.origins = append(out.origins, origin)
+		}
 	}
 
 	return out
