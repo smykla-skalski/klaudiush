@@ -274,6 +274,16 @@ var _ = Describe("Snapshot", func() {
 		Expect(uninitialized).NotTo(Equal(clean))
 	})
 
+	It("ignores git complaints that leave no file out", func() {
+		before, _ := digest(tests)
+
+		git(repo, "config", "core.fsmonitor", filepath.Join(repo, "no-such-fsmonitor"))
+
+		after, files := digest(tests)
+		Expect(after).To(Equal(before))
+		Expect(files).To(Equal(2))
+	})
+
 	It("fails when git cannot read part of the work tree", func() {
 		if os.Geteuid() == 0 {
 			Skip("root reads every directory")

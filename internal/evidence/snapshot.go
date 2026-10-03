@@ -347,9 +347,13 @@ func copyFile(dst io.Writer, tree *os.Root, path string) error {
 // work tree on disk.
 var gitRunner = kexec.NewCommandRunner(0)
 
+// unreadableDirectory is how git reports a directory it skipped.
+const unreadableDirectory = "could not open directory"
+
 // listFiles lists work tree files with git ls-files. A directory git could
-// not read would hide the files in it, so any complaint git prints fails
-// the listing instead of leaving those files out of the fingerprint.
+// not read would hide the files in it, so it fails the listing instead of
+// leaving those files out of the fingerprint. Other complaints, such as a
+// missing fsmonitor or an unreadable global ignore file, leave nothing out.
 func listFiles(ctx context.Context, root string, which ...string) ([]byte, error) {
 	args := append([]string{"ls-files", "-z", "--exclude-standard"}, which...)
 
@@ -358,17 +362,13 @@ func listFiles(ctx context.Context, root string, which ...string) ([]byte, error
 		return nil, errors.Wrap(err, "failed to list repository files")
 	}
 
-	if complaint := strings.TrimSpace(stderr); complaint != "" {
-		return nil, errors.Wrapf(ErrUnreadable, "git ls-files: %s", firstLine(complaint))
+	for line := range strings.SplitSeq(stderr, "\n") {
+		if strings.Contains(line, unreadableDirectory) {
+			return nil, errors.Wrapf(ErrUnreadable, "git ls-files: %s", strings.TrimSpace(line))
+		}
 	}
 
 	return out, nil
-}
-
-func firstLine(text string) string {
-	line, _, _ := strings.Cut(text, "\n")
-
-	return line
 }
 
 func runGit(ctx context.Context, dir string, args ...string) ([]byte, error) {

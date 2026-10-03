@@ -87,19 +87,83 @@ var _ = Describe("evidenceGate", func() {
 		check = &config.EvidenceCheckConfig{Name: "tests", Commands: []string{"make test"}}
 	})
 
-	It("stays off unless enabled with valid checks", func() {
-		Expect(newEvidenceGate(nil, store, nil, log)).To(BeNil())
-		Expect(newEvidenceGate(&config.Config{}, store, nil, log)).To(BeNil())
+	It("has no checks of its own unless enabled with valid checks", func() {
 		Expect(newEvidenceGate(evidenceConfig(check), nil, nil, log)).To(BeNil())
-		Expect(newEvidenceGate(evidenceConfig(), store, nil, log)).To(BeNil())
-		Expect(newEvidenceGate(
-			evidenceConfig(&config.EvidenceCheckConfig{Name: "x"}), store, nil, log,
-		)).To(BeNil())
+
+		for _, cfg := range []*config.Config{
+			nil,
+			{},
+			evidenceConfig(),
+			evidenceConfig(&config.EvidenceCheckConfig{Name: "x"}),
+		} {
+			gate := newEvidenceGate(cfg, store, nil, log)
+			Expect(gate).NotTo(BeNil())
+			Expect(gate.checks).To(BeEmpty())
+		}
 
 		var gate *evidenceGate
 
 		errs := []*dispatcher.ValidationError{{Message: "kept"}}
 		Expect(gate.apply(context.Background(), &hook.Context{}, errs)).To(Equal(errs))
+	})
+
+	It("does nothing without checks unless a file tool edits or the turn stops", func() {
+		gate := newEvidenceGate(&config.Config{}, store, nil, log)
+		gate.loadChecks = func(string) []*evidence.Check {
+			Fail("no repository should be loaded")
+
+			return nil
+		}
+
+		pre := evidenceCtx(hook.CanonicalEventBeforeTool, "PreToolUse", repo)
+		Expect(gate.apply(context.Background(), pre, nil)).To(BeEmpty())
+	})
+
+	It("follows edits into a gated repository from a directory without checks", func() {
+		other := evidenceRepo()
+		withChecks := newEvidenceGate(evidenceConfig(check), store, nil, log)
+		gate := newEvidenceGate(&config.Config{}, store, nil, log)
+		gate.loadChecks = func(root string) []*evidence.Check {
+			if root == other {
+				return withChecks.checks
+			}
+
+			return nil
+		}
+
+		write := evidenceCtx(hook.CanonicalEventBeforeTool, "PreToolUse", repo)
+		write.ToolName, write.ToolFamily = hook.ToolTypeWrite, hook.ToolFamilyWrite
+		write.AffectedPaths = []string{filepath.Join(other, "a.go")}
+		gate.apply(context.Background(), write, nil)
+
+		Expect(os.WriteFile(filepath.Join(other, "a.go"), []byte("package b\n"), 0o600)).
+			To(Succeed())
+
+		stop := evidenceCtx(hook.CanonicalEventTurnStop, "Stop", repo)
+		errs := gate.apply(context.Background(), stop, nil)
+		Expect(errs).To(HaveLen(1))
+		Expect(errs[0].Details[evidenceValidator]).To(ContainSubstring(other))
+	})
+
+	It("does not gate a read-only session on files it cannot fingerprint", func() {
+		if os.Geteuid() == 0 {
+			Skip("root reads every file")
+		}
+
+		gate := newEvidenceGate(evidenceConfig(check), store, nil, log)
+		unreadable := filepath.Join(repo, "a.go")
+		Expect(os.Chmod(unreadable, 0o000)).To(Succeed())
+		DeferCleanup(os.Chmod, unreadable, os.FileMode(0o644))
+
+		read := evidenceCtx(hook.CanonicalEventBeforeTool, "PreToolUse", repo)
+		read.ToolName, read.ToolFamily = hook.ToolTypeRead, hook.ToolFamilyRead
+		gate.apply(context.Background(), read, nil)
+
+		stop := evidenceCtx(hook.CanonicalEventTurnStop, "Stop", repo)
+		Expect(gate.apply(context.Background(), stop, nil)).To(BeEmpty())
+
+		Expect(os.Chmod(unreadable, 0o644)).To(Succeed())
+		Expect(gate.apply(context.Background(), stop, nil)).To(BeEmpty())
 	})
 
 	It("ignores hooks without a session or outside a repository", func() {

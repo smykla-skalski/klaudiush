@@ -45,12 +45,8 @@ func mainFunc() {
 	// Reset git repository cache so each test discovers its own repo
 	gitpkg.ResetRepositoryCache()
 
-	if err := rootCmd.Execute(); err != nil {
-		if code, ok := commandExitCode(err); ok {
-			os.Exit(code)
-		}
-
-		os.Exit(1)
+	if code := mainWithExitCode(); code != ExitCodeAllow {
+		os.Exit(code)
 	}
 }
 

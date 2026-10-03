@@ -121,6 +121,7 @@ func loadEvidenceSetup(ctx context.Context, log logger.Logger) (*evidenceSetup, 
 
 func runEvidenceRun(cmd *cobra.Command, args []string) error {
 	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
 
 	setup, err := loadEvidenceSetup(cmd.Context(), loggerFromCmd(cmd))
 	if err != nil {
@@ -149,9 +150,6 @@ func runEvidenceRun(cmd *cobra.Command, args []string) error {
 	}
 
 	if code != 0 {
-		cmd.SilenceUsage = true
-		cmd.SilenceErrors = true
-
 		return &exitCodeError{code: code}
 	}
 
@@ -292,6 +290,9 @@ func exitStatus(result kexec.CommandResult) int {
 }
 
 func runEvidenceStatus(cmd *cobra.Command, _ []string) error {
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
 	ctx := cmd.Context()
 
 	setup, err := loadEvidenceSetup(ctx, loggerFromCmd(cmd))

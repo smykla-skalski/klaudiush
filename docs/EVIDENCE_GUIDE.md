@@ -67,7 +67,7 @@ On the first hook of a session in a repository, klaudiush records a digest of th
 - An edit that was later undone: not required, because the content is back to the baseline.
 - Only changes made while the session used a tool that can change files there count. A session that only read files (Read, Grep, Glob) is never gated by edits someone else made in the meantime. Shell commands count as tools that can change files.
 
-Every repository the session records a baseline for is judged at the completion gate, not only the one the agent stops in. A repository gets a baseline when a hook runs in it, or when a file tool (Write, Edit, a patch) edits a file in it; each repository is judged with the checks its own configuration defines. Shell commands that edit files in a repository no hook ran in are not seen.
+Every repository the session records a baseline for is judged at the completion gate, not only the one the agent stops in. A repository gets a baseline when a hook runs in it, or when a file tool (Write, Edit, a patch) edits a file in it; each repository is judged with the checks its own configuration defines, even when the agent stops in a directory without the gate. Shell commands that edit files in a repository no hook ran in are not seen.
 
 If a check's definition changes during a session, the check is required, since its new baseline would include whatever the session changed before.
 
@@ -177,4 +177,4 @@ tests (test): mise run test
 
 **The gate never blocks.** Check that `[evidence] enabled = true`, that the project is a git repository, that the changed files match `paths`, and that your provider runs klaudiush on its completion event (`klaudiush doctor --category evidence`).
 
-**"klaudiush could not fingerprint ..."** klaudiush could not list or read the covered files, or resolve the merge base of a review's `base` and `HEAD`. A directory git cannot read counts too, since files in it would be left out. This is reported as [HOOK001](errors/HOOK001.md) and blocks by default, because unknown content must not count as checked; `failure_policy.mode = "warn"` turns it into a warning. Session state klaudiush cannot read warns unless `mode = "block"` or `critical` includes `evidence`.
+**"klaudiush could not fingerprint ..."** klaudiush could not list or read the covered files, or resolve the merge base of a review's `base` and `HEAD`. A directory git cannot read counts too, since files in it would be left out. A session that only read files is not gated by this. This is reported as [HOOK001](errors/HOOK001.md) and blocks by default, because unknown content must not count as checked; `failure_policy.mode = "warn"` turns it into a warning. Session state klaudiush cannot read warns unless `mode = "block"` or `critical` includes `evidence`.

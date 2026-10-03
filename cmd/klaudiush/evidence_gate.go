@@ -45,26 +45,29 @@ type evidenceGate struct {
 	log        logger.Logger
 }
 
-// newEvidenceGate returns nil unless evidence is enabled with valid checks.
+// newEvidenceGate returns a gate for the hook's configuration. Without
+// checks of its own it still follows edits into repositories that have
+// checks, and judges them at the completion gate, so stopping in a
+// directory without the gate does not skip them.
 func newEvidenceGate(
 	cfg *config.Config,
 	store *hooksession.Store,
 	policy *failpolicy.Policy,
 	log logger.Logger,
 ) *evidenceGate {
-	if cfg == nil || store == nil || !cfg.Evidence.IsEnabled() {
+	if store == nil {
 		return nil
 	}
 
-	checks, err := evidence.Compile(cfg.Evidence)
-	if err != nil {
-		log.Info("evidence checks are invalid", "error", err)
+	var checks []*evidence.Check
 
-		return nil
-	}
+	if cfg != nil && cfg.Evidence.IsEnabled() {
+		compiled, err := evidence.Compile(cfg.Evidence)
+		if err != nil {
+			log.Info("evidence checks are invalid", "error", err)
+		}
 
-	if len(checks) == 0 {
-		return nil
+		checks = compiled
 	}
 
 	return &evidenceGate{
@@ -146,30 +149,37 @@ func (g *evidenceGate) apply(
 	}
 
 	workDir := evidenceWorkDir(hookCtx)
-	scopes := newScopeSet(g)
+	touched := touchedDirs(hookCtx, workDir)
+	stopping := hookCtx.Event == hook.CanonicalEventTurnStop
 
-	primary, primaryErr := evidence.RepoRoot(ctx, workDir)
-	if primaryErr == nil {
-		scopes.add(primary, g.checks)
+	if len(g.checks) == 0 && len(touched) == 0 && !stopping {
+		return errs
 	}
 
-	for _, dir := range touchedDirs(hookCtx, workDir) {
-		if repo, err := evidence.RepoRoot(ctx, dir); err == nil {
-			scopes.add(repo, nil)
+	scopes := newScopeSet(g)
+
+	primary, primaryErr := "", evidence.ErrNotRepository
+	if len(g.checks) > 0 {
+		primary, primaryErr = evidence.RepoRoot(ctx, workDir)
+		if primaryErr == nil {
+			scopes.add(primary, g.checks, true)
 		}
 	}
 
-	if hookCtx.Event == hook.CanonicalEventTurnStop {
-		return append(errs, g.stop(ctx, hookCtx, scopes)...)
+	for _, dir := range touched {
+		if repo, err := evidence.RepoRoot(ctx, dir); err == nil {
+			scopes.add(repo, nil, false)
+		}
 	}
 
-	mutating := hookCtx.Event == hook.CanonicalEventBeforeTool ||
-		hookCtx.Event == hook.CanonicalEventAfterTool
+	if stopping {
+		return append(errs, g.stop(ctx, hookCtx, scopes)...)
+	}
 
 	for _, scope := range scopes.list {
 		_, _ = g.ensureBaselines(ctx, hookCtx, scope)
 
-		if mutating && !readOnlyTool(hookCtx) {
+		if isToolEvent(hookCtx) && !readOnlyTool(hookCtx) {
 			if err := g.store.MarkTouched(
 				hookCtx.Provider,
 				hookCtx.SessionID,
@@ -210,7 +220,7 @@ func (g *evidenceGate) stop(
 	}
 
 	for _, repo := range repos {
-		scopes.add(repo, nil)
+		scopes.add(repo, nil, false)
 	}
 
 	var findings []*dispatcher.ValidationError
@@ -242,14 +252,14 @@ func newScopeSet(gate *evidenceGate) *scopeSet {
 	return &scopeSet{gate: gate, byRoot: make(map[string]*repoScope)}
 }
 
-// add registers a repository. checks are the ones the hook's configuration
-// holds; nil loads the repository's own.
-func (s *scopeSet) add(root string, checks []*evidence.Check) {
+// add registers a repository with the checks the hook's configuration
+// holds, or, unless loaded, with the repository's own.
+func (s *scopeSet) add(root string, checks []*evidence.Check, loaded bool) {
 	if _, ok := s.byRoot[root]; ok {
 		return
 	}
 
-	if checks == nil && s.gate.loadChecks != nil {
+	if !loaded && s.gate.loadChecks != nil {
 		checks = s.gate.loadChecks(root)
 	}
 
@@ -327,7 +337,8 @@ func (g *evidenceGate) ensureBaselines(
 	}
 
 	added := make(map[string]string)
-	unknown := hookCtx.IsAfterTool() && !readOnlyTool(hookCtx)
+	changing := isToolEvent(hookCtx) && !readOnlyTool(hookCtx)
+	unknown := hookCtx.IsAfterTool() && changing
 
 	for _, check := range scope.checks {
 		if _, ok := baselines[check.ID()]; ok {
@@ -341,6 +352,10 @@ func (g *evidenceGate) ensureBaselines(
 			if err != nil {
 				g.log.Info("failed to fingerprint evidence baseline",
 					"check", check.Name, "error", err)
+
+				if !changing {
+					continue
+				}
 
 				digest = hooksession.BaselineUnknown
 			}
@@ -372,6 +387,11 @@ func redefined(baselines map[string]string, check *evidence.Check) bool {
 	}
 
 	return false
+}
+
+func isToolEvent(hookCtx *hook.Context) bool {
+	return hookCtx.Event == hook.CanonicalEventBeforeTool ||
+		hookCtx.Event == hook.CanonicalEventAfterTool
 }
 
 func readOnlyTool(hookCtx *hook.Context) bool {
@@ -585,6 +605,10 @@ func (g *evidenceGate) verdicts(
 			continue
 		}
 
+		if !touched && baseline != hooksession.BaselineUnknown {
+			continue
+		}
+
 		current, err := contentDigest(ctx, snap, check)
 		if err != nil {
 			findings = append(findings,
@@ -593,7 +617,7 @@ func (g *evidenceGate) verdicts(
 			continue
 		}
 
-		if baseline == current || (!touched && baseline != hooksession.BaselineUnknown) {
+		if baseline == current {
 			continue
 		}
 
