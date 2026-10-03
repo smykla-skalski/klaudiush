@@ -312,42 +312,26 @@ func writtenBytes(chain []*astWalker) int {
 	return size
 }
 
-// ambiguousAliases reports whether some git or gh alias was defined more
-// than one way on the line. A lookup sees only the latest definition, but a
-// pass that was cut may have run while an earlier one was in place.
+// ambiguousAliases reports whether the line holds more than one distinct
+// command that may define a git or gh alias. A lookup sees only the latest
+// definition, but a pass that was cut may have run while an earlier one was
+// in place. Telling which alias each command touches would mean matching
+// every flag form git and gh accept, so any two different ones count.
 func (w *astWalker) ambiguousAliases() bool {
-	defs := make(map[string]string)
+	first := ""
 
 	for cmd := range w.earlierCommands() {
 		if !definesAlias(cmd) {
 			continue
 		}
 
-		name, id := aliasName(cmd), commandIdentity(cmd)
-		if seen, ok := defs[name]; ok && seen != id {
+		id := commandIdentity(cmd)
+		if first == "" {
+			first = id
+		} else if id != first {
 			return true
 		}
-
-		defs[name] = id
 	}
 
 	return false
-}
-
-// aliasName returns the alias a defining command touches, or "" when it
-// cannot tell, so every such command is grouped together and any two
-// different ones count as ambiguous.
-func aliasName(cmd Command) string {
-	for i, arg := range cmd.Args {
-		lower := strings.ToLower(arg)
-		if after, ok := strings.CutPrefix(lower, "alias."); ok && cmd.Name == gitProgram {
-			return gitProgram + fieldSeparator + after
-		}
-
-		if lower == ghAliasCommand && cmd.Name == ghCLI && i+2 < len(cmd.Args) {
-			return ghCLI + fieldSeparator + cmd.Args[i+2]
-		}
-	}
-
-	return ""
 }
