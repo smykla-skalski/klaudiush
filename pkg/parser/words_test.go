@@ -31,12 +31,27 @@ var _ = Describe("Unresolved eval and command words", func() {
 		}
 	}
 
-	DescribeTable("fails closed on a word it cannot resolve",
+	toAny := func(names []string) []any {
+		out := make([]any, 0, len(names))
+		for _, name := range names {
+			out = append(out, name)
+		}
+
+		return out
+	}
+
+	DescribeTable(
+		"fails closed on a word it cannot resolve",
 		func(command string, want parser.Opacity) {
 			result := parse(command)
 
 			Expect(result.Truncated).To(BeTrue(), command)
-			Expect(result.Opacities).To(ContainElement(want), command)
+			Expect(result.Opacities).To(ContainElement(SatisfyAll(
+				HaveField("Cause", want.Cause),
+				HaveField("Operation", want.Operation),
+				HaveField("Detail", want.Detail),
+				HaveField("Origin", HaveExactElements(toAny(want.Origin)...)),
+			)), command)
 		},
 		Entry("git subcommand from an unknown variable",
 			`git $SECRET`, opacity("git", parser.DetailWordVariable)),
@@ -89,7 +104,94 @@ var _ = Describe("Unresolved eval and command words", func() {
 			opacity("eval", parser.DetailWordVariable)),
 		Entry("eval under a launcher", `builtin eval "$UNSET"`,
 			opacity("eval", parser.DetailWordVariable, "builtin")),
+		Entry("assigned, then set by printf -v", `x=status; printf -v x commit; git $x -m bad`,
+			opacity("git", parser.DetailWordVariable)),
+		Entry("assigned, then set with attached -v", `x=status; printf -vx commit; git $x`,
+			opacity("git", parser.DetailWordVariable)),
+		Entry("assigned, then a loop variable", `x=status; for x in commit; do :; done; git $x`,
+			opacity("git", parser.DetailWordVariable)),
+		Entry("assigned, then set in a function", `x=status; f(){ x=commit; }; f; git $x`,
+			opacity("git", parser.DetailWordVariable)),
+		Entry("assigned, then set by eval", `x=status; eval x=commit; git $x`,
+			opacity("git", parser.DetailWordVariable)),
+		Entry("assigned, then read", `x=status; IFS= read -r -p p x <<< commit; git $x`,
+			opacity("git", parser.DetailWordVariable)),
+		Entry("assigned, then read into an array", `x=status; read -a x <<< commit; git $x`,
+			opacity("git", parser.DetailWordVariable)),
+		Entry("read with no name", `REPLY=status; read <<< commit; git $REPLY`,
+			opacity("git", parser.DetailWordVariable)),
+		Entry("assigned, then readarray", `x=status; readarray -t x <<< commit; git $x`,
+			opacity("git", parser.DetailWordVariable)),
+		Entry("assigned, then sourced", `x=status; . <(echo x=commit); git $x`,
+			opacity("git", parser.DetailWordVariable)),
+		Entry("environment, then printf -v", `printf -v SUB commit; git $SUB`,
+			opacity("git", parser.DetailWordVariable)),
+		Entry("gh action set by printf -v", `a=pr; b=view; printf -v b create; gh $a $b`,
+			opacity("gh", parser.DetailWordVariable)),
+		Entry("unknown subcommand under docker run", `docker run img git $X -m bad`,
+			opacity("git", parser.DetailWordVariable, "docker")),
+		Entry("substituted subcommand under docker run", `docker run img git $(echo commit)`,
+			opacity("git", parser.DetailWordOutput, "docker")),
+		Entry("git-name from a variable under a runner", `mise exec -- git-$X`,
+			opacity("git", parser.DetailWordVariable, "mise", "exec")),
+		Entry("gh command under a runner", `mise exec -- gh $X`,
+			opacity("gh", parser.DetailWordVariable, "mise", "exec")),
+		Entry("assigned in a subshell", `X=push; (X=status); git $X`,
+			opacity("git", parser.DetailWordVariable)),
+		Entry("assigned as a prefix", `X=push; X=status true; git $X`,
+			opacity("git", parser.DetailWordVariable)),
+		Entry("assigned in a pipeline", `X=push; X=status | true; git $X`,
+			opacity("git", parser.DetailWordVariable)),
+		Entry("assigned after &&", `X=push; false && X=status; git $X`,
+			opacity("git", parser.DetailWordVariable)),
+		Entry("assigned in an if", `X=push; if false; then X=status; fi; git $X`,
+			opacity("git", parser.DetailWordVariable)),
+		Entry("assigned in the background", `X=push; X=status & git $X`,
+			opacity("git", parser.DetailWordVariable)),
+		Entry("assigned by a trap", `X=status; trap 'X=push' DEBUG; git $X`,
+			opacity("git", parser.DetailWordVariable)),
+		Entry("assigned through a name reference", `declare -n X=Y; Y=push; git $X`,
+			opacity("git", parser.DetailWordVariable)),
+		Entry("assigned later in a loop", `X=status; while :; do git $X; X=push; done`,
+			opacity("git", parser.DetailWordVariable)),
+		Entry("read later in a loop", `X=status; while :; do git $X; read X; done`,
+			opacity("git", parser.DetailWordVariable)),
+		Entry(
+			"getopts",
+			`X=status; getopts a X; git $X`,
+			opacity("git", parser.DetailWordVariable),
+		),
+		Entry("partly substituted subcommand", `git cherry"$(echo -pick)" abc`,
+			opacity("git", parser.DetailWordOutput)),
+		Entry("partly substituted with backticks", "git cherry`echo -pick` abc",
+			opacity("git", parser.DetailWordOutput)),
 	)
+
+	It("checks a launcher program from command output as git when it runs a git command", func() {
+		for _, command := range []string{
+			`sudo $(echo git) push --force`,
+			`command $(echo git) push --force`,
+			`xargs $(echo git) push --force`,
+		} {
+			result := parse(command)
+			Expect(result.GitOperations).NotTo(BeEmpty(), command)
+			Expect(result.GitOperations[0].Args).To(Equal([]string{"push", "--force"}), command)
+		}
+	})
+
+	It("hides a subcommand that came from a variable's value", func() {
+		secret := fakeResolver{env: map[string]string{"SECRET": "hunterpassword"}}
+		result, err := parser.NewBashParserWithResolver(secret).Parse(`git $SECRET`)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(result.Opacities).To(ConsistOf(parser.Opacity{
+			Cause:     parser.OpacityUnresolvedProgram,
+			Operation: "git <hidden>",
+		}))
+	})
+
+	It("does not take find's {} for a brace expansion", func() {
+		Expect(parse(`find . -exec git add {} \;`).Truncated).To(BeFalse())
+	})
 
 	It("names no variable or value in the opacity", func() {
 		result := parse(`git $ghp_SECRET1234567890; eval "x $TOKEN_abc123"`)
@@ -119,15 +221,27 @@ var _ = Describe("Unresolved eval and command words", func() {
 		Entry("empty assignment", `E=""; git $E status`, "status"),
 		Entry("assignment to a flag", `X=--no-pager; git $X status`, "--no-pager", "status"),
 		Entry("variable in a later argument", `git status "$FILE"`, "status", "${FILE}"),
-		Entry("substituted global option value", `git -C "$(pwd)" status`, "-C", "status"),
+		Entry("substituted global option value", `git -C "$(pwd)" status`, "-C", "", "status"),
+		Entry("substituted global option before push", `git -C "$(pwd)" push -f o main`,
+			"-C", "", "push", "-f", "o", "main"),
+		Entry("substituted -c value", `git -c "$(echo k=v)" push`, "-c", "", "push"),
 		Entry("substituted launcher operand", `timeout $(echo 5) git status`, "status"),
 		Entry("substituted env words", `env $(cat .env) git commit -m x`, "commit", "-m", "x"),
-		Entry("substituted message", `git commit -m "$(date)"`, "commit", "-m"),
+		Entry("substituted message", `git commit -m "$(date)" --no-verify`,
+			"commit", "-m", "", "--no-verify"),
+		Entry("partly substituted message", `git commit -m "at $(date)"`, "commit", "-m", "at "),
+		Entry("typed placeholder text", `git commit -m '$(...)' --no-verify`,
+			"commit", "-m", "$(...)", "--no-verify"),
 		Entry("eval of a literal line", `eval "git status"`, "status"),
 		Entry("eval of an assigned line", `X="git commit -m 'a b'"; eval "$X"`,
 			"commit", "-m", "a b"),
 		Entry("eval of an environment line", `eval "$LINE"`, "commit", "-m", "x"),
 		Entry("eval of a single-quoted line", `eval 'git $SUB'`, "status"),
+		Entry("reassigned literally after a loop",
+			`for x in a; do :; done; x=status; git $x`, "status"),
+		Entry("a local in a function", `f(){ local y=1; }; x=status; f; git $x`, "status"),
+		Entry("printf -v of another variable", `x=status; printf -v y commit; git $x`, "status"),
+		Entry("printf without -v", `x=status; printf '%s' x; git $x`, "status"),
 	)
 
 	DescribeTable("leaves gh words it does not dispatch on alone",

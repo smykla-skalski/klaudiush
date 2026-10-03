@@ -57,6 +57,9 @@ func newAstWalker(resolver Resolver) *astWalker {
 		stdinByCall:     make(map[*syntax.CallExpr]string),
 		stdinFileByCall: make(map[*syntax.CallExpr]string),
 		assignments:     make(map[string]string),
+		unknownVars:     make(map[string]bool),
+		safeAssigns:     make(map[*syntax.Assign]bool),
+		loopCalls:       make(map[*syntax.CallExpr]bool),
 		resolver:        resolver,
 		aliases:         make(map[string]string),
 		funcs:           make(map[string]string),
@@ -80,6 +83,9 @@ func (w *astWalker) child(dir string, depth int) *astWalker {
 	child.via = slices.Clone(w.via)
 
 	maps.Copy(child.assignments, w.assignments)
+	maps.Copy(child.unknownVars, w.unknownVars)
+
+	child.outerLoop = w.inLoop
 	maps.Copy(child.aliases, w.aliases)
 	maps.Copy(child.funcs, w.funcs)
 	maps.Copy(child.expanding, w.expanding)
@@ -117,6 +123,10 @@ func (w *astWalker) lastLineWrite(target string) (content string, found, capture
 // assigned earlier on the line, then the environment.
 func (w *astWalker) expandName(word string) string {
 	return expandVars(word, func(name string) (string, bool) {
+		if w.unknownVars[name] {
+			return "", false
+		}
+
 		if value, ok := w.assignments[name]; ok {
 			return value, true
 		}
@@ -211,6 +221,8 @@ func substitutedProgram(sub *syntax.CmdSubst) string {
 // disk explains. It then expands git aliases, returning the command line of a
 // shell alias for the walker to follow.
 func (w *astWalker) resolveProgram(cmd Command) (Command, []nestedScript) {
+	w.expanded = nil
+
 	if sub, ok := strings.CutPrefix(cmd.Name, "git-"); ok && sub != "" {
 		cmd.Name, cmd.Args = gitProgram, slices.Concat([]string{sub}, cmd.Args)
 	}
@@ -451,7 +463,7 @@ func (w *astWalker) unknownGitCommand(cmd Command, idx int) Command {
 	}
 
 	if !gitAliasName.MatchString(name) || !w.resolver.GitCommand(name) {
-		w.opaque(OpacityUnresolvedProgram, gitProgram+" "+safeName(name), "")
+		w.opaque(OpacityUnresolvedProgram, gitProgram+" "+w.shownWord(name), "")
 	}
 
 	return cmd
@@ -859,6 +871,7 @@ func (w *astWalker) walkScript(script string, parent Command, depth int, sw scri
 			break
 		}
 
+		child.prepare(stmt)
 		syntax.Walk(stmt, child.visit)
 	}
 
@@ -888,13 +901,8 @@ func (w *astWalker) argStrings(words []*syntax.Word) []string {
 			continue
 		}
 
-		s := argWord(word)
-
-		switch {
-		case s != "":
+		if s := markSubstituted(word, argWord(word)); s != "" {
 			args = append(args, s)
-		case substitutionOnly(word, s):
-			args = append(args, unresolvedWord)
 		}
 	}
 

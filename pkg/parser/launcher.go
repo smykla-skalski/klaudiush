@@ -492,7 +492,7 @@ func commandIndex(spec launcher, args []string) (int, bool) {
 		case strings.HasPrefix(arg, "-"):
 			// A flag, with any value attached (-uroot, --user=root).
 		case spec.assignments && assignmentPattern.MatchString(arg):
-		case arg == unresolvedWord && operands == 0:
+		case spec.assignments && arg == unresolvedWord:
 		case operands > 0:
 			operands--
 		default:
@@ -834,11 +834,14 @@ func launchesTracked(arg string, rest []string) bool {
 	case name == gitProgram || name == hubCLI:
 		idx := gitSubcommandIndex(rest)
 
-		return idx >= 0 && validatedGitSubcommands[rest[idx]]
+		return idx >= 0 &&
+			(validatedGitSubcommands[rest[idx]] || commandWordDetail(rest[idx]) != "")
 	case strings.HasPrefix(name, "git-"):
-		return validatedGitSubcommands[strings.TrimPrefix(name, "git-")]
+		sub := strings.TrimPrefix(name, "git-")
+
+		return validatedGitSubcommands[sub] || commandWordDetail(sub) != ""
 	case name == ghCLI:
-		return len(rest) > 0 && validatedGHCommands[rest[0]]
+		return len(rest) > 0 && (validatedGHCommands[rest[0]] || commandWordDetail(rest[0]) != "")
 	case shells[name]:
 		_, _, ok := shellOperand(rest)
 

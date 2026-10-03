@@ -58,6 +58,9 @@ func FuzzBashParse(f *testing.F) {
 	f.Add(`git {commit,-m,x}; git c?mmit; git 'push '; git $'push\n'`)
 	f.Add(`X=status; git $X; Y="commit -m x"; git $Y; eval "$Y"; eval 'git $X'`)
 	f.Add(`f() { git "$1"; }; f $(echo commit); alias g=git; g $(echo push)`)
+	f.Add(`x=status; printf -v x commit; read -a x; for x in a; do :; done; git $x`)
+	f.Add(`x=status; f(){ x=commit; }; f; eval x=push; . <(echo x=add); git $x`)
+	f.Add(`docker run img git $X; mise exec -- gh $Y; mise exec -- git-$Z`)
 
 	f.Fuzz(func(t *testing.T, command string) {
 		p := parser.NewBashParser()
