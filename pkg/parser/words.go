@@ -488,6 +488,10 @@ func (w *astWalker) launchedFrom(cmd, followed Command) launch {
 
 	l.entrypoints = w.entrypointCommands(followed)
 
+	if cmd.Name == sourceBuiltin || cmd.Name == dotBuiltin {
+		l.files = w.sourceLaunch(followed)
+	}
+
 	if cmd.Name == evalBuiltin {
 		l.scripts = nil
 
