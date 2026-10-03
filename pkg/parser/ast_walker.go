@@ -568,6 +568,7 @@ func (w *astWalker) extractCommand(call *syntax.CallExpr) {
 		StdinFile:        w.stdinFileByCall[call],
 		startup:          prefixStartup(call),
 		dynamicWords:     dynamicArgs(call.Args[1:]),
+		written:          writtenArgs(call.Args[1:]),
 	}, w.depth, view)
 }
 
@@ -601,6 +602,10 @@ func (w *astWalker) record(cmd Command, depth int, view string) {
 	}
 
 	cmd, nested := w.resolveProgram(cmd)
+	if cmd.Name == gitProgram {
+		cmd = w.resolveGitArgs(cmd)
+	}
+
 	followed := cmd
 	cmd.Args, cmd.SubstitutedArgs = storedArgs(cmd)
 
