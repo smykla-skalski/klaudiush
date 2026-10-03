@@ -34,9 +34,10 @@ func NewNestingValidator(log logger.Logger) *NestingValidator {
 const (
 	locationCommand = "command"
 	originSeparator = " > "
-	parseFailedText = "Command does not parse as bash, so what it runs cannot be inspected"
-	truncatedText   = "Command cannot be fully inspected, so what it runs is unknown"
-	kibibyte        = 1 << 10
+	parseFailedText = "Command does not parse as bash, so what it runs cannot be inspected " +
+		"(klaudiush parses commands as bash, not zsh)"
+	truncatedText = "Command cannot be fully inspected, so what it runs is unknown"
+	kibibyte      = 1 << 10
 )
 
 // parsePosition matches the line:column prefix of a shell syntax error.

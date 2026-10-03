@@ -58,6 +58,7 @@ var _ = Describe("NestingValidator", func() {
 		result := blocked(`git commit -m "x" && (`)
 
 		Expect(result.Message).To(ContainSubstring("does not parse as bash"))
+		Expect(result.Message).To(ContainSubstring("parses commands as bash, not zsh"))
 		Expect(result.Findings).To(ConsistOf(SatisfyAll(
 			HaveField("Location", MatchRegexp(`^line 1, column \d+$`)),
 			HaveField("Repair", ContainSubstring("Fix the shell syntax")),
@@ -88,6 +89,13 @@ var _ = Describe("NestingValidator", func() {
 				"Command does not parse as bash and may use zsh syntax, so klaudiush cannot inspect it",
 			),
 		)
+	})
+
+	It("does not call a zsh short form it cannot recognize broken shell", func() {
+		result := blocked(`if [[ -n x ]] { git push }`)
+
+		Expect(result.Message).To(ContainSubstring("parses commands as bash, not zsh"))
+		Expect(result.Message).NotTo(ContainSubstring("does not parse as shell"))
 	})
 
 	It("hedges a zsh loop form the zsh grammar does not know", func() {
