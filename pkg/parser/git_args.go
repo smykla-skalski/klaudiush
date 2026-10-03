@@ -2,6 +2,7 @@ package parser
 
 import (
 	"maps"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -65,6 +66,86 @@ var gluedValueFlags = map[string]string{
 // uninspectedPushValues are the push options whose value no validator reads.
 var uninspectedPushValues = nameSet("-o --push-option")
 
+const (
+	pwdBuiltin      = "pwd"
+	lookupSeparator = "\x00"
+)
+
+var (
+	branchShowCurrent  = []string{gitProgram, "branch", "--show-current"}
+	revParseAbbrevHead = []string{gitProgram, revParse, "--abbrev-ref", "HEAD"}
+)
+
+// ArgumentLookups are the command substitutions whose output a git push
+// argument is built from: the current branch, and the directory -C names.
+// Each changes nothing, and runs in the command's directory.
+var ArgumentLookups = [][]string{
+	branchShowCurrent,
+	revParseAbbrevHead,
+	revParseToplevel,
+	{pwdBuiltin},
+}
+
+// ArgumentLookup reports whether argv is one of ArgumentLookups.
+func ArgumentLookup(argv []string) bool {
+	return slices.ContainsFunc(ArgumentLookups, func(allowed []string) bool {
+		return slices.Equal(allowed, argv)
+	})
+}
+
+// plainBranch matches lookup output safe to use as a branch: one word with
+// nothing the shell would split, glob or expand, and no option dash.
+var plainBranch = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_./+@-]*$`)
+
+// lookupArgv returns the literal words of the one command a word that is a
+// single command substitution ("$(git branch --show-current)") runs.
+func lookupArgv(word *syntax.Word) []string {
+	parts := word.Parts
+	if len(parts) == 1 {
+		if quoted, ok := parts[0].(*syntax.DblQuoted); ok {
+			parts = quoted.Parts
+		}
+	}
+
+	if len(parts) != 1 {
+		return nil
+	}
+
+	sub, ok := parts[0].(*syntax.CmdSubst)
+	if !ok {
+		return nil
+	}
+
+	call := plainCall(sub)
+	if call == nil || slices.ContainsFunc(call.Args, func(w *syntax.Word) bool {
+		return !isLiteralWord(w)
+	}) {
+		return nil
+	}
+
+	return wordsToStrings(call.Args)
+}
+
+// argumentLookup returns what an allowed lookup prints when nothing on the
+// line can change it, as lookupOutput does for program words.
+func (w *astWalker) argumentLookup(argv []string) (string, bool) {
+	resolver, ok := w.resolver.(OutputResolver)
+	if !ok || !ArgumentLookup(argv) || !w.lookupUnchanged() {
+		return "", false
+	}
+
+	out, ok := resolver.CommandOutput(w.currentDir, argv)
+	if !ok {
+		return "", false
+	}
+
+	if slices.Equal(argv, branchShowCurrent) || slices.Equal(argv, revParseAbbrevHead) {
+		return out, plainBranch.MatchString(out) && !strings.Contains(out, "..")
+	}
+
+	return out, plainPath.MatchString(out)
+}
+
 // writtenArg is how an argument was written. prefix is its literal text
 // before the first expansion; literal reports no expansion at all. view is
 // the argument with quoted glob, brace and blank characters neutralized,
@@ -72,29 +153,29 @@ var uninspectedPushValues = nameSet("-o --push-option")
 // references and unquoted substitutions as splitMark, so splitting and
 // globbing are found in it.
 type writtenArg struct {
-	prefix    string
-	view      string
-	literal   bool
-	ambiguous bool
-	tilde     bool
-	splits    bool
+	prefix  string
+	view    string
+	literal bool
+	tilde   bool
+	splits  bool
+	lookup  string
 }
 
 // writtenArgs records how each argument word was written, keyed by the
-// argument it renders to. Two words that render alike but were written
-// differently are marked ambiguous and checked as if unquoted.
-func writtenArgs(words []*syntax.Word) map[string]writtenArg {
-	written := make(map[string]writtenArg, len(words))
+// argument it renders to, in the order the words appear, so two words that
+// render alike ("$(pwd)" and "$(git branch --show-current)") stay apart.
+func writtenArgs(words []*syntax.Word) map[string][]writtenArg {
+	written := make(map[string][]writtenArg, len(words))
 
 	for _, word := range words {
 		key := markSubstituted(word, argWord(word))
 		arg := writeArg(word)
 
-		if prev, ok := written[key]; ok && prev != arg {
-			arg = writtenArg{ambiguous: true}
+		if argv := lookupArgv(word); ArgumentLookup(argv) {
+			arg.lookup = strings.Join(argv, lookupSeparator)
 		}
 
-		written[key] = arg
+		written[key] = append(written[key], arg)
 	}
 
 	return written
@@ -220,17 +301,32 @@ func splitsQuoted(exp *syntax.ParamExp) bool {
 // written here. When that is unknown (an argument a launcher rendered, or
 // literal text holding a substitution only re-quoting makes), every
 // expansion and glob character in arg counts as unquoted.
-func (w *astWalker) writtenAs(cmd Command, arg string) writtenArg {
+// The words that render to arg are matched to its places in order, and only
+// when there are as many of each.
+func (w *astWalker) writtenAs(cmd Command, i int) writtenArg {
+	arg := cmd.Args[i]
 	if forwarded, ok := w.forwarded[arg]; ok {
 		return forwarded
 	}
 
-	written, ok := cmd.written[arg]
-	if ok && !written.ambiguous && (!written.literal || !marked(arg)) {
-		return written
+	written := cmd.written[arg]
+	if len(written) != countOf(cmd.Args, arg) {
+		return unknownArg(arg)
 	}
 
-	return unknownArg(arg)
+	return written[countOf(cmd.Args[:i], arg)]
+}
+
+func countOf(args []string, arg string) int {
+	n := 0
+
+	for _, a := range args {
+		if a == arg {
+			n++
+		}
+	}
+
+	return n
 }
 
 func unknownArg(arg string) writtenArg {
@@ -244,11 +340,28 @@ func unknownArg(arg string) writtenArg {
 // forwardQuoted records how cmd's caller wrote the arguments it passes on
 // in words the callee does not split again: an alias's arguments, or ones a
 // function body quotes ("$1", "$@").
-func (w *astWalker) forwardQuoted(cmd Command, args []string) map[string]writtenArg {
-	forward := make(map[string]writtenArg, len(args))
+// The forwarded arguments are cmd's from start on.
+func (w *astWalker) forwardQuoted(cmd Command, start int) map[string]writtenArg {
+	indexes := make([]int, 0, len(cmd.Args)-start)
+	for i := start; i < len(cmd.Args); i++ {
+		indexes = append(indexes, i)
+	}
 
-	for _, arg := range args {
-		forward[arg] = w.writtenAs(cmd, arg)
+	return w.forwardAt(cmd, indexes)
+}
+
+// forwardAt records how cmd's arguments at indexes were written. Two
+// arguments with the same text written differently count as unknown.
+func (w *astWalker) forwardAt(cmd Command, indexes []int) map[string]writtenArg {
+	forward := make(map[string]writtenArg, len(indexes))
+
+	for _, i := range indexes {
+		arg, written := cmd.Args[i], w.writtenAs(cmd, i)
+		if prev, ok := forward[arg]; ok && prev != written {
+			written = unknownArg(arg)
+		}
+
+		forward[arg] = written
 	}
 
 	return forward
@@ -258,12 +371,12 @@ func (w *astWalker) forwardQuoted(cmd Command, args []string) map[string]written
 // cmd. A positional parameter the body leaves unquoted ($1, $@) is split
 // and globbed again, so the argument it holds counts as unquoted text.
 func (w *astWalker) forwardPositional(cmd Command, body string) map[string]writtenArg {
-	var quoted []string
+	var quoted []int
 
 	unquoted := make(map[string]bool)
 
 	for _, ref := range positionalParam.FindAllString(body, -1) {
-		args := cmd.Args
+		first, last := 0, len(cmd.Args)
 
 		param := strings.Trim(ref, `"${}`)
 		if param != "@" && param != "*" {
@@ -272,21 +385,19 @@ func (w *astWalker) forwardPositional(cmd Command, body string) map[string]writt
 				continue
 			}
 
-			args = cmd.Args[n-1 : n]
+			first, last = n-1, n
 		}
 
-		if len(ref) > 1 && strings.HasPrefix(ref, `"`) && strings.HasSuffix(ref, `"`) {
-			quoted = append(quoted, args...)
-
-			continue
-		}
-
-		for _, arg := range args {
-			unquoted[arg] = true
+		for i := first; i < last; i++ {
+			if len(ref) > 1 && strings.HasPrefix(ref, `"`) && strings.HasSuffix(ref, `"`) {
+				quoted = append(quoted, i)
+			} else {
+				unquoted[cmd.Args[i]] = true
+			}
 		}
 	}
 
-	forward := w.forwardQuoted(cmd, quoted)
+	forward := w.forwardAt(cmd, quoted)
 
 	for arg := range unquoted {
 		split := unknownArg(arg)
@@ -420,7 +531,14 @@ func (w *astWalker) gitArg(
 	values map[int]string,
 ) (string, bool, string) {
 	arg := cmd.Args[i]
-	written := w.writtenAs(cmd, arg)
+	written := w.writtenAs(cmd, i)
+
+	if sub == subcmdPush && written.lookup != "" {
+		argv := strings.Split(written.lookup, lookupSeparator)
+		if value, ok := w.argumentLookup(argv); ok {
+			return value, true, ""
+		}
+	}
 
 	expanded, detail := w.splitView(written.view)
 	if detail != "" {
@@ -601,13 +719,8 @@ func (w *astWalker) tildeHome(arg string) (string, bool) {
 // once substituted: one that looks like a key or password, or any in the
 // credentials of a URL.
 func (w *astWalker) secretRef(arg string) bool {
-	userinfo := ""
-	if _, rest, found := strings.Cut(arg, "://"); found {
-		userinfo, _, _ = strings.Cut(rest, "@")
-		if !strings.Contains(rest, "@") {
-			userinfo = ""
-		}
-	}
+	arg = w.applyDefaults(arg)
+	userinfo := urlUserinfo(arg)
 
 	for _, m := range varRefPattern.FindAllStringSubmatch(arg, -1) {
 		if _, assigned := w.assignments[m[1]]; assigned {
@@ -619,13 +732,30 @@ func (w *astWalker) secretRef(arg string) bool {
 			continue
 		}
 
-		if strings.Contains(userinfo, m[0]) ||
+		if strings.Contains(userinfo, m[0]) || urlUserinfo(value) != "" ||
 			slices.ContainsFunc(strings.FieldsFunc(value, urlSeparator), tokenLike) {
 			return true
 		}
 	}
 
 	return false
+}
+
+// urlUserinfo returns the credentials part of a URL in text, or "".
+func urlUserinfo(text string) string {
+	_, rest, found := strings.Cut(text, "://")
+	if !found {
+		return ""
+	}
+
+	host, _, _ := strings.Cut(rest, "/")
+
+	userinfo, _, found := strings.Cut(host, "@")
+	if !found {
+		return ""
+	}
+
+	return userinfo
 }
 
 func urlSeparator(r rune) bool {

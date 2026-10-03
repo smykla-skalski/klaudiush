@@ -53,6 +53,85 @@ stdin log-output.json
 exec klaudiush --hook-type PreToolUse
 ! stdout .
 
+stdin push-current.json
+exec klaudiush --hook-type PreToolUse
+! stdout 'deny'
+
+stdin push-dir-current.json
+exec klaudiush --hook-type PreToolUse
+! stdout 'deny'
+
+stdin push-head.json
+exec klaudiush --hook-type PreToolUse
+! stdout 'deny'
+
+stdin push-forced-main.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'GIT026'
+
+stdin push-all.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'cannot be checked against blocked branches'
+
+stdin push-current-after-switch.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+
+exec git symbolic-ref HEAD refs/heads/main
+
+stdin push-current.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'GIT026'
+! stdout 'SHELL002'
+
+stdin push-abbrev.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'GIT026'
+
+stdin push-dir-current.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'GIT026'
+
+stdin push-head.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'GIT026'
+
+stdin push-at.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'GIT026'
+
+-- push-current.json --
+{"tool_name": "Bash", "tool_input": {"command": "git push -u origin \"$(git branch --show-current)\""}}
+
+-- push-abbrev.json --
+{"tool_name": "Bash", "tool_input": {"command": "git push origin \"$(git rev-parse --abbrev-ref HEAD)\""}}
+
+-- push-dir-current.json --
+{"tool_name": "Bash", "tool_input": {"command": "git -C \"$(pwd)\" push origin \"$(git branch --show-current)\""}}
+
+-- push-head.json --
+{"tool_name": "Bash", "tool_input": {"command": "git push origin HEAD"}}
+
+-- push-at.json --
+{"tool_name": "Bash", "tool_input": {"command": "git push origin @"}}
+
+-- push-forced-main.json --
+{"tool_name": "Bash", "tool_input": {"command": "git push origin +main"}}
+
+-- push-all.json --
+{"tool_name": "Bash", "tool_input": {"command": "git push --all origin"}}
+
+-- push-current-after-switch.json --
+{"tool_name": "Bash", "tool_input": {"command": "git checkout -b x && git push origin \"$(git branch --show-current)\""}}
+
 -- .klaudiush/config.toml --
 [validators.git.push]
 blocked_branches = ["main"]

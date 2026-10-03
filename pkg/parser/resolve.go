@@ -364,7 +364,7 @@ func (w *astWalker) expandGHAlias(cmd Command) (Command, []nestedScript) {
 				{
 					name:    "gh:" + name,
 					text:    line + " " + quoteArgs(rest),
-					forward: w.forwardQuoted(cmd, rest),
+					forward: w.forwardQuoted(cmd, len(cmd.Args)-len(rest)),
 				},
 			}
 		}
@@ -503,7 +503,7 @@ func (w *astWalker) expandGitAlias(cmd Command) (Command, []nestedScript) {
 				{
 					name:    "git:" + name,
 					text:    line + " " + quoteArgs(rest),
-					forward: w.forwardQuoted(cmd, rest),
+					forward: w.forwardQuoted(cmd, len(cmd.Args)-len(rest)),
 				},
 			}
 		}
@@ -764,7 +764,7 @@ func (w *astWalker) definitionScripts(cmd Command) []nestedScript {
 			nestedScript{
 				name:    cmd.Invoked,
 				text:    value + " " + quoteArgs(cmd.Args),
-				forward: w.forwardQuoted(cmd, cmd.Args),
+				forward: w.forwardQuoted(cmd, 0),
 			},
 		)
 	}

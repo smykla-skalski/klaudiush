@@ -30,10 +30,15 @@ type OutputResolver interface {
 var AllowedLookups = [][]string{
 	{"go", goEnv, "GOPATH"},
 	{"go", goEnv, "GOBIN"},
-	{gitProgram, "rev-parse", "--show-toplevel"},
+	revParseToplevel,
 }
 
-const goEnv = "env"
+const (
+	goEnv    = "env"
+	revParse = "rev-parse"
+)
+
+var revParseToplevel = []string{gitProgram, revParse, "--show-toplevel"}
 
 // AllowedLookup reports whether argv is one of AllowedLookups.
 func AllowedLookup(argv []string) bool {
