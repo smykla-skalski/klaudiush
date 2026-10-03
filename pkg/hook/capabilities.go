@@ -441,3 +441,15 @@ func IsCodexAliasedEvent(rawEventName string) bool {
 		return false
 	}
 }
+
+// ReportsCommandOutcome reports whether a provider's after-tool events say
+// whether a shell command succeeded, so a required check run through the
+// shell tool can count as evidence. Claude fires PostToolUse only after a
+// command succeeded and PostToolUseFailure after it failed. Codex
+// PostToolUse carries only the model-facing output and Gemini AfterTool only
+// llmContent and returnDisplay, so exit status there would have to be read
+// from output text; checks run in those providers count only through the
+// klaudiush verifier.
+func ReportsCommandOutcome(provider Provider) bool {
+	return provider == ProviderClaude
+}

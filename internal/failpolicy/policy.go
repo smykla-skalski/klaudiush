@@ -98,7 +98,7 @@ var overrideNames = map[string]string{
 
 // otherNames are runtime validator names without an override spelling.
 var otherNames = []string{
-	"git-commit", "linter-ignore", "shell", "bell", "mcp-server", "lifecycle.rules",
+	"git-commit", "linter-ignore", "shell", "bell", "mcp-server", "lifecycle.rules", "evidence",
 }
 
 // IsKnownName reports whether a normalized name is a validator klaudiush

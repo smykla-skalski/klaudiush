@@ -200,6 +200,19 @@ type Context struct {
 	// ToolError is the failure message of a tool that ran and failed.
 	ToolError string
 
+	// ToolInterrupted reports a tool call the user or harness interrupted
+	// (Claude tool_response.interrupted, PostToolUseFailure is_interrupt).
+	ToolInterrupted bool
+
+	// ToolBackground reports a shell command started in the background, whose
+	// exit status the after-tool event does not carry (Claude
+	// run_in_background, tool_response.backgroundTaskId).
+	ToolBackground bool
+
+	// ToolExitNote is Claude's tool_response.returnCodeInterpretation: set
+	// when Claude treated a non-zero exit (grep, diff, test) as success.
+	ToolExitNote string
+
 	// Derived marks a context the dispatcher built from another tool call:
 	// a file a shell command wrote, or one file of a multi-file patch.
 	Derived bool
@@ -497,4 +510,17 @@ func (c *Context) MatchesToolName(toolName string) bool {
 	}
 
 	return false
+}
+
+// RunInBackground reports a shell call that asked to run in the background
+// (Claude Bash run_in_background).
+func (t ToolInput) RunInBackground() bool {
+	raw, ok := t.Additional["run_in_background"]
+	if !ok {
+		return false
+	}
+
+	var background bool
+
+	return json.Unmarshal(raw, &background) == nil && background
 }

@@ -1,0 +1,23 @@
+#:schema https://klaudiu.sh/schema/v1/config.json
+# Evidence gate: see docs/EVIDENCE_GUIDE.md
+# A session that changed covered files cannot finish until the check passed on them
+# Plain-word commands keep the exit status klaudiush sees the check's own
+# Covering build files and test scripts makes editing them invalidate results
+
+[evidence]
+enabled = true
+
+[[evidence.checks]]
+name = "tests"
+commands = ["mise run test", "go test ./..."]
+paths = ["**/*.go", "go.mod", "go.sum", ".mise.toml"]
+exclude = ["docs/**"]
+timeout = "20m"
+
+# Diffing from the merge base keeps a review valid after its changes are committed
+[[evidence.checks]]
+name = "review"
+kind = "review"
+commands = ["./scripts/review.sh"]
+paths = ["**/*.go"]
+base = "origin/main"

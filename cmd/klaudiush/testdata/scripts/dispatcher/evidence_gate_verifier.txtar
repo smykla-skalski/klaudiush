@@ -1,0 +1,138 @@
+[!exec:git] skip
+[!exec:sh] skip
+
+env GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@example.com GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@example.com
+cd project
+exec git init -q
+exec git add -A
+exec git commit -qm init
+exec git branch feat/base
+
+stdin $WORK/codex-pre.json
+exec klaudiush --provider codex --event PreToolUse
+stdin $WORK/gemini-before.json
+exec klaudiush --provider gemini --event BeforeTool
+
+cp $WORK/a-v2.go a.go
+
+stdin $WORK/codex-pre-check.json
+exec klaudiush --provider codex --event PreToolUse
+stdin $WORK/codex-post-check.json
+exec klaudiush --provider codex --event PostToolUse
+
+stdin $WORK/codex-stop.json
+exec klaudiush --provider codex --event Stop
+stdout '"decision":"block"'
+stdout 'Required check \\"tests\\" \(test\)'
+stdout 'Codex does not tell hooks whether a shell command succeeded'
+stdout 'evidence run tests'
+
+stdin $WORK/gemini-after.json
+exec klaudiush --provider gemini --event AfterAgent
+stdout '"decision":"deny"'
+stdout 'Required check \\"review\\" \(review\)'
+stdout 'a passing review of the exact current diff'
+stdout 'Changed files: a.go'
+stdout 'Gemini does not tell hooks'
+
+cp $WORK/fail fail
+! exec klaudiush evidence run tests
+stdout 'tests ran'
+stderr 'klaudiush: tests failed'
+! stderr 'Usage:'
+
+stdin $WORK/codex-stop.json
+exec klaudiush --provider codex --event Stop
+stdout 'failed with exit status 3'
+
+rm fail
+exec klaudiush evidence run tests
+stderr 'klaudiush: tests passed; command: sh check.sh; source: verifier'
+
+stdin $WORK/codex-stop.json
+exec klaudiush --provider codex --event Stop
+stdout 'Required check \\"review\\"'
+! stdout 'Required check \\"tests\\"'
+
+exec klaudiush evidence run review
+stderr 'klaudiush: review passed'
+stderr 'changed file'
+
+exec klaudiush evidence status
+stdout 'review \(review\): sh review.sh'
+stdout 'base: [0-9a-f]{40}, 1 changed file\(s\)'
+
+stdin $WORK/codex-stop.json
+exec klaudiush --provider codex --event Stop
+! stdout .
+
+stdin $WORK/gemini-after.json
+exec klaudiush --provider gemini --event AfterAgent
+! stdout .
+
+cp $WORK/a-v3.go a.go
+stdin $WORK/gemini-after.json
+exec klaudiush --provider gemini --event AfterAgent
+stdout 'its passed result is for content that has changed since'
+
+! exec klaudiush evidence run nope
+stderr 'unknown evidence check'
+stderr 'configured: tests, review'
+
+-- project/.klaudiush/config.toml --
+[evidence]
+enabled = true
+
+[[evidence.checks]]
+name = "tests"
+commands = ["sh check.sh"]
+paths = ["**/*.go"]
+
+[[evidence.checks]]
+name = "review"
+kind = "review"
+base = "feat/base"
+commands = ["sh review.sh"]
+paths = ["**/*.go"]
+
+-- project/check.sh --
+echo tests ran
+test -f fail && exit 3
+exit 0
+
+-- project/review.sh --
+echo reviewed
+
+-- project/a.go --
+package a
+
+-- a-v2.go --
+package a
+
+var X = 1
+
+-- a-v3.go --
+package a
+
+var X = 2
+
+-- fail --
+x
+
+-- codex-pre.json --
+{"session_id":"c1","hook_event_name":"PreToolUse","turn_id":"t1","tool_name":"apply_patch","tool_input":{"input":"*** Begin Patch\n*** Update File: a.go\n@@\n-package a\n+package a\n*** End Patch"}}
+
+-- codex-pre-check.json --
+{"session_id":"c1","hook_event_name":"PreToolUse","turn_id":"t1","tool_name":"Bash","tool_use_id":"x1","tool_input":{"command":"sh check.sh"}}
+
+-- codex-post-check.json --
+{"session_id":"c1","hook_event_name":"PostToolUse","turn_id":"t1","tool_name":"Bash","tool_use_id":"x1","tool_input":{"command":"sh check.sh"},"tool_response":"Exit code: 0\nPASS"}
+
+-- codex-stop.json --
+{"session_id":"c1","hook_event_name":"Stop","turn_id":"t1","stop_hook_active":false}
+
+-- gemini-before.json --
+{"session_id":"g1","hook_event_name":"BeforeTool","tool_name":"write_file","tool_input":{"file_path":"a.go","content":"package a\n"}}
+
+-- gemini-after.json --
+{"session_id":"g1","hook_event_name":"AfterAgent","prompt":"p","prompt_response":"done","stop_hook_active":false}

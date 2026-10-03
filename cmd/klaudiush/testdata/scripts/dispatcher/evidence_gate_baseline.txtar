@@ -1,0 +1,56 @@
+[!exec:git] skip
+
+env GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@example.com GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@example.com
+cd project
+exec git init -q
+exec git add -A
+exec git commit -qm init
+
+stdin $WORK/post-write.json
+exec klaudiush --hook-type PostToolUse
+stdin $WORK/stop.json
+exec klaudiush --event Stop
+stdout 'Required check \\"tests\\"'
+
+stdin $WORK/post-read.json
+exec klaudiush --hook-type PostToolUse
+stdin $WORK/stop-reader.json
+exec klaudiush --event Stop
+! stdout .
+
+stdin $WORK/stop-active.json
+exec klaudiush --event Stop
+stdout '"decision":"block"'
+stdin $WORK/stop-active.json
+exec klaudiush --event Stop
+stdout '"decision":"block"'
+stdin $WORK/stop-active.json
+exec klaudiush --event Stop
+! stdout '"decision":"block"'
+stdout 'allowed to stop'
+
+-- project/.klaudiush/config.toml --
+[evidence]
+enabled = true
+
+[[evidence.checks]]
+name = "tests"
+commands = ["true"]
+
+-- project/a.go --
+package a
+
+-- post-write.json --
+{"session_id":"s1","hook_event_name":"PostToolUse","tool_name":"Write","tool_use_id":"w1","tool_input":{"file_path":"a.go","content":"package a\n"},"tool_response":{}}
+
+-- post-read.json --
+{"session_id":"s2","hook_event_name":"PostToolUse","tool_name":"Read","tool_use_id":"r1","tool_input":{"file_path":"a.go"},"tool_response":{}}
+
+-- stop.json --
+{"session_id":"s1","hook_event_name":"Stop","stop_hook_active":false}
+
+-- stop-active.json --
+{"session_id":"s1","hook_event_name":"Stop","stop_hook_active":true}
+
+-- stop-reader.json --
+{"session_id":"s2","hook_event_name":"Stop","stop_hook_active":false}

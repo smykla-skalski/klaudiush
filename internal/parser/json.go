@@ -73,6 +73,7 @@ type JSONInput struct {
 	Trigger          string          `json:"trigger,omitempty"`
 	ToolResponse     json.RawMessage `json:"tool_response,omitempty"`
 	Error            json.RawMessage `json:"error,omitempty"`
+	IsInterrupt      bool            `json:"is_interrupt,omitempty"`
 }
 
 // claudeToolResponse holds the parts of a Claude PostToolUse tool_response
@@ -80,7 +81,10 @@ type JSONInput struct {
 // plain string, so decoding failures are ignored. Shared marks a diff that
 // may include another concurrent command's changes.
 type claudeToolResponse struct {
-	BashEditDiff *struct {
+	Interrupted      bool   `json:"interrupted,omitempty"`
+	ReturnCodeNote   string `json:"returnCodeInterpretation,omitempty"`
+	BackgroundTaskID string `json:"backgroundTaskId,omitempty"`
+	BashEditDiff     *struct {
 		ChangedFiles []string `json:"changedFiles,omitempty"`
 		Shared       bool     `json:"shared,omitempty"`
 	} `json:"bashEditDiff,omitempty"`
@@ -595,6 +599,8 @@ func populateClaudeAfterToolFields(ctx *hook.Context, input JSONInput) {
 
 	ctx.ToolExecuted = true
 	ctx.ToolSucceeded = !isClaudeToolFailure(ctx.RawEventName)
+	ctx.ToolInterrupted = input.IsInterrupt
+	ctx.ToolBackground = ctx.ToolInput.RunInBackground()
 	_ = json.Unmarshal(input.Error, &ctx.ToolError)
 
 	if len(input.ToolResponse) == 0 {
@@ -605,6 +611,10 @@ func populateClaudeAfterToolFields(ctx *hook.Context, input JSONInput) {
 	if err := json.Unmarshal(input.ToolResponse, &response); err != nil {
 		return
 	}
+
+	ctx.ToolInterrupted = ctx.ToolInterrupted || response.Interrupted
+	ctx.ToolBackground = ctx.ToolBackground || response.BackgroundTaskID != ""
+	ctx.ToolExitNote = response.ReturnCodeNote
 
 	if response.BashEditDiff != nil && !response.BashEditDiff.Shared {
 		ctx.ChangedFiles = dedupePaths(response.BashEditDiff.ChangedFiles)

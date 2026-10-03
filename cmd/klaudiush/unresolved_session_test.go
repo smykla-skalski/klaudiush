@@ -84,7 +84,7 @@ var _ = Describe("unresolved session findings", func() {
 		hookCtx.SessionID = sessionID
 		hookCtx.WorkingDir = dir
 
-		errs, cleanup, _ := dispatchInSession(context.Background(), disp, store, hookCtx, log)
+		errs, cleanup, _ := dispatchInSession(context.Background(), disp, store, nil, hookCtx, log)
 		cleanup()
 
 		return errs

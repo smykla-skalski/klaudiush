@@ -452,6 +452,50 @@ var _ = Describe("JSONParser", func() {
 			Expect(ctx.ChangedFiles).To(BeEmpty())
 		})
 
+		It("keeps Claude's interpretation of a non-zero exit", func() {
+			input := `{"hook_event_name": "PostToolUse", "tool_name": "Bash",
+				"tool_input": {"command": "git diff --exit-code"},
+				"tool_response": {"stdout": "", "returnCodeInterpretation": "Files differ"}}`
+
+			p := parser.NewJSONParser(bytes.NewReader([]byte(input)))
+			ctx, err := p.ParseWithOptions(parser.ParseOptions{Provider: hook.ProviderClaude})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ctx.ToolSucceeded).To(BeTrue())
+			Expect(ctx.ToolExitNote).To(Equal("Files differ"))
+		})
+
+		It("records interrupted and background Claude shell runs", func() {
+			cases := map[string][2]bool{
+				`{"hook_event_name": "PostToolUseFailure", "tool_name": "Bash",
+					"tool_input": {"command": "make test"}, "error": "Interrupted", "is_interrupt": true}`: {
+					true, false,
+				},
+				`{"hook_event_name": "PostToolUse", "tool_name": "Bash",
+					"tool_input": {"command": "make test"}, "tool_response": {"interrupted": true}}`: {
+					true, false,
+				},
+				`{"hook_event_name": "PostToolUse", "tool_name": "Bash",
+					"tool_input": {"command": "make test", "run_in_background": true},
+					"tool_response": {"stdout": ""}}`: {false, true},
+				`{"hook_event_name": "PostToolUse", "tool_name": "Bash",
+					"tool_input": {"command": "make test"},
+					"tool_response": {"backgroundTaskId": "bash_1"}}`: {false, true},
+				`{"hook_event_name": "PostToolUse", "tool_name": "Bash",
+					"tool_input": {"command": "make test", "run_in_background": "yes"},
+					"tool_response": "plain text"}`: {false, false},
+			}
+
+			for input, want := range cases {
+				p := parser.NewJSONParser(bytes.NewReader([]byte(input)))
+				ctx, err := p.ParseWithOptions(parser.ParseOptions{Provider: hook.ProviderClaude})
+
+				Expect(err).NotTo(HaveOccurred())
+				Expect(ctx.ToolInterrupted).To(Equal(want[0]), input)
+				Expect(ctx.ToolBackground).To(Equal(want[1]), input)
+			}
+		})
+
 		It("ignores changed files a concurrent command may have made", func() {
 			input := `{
 				"hook_event_name": "PostToolUse",

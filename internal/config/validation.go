@@ -9,6 +9,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 
+	"github.com/smykla-skalski/klaudiush/internal/evidence"
 	"github.com/smykla-skalski/klaudiush/pkg/config"
 )
 
@@ -87,11 +88,7 @@ func (v *Validator) Validate(cfg *config.Config) error {
 		}
 	}
 
-	if cfg.FailurePolicy != nil {
-		if err := validateFailurePolicyConfig(cfg.FailurePolicy); err != nil {
-			validationErrors = append(validationErrors, errors.Wrap(err, "failure_policy"))
-		}
-	}
+	validationErrors = append(validationErrors, validatePolicySections(cfg)...)
 
 	if len(validationErrors) > 0 {
 		return errors.WithSecondaryError(
@@ -105,6 +102,25 @@ func (v *Validator) Validate(cfg *config.Config) error {
 	}
 
 	return nil
+}
+
+// validatePolicySections checks the failure policy and the evidence checks.
+func validatePolicySections(cfg *config.Config) []error {
+	var validationErrors []error
+
+	if cfg.FailurePolicy != nil {
+		if err := validateFailurePolicyConfig(cfg.FailurePolicy); err != nil {
+			validationErrors = append(validationErrors, errors.Wrap(err, "failure_policy"))
+		}
+	}
+
+	if cfg.Evidence != nil {
+		if _, err := evidence.Compile(cfg.Evidence); err != nil {
+			validationErrors = append(validationErrors, errors.Wrap(err, "evidence"))
+		}
+	}
+
+	return validationErrors
 }
 
 // validateFailurePolicyConfig checks the failure modes and critical names.

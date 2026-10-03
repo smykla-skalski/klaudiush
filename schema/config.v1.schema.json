@@ -458,6 +458,65 @@
       "additionalProperties": false,
       "type": "object"
     },
+    "EvidenceCheckConfig": {
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "test",
+            "review"
+          ]
+        },
+        "commands": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "paths": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "exclude": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "base": {
+          "type": "string"
+        },
+        "timeout": {
+          "$ref": "#/$defs/Duration"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "name",
+        "commands"
+      ]
+    },
+    "EvidenceConfig": {
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "checks": {
+          "items": {
+            "$ref": "#/$defs/EvidenceCheckConfig"
+          },
+          "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
     "ExceptionAuditConfig": {
       "properties": {
         "enabled": {
@@ -1852,6 +1911,9 @@
     },
     "failure_policy": {
       "$ref": "#/$defs/FailurePolicyConfig"
+    },
+    "evidence": {
+      "$ref": "#/$defs/EvidenceConfig"
     }
   },
   "additionalProperties": false,

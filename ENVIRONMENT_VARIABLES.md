@@ -49,6 +49,15 @@ export KLAUDIUSH_FAILURE_POLICY_DEADLINE=20s
 
 `KLAUDIUSH_FAILURE_POLICY_MODE` also applies when the configuration files cannot be read, and the generated opencode plugin reads it to decide whether to refuse a tool call when klaudiush cannot answer at all.
 
+### Evidence Gate
+
+Require fresh passing results of the configured checks before an agent finishes. Checks themselves are configured in TOML. See the [evidence guide](docs/EVIDENCE_GUIDE.md).
+
+```bash
+# Turn the gate on or off
+export KLAUDIUSH_EVIDENCE_ENABLED=true
+```
+
 ## Git Validators
 
 ### Git Add Validator

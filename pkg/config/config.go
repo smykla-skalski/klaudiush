@@ -50,6 +50,9 @@ type Config struct {
 
 	// FailurePolicy decides what happens when validation cannot run.
 	FailurePolicy *FailurePolicyConfig `json:"failure_policy,omitempty" koanf:"failure_policy" toml:"failure_policy,omitempty"`
+
+	// Evidence gates completion on fresh results of required checks.
+	Evidence *EvidenceConfig `json:"evidence,omitempty" koanf:"evidence" toml:"evidence,omitempty"`
 }
 
 // ValidatorsConfig groups all validator configurations by category.
