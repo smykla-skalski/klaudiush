@@ -71,29 +71,31 @@ func parseMissingTools(value string) Action {
 // overrideNames maps override-style validator names onto runtime names, so
 // critical accepts either spelling.
 var overrideNames = map[string]string{
-	"git.add":          "git-add",
-	"git.branch":       "branch-name",
-	"git.commit":       "commit",
-	"git.fetch":        "git-fetch",
-	"git.merge":        "merge",
-	"git.no_verify":    "no-verify",
-	"git.pr":           "pr",
-	"git.push":         "git-push",
-	"github.api":       "gh-api",
-	"github.issue":     "issue",
-	"secrets":          "secrets",
-	"shell.backtick":   "backticks",
-	"shell.nesting":    "nesting",
-	"file.shellscript": "shellscript",
-	"file.terraform":   "terraform",
-	"file.workflow":    "github-workflow",
-	"file.gofumpt":     "gofumpt",
-	"file.python":      "python",
-	"file.javascript":  "javascript",
-	"file.rust":        "rust",
-	"file.markdown":    "markdown",
-	"file.ai_comments": "ai-comments",
-	"plugins":          "plugin-registry",
+	"git.add":           "git-add",
+	"git.branch":        "branch-name",
+	"git.commit":        "commit",
+	"git.fetch":         "git-fetch",
+	"git.merge":         "merge",
+	"git.no_verify":     "no-verify",
+	"git.pr":            "pr",
+	"git.push":          "git-push",
+	"github.api":        "gh-api",
+	"github.issue":      "issue",
+	"secrets":           "secrets",
+	"shell.backtick":    "backticks",
+	"shell.nesting":     "nesting",
+	"file.shellscript":  "shellscript",
+	"file.terraform":    "terraform",
+	"file.workflow":     "github-workflow",
+	"file.gofumpt":      "gofumpt",
+	"file.python":       "python",
+	"file.javascript":   "javascript",
+	"file.rust":         "rust",
+	"file.markdown":     "markdown",
+	"file.ai_comments":  "ai-comments",
+	"plugins":           "plugin-registry",
+	"policy.protection": "protection",
+	"policy.mcp_trust":  "mcp-trust",
 }
 
 // otherNames are runtime validator names without an override spelling.
@@ -193,6 +195,26 @@ func (p *Policy) Deadline() time.Duration {
 // IsCritical reports whether name blocks whenever it cannot run.
 func (p *Policy) IsCritical(name string) bool {
 	return p != nil && p.critical[NormalizeName(name)]
+}
+
+// WithCritical returns a copy of the policy that also treats the named
+// validators as critical.
+func (p *Policy) WithCritical(names ...string) *Policy {
+	cp := &Policy{critical: make(map[string]bool)}
+	if p != nil {
+		*cp = *p
+		cp.critical = make(map[string]bool, len(p.critical)+len(names))
+
+		for name := range p.critical {
+			cp.critical[name] = true
+		}
+	}
+
+	for _, name := range names {
+		cp.critical[NormalizeName(name)] = true
+	}
+
+	return cp
 }
 
 // Critical lists the normalized critical validator names.

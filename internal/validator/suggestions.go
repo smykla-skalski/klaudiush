@@ -76,6 +76,17 @@ var DefaultSuggestions = map[Reference]string{
 	RefMCPServerBlocked:    "Remove MCP server from deny list or use a different server",
 	RefMCPServerNotAllowed: "Add MCP server to allow list in config",
 	RefMCPURLModeBlocked:   "Use form mode instead of URL mode for MCP elicitation",
+	RefMCPUntrustedSource: "Use a tool from a trusted MCP server, or ask the user to trust this " +
+		"server in mcp_trust",
+	RefMCPUnknownProvenance: "Ask the user to update the harness so it reports MCP provenance, " +
+		"or to set mcp_trust.unknown_provenance",
+
+	// Policy protection suggestions
+	RefProtectedFile: "Leave policy files alone; if the change is needed, ask the user to make it " +
+		"or to add the path to protection.allow",
+	RefConfigChangeBlocked: "Restart the session to apply the settings change, or remove the source " +
+		"from protection.config_change_sources",
+	RefPolicyCommand: "Ask the user to run this klaudiush command themselves",
 }
 
 // GetSuggestion returns the fix suggestion for a reference.

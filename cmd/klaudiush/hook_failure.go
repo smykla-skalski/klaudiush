@@ -16,6 +16,7 @@ import (
 	"github.com/smykla-skalski/klaudiush/internal/failpolicy"
 	"github.com/smykla-skalski/klaudiush/internal/parser"
 	"github.com/smykla-skalski/klaudiush/internal/validator"
+	policyvalidators "github.com/smykla-skalski/klaudiush/internal/validators/policy"
 	"github.com/smykla-skalski/klaudiush/pkg/config"
 	"github.com/smykla-skalski/klaudiush/pkg/hook"
 	"github.com/smykla-skalski/klaudiush/pkg/logger"
@@ -298,7 +299,7 @@ func buildPolicy(cfg *config.Config) (*failpolicy.Policy, error) {
 		policyCfg = cfg.FailurePolicy
 	}
 
-	policy := failpolicy.New(policyCfg)
+	policy := failpolicy.New(policyCfg).WithCritical(policyGuards(cfg)...)
 
 	if failureMode == "" {
 		return policy, nil
@@ -310,6 +311,26 @@ func buildPolicy(cfg *config.Config) (*failpolicy.Policy, error) {
 	}
 
 	return policy.WithMode(mode), nil
+}
+
+// policyGuards names the enabled validators that guard policy itself. They
+// are always critical: a crash or a hook timeout must not be a way past them.
+func policyGuards(cfg *config.Config) []string {
+	if cfg == nil {
+		return nil
+	}
+
+	var names []string
+
+	if cfg.Protection.IsEnabled() {
+		names = append(names, policyvalidators.ProtectionValidatorName)
+	}
+
+	if cfg.MCPTrust.IsEnabled() {
+		names = append(names, policyvalidators.MCPTrustValidatorName)
+	}
+
+	return names
 }
 
 // fallbackPolicy finds the failure mode when the configuration cannot be

@@ -88,6 +88,46 @@ type ToolInput struct {
 	Additional map[string]json.RawMessage `json:"-"`
 }
 
+// MCPProvenance identifies the MCP server behind a tool call from fields the
+// harness fills in, not from the mcp__<server>__ tool-name prefix the server
+// name feeds into.
+type MCPProvenance struct {
+	// Name is the name the harness registered the server under (Claude
+	// mcp_server.name, Gemini mcp_context.server_name). A configured
+	// server picks its own name, so it is not proof of identity.
+	Name string
+
+	// Source says where the server's definition came from (Claude
+	// mcp_server.source): sdk, plugin, or a configuration scope such as
+	// user, project, local, dynamic, managed, enterprise, claudeai or agent.
+	// Empty when the harness does not report it.
+	Source string
+
+	// Tool is the server's own name for the tool (Gemini mcp_context.tool_name).
+	Tool string
+
+	// Command, Args and Cwd describe a stdio server (Gemini mcp_context).
+	Command string
+	Args    []string
+	Cwd     string
+
+	// URL is the endpoint of an SSE or HTTP server (Gemini mcp_context).
+	URL string
+
+	// TCP is the address of a WebSocket server (Gemini mcp_context).
+	TCP string
+}
+
+// ConfigChangeInput describes a settings file that changed during a session.
+type ConfigChangeInput struct {
+	// Source is the kind of settings that changed: user_settings,
+	// project_settings, local_settings, policy_settings or skills.
+	Source string
+
+	// FilePath is the absolute path of the changed file, when reported.
+	FilePath string
+}
+
 // ElicitationInput contains MCP elicitation event data.
 type ElicitationInput struct {
 	// MCPServerName is the MCP server requesting elicitation.
@@ -230,6 +270,14 @@ type Context struct {
 	// Elicitation contains MCP elicitation event data (nil for non-elicitation events).
 	Elicitation *ElicitationInput
 
+	// MCPServer is the MCP server behind the tool call as the harness reports
+	// it (Claude mcp_server, Gemini mcp_context). Nil when the payload carries
+	// no provenance, whatever the tool name says.
+	MCPServer *MCPProvenance
+
+	// ConfigChange describes a changed settings file (ConfigChange only).
+	ConfigChange *ConfigChangeInput
+
 	// CompactSummary is the summary produced by context compaction (PostCompact only).
 	CompactSummary string
 
@@ -349,6 +397,22 @@ func (c *Context) IsPermissionRequest() bool {
 	return IsPermissionRequestEvent(c.RawEventName)
 }
 
+// IsMCPTool reports whether the tool call goes to an MCP server: the harness
+// reported the server, or the tool name has the MCP prefix (mcp__ for Claude
+// and Codex, mcp_ for Gemini).
+func (c *Context) IsMCPTool() bool {
+	if c.MCPServer != nil {
+		return true
+	}
+
+	name := strings.ToLower(c.RawToolName)
+	if strings.HasPrefix(name, "mcp__") {
+		return true
+	}
+
+	return c.Provider == ProviderGemini && strings.HasPrefix(name, "mcp_")
+}
+
 // IsElicitationEvent returns true if this is an Elicitation or ElicitationResult event.
 func (c *Context) IsElicitationEvent() bool {
 	return c.Event == CanonicalEventElicitation || c.Event == CanonicalEventElicitationResult
@@ -425,6 +489,8 @@ func (c *Context) EventNames() []string {
 		names = appendUniqueFold(names, eventNameSessionEnd)
 	case CanonicalEventStopFailure:
 		names = appendUniqueFold(names, eventNameStopFailure)
+	case CanonicalEventConfigChange:
+		names = appendUniqueFold(names, eventNameConfigChange)
 	}
 
 	return names

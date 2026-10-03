@@ -236,6 +236,14 @@ var claudeCapabilities = map[CanonicalEvent]EventCapability{
 		Fields:      []ResponseField{ResponseFieldDecision, ResponseFieldElicitationAction},
 		Enforcement: EnforcementDeclineElicitation,
 	},
+	// A top-level decision:block keeps a changed settings file from taking
+	// effect, except policy_settings. Claude discards systemMessage and
+	// continue here and shows the reason to nobody.
+	CanonicalEventConfigChange: {
+		NativeName:  eventNameConfigChange,
+		Fields:      []ResponseField{ResponseFieldDecision},
+		Enforcement: EnforcementBlockDecision,
+	},
 }
 
 var claudePermissionRequest = EventCapability{

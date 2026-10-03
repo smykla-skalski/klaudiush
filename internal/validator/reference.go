@@ -178,6 +178,30 @@ const (
 
 	// RefMCPURLModeBlocked indicates URL mode is blocked for MCP elicitation.
 	RefMCPURLModeBlocked Reference = ReferenceBaseURL + "/MCP003"
+
+	// RefMCPUntrustedSource indicates an MCP tool call from a server whose
+	// harness-reported provenance matches nothing in mcp_trust.
+	RefMCPUntrustedSource Reference = ReferenceBaseURL + "/MCP004"
+
+	// RefMCPUnknownProvenance indicates an MCP tool call whose payload says
+	// nothing about which server serves it.
+	RefMCPUnknownProvenance Reference = ReferenceBaseURL + "/MCP005"
+)
+
+// Policy protection references (POL001-POL003).
+const (
+	// RefProtectedFile indicates a tool call or command that would change a
+	// file enforcing policy: klaudiush configuration or state, hook
+	// registrations, hook or evidence scripts, or a protection.paths entry.
+	RefProtectedFile Reference = ReferenceBaseURL + "/POL001"
+
+	// RefConfigChangeBlocked indicates a settings change Claude reported
+	// mid-session, kept from taking effect.
+	RefConfigChangeBlocked Reference = ReferenceBaseURL + "/POL002"
+
+	// RefPolicyCommand indicates a klaudiush command that changes policy:
+	// init, disable, bypass skip, backup restore, doctor --fix, update.
+	RefPolicyCommand Reference = ReferenceBaseURL + "/POL003"
 )
 
 // Plugin-related references (PLUG001-PLUG005).

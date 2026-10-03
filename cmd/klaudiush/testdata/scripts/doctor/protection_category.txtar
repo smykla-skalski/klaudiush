@@ -1,0 +1,23 @@
+env PATH=$KLAUDIUSH_TEST_BIN
+mkdir project/.klaudiush
+cp config.toml project/.klaudiush/config.toml
+mkdir .claude
+cp settings.json .claude/settings.json
+cd project
+
+exec klaudiush doctor --category protection --verbose
+stdout 'not on ConfigChange'
+stdout 'without selecting MCP'
+stdout 'Codex and opencode: no provenance'
+stdout 'mcp__'
+
+-- config.toml --
+[protection]
+enabled = true
+
+[mcp_trust]
+enabled = true
+trusted_sources = ["managed"]
+
+-- settings.json --
+{"hooks": {"PreToolUse": [{"matcher": "Bash|Write|Edit|MultiEdit", "hooks": [{"type": "command", "command": "klaudiush --hook-type PreToolUse", "timeout": 30}]}]}}

@@ -53,6 +53,8 @@ const (
 	CategoryFailurePolicy Category = "failure_policy"
 	// CategoryEvidence checks the evidence gate can see completion attempts
 	CategoryEvidence Category = "evidence"
+	// CategoryProtection checks policy protection and MCP trust coverage
+	CategoryProtection Category = "protection"
 )
 
 // CheckResult represents the result of a health check

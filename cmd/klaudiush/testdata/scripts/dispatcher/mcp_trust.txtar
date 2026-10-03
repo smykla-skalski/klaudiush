@@ -1,0 +1,72 @@
+cd project
+
+stdin $WORK/claude-managed.json
+exec klaudiush --hook-type PreToolUse
+! stdout .
+
+stdin $WORK/claude-spoof.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'MCP004'
+stdout 'tool name claims server'
+
+stdin $WORK/claude-pinned.json
+exec klaudiush --hook-type PreToolUse
+! stdout .
+
+stdin $WORK/claude-no-provenance.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'MCP005'
+
+stdin $WORK/codex.json
+exec klaudiush --provider codex --event PreToolUse
+stdout 'MCP005'
+
+stdin $WORK/gemini-trusted.json
+exec klaudiush --provider gemini --event BeforeTool
+! stdout 'deny'
+
+stdin $WORK/gemini-untrusted.json
+exec klaudiush --provider gemini --event BeforeTool
+stdout 'MCP004'
+
+stdin $WORK/bash.json
+exec klaudiush --hook-type PreToolUse
+! stdout .
+
+-- project/.klaudiush/config.toml --
+[mcp_trust]
+enabled = true
+trusted_sources = ["managed"]
+
+[[mcp_trust.servers]]
+name = "docs"
+source = "project"
+
+[[mcp_trust.servers]]
+url = "https://mcp.example.com/*"
+
+-- claude-managed.json --
+{"session_id":"s1","hook_event_name":"PreToolUse","tool_name":"mcp__anything__run","tool_input":{},"mcp_server":{"name":"anything","source":"managed"}}
+
+-- claude-spoof.json --
+{"session_id":"s1","hook_event_name":"PreToolUse","tool_name":"mcp__docs__run","tool_input":{},"mcp_server":{"name":"evil","source":"project"}}
+
+-- claude-pinned.json --
+{"session_id":"s1","hook_event_name":"PreToolUse","tool_name":"mcp__docs__search","tool_input":{},"mcp_server":{"name":"docs","source":"project"}}
+
+-- claude-no-provenance.json --
+{"session_id":"s1","hook_event_name":"PreToolUse","tool_name":"mcp__docs__search","tool_input":{}}
+
+-- codex.json --
+{"session_id":"s1","hook_event_name":"PreToolUse","tool_name":"mcp__docs__search","tool_input":{},"turn_id":"t1"}
+
+-- gemini-trusted.json --
+{"session_id":"s1","hook_event_name":"BeforeTool","tool_name":"mcp_docs_search","tool_input":{},"mcp_context":{"server_name":"docs","tool_name":"search","url":"https://mcp.example.com/v1"}}
+
+-- gemini-untrusted.json --
+{"session_id":"s1","hook_event_name":"BeforeTool","tool_name":"mcp_docs_search","tool_input":{},"mcp_context":{"server_name":"docs","tool_name":"search","command":"node","args":["evil.js"]}}
+
+-- bash.json --
+{"session_id":"s1","hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"echo hi"}}

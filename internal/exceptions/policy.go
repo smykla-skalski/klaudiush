@@ -13,6 +13,17 @@ import (
 // reasonSystemDisabled is the response reason returned when the exception system is off.
 const reasonSystemDisabled = "exception system is disabled"
 
+// explicitOnlyCodes guard policy itself. An exception token can bypass them
+// only when the configuration has a policy for the exact code, so the agent
+// cannot lift protection by adding a token under the default policy.
+var explicitOnlyCodes = []string{"POL001", "POL002", "POL003", "MCP004", "MCP005"}
+
+// RequiresExplicitPolicy reports whether exceptions for code need a policy
+// written for it.
+func RequiresExplicitPolicy(code string) bool {
+	return slices.Contains(explicitOnlyCodes, code)
+}
+
 // DefaultPolicy provides default policy settings when no explicit policy exists.
 var DefaultPolicy = &config.ExceptionPolicyConfig{}
 
@@ -50,8 +61,9 @@ func (m *PolicyMatcher) Match(req *ExceptionRequest) *PolicyDecision {
 	policy := m.getPolicy(req.Token.ErrorCode)
 
 	// Check if explicit policy is required but none exists
-	if m.config != nil && m.config.IsRequireExplicitPolicy() &&
-		!m.HasExplicitPolicy(req.Token.ErrorCode) {
+	requireExplicit := RequiresExplicitPolicy(req.Token.ErrorCode) ||
+		(m.config != nil && m.config.IsRequireExplicitPolicy())
+	if requireExplicit && !m.HasExplicitPolicy(req.Token.ErrorCode) {
 		return &PolicyDecision{
 			Allowed: false,
 			Reason:  "no explicit policy for " + req.Token.ErrorCode,

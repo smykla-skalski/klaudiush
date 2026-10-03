@@ -3,6 +3,7 @@ package config
 
 import (
 	"fmt"
+	"path"
 	"regexp"
 	"slices"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"github.com/cockroachdb/errors"
 
 	"github.com/smykla-skalski/klaudiush/internal/evidence"
+	"github.com/smykla-skalski/klaudiush/internal/protection"
 	"github.com/smykla-skalski/klaudiush/pkg/config"
 )
 
@@ -120,7 +122,83 @@ func validatePolicySections(cfg *config.Config) []error {
 		}
 	}
 
+	if cfg.Protection != nil {
+		if err := protection.Validate(cfg.Protection); err != nil {
+			validationErrors = append(validationErrors,
+				errors.Wrap(errors.Mark(err, ErrInvalidOption), "protection"))
+		}
+	}
+
+	if cfg.MCPTrust != nil {
+		if err := validateMCPTrustConfig(cfg.MCPTrust); err != nil {
+			validationErrors = append(validationErrors, errors.Wrap(err, "mcp_trust"))
+		}
+	}
+
 	return validationErrors
+}
+
+// validateMCPTrustConfig checks the actions and that every trusted server
+// entry names a provenance field and valid patterns.
+func validateMCPTrustConfig(cfg *config.MCPTrustConfig) error {
+	var validationErrors []error
+
+	switch cfg.Untrusted {
+	case "", config.MCPTrustActionBlock, config.MCPTrustActionWarn:
+	default:
+		validationErrors = append(validationErrors, errors.Wrapf(
+			ErrInvalidOption, "untrusted must be %q or %q, got %q",
+			config.MCPTrustActionBlock, config.MCPTrustActionWarn, cfg.Untrusted,
+		))
+	}
+
+	switch cfg.UnknownProvenance {
+	case "", config.MCPTrustActionBlock, config.MCPTrustActionWarn, config.MCPTrustActionAllow:
+	default:
+		validationErrors = append(validationErrors, errors.Wrapf(
+			ErrInvalidOption, "unknown_provenance must be %q, %q or %q, got %q",
+			config.MCPTrustActionBlock, config.MCPTrustActionWarn, config.MCPTrustActionAllow,
+			cfg.UnknownProvenance,
+		))
+	}
+
+	if slices.Contains(cfg.TrustedSources, "") {
+		validationErrors = append(validationErrors, errors.Wrap(
+			ErrEmptyValue, "trusted_sources must not contain empty values",
+		))
+	}
+
+	for i, server := range cfg.Servers {
+		if err := validateTrustedServer(server); err != nil {
+			validationErrors = append(validationErrors, errors.Wrapf(err, "servers[%d]", i))
+		}
+	}
+
+	if len(validationErrors) == 0 {
+		return nil
+	}
+
+	return combineErrors(validationErrors)
+}
+
+func validateTrustedServer(server *config.MCPTrustedServer) error {
+	if !server.HasProvenance() {
+		return errors.Wrap(ErrInvalidOption,
+			"must set source, command or url: a server name alone is chosen by the server's "+
+				"configuration and can be reused by any server")
+	}
+
+	patterns := append(
+		[]string{server.Name, server.Source, server.Command, server.URL},
+		server.Tools...,
+	)
+	for _, pattern := range patterns {
+		if _, err := path.Match(pattern, ""); err != nil {
+			return errors.Wrapf(ErrInvalidOption, "invalid pattern %q", pattern)
+		}
+	}
+
+	return nil
 }
 
 // validateFailurePolicyConfig checks the failure modes and critical names.

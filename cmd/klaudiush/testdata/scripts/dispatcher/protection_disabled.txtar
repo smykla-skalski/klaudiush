@@ -1,0 +1,24 @@
+cd project
+
+stdin $WORK/write-settings.json
+exec klaudiush --hook-type PreToolUse
+! stdout .
+
+stdin $WORK/config-change.json
+exec klaudiush --event ConfigChange
+! stdout .
+
+stdin $WORK/mcp.json
+exec klaudiush --hook-type PreToolUse
+! stdout .
+
+-- project/.keep --
+
+-- write-settings.json --
+{"session_id":"s1","hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":".claude/settings.json","content":"{}"}}
+
+-- config-change.json --
+{"session_id":"s1","hook_event_name":"ConfigChange","source":"project_settings","file_path":".claude/settings.json"}
+
+-- mcp.json --
+{"session_id":"s1","hook_event_name":"PreToolUse","tool_name":"mcp__evil__run","tool_input":{}}

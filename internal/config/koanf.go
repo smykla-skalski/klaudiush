@@ -384,6 +384,8 @@ var envHierarchy = map[string][]string{
 		"output",
 		"failure_policy",
 		"evidence",
+		"protection",
+		"mcp_trust",
 	},
 	"overrides":       {"entries"},
 	sectionValidators: {sectionGit, sectionFile, sectionNotification, sectionSecrets, sectionShell},

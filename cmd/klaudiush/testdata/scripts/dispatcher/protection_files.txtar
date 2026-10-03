@@ -1,0 +1,199 @@
+cd project
+
+stdin $WORK/write-settings.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'POL00[13]'
+
+stdin $WORK/edit-config.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'POL00[13]'
+
+stdin $WORK/multiedit-case.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'POL00[13]'
+
+stdin $WORK/new-subdir-config.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'POL00[13]'
+
+stdin $WORK/bash-redirect.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'POL00[13]'
+
+stdin $WORK/bash-sed.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'POL00[13]'
+
+stdin $WORK/bash-rm-dir.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'POL00[13]'
+
+stdin $WORK/bash-cd-chain.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'POL00[13]'
+
+stdin $WORK/bash-var.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'POL00[13]'
+
+stdin $WORK/bash-home.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'POL00[13]'
+
+stdin $WORK/bash-subst.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'POL00[13]'
+
+stdin $WORK/bash-glob.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'POL00[13]'
+
+stdin $WORK/bash-ln.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'POL00[13]'
+
+stdin $WORK/bash-python.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'POL00[13]'
+
+stdin $WORK/bash-policy-cmd.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'POL00[13]'
+
+stdin $WORK/bash-loop.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'POL00[13]'
+
+stdin $WORK/patch.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'POL00[13]'
+
+stdin $WORK/mcp-write.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'POL00[13]'
+
+stdin $WORK/read-settings.json
+exec klaudiush --hook-type PreToolUse
+! stdout 'deny'
+
+stdin $WORK/bash-cat.json
+exec klaudiush --hook-type PreToolUse
+! stdout 'deny'
+
+stdin $WORK/bash-other.json
+exec klaudiush --hook-type PreToolUse
+! stdout 'deny'
+
+stdin $WORK/write-other.json
+exec klaudiush --hook-type PreToolUse
+! stdout 'deny'
+
+stdin $WORK/bash-evidence.json
+exec klaudiush --hook-type PreToolUse
+! stdout 'deny'
+
+stdin $WORK/bash-allowed.json
+exec klaudiush --hook-type PreToolUse
+! stdout 'deny'
+
+
+-- project/.klaudiush/config.toml --
+[protection]
+enabled = true
+allow = [".claude/settings.local.json"]
+
+-- project/.claude/settings.json --
+{}
+
+-- project/main.go --
+package main
+
+-- write-settings.json --
+{"tool_name": "Write", "tool_input": {"file_path": ".claude/settings.json", "content": "{}"}, "hook_event_name": "PreToolUse", "session_id": "s1"}
+
+-- edit-config.json --
+{"tool_name": "Edit", "tool_input": {"file_path": ".klaudiush/config.toml", "old_string": "true", "new_string": "false"}, "hook_event_name": "PreToolUse", "session_id": "s1"}
+
+-- multiedit-case.json --
+{"tool_name": "MultiEdit", "tool_input": {"file_path": ".KLAUDIUSH/Config.toml", "edits": []}, "hook_event_name": "PreToolUse", "session_id": "s1"}
+
+-- new-subdir-config.json --
+{"tool_name": "Write", "tool_input": {"file_path": "sub/klaudiush.toml", "content": "x"}, "hook_event_name": "PreToolUse", "session_id": "s1"}
+
+-- bash-redirect.json --
+{"tool_name": "Bash", "tool_input": {"command": "echo '{}' > .claude/settings.json"}, "hook_event_name": "PreToolUse", "session_id": "s1"}
+
+-- bash-sed.json --
+{"tool_name": "Bash", "tool_input": {"command": "sed -i.bak 's/true/false/' .klaudiush/config.toml"}, "hook_event_name": "PreToolUse", "session_id": "s1"}
+
+-- bash-rm-dir.json --
+{"tool_name": "Bash", "tool_input": {"command": "rm -rf .klaudiush"}, "hook_event_name": "PreToolUse", "session_id": "s1"}
+
+-- bash-cd-chain.json --
+{"tool_name": "Bash", "tool_input": {"command": "cd .claude && cp /dev/null settings.json"}, "hook_event_name": "PreToolUse", "session_id": "s1"}
+
+-- bash-var.json --
+{"tool_name": "Bash", "tool_input": {"command": "F=.claude/settings.json; echo x > \"$F\""}, "hook_event_name": "PreToolUse", "session_id": "s1"}
+
+-- bash-home.json --
+{"tool_name": "Bash", "tool_input": {"command": "tee $HOME/.codex/hooks.json < /dev/null"}, "hook_event_name": "PreToolUse", "session_id": "s1"}
+
+-- bash-subst.json --
+{"tool_name": "Bash", "tool_input": {"command": "rm \"$(echo .claude)/settings.json\""}, "hook_event_name": "PreToolUse", "session_id": "s1"}
+
+-- bash-glob.json --
+{"tool_name": "Bash", "tool_input": {"command": "rm .cl?ude/settings*.json"}, "hook_event_name": "PreToolUse", "session_id": "s1"}
+
+-- bash-ln.json --
+{"tool_name": "Bash", "tool_input": {"command": "ln -s .klaudiush/config.toml x && echo hi > x"}, "hook_event_name": "PreToolUse", "session_id": "s1"}
+
+-- bash-python.json --
+{"tool_name": "Bash", "tool_input": {"command": "python3 -c \"open('.claude/settings.json','w').write('{}')\""}, "hook_event_name": "PreToolUse", "session_id": "s1"}
+
+-- bash-policy-cmd.json --
+{"tool_name": "Bash", "tool_input": {"command": "klaudiush bypass skip --reason x"}, "hook_event_name": "PreToolUse", "session_id": "s1"}
+
+-- bash-loop.json --
+{"tool_name": "Bash", "tool_input": {"command": "for f in .claude/settings.json; do : > \"$f\"; done"}, "hook_event_name": "PreToolUse", "session_id": "s1"}
+
+-- patch.json --
+{"tool_name": "apply_patch", "tool_input": {"input": "*** Begin Patch\n*** Update File: .klaudiush/config.toml\n@@\n-a\n+b\n*** End Patch\n"}, "hook_event_name": "PreToolUse", "session_id": "s1"}
+
+-- mcp-write.json --
+{"tool_name": "mcp__fs__write_file", "tool_input": {"path": ".claude/settings.json", "content": "{}"}, "mcp_server": {"name": "fs", "source": "user"}, "hook_event_name": "PreToolUse", "session_id": "s1"}
+
+-- read-settings.json --
+{"tool_name": "Read", "tool_input": {"file_path": ".claude/settings.json"}, "hook_event_name": "PreToolUse", "session_id": "s1"}
+
+-- bash-cat.json --
+{"tool_name": "Bash", "tool_input": {"command": "cat .klaudiush/config.toml | grep enabled"}, "hook_event_name": "PreToolUse", "session_id": "s1"}
+
+-- bash-other.json --
+{"tool_name": "Bash", "tool_input": {"command": "echo hi > notes.txt && rm -rf build"}, "hook_event_name": "PreToolUse", "session_id": "s1"}
+
+-- write-other.json --
+{"tool_name": "Write", "tool_input": {"file_path": "main.go", "content": "package main\n"}, "hook_event_name": "PreToolUse", "session_id": "s1"}
+
+-- bash-evidence.json --
+{"tool_name": "Bash", "tool_input": {"command": "klaudiush evidence status"}, "hook_event_name": "PreToolUse", "session_id": "s1"}
+
+-- bash-allowed.json --
+{"tool_name": "Bash", "tool_input": {"command": "echo x > .claude/settings.local.json"}, "hook_event_name": "PreToolUse", "session_id": "s1"}

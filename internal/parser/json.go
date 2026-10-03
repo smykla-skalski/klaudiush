@@ -74,6 +74,29 @@ type JSONInput struct {
 	ToolResponse     json.RawMessage `json:"tool_response,omitempty"`
 	Error            json.RawMessage `json:"error,omitempty"`
 	IsInterrupt      bool            `json:"is_interrupt,omitempty"`
+	MCPServer        json.RawMessage `json:"mcp_server,omitempty"`
+	MCPContext       json.RawMessage `json:"mcp_context,omitempty"`
+	FilePath         string          `json:"file_path,omitempty"`
+}
+
+// claudeMCPServer is Claude's mcp_server provenance object. Releases before
+// it became an object sent the bare server name as a string.
+// Source: https://code.claude.com/docs/en/agent-sdk/typescript#mcpserverprovenance.
+type claudeMCPServer struct {
+	Name   string `json:"name"`
+	Source string `json:"source"`
+}
+
+// geminiMCPContext is Gemini's mcp_context on BeforeTool and AfterTool.
+// Source: packages/core/src/hooks/types.ts (McpToolContext) in gemini-cli.
+type geminiMCPContext struct {
+	ServerName string   `json:"server_name"`
+	ToolName   string   `json:"tool_name"`
+	Command    string   `json:"command"`
+	Args       []string `json:"args"`
+	Cwd        string   `json:"cwd"`
+	URL        string   `json:"url"`
+	TCP        string   `json:"tcp"`
 }
 
 // claudeToolResponse holds the parts of a Claude PostToolUse tool_response
@@ -167,6 +190,8 @@ func (p *JSONParser) ParseWithOptions(opts ParseOptions) (*hook.Context, error) 
 	}
 
 	populateElicitationFields(ctx, input, canonicalEvent)
+	populateMCPProvenance(ctx, input)
+	populateConfigChange(ctx, input, canonicalEvent)
 	populateClaudeAfterToolFields(ctx, input)
 	populateCompactFields(ctx, input, canonicalEvent)
 
@@ -636,4 +661,73 @@ func populateCompactFields(
 
 	ctx.CompactSummary = input.CompactSummary
 	ctx.CompactTrigger = input.Trigger
+}
+
+// populateMCPProvenance records the MCP server the harness says serves the
+// tool. A payload without provenance leaves MCPServer nil, so trust rules
+// never fall back to the server name embedded in the tool name.
+func populateMCPProvenance(ctx *hook.Context, input JSONInput) {
+	if server := decodeClaudeMCPServer(input.MCPServer); server != nil {
+		ctx.MCPServer = server
+
+		return
+	}
+
+	if len(input.MCPContext) == 0 {
+		return
+	}
+
+	var mcpCtx geminiMCPContext
+	if err := json.Unmarshal(input.MCPContext, &mcpCtx); err != nil {
+		return
+	}
+
+	ctx.MCPServer = &hook.MCPProvenance{
+		Name:    mcpCtx.ServerName,
+		Tool:    mcpCtx.ToolName,
+		Command: mcpCtx.Command,
+		Args:    mcpCtx.Args,
+		Cwd:     mcpCtx.Cwd,
+		URL:     mcpCtx.URL,
+		TCP:     mcpCtx.TCP,
+	}
+}
+
+func decodeClaudeMCPServer(raw json.RawMessage) *hook.MCPProvenance {
+	if len(raw) == 0 {
+		return nil
+	}
+
+	var name string
+	if err := json.Unmarshal(raw, &name); err == nil {
+		if name == "" {
+			return nil
+		}
+
+		return &hook.MCPProvenance{Name: name}
+	}
+
+	var server claudeMCPServer
+	if err := json.Unmarshal(raw, &server); err != nil {
+		return nil
+	}
+
+	if server.Name == "" && server.Source == "" {
+		return nil
+	}
+
+	return &hook.MCPProvenance{Name: server.Name, Source: server.Source}
+}
+
+// populateConfigChange records which settings file changed.
+// Source: https://code.claude.com/docs/en/hooks#configchange.
+func populateConfigChange(ctx *hook.Context, input JSONInput, canonical hook.CanonicalEvent) {
+	if canonical != hook.CanonicalEventConfigChange {
+		return
+	}
+
+	ctx.ConfigChange = &hook.ConfigChangeInput{
+		Source:   input.Source,
+		FilePath: input.FilePath,
+	}
 }

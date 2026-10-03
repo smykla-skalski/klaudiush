@@ -889,6 +889,66 @@
       "additionalProperties": false,
       "type": "object"
     },
+    "MCPTrustConfig": {
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "trusted_sources": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "servers": {
+          "items": {
+            "$ref": "#/$defs/MCPTrustedServer"
+          },
+          "type": "array"
+        },
+        "untrusted": {
+          "type": "string",
+          "enum": [
+            "block",
+            "warn"
+          ]
+        },
+        "unknown_provenance": {
+          "type": "string",
+          "enum": [
+            "block",
+            "warn",
+            "allow"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "MCPTrustedServer": {
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "command": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "tools": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
     "MarkdownValidatorConfig": {
       "properties": {
         "enabled": {
@@ -1321,6 +1381,40 @@
       "enum": [
         "exec"
       ]
+    },
+    "ProtectionConfig": {
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "paths": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "allow": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "config_change_sources": {
+          "items": {
+            "type": "string",
+            "enum": [
+              "user_settings",
+              "project_settings",
+              "local_settings",
+              "policy_settings",
+              "skills"
+            ]
+          },
+          "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
     },
     "ProvidersConfig": {
       "properties": {
@@ -1914,6 +2008,12 @@
     },
     "evidence": {
       "$ref": "#/$defs/EvidenceConfig"
+    },
+    "protection": {
+      "$ref": "#/$defs/ProtectionConfig"
+    },
+    "mcp_trust": {
+      "$ref": "#/$defs/MCPTrustConfig"
     }
   },
   "additionalProperties": false,
