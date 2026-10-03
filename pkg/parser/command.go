@@ -78,6 +78,7 @@ type Command struct {
 	Vars *VarScope
 
 	startup      map[string]startupValue
+	loginArgv0   bool
 	dynamicWords map[string]bool
 	quoting      map[string]wordQuoting
 }

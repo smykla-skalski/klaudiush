@@ -258,7 +258,7 @@ func opacityFinding(o parser.Opacity) validator.Finding {
 		}
 	case parser.OpacityStartupFile:
 		f.Message = startupFileMessage(o)
-		f.Required = "a literal path to a readable file, or no startup file"
+		f.Required = startupFileRequired(o)
 		f.Repair = startupFileRepair(o)
 	case parser.OpacityZshGlobQualifier:
 		f.Message, f.Required, f.Repair = globCodeFinding(o)
@@ -541,4 +541,14 @@ func originLocation(origin []string) string {
 	}
 
 	return "via " + strings.Join(origin, originSeparator)
+}
+
+// startupFileRequired says what makes a startup file inspectable: a literal
+// directory for HOME or ZDOTDIR, a readable file otherwise.
+func startupFileRequired(o parser.Opacity) string {
+	if homeVariable(o.Operation) {
+		return "a literal directory, or the one the shell already has"
+	}
+
+	return "a literal path to a readable file, or no startup file"
 }

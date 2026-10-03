@@ -47,6 +47,7 @@ type startupValue struct {
 	anyName  bool
 	deferred bool
 	literal  bool
+	unset    bool
 }
 
 // startupScript is a file a shell runs before anything else.
@@ -169,6 +170,7 @@ func (w *astWalker) startupScripts(cmd Command, args []string) []startupScript {
 	}
 
 	mode := shellOptions(cmd.Name, args)
+	mode.login = mode.login || cmd.loginArgv0
 	named := rcfiles(args)
 	before, after := homeStartupFiles(cmd.Name, mode, len(named) > 0)
 	scripts = append(scripts, w.homeScripts(cmd, before)...)
@@ -227,6 +229,10 @@ func rcfiles(args []string) []string {
 // line never sets it; the environment klaudiush runs in is not consulted.
 // A command inside the value of an assignment runs before it.
 func (w *astWalker) startupSetting(cmd Command, name string) (startupValue, bool) {
+	if v, ok := cmd.startup[name]; ok && v.unset {
+		return startupValue{}, false
+	}
+
 	if v, ok := cmd.startup[name]; ok && (!v.anyName || startsShell(cmd)) {
 		return v, true
 	}
@@ -469,6 +475,18 @@ func (w *astWalker) noteLoopStartup(node syntax.Node, param bool) {
 // with, which it inherits in its environment.
 func (w *astWalker) seedStartup(parent Command) {
 	for name, v := range parent.startup {
+		if v.unset {
+			delete(w.assignments, name)
+
+			if w.startupUnset == nil {
+				w.startupUnset = make(map[string]bool)
+			}
+
+			w.startupUnset[name] = true
+
+			continue
+		}
+
 		if v.dynamic {
 			w.unknownVars[name] = true
 

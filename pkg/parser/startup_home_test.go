@@ -21,6 +21,12 @@ var _ = Describe("Home startup files", func() {
 			"/zf/.zshenv":         "git() { command git push --force; }",
 			"/zm/.zshenv":         "ZDOTDIR=/zm2",
 			"/zm/.zshrc":          "true",
+			"/zlo/.zlogout":       payload,
+			"/blo/.bash_logout":   payload,
+			"/t/.tcshrc":          payload,
+			"/c/.cshrc":           payload,
+			"/zc/.zshenv":         "cd /e\nZDOTDIR=.",
+			"/e/.zshrc":           payload,
 			"/zm2/.zshrc":         payload,
 			"/zx/.zshenv":         "ZDOTDIR=$(mktemp -d)",
 			"/zs/.zshenv":         "zsh -c true",
@@ -113,6 +119,19 @@ var _ = Describe("Home startup files", func() {
 		Entry("login bash shebang", `HOME=/bp /s/login.bash`),
 		Entry("bare shell", `HOME=/z zsh`),
 		Entry("nested shell", `bash -c 'HOME=/z zsh -c true'`),
+		Entry("zlogout for a login zsh", `HOME=/zlo zsh -l -c true`),
+		Entry("bash_logout for a login bash", `HOME=/blo bash -l -c exit`),
+		Entry("exec -l zsh", `HOME=/zl exec -l zsh -c true`),
+		Entry("exec -a with a dash", `HOME=/zl exec -a -zsh zsh -c true`),
+		Entry("exec -a from a variable", `HOME=/zl exec -a "$N" zsh -c true`),
+		Entry("exec -l bash", `HOME=/bp exec -l bash`),
+		Entry("tcshrc", `HOME=/t tcsh -c true`),
+		Entry("cshrc", `HOME=/c csh -c true`),
+		Entry("profile for a login oksh", `HOME=/bpr oksh -l -c true`),
+		Entry("zsh -f turned back on by +f", `HOME=/z zsh -f +f -c true`),
+		Entry("relative ZDOTDIR after a cd in zshenv", `HOME=/zc zsh -i -c true`),
+		Entry("zsh --emulate sh with a script", `zsh --emulate sh -c 'git push --force'`),
+		Entry("profile for zsh --emulate sh -l", `HOME=/bpr zsh --emulate sh -l -c true`),
 	)
 
 	It("validates zshenv before the script", func() {
@@ -131,6 +150,28 @@ var _ = Describe("Home startup files", func() {
 			HaveField("Operation", ".zshenv"),
 			HaveField("Origin", HaveExactElements("zsh", ".zshenv")),
 		)))
+	})
+
+	It("follows env removing ZDOTDIR or the whole environment", func() {
+		exported := fakeResolver{
+			env:   map[string]string{"HOME": "/z", "ZDOTDIR": "/benign"},
+			files: map[string]string{"/z/.zshenv": payload},
+		}
+
+		for command, want := range map[string]bool{
+			`env -u ZDOTDIR zsh -c true`:           true,
+			`env --unset=ZDOTDIR zsh -c true`:      true,
+			`env -uZDOTDIR zsh -c true`:            true,
+			`env -i zsh -c true`:                   true,
+			`env -i HOME=/none zsh -c true`:        false,
+			`zsh -c true`:                          false,
+			`env -u ZDOTDIR bash -c 'zsh -c true'`: true,
+		} {
+			result, err := parser.NewBashParserWithResolver(exported).Parse(command)
+			Expect(err).NotTo(HaveOccurred(), command)
+			Expect(result.Truncated).To(BeFalse(), command)
+			Expect(pushed(result)).To(Equal(want), command)
+		}
 	})
 
 	It("does not read zshenv again in the zsh it starts", func() {
@@ -191,6 +232,8 @@ var _ = Describe("Home startup files", func() {
 			".zshenv", parser.DetailScriptWritten),
 		Entry("relative HOME after an unknown cd", `cd "$D"; HOME=. zsh -c true`,
 			".zshenv", parser.DetailScriptDirectory),
+		Entry("relative HOME after a computed cd", `cd "$(echo /z)"; HOME=. zsh -c true`,
+			".zshenv", parser.DetailScriptDirectory),
 		Entry("HOME on a device", `HOME=/dev/fd zsh -c true`,
 			".zshenv", parser.DetailScriptRead),
 		Entry("unreadable zshenv", `HOME=/zo zsh -c true`, ".zshenv", parser.DetailScriptRead),
@@ -234,5 +277,10 @@ var _ = Describe("Home startup files", func() {
 		Entry("loop reading HOME", `for d in a b; do zsh -c "ls $HOME/$d"; done`),
 		Entry("prefix HOME on another command", `HOME=/z true; zsh -c true`),
 		Entry("other file under home", `zsh -c 'cat ~/.zshenv.bak'`),
+		Entry("script after cd to a variable from command output",
+			`d=$(git rev-parse --show-toplevel); cd "$d" && ./run.sh`),
+		Entry("zsh --emulate sh reads no zshenv", `HOME=/z zsh --emulate sh -c true`),
+		Entry("csh -f", `HOME=/c csh -f -c true`),
+		Entry("exec without -l", `HOME=/zl exec -a zsh -c true`),
 	)
 })

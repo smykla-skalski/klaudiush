@@ -792,9 +792,7 @@ func (w *astWalker) changeDirTo(cmd Command, args []string) {
 	}
 
 	if w.refersToOutput(target) {
-		w.dirUnknown = true
-
-		return
+		w.dirComputed = true
 	}
 
 	if w.expandName(target) != "" {

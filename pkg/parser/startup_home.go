@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"maps"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -15,14 +16,19 @@ const (
 	zshenvFile = ".zshenv"
 	profile    = ".profile"
 	yashShell  = "yash"
+	emulateOpt = "--emulate"
+	execArgv0  = "-a"
 )
 
 // zshFiles are the startup files zsh reads from ZDOTDIR, HOME when unset.
-var zshFiles = nameSet(zshenvFile + " .zprofile .zshrc .zlogin")
+var zshFiles = nameSet(zshenvFile + " .zprofile .zshrc .zlogin .zlogout")
+
+// cshShells read .cshrc on every start unless given -f.
+var cshShells = nameSet("csh tcsh")
 
 // shellMode is how its options make a shell start: posix is bash --posix,
-// which reads ENV alone, and noRCs is zsh -f or NO_RCS, which reads no file
-// from ZDOTDIR.
+// which reads ENV alone, noRCs is zsh or csh -f or NO_RCS, which reads no
+// home file, and emulate is the shell zsh --emulate makes it act as.
 type shellMode struct {
 	login       bool
 	interactive bool
@@ -30,6 +36,7 @@ type shellMode struct {
 	noRC        bool
 	noProfile   bool
 	noRCs       bool
+	emulate     string
 }
 
 // shellOptions reads the options a shell named name is given before its
@@ -43,6 +50,12 @@ func shellOptions(name string, args []string) shellMode {
 		switch {
 		case arg == endOfOptions || arg == "-" || arg == "+":
 			return mode
+		case arg == emulateOpt:
+			if i+1 < len(args) {
+				mode.emulate = args[i+1]
+			}
+
+			i++
 		case arg == rcfileLabel || arg == "--init-file":
 			i++
 		case strings.HasPrefix(arg, "--"):
@@ -56,9 +69,7 @@ func shellOptions(name string, args []string) shellMode {
 				i++
 			}
 
-			if arg[0] == '-' {
-				mode.flags(name, arg[1:])
-			}
+			mode.flags(name, arg[1:], arg[0] == '-')
 		default:
 			return mode
 		}
@@ -73,16 +84,18 @@ func takesOptionName(arg string) bool {
 	return strings.ContainsAny(arg[1:], "oO")
 }
 
-// flags applies the single-letter options of a cluster.
-func (m *shellMode) flags(name, cluster string) {
+// flags applies the single-letter options of a cluster. Only -f turns off
+// with +f: turning login or interactive off reads fewer files, which a
+// misread option must never cause.
+func (m *shellMode) flags(name, cluster string, on bool) {
 	for _, flag := range cluster {
 		switch {
-		case flag == 'l':
+		case flag == 'l' && on:
 			m.login = true
-		case flag == 'i':
+		case flag == 'i' && on:
 			m.interactive = true
-		case flag == 'f' && name == zshShell:
-			m.noRCs = true
+		case flag == 'f' && (name == zshShell || cshShells[name]):
+			m.noRCs = on
 		}
 	}
 }
@@ -133,41 +146,70 @@ func (m *shellMode) namedOption(name, option string, on bool) {
 
 // homeStartupFiles returns the startup files a shell reads from its home
 // directory (ZDOTDIR for zsh): before runs ahead of BASH_ENV, ENV and
-// --rcfile, after behind them. A login bash reads the first of its profiles
+// --rcfile, after behind them, logout files included since a login shell
+// runs them when it exits. A login bash reads the first of its profiles
 // that exists; all are returned, since one may be removed on the line.
 func homeStartupFiles(name string, mode shellMode, rcfile bool) (before, after []string) {
+	if name == zshShell && mode.emulate != "" {
+		name = zshEmulation(mode.emulate)
+	}
+
 	switch name {
 	case zshShell:
-		if mode.noRCs {
-			return nil, nil
-		}
-
-		before = []string{zshenvFile}
-		if mode.login {
-			before = append(before, ".zprofile")
-		}
-
-		if mode.interactive {
-			after = append(after, ".zshrc")
-		}
-
-		if mode.login {
-			after = append(after, ".zlogin")
-		}
+		return zshStartupFiles(mode)
 	case "bash", "rbash":
 		switch {
 		case mode.posix:
-		case mode.login && !mode.noProfile:
-			before = []string{".bash_profile", ".bash_login", profile}
-		case mode.interactive && !mode.login && !mode.noRC && !rcfile:
+		case mode.login:
+			if !mode.noProfile {
+				before = []string{".bash_profile", ".bash_login", profile}
+			}
+
+			after = []string{".bash_logout"}
+		case mode.interactive && !mode.noRC && !rcfile:
 			after = []string{".bashrc"}
 		}
 	case "sh", "dash", "ash", "posh":
 		if mode.login {
 			before = []string{profile}
 		}
-	case "ksh", "mksh", yashShell:
+	case "ksh", "mksh", "oksh", "loksh", yashShell:
 		before, after = kshStartupFiles(name, mode)
+	case "csh", "tcsh":
+		before, after = cshStartupFiles(mode)
+	}
+
+	return before, after
+}
+
+// zshEmulation returns the shell whose startup files zsh --emulate reads:
+// sh and ksh emulation read .profile and ENV instead of the z-files.
+func zshEmulation(emulate string) string {
+	switch emulate {
+	case "sh", "ksh":
+		return emulate
+	default:
+		return zshShell
+	}
+}
+
+// zshStartupFiles returns the files zsh reads from ZDOTDIR, in order.
+func zshStartupFiles(mode shellMode) (before, after []string) {
+	if mode.noRCs {
+		return nil, nil
+	}
+
+	before = []string{zshenvFile}
+	if mode.login {
+		before = append(before, ".zprofile")
+	}
+
+	if mode.interactive {
+		after = append(after, ".zshrc")
+	}
+
+	if mode.login {
+		after = append(after, ".zlogin", ".zlogout")
 	}
 
 	return before, after
@@ -189,6 +231,22 @@ func kshStartupFiles(name string, mode shellMode) (before, after []string) {
 		if name == yashShell {
 			after = []string{".yashrc"}
 		}
+	}
+
+	return before, after
+}
+
+// cshStartupFiles returns the files csh and tcsh read: .tcshrc or .cshrc on
+// every start, then .login, and .logout on exit, for a login shell.
+func cshStartupFiles(mode shellMode) (before, after []string) {
+	if mode.noRCs {
+		return nil, nil
+	}
+
+	before = []string{".tcshrc", ".cshrc"}
+	if mode.login {
+		before = append(before, ".login")
+		after = []string{".logout"}
 	}
 
 	return before, after
@@ -264,6 +322,16 @@ func (w *astWalker) homeDirs(cmd Command, zdot bool) ([]string, bool) {
 // cmd, and whether it is set. A shell whose HOME is unset takes it from the
 // user database, which klaudiush does not read.
 func (w *astWalker) startupDir(cmd Command, name string) (dir string, set, known bool) {
+	if v, ok := cmd.startup[name]; ok && v.unset {
+		if name != homeVar {
+			return "", false, true
+		}
+
+		dir, set = w.resolver.LookupEnv(name)
+
+		return dir, set, true
+	}
+
 	v, set := w.startupSetting(cmd, name)
 	_, prefixed := cmd.startup[name]
 
@@ -308,7 +376,7 @@ func (w *astWalker) homeScript(cmd Command, file, dir string) (startupScript, bo
 	detail := ""
 
 	switch {
-	case relative && (cmd.DirUnknown || w.dirUnknown):
+	case relative && (cmd.DirUnknown || w.dirUnknown || cmd.DirComputed || w.dirComputed):
 		detail = DetailScriptDirectory
 	case specialPath(clean) || (relative && specialPath(filepath.Join("/", clean))):
 		detail = DetailScriptRead
@@ -529,6 +597,8 @@ func (w *astWalker) lazyStartup(
 		return nil
 	default:
 		parent.startup = nil
+		parent.WorkingDirectory = w.currentDir
+		parent.DirUnknown, parent.DirComputed = w.dirUnknown, w.dirComputed
 
 		return w.homeScripts(parent, []string{part.label})
 	}
@@ -545,6 +615,72 @@ func assignsDefault(pe *syntax.ParamExp) bool {
 func (w *astWalker) refersToOutput(word string) bool {
 	for _, m := range varRefPattern.FindAllStringSubmatch(word, -1) {
 		if w.state.dynamicVars[m[1]] {
+			return true
+		}
+	}
+
+	return false
+}
+
+// withEnvUnset marks the startup variables env removes with -u or --unset,
+// or with -i, which starts the command with no environment at all.
+func withEnvUnset(child Command, options []string) Command {
+	unset := func(name string) {
+		if !startupVars[name] {
+			return
+		}
+
+		vars := maps.Clone(child.startup)
+		if vars == nil {
+			vars = make(map[string]startupValue)
+		}
+
+		vars[name] = startupValue{unset: true}
+		child.startup = vars
+	}
+
+	for i := 0; i < len(options); i++ {
+		arg := options[i]
+
+		switch {
+		case arg == "-i" || arg == "--ignore-environment" || arg == "-":
+			for name := range startupVars {
+				unset(name)
+			}
+		case arg == "-u" || arg == "--unset":
+			if i+1 < len(options) {
+				unset(options[i+1])
+			}
+
+			i++
+		case strings.HasPrefix(arg, "--unset="):
+			unset(strings.TrimPrefix(arg, "--unset="))
+		case strings.HasPrefix(arg, "-u"):
+			unset(arg[2:])
+		}
+	}
+
+	return child
+}
+
+// execLogin reports exec -l, or exec -a with a name starting with -, which
+// starts the shell as a login shell. A name klaudiush cannot read counts too.
+func execLogin(options []string) bool {
+	for i := 0; i < len(options); i++ {
+		arg := options[i]
+
+		switch {
+		case arg == execArgv0:
+			if i+1 < len(options) {
+				name := options[i+1]
+				if strings.HasPrefix(name, "-") || marked(name) || HasUnresolvedVars(name) {
+					return true
+				}
+			}
+
+			i++
+		case strings.HasPrefix(arg, "-") && !strings.HasPrefix(arg, "--") &&
+			strings.Contains(arg, "l"):
 			return true
 		}
 	}

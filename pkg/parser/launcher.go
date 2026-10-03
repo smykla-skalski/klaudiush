@@ -119,7 +119,7 @@ var shells = nameSet(`ash bash dash ksh mksh sh zsh csh tcsh fish rbash yash pos
 	oksh loksh nu elvish xonsh`)
 
 // shellValueFlags are shell options that take the next argument as their value.
-var shellValueFlags = strings.Fields("-o +o -O +O --rcfile --init-file")
+var shellValueFlags = strings.Fields("-o +o -O +O --rcfile --init-file --emulate")
 
 // interpreter describes how a language interpreter takes inline code.
 type interpreter struct {
@@ -474,7 +474,12 @@ func launcherLaunch(cmd Command, spec launcher) launch {
 
 	child := childCommand(cmd, cmd.Args[idx], cmd.Args[idx+1:])
 	if spec.assignments {
+		child = withEnvUnset(child, cmd.Args[:idx])
 		child = withEnvOperands(child, cmd, cmd.Args[:idx])
+	}
+
+	if cmd.Name == execBuiltin {
+		child.loginArgv0 = execLogin(cmd.Args[:idx])
 	}
 
 	if spec.stdinArgs && cmd.Stdin != "" {
