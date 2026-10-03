@@ -63,6 +63,56 @@ var _ = Describe("Dynamic words and redirects", func() {
 		Expect(result.DynamicVars).NotTo(HaveKey("e"))
 	})
 
+	It("records every output redirect of a statement", func() {
+		result := parse(`: > first >> second 2> third > last`)
+		paths := make([]string, 0, len(result.FileWrites))
+		ops := make([]parser.WriteOp, 0, len(result.FileWrites))
+
+		for _, fw := range result.FileWrites {
+			paths = append(paths, fw.Path)
+			ops = append(ops, fw.Operation)
+		}
+
+		Expect(paths).To(Equal([]string{"first", "second", "third", "last"}))
+		Expect(ops).To(Equal([]parser.WriteOp{
+			parser.WriteOpRedirect, parser.WriteOpAppend,
+			parser.WriteOpRedirect, parser.WriteOpRedirect,
+		}))
+
+		heredoc := parse("cat > first > last <<EOF\nbody\nEOF")
+		Expect(heredoc.FileWrites).To(HaveLen(2))
+		Expect(heredoc.FileWrites[0].Path).To(Equal("first"))
+		Expect(heredoc.FileWrites[0].Content).To(BeEmpty())
+		Expect(heredoc.FileWrites[1].Path).To(Equal("last"))
+		Expect(heredoc.FileWrites[1].Content).To(Equal("body\n"))
+	})
+
+	It("snapshots variables for each command and write", func() {
+		result := parse(`d=$(echo a); rm "$d/x" > "$d/log"; d=b; rm "$d/y"; export e=1`)
+
+		var removes []parser.Command
+
+		for _, cmd := range result.Commands {
+			if cmd.Name == "rm" {
+				removes = append(removes, cmd)
+			}
+		}
+
+		Expect(removes).To(HaveLen(2))
+
+		first, second := removes[0], removes[1]
+		Expect(first.Vars.IsDynamic("d")).To(BeTrue())
+		Expect(result.FileWrites[0].Vars.IsDynamic("d")).To(BeTrue())
+		Expect(second.Vars.IsDynamic("d")).To(BeFalse())
+		Expect(second.Vars.ExpandVars(second.Args[0])).To(Equal("b/y"))
+		Expect(second.Vars.Assignments).NotTo(HaveKey("e"))
+		Expect(result.Assignments).To(HaveKeyWithValue("e", "1"))
+
+		var none *parser.VarScope
+		Expect(none.ExpandVars("${d}")).To(Equal("${d}"))
+		Expect(none.IsDynamic("d")).To(BeFalse())
+	})
+
 	It("keeps the working directory unknown after an unresolved cd", func() {
 		result := parse(`cd "$X" && rm a > b`)
 		Expect(result.Commands[len(result.Commands)-1].DirUnknown).To(BeTrue())

@@ -125,6 +125,35 @@ func (r *ParseResult) ExpandVars(s string) string {
 	})
 }
 
+// VarScope holds the variables as they stood when a command or write ran.
+// Commands and writes on one line can see different values: in
+// d=x; rm "$d/f"; d=y the rm sees x, which ParseResult.Assignments (the
+// final values) no longer holds.
+type VarScope struct {
+	Assignments map[string]string // Literal NAME=value assignments
+	DynamicVars map[string]bool   // Variables whose value comes from command output
+}
+
+// ExpandVars substitutes the assignments of the scope into s, leaving
+// unknown references as they are.
+func (v *VarScope) ExpandVars(s string) string {
+	if v == nil {
+		return s
+	}
+
+	return expandVars(s, func(name string) (string, bool) {
+		value, ok := v.Assignments[name]
+
+		return value, ok
+	})
+}
+
+// IsDynamic reports whether name held a value from command output,
+// arithmetic or an append in the scope.
+func (v *VarScope) IsDynamic(name string) bool {
+	return v != nil && v.DynamicVars[name]
+}
+
 // expandVars substitutes the values lookup knows into s, leaving unknown
 // references as they are.
 func expandVars(s string, lookup func(name string) (string, bool)) string {

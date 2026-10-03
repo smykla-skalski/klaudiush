@@ -161,6 +161,14 @@ var _ = Describe("CheckCommand", func() {
 		Entry("glob into xargs", `printf '%s\n' * .* | xargs rm -rf`),
 		Entry("ls glob into xargs", `ls -d .* | xargs rm -rf`),
 		Entry("scp into protected dir", `scp host:settings.json .claude`),
+		Entry(
+			"variable from substitution reassigned later",
+			`d=$(echo .claude); rm "$d/settings.json"; d=safe`,
+		),
+		Entry("variable reassigned after use", `d=.claude; rm "$d/settings.json"; d=build`),
+		Entry("redirect before another redirect", `: > .claude/settings.json > out.txt`),
+		Entry("stderr redirect before stdout", `make 2> .mcp.json > out.txt`),
+		Entry("heredoc after protected redirect", "cat > .mcp.json > out.txt <<EOF\nx\nEOF"),
 	)
 
 	DescribeTable("lets other commands through",
@@ -198,6 +206,9 @@ var _ = Describe("CheckCommand", func() {
 		Entry("find other name", `find . -name '*.orig' -delete`),
 		Entry("klaudiush doctor", `klaudiush doctor --verbose`),
 		Entry("devnull", `make 2>/dev/null >/dev/null`),
+		Entry("variable reassigned before use", `d=.claude; d=build; rm -rf "$d"`),
+		Entry("dynamic variable reassigned before use", `d=$(mktemp -d); d=build; rm -rf "$d"/*`),
+		Entry("dynamic variable after literal use", `d=build; rm -rf "$d"; d=$(mktemp -d)`),
 		Entry("descriptor duplicate", `make >&2`),
 	)
 

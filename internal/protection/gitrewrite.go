@@ -120,6 +120,11 @@ func (c *commandCheck) loadsUnknownShellState() bool {
 				return true
 			}
 
+			outer := c.scope
+			c.scope = cmd.Vars
+
+			defer func() { c.scope = outer }()
+
 			return scriptMaySetGit(
 				c.set.absolute(c.expand(cmd.Args[0]), c.dir(cmd.WorkingDirectory, cmd.DirUnknown)),
 			)

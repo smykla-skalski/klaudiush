@@ -35,6 +35,7 @@ type commandCheck struct {
 	git       func(dir string, args ...string) string
 	set       *Set
 	result    *parser.ParseResult
+	scope     *parser.VarScope
 	raw       string
 	mentions  *bool
 	seen      map[string]bool
@@ -62,6 +63,8 @@ func (s *Set) CheckCommand(
 		c.checkWrite(fw)
 	}
 
+	c.scope = nil
+
 	if result.DynamicWrites > 0 && c.mentionsProtected() {
 		c.add(Violation{Program: "redirect", Target: "$(...)", Match: c.firstMention()})
 	}
@@ -84,6 +87,7 @@ func (c *commandCheck) add(v Violation) {
 }
 
 func (c *commandCheck) checkWrite(fw parser.FileWrite) {
+	c.scope = fw.Vars
 	dir := c.dir(fw.WorkingDirectory, fw.DirUnknown)
 	target := fw.Path
 
@@ -102,6 +106,7 @@ func (c *commandCheck) checkWrite(fw parser.FileWrite) {
 }
 
 func (c *commandCheck) checkCommand(cmd parser.Command) {
+	c.scope = cmd.Vars
 	dir := c.dir(cmd.WorkingDirectory, cmd.DirUnknown)
 
 	if isKlaudiush(cmd) || c.set.runsKlaudiushBinary(cmd, dir) {
@@ -472,21 +477,17 @@ func (c *commandCheck) dir(workingDirectory string, unknown bool) string {
 // expand substitutes known variables and ~ into word. Unknown variables
 // become unknownPart.
 func (c *commandCheck) expand(word string) string {
-	expanded := varRef.ReplaceAllStringFunc(word, func(ref string) string {
-		if c.result.DynamicVars[varName(ref)] {
+	dynamic := func(ref string) string {
+		if c.isDynamic(varName(ref)) {
 			return unknownPart
 		}
 
 		return ref
-	})
-	expanded = c.result.ExpandVars(expanded)
-	expanded = varRef.ReplaceAllStringFunc(expanded, func(ref string) string {
-		if c.result.DynamicVars[varName(ref)] {
-			return unknownPart
-		}
+	}
 
-		return ref
-	})
+	expanded := varRef.ReplaceAllStringFunc(word, dynamic)
+	expanded = c.expandVars(expanded)
+	expanded = varRef.ReplaceAllStringFunc(expanded, dynamic)
 	expanded = varRef.ReplaceAllStringFunc(expanded, func(ref string) string {
 		name := varName(ref)
 		if value, ok := c.set.lookupEnv(name); ok && value != "" && !strings.Contains(value, "${") {
@@ -501,6 +502,26 @@ func (c *commandCheck) expand(word string) string {
 	}
 
 	return expanded
+}
+
+// isDynamic reports whether name holds command output for the command
+// being checked, or at the end of the line when no command is.
+func (c *commandCheck) isDynamic(name string) bool {
+	if c.scope != nil {
+		return c.scope.IsDynamic(name)
+	}
+
+	return c.result.DynamicVars[name]
+}
+
+// expandVars substitutes the assignments the command being checked saw,
+// or the final ones when no command is.
+func (c *commandCheck) expandVars(word string) string {
+	if c.scope != nil {
+		return c.scope.ExpandVars(word)
+	}
+
+	return c.result.ExpandVars(word)
 }
 
 // varName returns the variable a ${NAME...} reference names.
