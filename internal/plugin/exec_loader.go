@@ -250,7 +250,7 @@ func (a *execPluginAdapter) Validate(
 
 	if !hasPassedField(result.Stdout) {
 		return nil, errors.Mark(
-			errors.New("plugin response has no \"passed\" field"),
+			errors.New("plugin response has no boolean \"passed\" field"),
 			ErrPluginBadResponse,
 		)
 	}
@@ -265,17 +265,22 @@ func (a *execPluginAdapter) Validate(
 	return &resp, nil
 }
 
-// hasPassedField reports whether a response is a JSON object with a
-// "passed" field; null or {} would otherwise decode into a passing result.
+// hasPassedField reports whether a response is a JSON object whose "passed"
+// field holds true or false; null, {} or {"passed":null} would otherwise
+// decode into a result the plugin never gave. Output that is not a JSON
+// object is left to the decoder to reject.
 func hasPassedField(stdout string) bool {
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal([]byte(stdout), &fields); err != nil {
 		return true
 	}
 
-	_, ok := fields["passed"]
-
-	return ok
+	switch string(bytes.TrimSpace(fields["passed"])) {
+	case "true", "false":
+		return true
+	default:
+		return false
+	}
 }
 
 // Close releases any resources held by the plugin.

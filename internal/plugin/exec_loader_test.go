@@ -653,6 +653,45 @@ var _ = Describe("ExecLoader", func() {
 				Expect(err.Error()).To(ContainSubstring("failed to parse response JSON"))
 			})
 
+			DescribeTable("rejects a response without a boolean passed field",
+				func(stdout string) {
+					runner.runWithStdinFunc = func(
+						_ context.Context,
+						_ io.Reader,
+						_ string,
+						_ ...string,
+					) exec.CommandResult {
+						return exec.CommandResult{Stdout: stdout}
+					}
+
+					_, err := adapter.Validate(ctx, &pluginapi.ValidateRequest{})
+
+					Expect(errors.Is(err, plugin.ErrPluginBadResponse)).To(BeTrue(), "%v", err)
+				},
+				Entry("null", "null"),
+				Entry("empty object", "{}"),
+				Entry("null passed", `{"passed":null}`),
+				Entry("string passed", `{"passed":"true"}`),
+				Entry("number passed", `{"passed":1}`),
+			)
+
+			It("accepts a boolean passed field with spacing", func() {
+				runner.runWithStdinFunc = func(
+					_ context.Context,
+					_ io.Reader,
+					_ string,
+					_ ...string,
+				) exec.CommandResult {
+					return exec.CommandResult{Stdout: `{"passed" :  false , "message": "no"}`}
+				}
+
+				resp, err := adapter.Validate(ctx, &pluginapi.ValidateRequest{})
+
+				Expect(err).NotTo(HaveOccurred())
+				Expect(resp.Passed).To(BeFalse())
+				Expect(resp.Message).To(Equal("no"))
+			})
+
 			It("should pass request as JSON to stdin", func() {
 				var capturedStdin []byte
 
