@@ -54,12 +54,12 @@ func subcommandIn(names ...string) func([]string) bool {
 
 // evalSetupTool returns the tool whose shell setup an eval call runs: eval
 // given one command substitution, quoted or not, of a known program named by
-// a literal word, with literal arguments that make it print setup. Anything
-// else, a computed program name or a name that only contains a known one
-// (evil-mise), returns "".
+// a literal word, with only literal arguments that make it print setup.
+// Anything else, a computed program name or argument, or a name that only
+// contains a known one (evil-mise), returns "".
 func evalSetupTool(call *syntax.CallExpr) string {
 	if len(call.Args) != 2 || !isLiteralWord(call.Args[0]) ||
-		wordToString(call.Args[0]) != evalBuiltin {
+		argWord(call.Args[0]) != evalBuiltin {
 		return ""
 	}
 
@@ -72,14 +72,19 @@ func evalSetupTool(call *syntax.CallExpr) string {
 	inner := callExprOf(stmt)
 
 	if inner == nil || stmt.Negated || stmt.Background || stmt.Coprocess ||
-		len(inner.Args) == 0 || !isLiteralWord(inner.Args[0]) {
+		len(inner.Args) == 0 {
 		return ""
 	}
 
-	name := path.Base(wordToString(inner.Args[0]))
+	args, literal := literalArgs(inner.Args[1:])
+	if !literal || !isLiteralWord(inner.Args[0]) {
+		return ""
+	}
+
+	name := path.Base(argWord(inner.Args[0]))
 
 	prints, ok := evalSetupTools[name]
-	if !ok || !prints(literalPrefix(inner.Args[1:])) {
+	if !ok || !prints(args) {
 		return ""
 	}
 
@@ -105,25 +110,11 @@ func soleSubstitution(word *syntax.Word) *syntax.CmdSubst {
 	return sub
 }
 
-// literalPrefix returns the arguments up to the first that is not literal.
-func literalPrefix(words []*syntax.Word) []string {
-	args := make([]string, 0, len(words))
-
-	for _, word := range words {
-		if !isLiteralWord(word) {
-			break
-		}
-
-		args = append(args, wordToString(word))
-	}
-
-	return args
-}
-
-// noteEvalSetup remembers the setup tool of the eval call recorded at seq.
+// noteEvalSetup remembers the setup tool of the eval call recorded at seq,
+// unless eval or the tool is an alias or function from this line.
 func (w *astWalker) noteEvalSetup(call *syntax.CallExpr, seq int) {
 	tool := evalSetupTool(call)
-	if tool == "" {
+	if tool == "" || w.defined(evalBuiltin) || w.defined(tool) {
 		return
 	}
 

@@ -275,7 +275,8 @@ func unresolvedWordFinding(o parser.Opacity) (message, required, repair string) 
 // klaudiush can inspect, keyed by parser.EvalSetupTools.
 var evalSetupRepairs = map[string]string{
 	"ssh-agent": "Run the command as the agent's child instead: ssh-agent <command>, " +
-		"or ssh-agent bash -c 'ssh-add && <command>' when it needs a key",
+		"or ssh-agent bash -c 'ssh-add && <command>' when it needs a key " +
+		"(ssh-add has no terminal there, so use a key without a passphrase or SSH_ASKPASS)",
 	"mise":   "Run the command through mise instead: mise exec -- <command>",
 	"direnv": "Run the command with the directory's environment instead: direnv exec . <command>",
 	"rbenv":  "Run the command with the selected Ruby instead: rbenv exec <command>",

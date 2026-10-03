@@ -806,7 +806,10 @@ func scanLaunch(cmd Command) launch {
 		}
 
 		if launchesTracked(arg, rest) || (i > 0 && runsScriptPath(cmd.Args[i-1], arg)) {
-			return launch{commands: []Command{childCommand(cmd, arg, rest)}}
+			return launch{commands: append(
+				[]Command{childCommand(cmd, arg, rest)},
+				afterDirectoryOperand(cmd, arg, rest)...,
+			)}
 		}
 
 		// One argument holding a whole command line, as tmux, parallel and
@@ -856,6 +859,18 @@ func launchesTracked(arg string, rest []string) bool {
 // same path only reads it, so the path counts only after an exec marker.
 func runsScriptPath(prev, arg string) bool {
 	return execMarkers[prev] && strings.Contains(arg, "/") && shellScriptExtensions[path.Ext(arg)]
+}
+
+// afterDirectoryOperand also scans past the operand that follows a
+// subcommand named like a launcher, since direnv exec . git push takes "."
+// (or ./, or any path) as a directory, not as the program exec runs.
+func afterDirectoryOperand(cmd Command, arg string, rest []string) []Command {
+	if _, ok := launchers[commandName(arg)]; !ok || len(rest) < 2 ||
+		strings.HasPrefix(rest[0], "-") {
+		return nil
+	}
+
+	return scanLaunch(childCommand(cmd, cmd.Name, rest[1:])).commands
 }
 
 var (

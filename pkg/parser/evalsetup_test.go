@@ -59,6 +59,8 @@ var _ = Describe("Eval of a tool's shell setup", func() {
 		Entry("fnm env", `eval "$(fnm env --use-on-cd)"`, "fnm"),
 		Entry("quoted literal program", `eval "$('mise' activate bash)"`, "mise"),
 		Entry("with a redirect", `eval "$(ssh-agent -s 2>/dev/null)"`, "ssh-agent"),
+		Entry("escaped program name", `eval "$(\mise activate bash)"`, "mise"),
+		Entry("escaped eval", `\eval "$(direnv export bash)"`, "direnv"),
 	)
 
 	DescribeTable("keeps the generic explanation for anything else",
@@ -86,6 +88,13 @@ var _ = Describe("Eval of a tool's shell setup", func() {
 		Entry("a process substitution", `eval "$(cat <(mise activate bash))"`),
 		Entry("an unknown tool", `eval "$(tool init)"`),
 		Entry("eval through a launcher", `builtin eval "$(mise activate bash)"`),
+		Entry("ssh-agent given a computed argument", `eval "$(ssh-agent "$CMD")"`),
+		Entry("a computed argument after the subcommand", `eval "$(mise activate $SH)"`),
+		Entry("a function named like the tool",
+			`mise() { echo x; }; eval "$(mise activate bash)"`),
+		Entry("an alias named like the tool",
+			`alias mise='echo x'; eval "$(mise activate bash)"`),
+		Entry("a function named eval", `eval() { echo x; }; eval "$(mise activate bash)"`),
 	)
 
 	It("keeps the tool through a shell that runs eval", func() {
@@ -99,6 +108,26 @@ var _ = Describe("Eval of a tool's shell setup", func() {
 			parse(`eval "$(ssh-agent -s)"; eval "$(mise activate bash)"`).Opacities,
 		).To(ConsistOf(evalOpacity("ssh-agent"), evalOpacity("mise")))
 	})
+
+	DescribeTable("follows the commands the suggested forms run",
+		func(command string) {
+			result, err := parser.NewBashParserWithResolver(fakeResolver{}).Parse(command)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.Truncated).To(BeFalse(), command)
+			Expect(result.GitOperations).To(ContainElement(
+				HaveField("Args", ContainElement("commit")),
+			), command)
+		},
+		Entry("direnv exec in the current directory", `direnv exec . git commit -m x`),
+		Entry("direnv exec in ./", `direnv exec ./ git commit -m x`),
+		Entry("direnv exec in a directory", `direnv exec /repo git commit -m x`),
+		Entry("mise exec", `mise exec -- git commit -m x`),
+		Entry("ssh-agent", `ssh-agent git commit -m x`),
+		Entry("ssh-agent with a shell", `ssh-agent bash -c 'ssh-add && git commit -m x'`),
+		Entry("rbenv exec", `rbenv exec git commit -m x`),
+		Entry("conda run", `conda run -n base git commit -m x`),
+		Entry("fnm exec", `fnm exec --using=20 git commit -m x`),
+	)
 
 	It("lists the tools it recognizes", func() {
 		Expect(parser.EvalSetupTools()).To(ContainElements("ssh-agent", "mise", "direnv"))
