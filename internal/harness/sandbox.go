@@ -61,6 +61,10 @@ type Sandbox struct {
 
 	mu       sync.Mutex
 	sessions map[int]struct{}
+	known    map[int]int64
+	keeper   *keeper
+
+	scanMu sync.Mutex
 }
 
 // NewSandbox creates the sandbox directories under base (the system temp
@@ -79,6 +83,7 @@ func NewSandbox(base string) (*Sandbox, error) {
 		Captures: filepath.Join(root, "captures"),
 		extraEnv: map[string]string{},
 		sessions: map[int]struct{}{},
+		known:    map[int]int64{},
 	}
 
 	dirs := []string{

@@ -8,6 +8,7 @@ import (
 	"context"
 	"io"
 	"os/exec"
+	"runtime"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -71,14 +72,17 @@ type OptionsRunner interface {
 // NewSession starts the command as the leader of a new session on unix, so
 // the processes it leaves behind can be found by session id after it exits.
 // Started, when set, receives the process id once the command runs.
+// KillWithParent has Linux kill the command when the caller dies, even by
+// SIGKILL; elsewhere it has no effect.
 type RunOptions struct {
-	Dir        string
-	Env        []string
-	Stdin      io.Reader
-	Stdout     io.Writer
-	Stderr     io.Writer
-	NewSession bool
-	Started    func(pid int)
+	Dir            string
+	Env            []string
+	Stdin          io.Reader
+	Stdout         io.Writer
+	Stderr         io.Writer
+	NewSession     bool
+	KillWithParent bool
+	Started        func(pid int)
 }
 
 // commandRunner implements CommandRunner.
@@ -143,6 +147,16 @@ func (*commandRunner) RunWithOptions(
 
 	if opts.NewSession {
 		startNewSession(cmd)
+	}
+
+	if opts.KillWithParent {
+		// The parent-death signal follows the starting thread, which must
+		// not exit before the command does.
+		runtime.LockOSThread()
+
+		defer runtime.UnlockOSThread()
+
+		killWithParent(cmd)
 	}
 
 	err := cmd.Start()

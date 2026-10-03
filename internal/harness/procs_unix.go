@@ -2,7 +2,18 @@
 
 package harness
 
-import "golang.org/x/sys/unix"
+import (
+	"syscall"
+
+	"golang.org/x/sys/unix"
+)
+
+// keeperSupported is true where sandbox processes can be listed.
+const keeperSupported = true
+
+// keeperAttr puts the keeper in its own session, out of reach of the
+// terminal's signals and of any sweep of the sessions it watches.
+func keeperAttr() *syscall.SysProcAttr { return &syscall.SysProcAttr{Setsid: true} }
 
 func freezeProcess(p process) { signalProcess(p.PID, p.Start, unix.SIGSTOP) }
 
@@ -13,6 +24,10 @@ func killProcess(p process) { signalProcess(p.PID, p.Start, unix.SIGKILL) }
 // the signal reach the same process; otherwise the pid is checked before
 // and after, and a SIGSTOP that reached a newcomer is undone.
 func signalProcess(pid int, start int64, sig unix.Signal) bool {
+	if pid <= 0 {
+		return false
+	}
+
 	if sent, handled := signalByHandle(pid, start, sig); handled {
 		return sent
 	}

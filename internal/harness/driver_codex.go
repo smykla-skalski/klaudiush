@@ -193,9 +193,15 @@ func (d *CodexDriver) listHooks(ctx context.Context, sb *Sandbox) ([]codexHook, 
 		Stdin:  &gatedReader{stop: ctx.Done(), data: &input, done: reply.done},
 		Stdout: reply,
 	}
-	sb.track(&opts)
+
+	stopWatch, err := sb.track(&opts)
+	if err != nil {
+		return nil, err
+	}
 
 	result := execpkg.NewCommandRunner(0).RunWithOptions(ctx, opts, d.resolve(ctx), "app-server")
+
+	stopWatch()
 
 	_, _ = sb.Processes()
 

@@ -88,6 +88,16 @@ var _ = Describe("CommandRunner", func() {
 			Expect(strings.TrimSpace(result.Stdout)).To(Equal(strconv.Itoa(started)))
 		})
 
+		It("runs a command tied to the caller's lifetime", func() {
+			result := NewCommandRunner(0).RunWithOptions(context.Background(), RunOptions{
+				NewSession:     true,
+				KillWithParent: true,
+			}, "sh", "-c", "echo ok")
+
+			Expect(result.Err).NotTo(HaveOccurred())
+			Expect(strings.TrimSpace(result.Stdout)).To(Equal("ok"))
+		})
+
 		It("does not report a command that failed to start", func() {
 			called := false
 

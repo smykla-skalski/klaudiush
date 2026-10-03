@@ -6,7 +6,11 @@ import "syscall"
 
 // listProcesses cannot see other processes here, so no sandbox process is
 // found and Close only removes files.
-func listProcesses() ([]process, error) { return nil, nil }
+func listProcesses(bool) ([]process, error) { return nil, nil }
+
+const keeperSupported = false
+
+func keeperAttr() *syscall.SysProcAttr { return nil }
 
 func freezeProcess(process) {}
 
