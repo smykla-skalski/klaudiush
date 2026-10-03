@@ -32,15 +32,20 @@ type scriptSourceText struct {
 // sourceKey identifies the state a script's text is followed in from cmd:
 // the directory, the variables, aliases and functions in scope, how far
 // variables are trusted, the command table, the definitions being expanded
-// and the latest content written on the line to each file.
+// and the latest content written on the line to each file. A walker whose
+// directory is unknown gets a key that matches nothing: relative reads and
+// writes there cannot be told apart, so its repeats are never cut.
 func (w *astWalker) sourceKey(cmd Command, text string, literal bool) string {
+	if w.dirUnknown || cmd.DirUnknown {
+		return w.uniqueKey()
+	}
+
 	h := sha256.New()
 
 	writeParts(h,
 		text,
 		cmd.Name,
 		cmd.WorkingDirectory,
-		strconv.FormatBool(w.dirUnknown),
 		strconv.FormatBool(literal),
 		strconv.FormatBool(w.distrust),
 		strconv.FormatBool(w.inLoop || w.outerLoop),
@@ -76,8 +81,10 @@ func (w *astWalker) sourceKey(cmd Command, text string, literal bool) string {
 // lineWrites returns, for each file written so far on the line, every
 // version a later script could read from it, oldest first, each once. A
 // version is the captured content or a marker for content that cannot be
-// reconstructed. ok is false past maxKeyWrites writes, where summarizing them
-// on every followed script would cost more than the hook's timeout allows.
+// reconstructed. ok is false past maxKeyWrites writes or maxKeyWriteBytes,
+// where summarizing them on every followed script would cost more than the
+// hook's timeout allows, and after a write under an unknown directory, whose
+// target cannot be told.
 func (w *astWalker) lineWrites() (versions map[string][]string, ok bool) {
 	var chain []*astWalker
 
@@ -96,6 +103,10 @@ func (w *astWalker) lineWrites() (versions map[string][]string, ok bool) {
 
 	for _, p := range slices.Backward(chain) {
 		for _, fw := range p.fileWrites {
+			if fw.DirUnknown {
+				return nil, false
+			}
+
 			target := resolvePath(fw.WorkingDirectory, fw.Path)
 			version := writeVersion(fw)
 

@@ -54,6 +54,8 @@ def main():
 		"/s/cond.sh": "[ \"$SHLVL\" -gt 4 ] || bash /s/cond.sh\nbash /t/c\n" +
 			"cat > /t/c <<'X'\ngit push --force\nX\n[ -e /x ] && cat > /t/c <<'Z'\n\nZ\n",
 		"/s/true.sh": "true\n",
+		"/s/unknowndir.sh": "bash /t/run.sh\ncd \"$(printf /t)\"\n" +
+			"printf 'git push --force\\n' > run.sh\nbash /s/unknowndir.sh\n",
 		"/s/ghflag.sh": "gh pr list\ngh x\ngh alias set x 'repo delete foo --yes' --clobber\n" +
 			"bash /s/ghflag.sh\ngh alias set --clobber x 'pr list'\n",
 		"/s/gitflag.sh": "git status\ngit x\ngit config alias.x 'push --force'\n" +
@@ -195,6 +197,12 @@ def main():
 		Entry("gh", `bash -c 'gh alias set --clobber x "pr list"; bash /s/ghflag.sh'`),
 		Entry("git", `bash -c 'git -C alias.q config alias.x status; bash /s/gitflag.sh'`),
 	)
+
+	It("does not cut the repeat of a script that moved to an unknown directory", func() {
+		result := parse("bash -c 'bash /s/unknowndir.sh'")
+
+		Expect(result.Truncated).To(BeTrue())
+	})
 
 	It("keeps following scripts cheap after many file writes", func() {
 		var line strings.Builder

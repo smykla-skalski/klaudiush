@@ -613,10 +613,10 @@ func literalCommand(name string) bool {
 func (w *astWalker) trackShellState(cmd Command) {
 	switch cmd.Name {
 	case "cd":
-		w.changeDir(firstOperand(cmd.Args))
+		w.changeDir(dirOperand(cmd))
 	case "pushd":
 		w.dirStack = append(w.dirStack, w.currentDir)
-		w.changeDir(firstOperand(cmd.Args))
+		w.changeDir(dirOperand(cmd))
 	case "popd":
 		if n := len(w.dirStack); n > 0 {
 			w.currentDir, w.dirStack = w.dirStack[n-1], w.dirStack[:n-1]
@@ -645,6 +645,17 @@ func (w *astWalker) changeDir(target string) {
 	default:
 		w.currentDir, w.dirUnknown = resolvePath(w.currentDir, target), false
 	}
+}
+
+// dirOperand returns the directory cd or pushd changes to. One computed by a
+// command substitution is unknown, even when its output word is dropped,
+// which would otherwise read as a bare cd to the home directory.
+func dirOperand(cmd Command) string {
+	if cmd.Dynamic {
+		return "-"
+	}
+
+	return firstOperand(cmd.Args)
 }
 
 // firstOperand returns the first argument that is not an option.
