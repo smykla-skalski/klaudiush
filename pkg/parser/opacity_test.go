@@ -336,6 +336,44 @@ var _ = Describe("Opacity explanations", func() {
 		Expect(result.MoreOpacities).To(BeFalse())
 	})
 
+	It("keeps other opacities past many setup evals", func() {
+		result := parse(allSetupEvals() + "; " + manyUnknown(parser.MaxOpacities-1))
+
+		Expect(setupTools(result.Opacities)).To(ConsistOf(parser.EvalSetupTools()))
+		Expect(result.Opacities).To(HaveLen(len(parser.EvalSetupTools()) + parser.MaxOpacities - 1))
+		Expect(result.Opacities[len(result.Opacities)-1].Operation).To(Equal(
+			"git zz" + strings.Repeat("z", parser.MaxOpacities-2),
+		))
+		Expect(result.MoreOpacities).To(BeFalse())
+	})
+
+	It("keeps every setup tool past a full list of other opacities", func() {
+		result := parse(manyUnknown(20) + "; " + allSetupEvals())
+
+		Expect(setupTools(result.Opacities)).To(ConsistOf(parser.EvalSetupTools()))
+		Expect(result.MoreOpacities).To(BeTrue())
+	})
+
+	It("bounds repeats of one setup tool but still shows a new tool", func() {
+		shells := []string{"bash", "sh", "zsh", "dash", "ksh"}
+		evals := make([]string, 0, 2*len(shells)+2)
+
+		for _, shell := range shells {
+			evals = append(evals,
+				shell+` -c 'eval "$(mise activate bash)"'`,
+				"env "+shell+` -c 'eval "$(mise activate bash)"'`,
+			)
+		}
+
+		evals = append(evals, `eval "$(direnv export bash)"`, "git zz")
+		result := parse(strings.Join(evals, "; "))
+
+		Expect(setupTools(result.Opacities)).To(HaveLen(parser.MaxOpacities + 1))
+		Expect(setupTools(result.Opacities)).To(ContainElements("mise", "direnv"))
+		Expect(result.Opacities).To(ContainElement(HaveField("Operation", "git zz")))
+		Expect(result.MoreOpacities).To(BeTrue())
+	})
+
 	DescribeTable("names the scripts and aliases on the way",
 		func(command string, origin []string, operation string) {
 			o := only(command)
@@ -381,4 +419,45 @@ func manyUnknown(count int) string {
 	}
 
 	return strings.Join(parts, "; ")
+}
+
+// setupEvals print each setup tool's shell setup, keyed by tool.
+var setupEvals = map[string]string{
+	"ssh-agent": "ssh-agent -s",
+	"mise":      "mise activate bash",
+	"direnv":    "direnv export bash",
+	"rbenv":     "rbenv init -",
+	"pyenv":     "pyenv init -",
+	"nodenv":    "nodenv init -",
+	"conda":     "conda shell.bash hook",
+	"brew":      "brew shellenv",
+	"starship":  "starship init bash",
+	"zoxide":    "zoxide init bash",
+	"fnm":       "fnm env",
+}
+
+// allSetupEvals evals the shell setup of every tool the parser recognizes.
+func allSetupEvals() string {
+	tools := parser.EvalSetupTools()
+	parts := make([]string, 0, len(tools))
+
+	for _, tool := range tools {
+		Expect(setupEvals).To(HaveKey(tool))
+		parts = append(parts, `eval "$(`+setupEvals[tool]+`)"`)
+	}
+
+	return strings.Join(parts, "; ")
+}
+
+// setupTools lists the setup tools the opacities name, in order.
+func setupTools(opacities []parser.Opacity) []string {
+	tools := make([]string, 0, len(opacities))
+
+	for _, o := range opacities {
+		if o.Tool != "" {
+			tools = append(tools, o.Tool)
+		}
+	}
+
+	return tools
 }

@@ -18,8 +18,8 @@ var (
 )
 
 // ParseResult contains the results of parsing a Bash command. Opacities keeps
-// at most MaxOpacities entries, and MoreOpacities reports that some were
-// dropped.
+// at most MaxOpacities entries that name no setup tool (see MaxOpacities for
+// the ones that do), and MoreOpacities reports that some were dropped.
 type ParseResult struct {
 	Commands      []Command         // All commands found
 	FileWrites    []FileWrite       // All file write operations
