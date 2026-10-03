@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
@@ -482,16 +483,16 @@ type commentScan struct {
 // state its line starts in, the file text before it on that line, and the
 // file text after it, only used to find the declaration a comment documents.
 // before holds the file lines above it, starting in beforeState, only used to
-// find a PEP 723 metadata block the Edit lands in; metadataAbove is set when
-// the file's script block ends above before, so none the Edit adds is the
-// first.
+// find a PEP 723 metadata block the Edit lands in. metadataElsewhere is set
+// when the file has a script block the replaced text does not touch, so a
+// block the Edit adds would be a second one.
 type editLead struct {
-	state         stringState
-	prefix        string
-	suffix        string
-	before        []string
-	beforeState   stringState
-	metadataAbove bool
+	state             stringState
+	prefix            string
+	suffix            string
+	before            []string
+	beforeState       stringState
+	metadataElsewhere bool
 }
 
 // lineStart returns the state the next line starts in after a line ended in
@@ -647,9 +648,11 @@ func editLeads(content, old string, syntax langSyntax, all bool) []editLead {
 		offset += len(line) + 1
 	}
 
-	metadataEnd := -1
+	metadataStart, metadataEnd := -1, -1
+
 	if syntax.python {
-		metadataEnd = lastMarked(pep723Block(lines, topLevel))
+		block := pep723Block(lines, topLevel)
+		metadataStart, metadataEnd = slices.Index(block, true), lastMarked(block)
 	}
 
 	var leads []editLead
@@ -666,6 +669,7 @@ func editLeads(content, old string, syntax langSyntax, all bool) []editLead {
 
 		pos := from + rel
 		li := sort.SearchInts(lineOffsets, pos+1) - 1
+		last := sort.SearchInts(lineOffsets, pos+len(old)) - 1
 		from = pos + len(old)
 		first := commentRunStart(lines, lineStates, max(0, li-maxDocContextLines))
 
@@ -676,9 +680,10 @@ func editLeads(content, old string, syntax langSyntax, all bool) []editLead {
 				firstLines(content[from:], maxDocContextLines),
 				content[from:],
 			),
-			before:        lines[first:li],
-			beforeState:   lineStates[first],
-			metadataAbove: metadataEnd >= 0 && metadataEnd < first,
+			before:      lines[first:li],
+			beforeState: lineStates[first],
+			metadataElsewhere: metadataStart >= 0 &&
+				(last < metadataStart || li > metadataEnd),
 		})
 
 		if !all {

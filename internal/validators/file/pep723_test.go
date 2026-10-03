@@ -195,6 +195,29 @@ var _ = Describe("AICommentValidator PEP 723 metadata", func() {
 			Expect(flaggedLines(sv.Validate(context.Background(), ctx))).To(Equal([]int{1, 2, 3}))
 		})
 
+		It("flags a second block added above the first", func() {
+			ctx.ToolInput.FilePath = writeSource(
+				"import os\n\n# /// script\n# dependencies = []\n# ///\n",
+			)
+			ctx.ToolInput.OldString = "import os"
+			ctx.ToolInput.NewString = "# /// script\n# sum the values\n# ///\nimport os"
+			Expect(flaggedLines(sv.Validate(context.Background(), ctx))).To(Equal([]int{1, 2, 3}))
+		})
+
+		It("flags a block merged into the first from right above it", func() {
+			ctx.ToolInput.FilePath = writeSource(pep723Script)
+			ctx.ToolInput.OldString = "#!/usr/bin/env -S uv run --quiet --script"
+			ctx.ToolInput.NewString = ctx.ToolInput.OldString + "\n# /// script\n# sum the values\n# ///"
+			Expect(flaggedLines(sv.Validate(context.Background(), ctx))).To(Equal([]int{2, 3, 4}))
+		})
+
+		It("exempts a block rewritten as a whole", func() {
+			ctx.ToolInput.FilePath = writeSource(pep723Script)
+			ctx.ToolInput.OldString = "# /// script\n# requires-python = \">=3.10\""
+			ctx.ToolInput.NewString = "# /// script\n# requires-python = \">=3.12\""
+			Expect(flaggedLines(sv.Validate(context.Background(), ctx))).To(BeEmpty())
+		})
+
 		It("flags a block in a patch-style Edit to a file that has one", func() {
 			ctx.ToolInput.FilePath = writeSource(pep723Script)
 			ctx.ToolInput.NewString = "# /// script\n# sum the values\n# ///"
