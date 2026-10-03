@@ -5,6 +5,21 @@ All notable changes to klaudiush will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.42.0](https://github.com/smykla-skalski/klaudiush/compare/v1.41.0...v1.42.0) (2026-10-03)
+
+### Features
+
+* **gemini:** constrain tools by workflow phase ([#698](https://github.com/smykla-skalski/klaudiush/issues/698)) ([2f5d1a4](https://github.com/smykla-skalski/klaudiush/commit/2f5d1a4ab085b5f3f042172be8cd98c041fa4324))
+* **metrics:** measure enforcement outcomes ([#699](https://github.com/smykla-skalski/klaudiush/issues/699)) ([a235074](https://github.com/smykla-skalski/klaudiush/commit/a235074419491001ee193d2ccbbffe155ccd4de3))
+* **policy:** protect hooks and trust MCP sources ([#697](https://github.com/smykla-skalski/klaudiush/issues/697)) ([489e8bb](https://github.com/smykla-skalski/klaudiush/commit/489e8bb07f01724f97a6591f12e9b06c6e0974ff))
+* **workflow:** gate completion on fresh evidence ([#695](https://github.com/smykla-skalski/klaudiush/issues/695)) ([1c4d5dd](https://github.com/smykla-skalski/klaudiush/commit/1c4d5dd98e9fbb20c65011404f558ce2bc00cd4b))
+
+### Bug Fixes
+
+* **opencode:** port bridge to plugin 2.x API ([#708](https://github.com/smykla-skalski/klaudiush/issues/708)) ([c9016f2](https://github.com/smykla-skalski/klaudiush/commit/c9016f2553eecf045ae8857616428a8cbd922775))
+* **parser:** block unresolved eval and git words ([#707](https://github.com/smykla-skalski/klaudiush/issues/707)) ([21aae20](https://github.com/smykla-skalski/klaudiush/commit/21aae2003af54447272567bca40734e7c91b5381))
+* **parser:** reject blank git subcommand ([#705](https://github.com/smykla-skalski/klaudiush/issues/705)) ([66ee7b4](https://github.com/smykla-skalski/klaudiush/commit/66ee7b4d1a8ba293286688ee01068b643b088bf4))
+
 ## [1.41.0](https://github.com/smykla-skalski/klaudiush/compare/v1.40.2...v1.41.0) (2026-10-03)
 
 ### Features
