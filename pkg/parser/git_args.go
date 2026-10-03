@@ -77,6 +77,7 @@ type writtenArg struct {
 	literal   bool
 	ambiguous bool
 	tilde     bool
+	splits    bool
 }
 
 // writtenArgs records how each argument word was written, keyed by the
@@ -214,43 +215,103 @@ func splitsQuoted(exp *syntax.ParamExp) bool {
 		strings.Contains(paramExpToString(exp), "[@]")
 }
 
-// writtenAs returns how arg was written. When that is unknown, it treats
-// every expansion and glob character in arg as unquoted: an argument passed
-// on by a launcher that rendered it, one an alias or function call re-quoted
-// into the text it runs, or literal text holding a rendered expansion.
+// writtenAs returns how arg was written: as the caller wrote it, for an
+// argument an alias or function call re-quoted into the text it runs, or as
+// written here. When that is unknown (an argument a launcher rendered, or
+// literal text holding a substitution only re-quoting makes), every
+// expansion and glob character in arg counts as unquoted.
 func (w *astWalker) writtenAs(cmd Command, arg string) writtenArg {
+	if forwarded, ok := w.forwarded[arg]; ok {
+		return forwarded
+	}
+
 	written, ok := cmd.written[arg]
-	if ok && !written.ambiguous && !w.forwarded[arg] &&
-		(!written.literal || !marked(arg) && !HasUnresolvedVars(arg)) {
+	if ok && !written.ambiguous && (!written.literal || !marked(arg)) {
 		return written
 	}
 
-	view := strings.ReplaceAll(arg, unresolvedWord, splitMark)
+	return unknownArg(arg)
+}
 
+func unknownArg(arg string) writtenArg {
 	return writtenArg{
-		view:    view,
+		view:    strings.ReplaceAll(arg, unresolvedWord, splitMark),
 		literal: !marked(arg) && !HasUnresolvedVars(arg) && !strings.HasPrefix(arg, "~"),
 		tilde:   strings.HasPrefix(arg, "~"),
 	}
 }
 
-// forwardedArgs adds the arguments a caller re-quoted into a script to the
-// ones its own callers did.
-func forwardedArgs(outer map[string]bool, args []string) map[string]bool {
-	if len(outer) == 0 && len(args) == 0 {
-		return nil
-	}
-
-	forwarded := maps.Clone(outer)
-	if forwarded == nil {
-		forwarded = make(map[string]bool, len(args))
-	}
+// forwardQuoted records how cmd's caller wrote the arguments it passes on
+// in words the callee does not split again: an alias's arguments, or ones a
+// function body quotes ("$1", "$@").
+func (w *astWalker) forwardQuoted(cmd Command, args []string) map[string]writtenArg {
+	forward := make(map[string]writtenArg, len(args))
 
 	for _, arg := range args {
-		forwarded[arg] = true
+		forward[arg] = w.writtenAs(cmd, arg)
 	}
 
-	return forwarded
+	return forward
+}
+
+// forwardPositional records how a function body passes on the arguments of
+// cmd. A positional parameter the body leaves unquoted ($1, $@) is split
+// and globbed again, so the argument it holds counts as unquoted text.
+func (w *astWalker) forwardPositional(cmd Command, body string) map[string]writtenArg {
+	var quoted []string
+
+	unquoted := make(map[string]bool)
+
+	for _, ref := range positionalParam.FindAllString(body, -1) {
+		args := cmd.Args
+
+		param := strings.Trim(ref, `"${}`)
+		if param != "@" && param != "*" {
+			n := int(param[0] - '0')
+			if n > len(cmd.Args) {
+				continue
+			}
+
+			args = cmd.Args[n-1 : n]
+		}
+
+		if len(ref) > 1 && strings.HasPrefix(ref, `"`) && strings.HasSuffix(ref, `"`) {
+			quoted = append(quoted, args...)
+
+			continue
+		}
+
+		for _, arg := range args {
+			unquoted[arg] = true
+		}
+	}
+
+	forward := w.forwardQuoted(cmd, quoted)
+
+	for arg := range unquoted {
+		split := unknownArg(arg)
+		split.splits = true
+		forward[arg] = split
+	}
+
+	return forward
+}
+
+// forwardedArgs adds the arguments a caller re-quoted into a script to the
+// ones its own callers did; the caller's own word wins.
+func forwardedArgs(outer, forward map[string]writtenArg) map[string]writtenArg {
+	if len(forward) == 0 {
+		return outer
+	}
+
+	merged := maps.Clone(outer)
+	if merged == nil {
+		merged = make(map[string]writtenArg, len(forward))
+	}
+
+	maps.Copy(merged, forward)
+
+	return merged
 }
 
 // resolveGitArgs checks the arguments of the git subcommands whose argument
@@ -364,6 +425,10 @@ func (w *astWalker) gitArg(
 	expanded, detail := w.splitView(written.view)
 	if detail != "" {
 		return arg, true, detail
+	}
+
+	if written.splits && strings.ContainsAny(arg, ifsBlanks) {
+		return arg, true, DetailWordSplit
 	}
 
 	flag, isValue := values[i]

@@ -194,6 +194,21 @@ var _ = Describe("Dynamic git arguments", func() {
 		Entry("environment variable in URL credentials",
 			`git push "https://user:$PASS@github.com/o/r" main`,
 			"git push argument", parser.DetailWordSecret),
+		Entry("unquoted positional splitting into an option",
+			`f() { git commit $1 -m x; }; f '--no-verify --amend'`,
+			"git commit argument", parser.DetailWordSplit),
+		Entry(
+			"unquoted positional splitting into a target",
+			`f() { git push origin $1; }; f 'feature main'`,
+			"git push argument",
+			parser.DetailWordSplit,
+		),
+		Entry(
+			"unquoted positional list splitting into a target",
+			`f() { git push origin $*; }; f 'feature main'`,
+			"git push argument",
+			parser.DetailWordSplit,
+		),
 		Entry("message splitting into an option",
 			`M='x --no-verify'; git commit -m $M`, "git commit argument", parser.DetailWordSplit),
 	)
@@ -242,6 +257,8 @@ var _ = Describe("Dynamic git arguments", func() {
 			[]string{"push", "", "origin", "main"}),
 		Entry("single array element", `a=(main); git push origin "${a[@]}"`,
 			[]string{"push", "origin", "main"}),
+		Entry("single-quoted reference text", `git push origin '${ENV_BRANCH}'`,
+			[]string{"push", "origin", "${ENV_BRANCH}"}),
 		Entry("environment variable in a URL path", `git push "https://h/$ENV_BRANCH" main`,
 			[]string{"push", "https://h/feature", "main"}),
 		Entry("assigned variable in URL credentials", `P=x; git push "https://u:$P@h/r" main`,
@@ -287,6 +304,12 @@ EOF
 		),
 		Entry("message attached after a boolean cluster", `git commit -sSam"$(echo x)"`),
 		Entry("forwarded message", `f() { git commit -m "$1"; }; f "msg"`),
+		Entry("positional parameter past the arguments", `f() { git push origin "$2"; }; f x`),
+		Entry("forwarded message with blanks", `f() { git commit -m "$1"; }; f "fix: a b"`),
+		Entry("forwarded message from command output",
+			`f() { git commit -m "$1"; }; f "$(cat msg)"`),
+		Entry("forwarded message from a variable", `f() { git commit -m "$1"; }; f "$MSG"`),
+		Entry("alias message from command output", `alias gc='git commit -m'; gc "$(date)"`),
 	)
 
 	It("keeps the variable name, never a secret value, in the opacity", func() {

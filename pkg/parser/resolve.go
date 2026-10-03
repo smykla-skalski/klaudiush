@@ -361,7 +361,11 @@ func (w *astWalker) expandGHAlias(cmd Command) (Command, []nestedScript) {
 
 		if line, shell := strings.CutPrefix(value, "!"); shell {
 			return cmd, []nestedScript{
-				{name: "gh:" + name, text: line + " " + quoteArgs(rest), args: rest},
+				{
+					name:    "gh:" + name,
+					text:    line + " " + quoteArgs(rest),
+					forward: w.forwardQuoted(cmd, rest),
+				},
 			}
 		}
 
@@ -413,9 +417,9 @@ func (w *astWalker) lineGHAlias(name string) (string, bool) {
 // alias or function, or a git or gh shell alias. The name keeps the
 // definition from being expanded inside itself.
 type nestedScript struct {
-	name string
-	text string
-	args []string
+	name    string
+	text    string
+	forward map[string]writtenArg
 }
 
 // programBehind returns git or gh for a program invoked with one of their
@@ -496,7 +500,11 @@ func (w *astWalker) expandGitAlias(cmd Command) (Command, []nestedScript) {
 
 		if line, shell := strings.CutPrefix(value, "!"); shell {
 			return cmd, []nestedScript{
-				{name: "git:" + name, text: line + " " + quoteArgs(rest), args: rest},
+				{
+					name:    "git:" + name,
+					text:    line + " " + quoteArgs(rest),
+					forward: w.forwardQuoted(cmd, rest),
+				},
 			}
 		}
 
@@ -754,9 +762,9 @@ func (w *astWalker) definitionScripts(cmd Command) []nestedScript {
 		scripts = append(
 			scripts,
 			nestedScript{
-				name: cmd.Invoked,
-				text: value + " " + quoteArgs(cmd.Args),
-				args: cmd.Args,
+				name:    cmd.Invoked,
+				text:    value + " " + quoteArgs(cmd.Args),
+				forward: w.forwardQuoted(cmd, cmd.Args),
 			},
 		)
 	}
@@ -772,9 +780,9 @@ func (w *astWalker) definitionScripts(cmd Command) []nestedScript {
 		scripts = append(
 			scripts,
 			nestedScript{
-				name: cmd.Invoked,
-				text: substitutePositional(body, cmd.Args),
-				args: cmd.Args,
+				name:    cmd.Invoked,
+				text:    substitutePositional(body, cmd.Args),
+				forward: w.forwardPositional(cmd, body),
 			},
 		)
 	}
@@ -962,7 +970,7 @@ type scriptWalk struct {
 	source string
 
 	prelude   []startupScript
-	forwarded []string
+	forwarded map[string]writtenArg
 }
 
 // walkScript records the commands of a script that parent runs. A cd inside
