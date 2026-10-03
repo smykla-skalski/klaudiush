@@ -56,11 +56,18 @@ type astWalker struct {
 	// expanding holds the aliases, functions and git aliases being expanded
 	// on the way here, so a definition is never expanded inside itself.
 	expanding map[string]bool
+	// following holds the states script files are followed in on the way
+	// here.
+	following []string
 	// literal marks a walker over a string found in interpreter code: its
 	// top-level commands count only when they name something tracked.
 	literal bool
 	// dirUnknown records that a cd went somewhere that cannot be resolved.
 	dirUnknown bool
+	// dirComputed records a cd to a directory computed by a command
+	// substitution, whose output the walker does not see, so the directory
+	// it tracks may be wrong.
+	dirComputed bool
 	// dirStack holds the directories pushd saved.
 	dirStack []string
 	// scope caches the variable snapshot until an assignment changes it;
@@ -99,6 +106,14 @@ type parseState struct {
 	// evalSetups names the setup tool whose output an eval call runs, by
 	// the call's seq.
 	evalSetups map[int]string
+	// distinct holds every distinct command recorded so far, so a pass that
+	// confirms a script's repeat can tell whether it found anything new.
+	distinct map[string]bool
+	// repeated holds the states of scripts whose repeating pass was not
+	// followed and still has to be confirmed.
+	repeated map[string]bool
+	// uniqueKeys counts the script states given keys that match nothing.
+	uniqueKeys int
 }
 
 // spend takes one unit of work, reporting false once the budget is gone.
@@ -538,6 +553,7 @@ func (w *astWalker) recordCommand(cmd Command, depth int) {
 		cmd.Vars = w.varScope()
 	}
 
+	w.noteRecorded(cmd)
 	w.commands = append(w.commands, cmd)
 	w.trackShellState(cmd)
 	w.forgetWritten(followed)
@@ -607,8 +623,10 @@ func literalCommand(name string) bool {
 func (w *astWalker) trackShellState(cmd Command) {
 	switch cmd.Name {
 	case "cd":
+		w.dirComputed = w.dirComputed || cmd.Dynamic
 		w.changeDir(firstOperand(cmd.Args))
 	case "pushd":
+		w.dirComputed = w.dirComputed || cmd.Dynamic
 		w.dirStack = append(w.dirStack, w.currentDir)
 		w.changeDir(firstOperand(cmd.Args))
 	case "popd":
