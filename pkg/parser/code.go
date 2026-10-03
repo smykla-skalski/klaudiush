@@ -44,6 +44,9 @@ var proseUnsafe = regexp.MustCompile(
 	`(?i)alias\.|\[alias|\[include|include(?:if)?\.|gitconfig|git/config|` +
 		`GIT_CONFIG|GIT_DIR|GIT_COMMON_DIR|GIT_WORK_TREE|GIT_EXEC_PATH|XDG_CONFIG_HOME|` +
 		`chdir|\bcwd\b|popen|open3|\bstdin\b|\$stdout\s*=|\bstdout\s*=[^=]|` +
+		`\bstd(?:out|err)\.write\s*=[^=]|` +
+		`\b(?:print|log|info|warn|warning|error|debug|fail|echo|puts)\s*=[^=\n]*` +
+		`(?:system|exec|subprocess|popen|spawn|child_process|run\b|call\b)|` +
 		`dup2|\bfork\b|\bpipe\s*\(|fdopen|redirect_std|StringIO|BytesIO|` +
 		`\b(?:file|stream)\s*=\s*(?:[^s\s]|s[^y])|` +
 		`\|\s*["'\x60]|["'\x60]\s*\||` +
@@ -132,11 +135,11 @@ func proseLiteral(code string, start, end int, reuse textReuse) bool {
 	}
 
 	callee, isCall := strings.CutSuffix(prev, "(")
-	if !isCall || strings.ContainsAny(callee[strings.LastIndexByte(callee, '\n')+1:], "#/") {
+	callee = strings.TrimRight(callee[strings.LastIndexByte(callee, '\n')+1:], " \t")
+
+	if !isCall || strings.ContainsAny(callee, "#/") {
 		return false
 	}
-
-	callee = strings.TrimRight(callee, " \t")
 
 	return messageCalls[trailingName.FindString(callee)] ||
 		!reuse.errors && raisedError.MatchString(callee)

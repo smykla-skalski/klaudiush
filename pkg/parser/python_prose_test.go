@@ -15,6 +15,7 @@ var _ = Describe("Git words in interpreter prose", func() {
 		files: map[string]string{
 			"./tool.py": "#!/usr/bin/env python3\nfail(\"git zz is not set up\")\n",
 			"helper.py": "print(\"git zz is not set up\")\n",
+			"awk.py":    "#!/usr/bin/env python3\nBEGIN { print(\"git zz\") }\n",
 			"hotspots.py": `#!/usr/bin/env python3
 """Rank hotspots from git history.
 
@@ -367,18 +368,44 @@ with contextlib.redirect_stdout(b): print("git zz")'`),
 		Expect(parse(command).Truncated).To(BeFalse())
 	})
 
-	It("keeps a script of long comment blocks cheap to scan", func() {
-		line := "# print(\"git zz\")\n"
-		big := fakeResolver{files: map[string]string{
-			"big.py": strings.Repeat(line, parser.MaxScriptBytes/len(line)-1),
-		}}
+	DescribeTable("keeps large scripts cheap to scan",
+		func(line string) {
+			big := fakeResolver{files: map[string]string{
+				"big.py": strings.Repeat(line, parser.MaxScriptBytes/len(line)-1),
+			}}
 
-		start := time.Now()
-		_, err := parser.NewBashParserWithResolver(big).Parse("python3 big.py")
+			start := time.Now()
+			_, err := parser.NewBashParserWithResolver(big).Parse("python3 big.py")
 
-		Expect(err).NotTo(HaveOccurred())
-		Expect(time.Since(start)).To(BeNumerically("<", 2*time.Second))
-	})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(time.Since(start)).To(BeNumerically("<", 2*time.Second))
+		},
+		Entry("long comment blocks", "# print(\"git zz\")\n"),
+		Entry("many message calls", "print(\"see gh\")\n"),
+		Entry("many other calls", "x(\"see gh\")\n"),
+	)
+
+	DescribeTable(
+		"fails closed when a message call is rebound or captured",
+		func(command string) {
+			Expect(parse(command).Truncated).To(BeTrue(), "not truncated: %q", command)
+		},
+		Entry(
+			"python stdout.write replaced",
+			`python3 -c 'import sys, subprocess; c = []; sys.stdout.write = c.append; print("git zz"); subprocess.run("".join(c), shell=True)'`,
+		),
+		Entry(
+			"node stdout.write replaced",
+			`node -e 'let o = ""; process.stdout.write = (s) => { o += s; return true }; console.log("git zz")'`,
+		),
+		Entry(
+			"print rebound to os.system",
+			`python3 -c 'import os; print = os.system; print("git zz")'`,
+		),
+		Entry("console.log rebound to execSync",
+			`node -e 'console.log = require("child_process").execSync; console.log("git zz")'`),
+		Entry("a python shebang run by awk", "awk -f awk.py"),
+	)
 
 	DescribeTable(
 		"reads raised and thrown errors as prose",
