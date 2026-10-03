@@ -233,7 +233,8 @@ func braceRange(inner string, end int) (int, []string) {
 		lo, hi = hi, lo
 	}
 
-	alternatives := make([]string, 0, int(hi-lo)+1)
+	var alternatives []string
+
 	for c := lo; ; c++ {
 		alternatives = append(alternatives, string(rune(c)))
 
