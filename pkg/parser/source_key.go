@@ -319,7 +319,15 @@ func writtenBytes(chain []*astWalker) int {
 
 	for _, p := range chain {
 		for _, fw := range p.fileWrites {
-			size += len(fw.Content) + len(fw.RedirectContent)
+			size += len(
+				fw.Path,
+			) + len(
+				fw.WorkingDirectory,
+			) + len(
+				fw.Content,
+			) + len(
+				fw.RedirectContent,
+			)
 		}
 	}
 
@@ -350,10 +358,15 @@ func (w *astWalker) ambiguousAliases() bool {
 	return false
 }
 
-// scopeBytes counts the variables, aliases and functions in scope, which a
-// script's state would have to hash on every followed script.
+// scopeBytes counts the saved directories, variables, aliases and functions
+// in scope, which a script's state would have to hash on every followed
+// script.
 func (w *astWalker) scopeBytes() int {
 	size := 0
+
+	for _, dir := range w.dirStack {
+		size += len(dir)
+	}
 
 	for _, m := range []map[string]string{w.assignments, w.aliases, w.funcs} {
 		for k, v := range m {
