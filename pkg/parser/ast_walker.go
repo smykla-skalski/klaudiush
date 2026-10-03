@@ -56,6 +56,8 @@ type astWalker struct {
 	// expanding holds the aliases, functions and git aliases being expanded
 	// on the way here, so a definition is never expanded inside itself.
 	expanding map[string]bool
+	// following holds the script files being followed on the way here.
+	following []sourceEntry
 	// literal marks a walker over a string found in interpreter code: its
 	// top-level commands count only when they name something tracked.
 	literal bool
@@ -96,11 +98,9 @@ type parseState struct {
 	pathChanged   bool
 	untrusted     bool
 	expandedWords map[string]bool
-	// recorded holds every distinct command recorded so far and novel counts
-	// them, so a script followed into itself can tell whether the pass
-	// before changed anything.
-	recorded map[string]bool
-	novel    int
+	// events lists every command recorded so far, in order, so a script
+	// followed into itself can tell whether its passes repeat.
+	events []string
 }
 
 // spend takes one unit of work, reporting false once the budget is gone.

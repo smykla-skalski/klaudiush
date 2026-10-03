@@ -39,6 +39,9 @@ def main():
 		"/s/vars.sh":  "git status\nX=1 bash /s/vars.sh\n",
 		"/s/hash.sh":  "ls push --force\nhash -p /usr/bin/git ls\n. /s/hash.sh\n",
 		"/s/alias.sh": "git config alias.ls push\ngit ls --force\n. /s/alias.sh\n",
+		"/s/top.sh":   "bash /t/f.sh\ncat > /t/f.sh <<'EOF'\n# nothing\nEOF\nbash /s/rewrite.sh\n",
+		"/s/rewrite.sh": "bash /t/f.sh\ncat > /t/f.sh <<'EOF'\ngit push --force\nEOF\n" +
+			"bash /s/rewrite.sh\n",
 	}
 
 	for i := range chainLength {
@@ -134,6 +137,12 @@ def main():
 
 		Expect(result.HasGitCommand()).To(BeTrue())
 		Expect(result.Truncated).To(BeFalse(), "opacities: %v", result.Opacities)
+	})
+
+	It("follows a script into itself again after it rewrites a file it runs", func() {
+		result := parse("bash /s/top.sh")
+
+		Expect(gitRuns(result, "push")).NotTo(BeEmpty(), "truncated=%v", result.Truncated)
 	})
 
 	It("still fails closed on a chain of distinct scripts past the limit", func() {
