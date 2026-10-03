@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
@@ -476,10 +477,18 @@ type commentScan struct {
 // editLead is one place an Edit's new_string lands: the multi-line string
 // state its line starts in, the file text before it on that line, and the
 // file text after it, only used to find the declaration a comment documents.
+// before holds the file lines above it, starting in beforeState, only used to
+// find a PEP 723 metadata block the Edit lands in. noMetadata is set when a
+// block the Edit adds could be a second one: the file has a script block the
+// replaced text does not touch, or several occurrences are replaced and not
+// all of them inside the file's block.
 type editLead struct {
-	state  stringState
-	prefix string
-	suffix string
+	state       stringState
+	prefix      string
+	suffix      string
+	before      []string
+	beforeState stringState
+	noMetadata  bool
 }
 
 // lineStart returns the state the next line starts in after a line ended in
@@ -556,8 +565,12 @@ func newCommentScan(hookCtx *hook.Context) commentScan {
 	return scan
 }
 
-// pythonShebang matches a first line that runs the file with Python.
-var pythonShebang = regexp.MustCompile(`^#!.*\bpython[0-9.]*(\s|$)`)
+// pythonShebang matches a first line that runs the file with Python, or
+// with uv as a script, directly or through env.
+var pythonShebang = regexp.MustCompile(
+	`^#!.*\bpython[0-9.]*(\s|$)` +
+		`|^#!\s*(\S*/)?(env\s+(-S\s+)?)?uv\s+run\s(.*\s)?--script(\s|$)`,
+)
 
 // shebangSyntax returns the Python syntax when text starts with a Python
 // shebang, for scripts without an extension, and the default syntax otherwise.
@@ -601,12 +614,24 @@ func editLeads(content, old string, syntax langSyntax, all bool) []editLead {
 	lines := strings.Split(content, "\n")
 	lineStates := make([]stringState, len(lines))
 	lineOffsets := make([]int, len(lines))
+	topLevel := make([]bool, len(lines))
 
 	state, offset := stateCode, 0
+
 	for i, line := range lines {
+		var idx int
+
 		lineStates[i], lineOffsets[i] = state, offset
-		_, state = findCommentStart(line, state, syntax)
+		idx, state = findCommentStart(line, state, syntax)
+		topLevel[i] = idx == 0 && lineStates[i] == stateCode
 		offset += len(line) + 1
+	}
+
+	metadataStart, metadataEnd := -1, -1
+
+	if syntax.python {
+		block := pep723Block(lines, topLevel)
+		metadataStart, metadataEnd = slices.Index(block, true), lastMarked(block)
 	}
 
 	var leads []editLead
@@ -623,12 +648,21 @@ func editLeads(content, old string, syntax langSyntax, all bool) []editLead {
 
 		pos := from + rel
 		li := sort.SearchInts(lineOffsets, pos+1) - 1
+		last := sort.SearchInts(lineOffsets, pos+len(old)) - 1
 		from = pos + len(old)
+		first := commentRunStart(lines, lineStates, max(0, li-maxDocContextLines))
 
 		leads = append(leads, editLead{
 			state:  lineStates[li],
 			prefix: content[lineOffsets[li]:pos],
-			suffix: firstLines(content[from:], maxDocContextLines),
+			suffix: throughCommentRun(
+				firstLines(content[from:], maxDocContextLines),
+				content[from:],
+			),
+			before:      lines[first:li],
+			beforeState: lineStates[first],
+			noMetadata: metadataStart >= 0 &&
+				(last < metadataStart || li > metadataEnd),
 		})
 
 		if !all {
@@ -636,7 +670,50 @@ func editLeads(content, old string, syntax langSyntax, all bool) []editLead {
 		}
 	}
 
+	if len(leads) > 1 && (metadataStart < 0 || slices.ContainsFunc(leads, func(l editLead) bool {
+		return l.noMetadata
+	})) {
+		for i := range leads {
+			leads[i].noMetadata = true
+		}
+	}
+
 	return leads
+}
+
+// commentRunStart moves first back to the start of the run of top-level
+// "#" lines it sits in, so a PEP 723 block longer than the lookback above an
+// Edit is still seen from its opening line.
+func commentRunStart(lines []string, states []stringState, first int) int {
+	for first > 0 && strings.HasPrefix(lines[first], "#") &&
+		states[first-1] == stateCode && strings.HasPrefix(lines[first-1], "#") {
+		first--
+	}
+
+	return first
+}
+
+// throughCommentRun extends head, a prefix of s ending at a line break,
+// while the lines after it continue its run of "#" lines, so a PEP 723 block
+// whose closing line is past the lookahead below an Edit is still closed.
+func throughCommentRun(head, s string) string {
+	end := len(head)
+
+	lastStart := strings.LastIndexByte(strings.TrimSuffix(head, "\n"), '\n') + 1
+	if end == len(s) || !strings.HasPrefix(head[lastStart:], "#") {
+		return head
+	}
+
+	for end < len(s) && s[end] == '#' {
+		next := strings.IndexByte(s[end:], '\n')
+		if next < 0 {
+			return s
+		}
+
+		end += next + 1
+	}
+
+	return s[:end]
 }
 
 // firstLines returns the first n lines of s.
