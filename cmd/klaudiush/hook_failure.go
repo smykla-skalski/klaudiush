@@ -406,7 +406,7 @@ func scanMode(content string) string {
 	inSection := false
 
 	for line := range strings.Lines(content) {
-		line = strings.TrimSpace(line)
+		line = withoutComment(line)
 
 		if strings.HasPrefix(line, "[") {
 			inSection = strings.Trim(line, "[] \t") == "failure_policy"
@@ -419,12 +419,37 @@ func scanMode(content string) string {
 			continue
 		}
 
-		value, _, _ = strings.Cut(strings.TrimSpace(value), "#")
-
 		return strings.Trim(strings.TrimSpace(value), `"'`)
 	}
 
 	return ""
+}
+
+// withoutComment trims a TOML line and drops its comment: the first # that
+// is not inside a basic ("...") or literal ('...') string.
+func withoutComment(line string) string {
+	var quote rune
+
+	escaped := false
+
+	for i, r := range line {
+		switch {
+		case escaped:
+			escaped = false
+		case quote == '"' && r == '\\':
+			escaped = true
+		case quote != 0:
+			if r == quote {
+				quote = 0
+			}
+		case r == '"' || r == '\'':
+			quote = r
+		case r == '#':
+			return strings.TrimSpace(line[:i])
+		}
+	}
+
+	return strings.TrimSpace(line)
 }
 
 // configLoader returns a loader for workDir, or the process directory.

@@ -355,6 +355,13 @@ var _ = Describe("hook failures", func() {
 		Entry("other section", "[output]\nmode = \"block\"\n", ""),
 		Entry("broken file", "[failure_policy]\nmode = \"block\"\n[validators\n", "block"),
 		Entry("missing", "", ""),
+		Entry("header comment", "[failure_policy] # enforce\nmode = \"block\"\n", "block"),
+		Entry("header comment leaves section",
+			"[failure_policy]\n[output] # x\nmode = \"block\"\n", ""),
+		Entry("commented out", "[failure_policy]\n# mode = \"block\"\n", ""),
+		Entry("hash in basic string", "[failure_policy]\nmode = \"a#b\" # c\n", "a#b"),
+		Entry("hash in literal string", "[failure_policy]\nmode = 'a#b'\n", "a#b"),
+		Entry("escaped quote", "[failure_policy]\nmode = \"a\\\"#b\" # c\n", `a\"#b`),
 	)
 
 	It("blocks a deadline overrun when a validator is critical", func() {
