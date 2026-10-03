@@ -54,7 +54,7 @@ func (d *OpenCodeDriver) Supports(feature Feature) bool {
 // Prepare puts opencode on the sandbox PATH, where `klaudiush init` looks for
 // it to pick the bridge plugin API, the same way it finds it for a user.
 func (d *OpenCodeDriver) Prepare(sb *Sandbox, model *ScriptedModel) error {
-	if d.binary != "" {
+	if binary := d.Binary(); binary != "" {
 		if err := os.MkdirAll(sb.Bin, dirPerm); err != nil {
 			return errors.Wrap(err, "creating sandbox bin")
 		}
@@ -64,7 +64,7 @@ func (d *OpenCodeDriver) Prepare(sb *Sandbox, model *ScriptedModel) error {
 			return errors.Wrap(err, "replacing the sandbox opencode link")
 		}
 
-		if err := os.Symlink(d.binary, link); err != nil {
+		if err := os.Symlink(binary, link); err != nil {
 			return errors.Wrap(err, "linking opencode into the sandbox")
 		}
 	}
