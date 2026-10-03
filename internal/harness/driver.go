@@ -3,8 +3,6 @@ package harness
 import (
 	"bytes"
 	"context"
-	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -36,7 +34,8 @@ type RunOptions struct {
 
 // Driver runs one harness against the scripted model.
 //
-// Binary is the resolved executable ("" when missing). Prepare points the
+// Binary is the resolved executable ("" when missing), and BinaryError
+// says why a harness on PATH could not be resolved. Prepare points the
 // harness at the model. ProviderConfig is the klaudiush [providers] TOML that
 // makes `klaudiush init --install-hooks` register the harness, and HookFile
 // is where those hooks land. SeedUnrelatedHook registers a user hook that has
@@ -48,6 +47,7 @@ type Driver interface {
 	Name() string
 	Provider() hook.Provider
 	Binary() string
+	BinaryError() error
 	Prepare(sb *Sandbox, model *ScriptedModel) error
 	ProviderConfig(sb *Sandbox) string
 	HookFile(sb *Sandbox) string
@@ -59,28 +59,6 @@ type Driver interface {
 	WriteCall(sb *Sandbox, rel, content string) Call
 	SubagentCall(prompt string) Call
 	KnownGap(version string) string
-}
-
-// ResolveBinary finds a harness executable: the override variable, then
-// PATH. Symlinks are resolved so the sandbox PATH does not need the
-// caller's PATH entries.
-func ResolveBinary(envVar, name string) string {
-	path := os.Getenv(envVar)
-	if path == "" {
-		found, err := exec.LookPath(name)
-		if err != nil {
-			return ""
-		}
-
-		path = found
-	}
-
-	resolved, err := filepath.EvalSymlinks(path)
-	if err != nil {
-		return ""
-	}
-
-	return resolved
 }
 
 const decimalBase = 10

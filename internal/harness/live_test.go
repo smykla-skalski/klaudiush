@@ -123,6 +123,11 @@ var _ = Describe("Live harness enforcement", Ordered, ContinueOnFailure, Label("
 					Skip(entry.Reason)
 				}
 
+				if err := driver.BinaryError(); err != nil {
+					entry.Reason = err.Error()
+					Fail(entry.Reason)
+				}
+
 				if driver.Binary() == "" {
 					entry.Reason = driver.Name() + " is not installed"
 					Skip(entry.Reason)

@@ -43,17 +43,21 @@ const codexCatalog = `{"models":[{"slug":"` + codexModel + `","display_name":"kl
 
 // CodexDriver runs `codex exec`.
 type CodexDriver struct {
-	binary string
+	binary    string
+	binaryErr error
 }
 
 // NewCodexDriver resolves codex from KLAUDIUSH_HARNESS_CODEX or PATH.
 func NewCodexDriver() *CodexDriver {
-	return &CodexDriver{binary: ResolveBinary("KLAUDIUSH_HARNESS_CODEX", "codex")}
+	binary, err := ResolveBinary("KLAUDIUSH_HARNESS_CODEX", "codex")
+
+	return &CodexDriver{binary: binary, binaryErr: err}
 }
 
 func (*CodexDriver) Name() string             { return "codex" }
 func (*CodexDriver) Provider() hook.Provider  { return hook.ProviderCodex }
 func (d *CodexDriver) Binary() string         { return d.binary }
+func (d *CodexDriver) BinaryError() error     { return d.binaryErr }
 func (*CodexDriver) KnownGap(_ string) string { return "" }
 
 // Supports leaves out after-tool repair (klaudiush registers no Codex

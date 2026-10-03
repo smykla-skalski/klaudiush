@@ -249,21 +249,6 @@ var _ = Describe("drivers", func() {
 		Expect(err).To(MatchError(ContainSubstring("version manager shim")))
 	})
 
-	It("resolves binaries from the override and PATH", func() {
-		bin := fakeBinary(sb, "tool", "true")
-		GinkgoT().Setenv("KLAUDIUSH_HARNESS_PROBE", bin)
-		Expect(harness.ResolveBinary("KLAUDIUSH_HARNESS_PROBE", "absent")).To(HaveSuffix("tool"))
-
-		GinkgoT().Setenv("KLAUDIUSH_HARNESS_PROBE", "")
-		Expect(
-			harness.ResolveBinary("KLAUDIUSH_HARNESS_PROBE", "klaudiush-absent-binary"),
-		).To(BeEmpty())
-		Expect(harness.ResolveBinary("KLAUDIUSH_HARNESS_PROBE", "sh")).NotTo(BeEmpty())
-
-		GinkgoT().Setenv("KLAUDIUSH_HARNESS_PROBE", filepath.Join(sb.Root, "dangling"))
-		Expect(harness.ResolveBinary("KLAUDIUSH_HARNESS_PROBE", "sh")).To(BeEmpty())
-	})
-
 	It("writes a Codex model catalog that is valid JSON", func() {
 		var catalog struct {
 			Models []map[string]any `json:"models"`

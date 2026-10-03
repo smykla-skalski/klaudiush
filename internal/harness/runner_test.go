@@ -42,6 +42,7 @@ type miniHarness struct {
 func (*miniHarness) Name() string            { return "mini" }
 func (*miniHarness) Provider() hook.Provider { return hook.ProviderClaude }
 func (*miniHarness) Binary() string          { return "/bin/sh" }
+func (*miniHarness) BinaryError() error      { return nil }
 func (*miniHarness) ProviderConfig(_ *harness.Sandbox) string {
 	return "[providers.claude]\nenabled = true\n"
 }

@@ -21,17 +21,21 @@ const claudeFakeKey = "klaudiush-harness-scripted-model"
 
 // ClaudeDriver runs Claude Code in print mode.
 type ClaudeDriver struct {
-	binary string
+	binary    string
+	binaryErr error
 }
 
 // NewClaudeDriver resolves claude from KLAUDIUSH_HARNESS_CLAUDE or PATH.
 func NewClaudeDriver() *ClaudeDriver {
-	return &ClaudeDriver{binary: ResolveBinary("KLAUDIUSH_HARNESS_CLAUDE", "claude")}
+	binary, err := ResolveBinary("KLAUDIUSH_HARNESS_CLAUDE", "claude")
+
+	return &ClaudeDriver{binary: binary, binaryErr: err}
 }
 
 func (*ClaudeDriver) Name() string             { return "claude" }
 func (*ClaudeDriver) Provider() hook.Provider  { return hook.ProviderClaude }
 func (d *ClaudeDriver) Binary() string         { return d.binary }
+func (d *ClaudeDriver) BinaryError() error     { return d.binaryErr }
 func (*ClaudeDriver) KnownGap(_ string) string { return "" }
 
 func (*ClaudeDriver) Supports(feature Feature) bool {
