@@ -434,6 +434,12 @@ var _ = Describe("AICommentValidator multi-line string literals", func() {
 			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
 		})
 
+		It("keeps string state across patch lines whose strings close", func() {
+			ctx.ToolInput.FilePath = writeSource("import os\n")
+			ctx.ToolInput.NewString = "BODY = \"\"\"\n## Problem\n\"\"\""
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeTrue())
+		})
+
 		It("falls back to code state when replaced occurrences disagree", func() {
 			ctx.ToolInput.FilePath = writeSource(
 				"DOC = \"\"\"\nfoo\n\"\"\"\nfoo\n",
@@ -469,8 +475,11 @@ var _ = Describe("AICommentValidator multi-line string literals", func() {
 			"half = total // 2", true),
 		Entry("java slash comment without leading space", "/repo/Main.java",
 			"int x = 1;//\"\"\"\nint y = 2;", false),
-		Entry("swift raw multi-line string", "/repo/main.swift",
-			"let s = #\"\"\"\n## Problem\n\"\"\"#", true),
+		Entry("elixir sigil with a hash", "/repo/md.ex",
+			"if String.match?(s, ~r/^#+ (.+)$/), do: :heading", true),
+		Entry("elixir char literal hash", "/repo/md.ex", "c == ?#", true),
+		Entry("elixir heredoc heading", "/repo/md.ex",
+			"@doc \"\"\"\n## Examples\n\"\"\"\ndef run, do: 1", true),
 		Entry("kotlin raw string ending in a quote", "/repo/Main.kt",
 			"val s = \"\"\"say \"hi\"\"\"\"  // holds the text", false),
 	)

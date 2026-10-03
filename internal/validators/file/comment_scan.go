@@ -36,13 +36,16 @@ const (
 // commentStyle is the line-comment marker a language uses. commentLoose, for
 // files whose language is not known, accepts both "//" and "#" but only at line
 // start or after whitespace. commentHash accepts "#" and commentSlash accepts
-// "//" anywhere outside a string.
+// "//" anywhere outside a string. commentHashSpaced accepts "#" only at line
+// start or after whitespace, for languages that also use "#" in sigils or
+// character literals.
 type commentStyle uint8
 
 const (
 	commentLoose commentStyle = iota
 	commentHash
 	commentSlash
+	commentHashSpaced
 )
 
 // langSyntax is the comment and string syntax the scanner applies to a file.
@@ -62,13 +65,12 @@ var langSyntaxByExt = map[string]langSyntax{
 	".pyi":    {double: tripleEscaped, single: tripleEscaped, comment: commentHash},
 	".pyw":    {double: tripleEscaped, single: tripleEscaped, comment: commentHash},
 	".toml":   {double: tripleEscaped, single: tripleRaw, comment: commentHash},
-	".ex":     {double: tripleEscaped, single: tripleEscaped, comment: commentHash},
-	".exs":    {double: tripleEscaped, single: tripleEscaped, comment: commentHash},
-	".jl":     {double: tripleEscaped, comment: commentHash},
+	".ex":     {double: tripleEscaped, single: tripleEscaped, comment: commentHashSpaced},
+	".exs":    {double: tripleEscaped, single: tripleEscaped, comment: commentHashSpaced},
+	".jl":     {double: tripleEscaped, comment: commentHashSpaced},
 	".groovy": {double: tripleEscaped, single: tripleEscaped, comment: commentSlash},
 	".gradle": {double: tripleEscaped, single: tripleEscaped, comment: commentSlash},
 	".dart":   {double: tripleEscaped, single: tripleEscaped, comment: commentSlash},
-	".swift":  {double: tripleEscaped, comment: commentSlash},
 	".java":   {double: tripleEscaped, comment: commentSlash},
 	".kt":     {double: tripleRaw, comment: commentSlash},
 	".kts":    {double: tripleRaw, comment: commentSlash},
@@ -151,14 +153,17 @@ func isCommentMarker(line string, i int, style commentStyle) bool {
 		return isHash
 	case commentSlash:
 		return isSlash
+	case commentHashSpaced:
+		return isHash && afterSpace(line, i)
 	case commentLoose:
 	}
 
-	if i > 0 && line[i-1] != ' ' && line[i-1] != '\t' {
-		return false
-	}
+	return (isHash || isSlash) && afterSpace(line, i)
+}
 
-	return isHash || isSlash
+// afterSpace reports whether line[i] is at line start or after whitespace.
+func afterSpace(line string, i int) bool {
+	return i == 0 || line[i-1] == ' ' || line[i-1] == '\t'
 }
 
 // findCommentStart returns the byte index of the first line-comment marker
@@ -237,9 +242,10 @@ func (s commentScan) lineStart(state stringState) stringState {
 // at its old_string in the file on disk, so a fragment that begins inside (or
 // closes) a docstring is scanned correctly; when old_string occurs at several
 // places in different states, it falls back to code. An Edit with no
-// old_string on a non-empty file joins added lines from several patch hunks,
-// so triple-quoted state is not carried between its lines.
-func newCommentScan(hookCtx *hook.Context) commentScan {
+// old_string on a non-empty file joins added lines from several patch hunks;
+// a string that does not close within them means hunk boundaries split it, so
+// triple-quoted state is then not carried between lines.
+func newCommentScan(hookCtx *hook.Context, content string) commentScan {
 	path := hookCtx.GetFilePath()
 	scan := commentScan{syntax: langSyntaxForPath(path)}
 
@@ -254,7 +260,7 @@ func newCommentScan(hookCtx *hook.Context) commentScan {
 
 	old := hookCtx.ToolInput.OldString
 	if old == "" {
-		scan.lineLocalTriple = true
+		scan.lineLocalTriple = endState(content, scan.syntax) != stateCode
 
 		return scan
 	}
@@ -262,6 +268,16 @@ func newCommentScan(hookCtx *hook.Context) commentScan {
 	scan.start = stateAtOccurrences(string(data), old, scan.syntax)
 
 	return scan
+}
+
+// endState returns the multi-line string state content ends in.
+func endState(content string, syntax langSyntax) stringState {
+	state := stateCode
+	for line := range strings.SplitSeq(content, "\n") {
+		_, state = findCommentStart(line, state, syntax)
+	}
+
+	return state
 }
 
 // stateAtOccurrences returns the multi-line string state shared by every

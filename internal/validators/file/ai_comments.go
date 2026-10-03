@@ -207,7 +207,7 @@ func (v *AICommentValidator) Validate(
 		v.patterns,
 		strict,
 		allowTestPhaseMarkers,
-		newCommentScan(hookCtx),
+		newCommentScan(hookCtx, content),
 	)
 	if len(violations) == 0 {
 		return cov.mark(validator.Pass())
