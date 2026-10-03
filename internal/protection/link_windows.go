@@ -4,7 +4,9 @@ package protection
 
 import "os"
 
-// hasOtherNames reports false: Windows hard links are not inspected.
-func hasOtherNames(os.FileInfo) bool {
-	return false
+// hasOtherNames reports true for every regular file: NTFS supports hard
+// links, and the link count is not in os.FileInfo, so checkHardLink always
+// compares the file with the protected ones through os.SameFile.
+func hasOtherNames(info os.FileInfo) bool {
+	return info.Mode().IsRegular()
 }

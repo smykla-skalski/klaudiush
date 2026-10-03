@@ -3,7 +3,6 @@ package protection_test
 import (
 	"os"
 	"path/filepath"
-	"runtime"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -142,10 +141,6 @@ var _ = Describe("Set", func() {
 	})
 
 	It("catches a hard link to a protected file", func() {
-		if runtime.GOOS == "windows" {
-			Skip("hard links are not inspected on Windows")
-		}
-
 		link := filepath.Join(e.project, "copy.toml")
 		Expect(os.Link(filepath.Join(e.project, ".klaudiush", "config.toml"), link)).To(Succeed())
 
