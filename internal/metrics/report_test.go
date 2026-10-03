@@ -146,6 +146,47 @@ var _ = Describe("Summarize", func() {
 		}
 	})
 
+	It("follows each structured finding's code on its own", func() {
+		multi := blocking(validator.RefGitMissingFlags)
+		multi.Findings = []validator.Finding{
+			{Reference: validator.RefGitConventionalCommit, Location: "title"},
+			{Reference: validator.RefGitMissingFlags},
+			{Reference: validator.RefGitConventionalCommit, Location: "body line 2"},
+			{Location: "no reference"},
+		}
+
+		record(&metrics.Observation{
+			Context: preTool(),
+			Errors:  []*dispatcher.ValidationError{multi},
+			Checks:  commitCheck,
+			Stopped: true,
+		})
+
+		remaining := blocking(validator.RefGitMissingFlags)
+		remaining.Findings = []validator.Finding{{Reference: validator.RefGitMissingFlags}}
+		record(&metrics.Observation{
+			Context: preTool(),
+			Errors:  []*dispatcher.ValidationError{remaining},
+			Checks:  commitCheck,
+			Stopped: true,
+		})
+
+		report := summarize(metrics.Filter{})
+		Expect(report.Outcomes.Prevented).To(Equal(2))
+
+		codes := map[string]metrics.CodeStats{}
+		for _, code := range report.Codes {
+			codes[code.Code] = code
+		}
+
+		Expect(codes).To(HaveLen(2))
+		Expect(codes["GIT013"].Reports).To(Equal(1))
+		Expect(codes["GIT013"].Repaired).To(Equal(1))
+		Expect(codes["GIT010"].Reports).To(Equal(2))
+		Expect(codes["GIT010"].Unresolved).To(Equal(1))
+		Expect(report.Repairs.Violations).To(Equal(2))
+	})
+
 	It("counts a blocking finding the response did not stop as advisory", func() {
 		record(&metrics.Observation{
 			Context: ctxFor(hook.ProviderClaude, hook.CanonicalEventNotification, "Notification"),
@@ -182,6 +223,50 @@ var _ = Describe("Summarize", func() {
 		Expect(report.Repairs.Recurring).To(Equal(1))
 		Expect(report.Repairs.Repaired).To(Equal(1))
 		Expect(report.Repairs.FirstTry).To(BeZero())
+	})
+
+	It("repairs only what a subagent's stop checked", func() {
+		subagentStop := func(agent string) *hook.Context {
+			ctx := ctxFor(hook.ProviderClaude, hook.CanonicalEventSubagentStop, "SubagentStop")
+			ctx.AgentID = agent
+
+			return ctx
+		}
+
+		record(&metrics.Observation{
+			Context: stop(),
+			Errors:  []*dispatcher.ValidationError{blocking(validator.RefGitMissingFlags)},
+			Stopped: true,
+		})
+
+		agentCtx := subagentStop("agent-a")
+		record(&metrics.Observation{
+			Context: agentCtx,
+			Errors:  []*dispatcher.ValidationError{blocking(validator.RefGitBadTitle)},
+			Stopped: true,
+		})
+
+		record(&metrics.Observation{Context: subagentStop("agent-b")})
+		record(&metrics.Observation{Context: subagentStop("")})
+
+		report := summarize(metrics.Filter{})
+		Expect(report.Repairs.Violations).To(Equal(2))
+		Expect(report.Repairs.Repaired).To(BeZero())
+
+		record(&metrics.Observation{Context: subagentStop("agent-a")})
+
+		report = summarize(metrics.Filter{})
+		Expect(report.Repairs.Repaired).To(Equal(1))
+		Expect(report.Repairs.Unresolved).To(Equal(1))
+
+		for _, code := range report.Codes {
+			if code.Code == "GIT004" {
+				Expect(code.Repaired).To(Equal(1))
+			}
+		}
+
+		record(&metrics.Observation{Context: stop()})
+		Expect(summarize(metrics.Filter{}).Repairs.Repaired).To(Equal(2))
 	})
 
 	It("reports unavailable checks by reason, and blocks they caused", func() {
@@ -524,5 +609,30 @@ var _ = Describe("Summarize", func() {
 			metrics.Render(&out, metrics.Summarize(nil, now, now, metrics.Filter{})),
 		).To(Succeed())
 		Expect(out.String()).To(ContainSubstring("No hooks recorded"))
+	})
+
+	It("renders released gates and skipped hooks in their own columns", func() {
+		report := &metrics.Report{
+			Records: 3,
+			Events: []metrics.EventStats{{
+				Provider:    "claude",
+				Event:       "Stop",
+				Invocations: 3,
+				Outcomes:    metrics.Outcomes{Advisory: 1, Released: 2, Passed: 4, Skipped: 5},
+			}},
+			Codes: []metrics.CodeStats{{
+				Code:     "GIT010",
+				Reports:  3,
+				Outcomes: metrics.Outcomes{Advisory: 1, Released: 2},
+			}},
+		}
+
+		var out bytes.Buffer
+		Expect(metrics.Render(&out, report)).To(Succeed())
+		Expect(out.String()).To(MatchRegexp(
+			`ADVISORY +RELEASED +WARNED +EXCEPTED +UNAVAILABLE +PASSED +SKIPPED`))
+		Expect(out.String()).To(MatchRegexp(`claude +Stop +3 +0 +0 +1 +2 +0 +0 +0 +4 +5 `))
+		Expect(out.String()).To(MatchRegexp(`ENFORCED +ADVISORY +RELEASED +WARNED`))
+		Expect(out.String()).To(MatchRegexp(`GIT010 +3 +0 +1 +2 +0`))
 	})
 })

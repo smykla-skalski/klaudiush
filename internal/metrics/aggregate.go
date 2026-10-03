@@ -167,6 +167,7 @@ type violationKey struct {
 type openViolation struct {
 	reports int
 	gate    bool
+	agent   string
 }
 
 // repairTracker replays records in time order and follows each violation
@@ -212,7 +213,7 @@ func (t *repairTracker) observe(rec *Record) {
 
 	if rec.Gate && len(reported) == 0 && cleanGate(rec.Outcome) {
 		for key, item := range session {
-			if item.gate {
+			if item.gate && (rec.Scope == "" || item.agent == rec.Scope) {
 				t.repaired(session, key, item)
 			}
 		}
@@ -276,7 +277,7 @@ func (t *repairTracker) report(
 
 		item := session[key]
 		if item == nil {
-			session[key] = &openViolation{reports: 1, gate: rec.Gate}
+			session[key] = &openViolation{reports: 1, gate: rec.Gate, agent: rec.Agent}
 			t.stats.Violations++
 			entry.Violations++
 

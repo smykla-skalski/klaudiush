@@ -42,7 +42,10 @@ var classOrder = []Class{
 	ClassWarned,
 }
 
-// Record is one hook invocation as stored on disk.
+// Record is one hook invocation as stored on disk. Agent keys the subagent
+// that ran the hook; Scope, on a gate that checks only one subagent's
+// findings, keys that subagent, and is empty on a gate that checks the
+// whole session.
 type Record struct {
 	Time      time.Time        `json:"t"`
 	Provider  string           `json:"p"`
@@ -52,6 +55,8 @@ type Record struct {
 	Outcome   Class            `json:"o"`
 	Micros    int64            `json:"us"`
 	Gate      bool             `json:"g,omitempty"`
+	Agent     string           `json:"a,omitempty"`
+	Scope     string           `json:"gs,omitempty"`
 	Truncated bool             `json:"tr,omitempty"`
 	Findings  []Finding        `json:"f,omitempty"`
 	Checked   []string         `json:"c,omitempty"`

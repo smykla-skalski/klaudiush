@@ -295,6 +295,18 @@ var _ = Describe("Store", func() {
 		Expect(store.Record(nil)).To(Succeed())
 		Expect(store.Path()).To(Equal(path))
 	})
+
+	It("probes the salt a record needs", func() {
+		Expect(store.Probe()).To(Succeed())
+		Expect(filepath.Join(filepath.Dir(path), "salt")).To(BeARegularFile())
+
+		Expect(os.Remove(filepath.Join(filepath.Dir(path), "salt"))).To(Succeed())
+		Expect(os.Mkdir(filepath.Join(filepath.Dir(path), "salt"), 0o700)).To(Succeed())
+
+		Expect(store.Probe()).To(MatchError(ContainSubstring("salt")))
+		Expect(store.Record(&metrics.Observation{Context: preTool("s", "ls")})).
+			To(MatchError(ContainSubstring("salt")))
+	})
 })
 
 var _ = Describe("Store without a writable directory", func() {

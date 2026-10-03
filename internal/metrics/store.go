@@ -281,10 +281,14 @@ func (s *Store) Clear() error {
 }
 
 // Probe checks that a hook could record: the directory exists or can be
-// created, the lock can be taken, and the log opened for appending. It
-// writes no record.
+// created, the lock can be taken, the salt read or created, and the log
+// opened for appending. It writes no record.
 func (s *Store) Probe() error {
 	return s.locked(func() error {
+		if _, err := s.salt(true); err != nil {
+			return err
+		}
+
 		file, err := os.OpenFile(
 			filepath.Clean(s.path),
 			os.O_WRONLY|os.O_APPEND|os.O_CREATE,

@@ -61,6 +61,16 @@ func build(obs *Observation, hash hasher) *Record {
 		rec.Session = hash("session", string(hookCtx.Provider), hookCtx.SessionID)
 	}
 
+	if hookCtx.AgentID != "" {
+		rec.Agent = agentKey(hookCtx, hash)
+	}
+
+	// A subagent's stop checks only that subagent's findings, so it can
+	// only show those repaired. Without an agent ID it checks none.
+	if rec.Gate && hookCtx.Event == hook.CanonicalEventSubagentStop {
+		rec.Scope = agentKey(hookCtx, hash)
+	}
+
 	if resource := hookCtx.Resource(); resource != "" {
 		rec.Resource = hash("resource", resource)
 	}
@@ -84,6 +94,11 @@ func build(obs *Observation, hash hasher) *Record {
 	rec.Timings = timings(obs.Timings)
 
 	return rec
+}
+
+// agentKey keys the hook's subagent within its session.
+func agentKey(hookCtx *hook.Context, hash hasher) string {
+	return hash("agent", string(hookCtx.Provider), hookCtx.SessionID, hookCtx.AgentID)
 }
 
 // eventName is the native event the hook received, as a short token.
@@ -123,7 +138,6 @@ func findings(
 			(obs.ReleasedFindings == nil || i < len(obs.ReleasedFindings) && obs.ReleasedFindings[i])
 
 		f := Finding{
-			Code:      token(verr.Reference.Code()),
 			Validator: token(verr.Validator),
 			Class:     findingClass(verr, obs, rec.Gate, afterTool, released),
 			Violation: !verr.Bypassed && !verr.Unavailable &&
@@ -141,10 +155,32 @@ func findings(
 			}
 		}
 
-		out = append(out, f)
+		for _, code := range errorCodes(verr) {
+			f.Code = code
+			out = append(out, f)
+		}
 	}
 
 	return out
+}
+
+// errorCodes lists the distinct codes of an error's structured findings, in
+// order, or its header code when it has none: one error can carry several
+// violations, each followed on its own.
+func errorCodes(verr *dispatcher.ValidationError) []string {
+	var codes []string
+
+	for _, finding := range verr.Findings {
+		if code := token(finding.Code()); code != "" && !slices.Contains(codes, code) {
+			codes = append(codes, code)
+		}
+	}
+
+	if len(codes) == 0 {
+		return []string{token(verr.Reference.Code())}
+	}
+
+	return codes
 }
 
 // findingClass is what one finding did. A blocking finding prevents the

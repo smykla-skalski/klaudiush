@@ -103,14 +103,14 @@ func renderEvents(pw *printer, events []EventStats) {
 		o := e.Outcomes
 		rows = append(rows, []string{
 			e.Provider, e.Event, itoa(e.Invocations),
-			itoa(o.Prevented), itoa(o.Held), itoa(o.Advisory + o.Released),
-			itoa(o.Warned), itoa(o.Excepted), itoa(o.Unavailable), itoa(o.Passed + o.Skipped),
-			ms(e.Latency.P50), ms(e.Latency.P95),
+			itoa(o.Prevented), itoa(o.Held), itoa(o.Advisory), itoa(o.Released),
+			itoa(o.Warned), itoa(o.Excepted), itoa(o.Unavailable), itoa(o.Passed),
+			itoa(o.Skipped), ms(e.Latency.P50), ms(e.Latency.P95),
 		})
 	}
 
-	pw.table("PROVIDER\tEVENT\tHOOKS\tPREVENTED\tHELD\tADVISORY\tWARNED\t"+
-		"EXCEPTED\tUNAVAILABLE\tPASSED\tP50\tP95", rows)
+	pw.table("PROVIDER\tEVENT\tHOOKS\tPREVENTED\tHELD\tADVISORY\tRELEASED\tWARNED\t"+
+		"EXCEPTED\tUNAVAILABLE\tPASSED\tSKIPPED\tP50\tP95", rows)
 }
 
 func renderRepairs(pw *printer, r *RepairStats) {
@@ -138,14 +138,14 @@ func renderCodes(pw *printer, codes []CodeStats) {
 	for _, c := range codes[:min(len(codes), maxRenderedCodes)] {
 		o := c.Outcomes
 		rows = append(rows, []string{
-			c.Code, itoa(c.Reports), itoa(o.Enforced()), itoa(o.Advisory + o.Released),
-			itoa(o.Warned), itoa(o.Excepted), itoa(o.Unavailable),
+			c.Code, itoa(c.Reports), itoa(o.Enforced()), itoa(o.Advisory),
+			itoa(o.Released), itoa(o.Warned), itoa(o.Excepted), itoa(o.Unavailable),
 			itoa(c.Repaired), itoa(c.Retries), itoa(c.Recurring), itoa(c.Unresolved),
 			exceptionRate(c),
 		})
 	}
 
-	pw.table("CODE\tREPORTS\tENFORCED\tADVISORY\tWARNED\tEXCEPTED\tUNAVAILABLE\t"+
+	pw.table("CODE\tREPORTS\tENFORCED\tADVISORY\tRELEASED\tWARNED\tEXCEPTED\tUNAVAILABLE\t"+
 		"REPAIRED\tRETRIES\tRECURRING\tUNRESOLVED\tEXCEPTION RATE", rows)
 }
 
