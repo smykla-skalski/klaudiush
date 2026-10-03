@@ -79,6 +79,9 @@ type Command struct {
 
 	startup      map[string]startupValue
 	dynamicWords map[string]bool
+	argTexts     map[string]ShellText
+	stdinText    *ShellText
+	env          map[string]EnvValue
 }
 
 // anyWordDynamic reports whether any word takes part of its value from

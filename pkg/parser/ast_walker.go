@@ -28,22 +28,25 @@ type astWalker struct {
 	// stdinByCall maps a CallExpr to the content fed to its stdin (heredoc or
 	// piped echo/printf). Populated when a Stmt or pipeline is visited, then
 	// consumed when the corresponding CallExpr is extracted into a Command.
-	stdinByCall map[*syntax.CallExpr]string
+	stdinByCall     map[*syntax.CallExpr]string
+	stdinTextByCall map[*syntax.CallExpr]*ShellText
 	// stdinFileByCall maps a CallExpr to the file redirected to its stdin (<).
 	stdinFileByCall map[*syntax.CallExpr]string
 	// assignments records literal NAME=value assignments, both standalone and
 	// as a prefix on a command, so consumers can resolve a variable used later
 	// in the same command line.
-	assignments map[string]string
-	unknownVars map[string]bool
-	safeAssigns map[*syntax.Assign]bool
-	certain     map[*syntax.Stmt]certainty
-	loopCalls   map[*syntax.CallExpr]bool
-	inLoop      bool
-	outerLoop   bool
-	distrust    bool
-	scriptRun   scriptRun
-	launchSeq   int
+	assignments  map[string]string
+	unknownVars  map[string]bool
+	safeAssigns  map[*syntax.Assign]bool
+	chainAssigns map[*syntax.Assign]bool
+	chained      []string
+	certain      map[*syntax.Stmt]certainty
+	loopCalls    map[*syntax.CallExpr]bool
+	inLoop       bool
+	outerLoop    bool
+	distrust     bool
+	scriptRun    scriptRun
+	launchSeq    int
 	// depth counts the launchers, scripts and aliases that led here.
 	depth int
 	// resolver answers what the command text cannot: environment, script
@@ -130,6 +133,9 @@ type parseState struct {
 	uniqueKeys int
 
 	namesUnknown bool
+	arithmetic   bool
+	allExport    bool
+	exported     map[string]bool
 }
 
 // spend takes one unit of work, reporting false once the budget is gone.
@@ -214,8 +220,10 @@ func (w *astWalker) visit(node syntax.Node) bool {
 
 // recordStdin associates stdin content with a CallExpr so it can be attached
 // to the Command when that CallExpr is later extracted.
-func (w *astWalker) recordStdin(call *syntax.CallExpr, content string) {
+func (w *astWalker) recordStdin(call *syntax.CallExpr, content string, text ShellText) {
 	w.stdinByCall[call] = content
+	resolved := w.resolveText(text)
+	w.stdinTextByCall[call] = &resolved
 }
 
 // extractPipedStdin handles "producer | consumer" pipelines, capturing the
@@ -234,7 +242,7 @@ func (w *astWalker) extractPipedStdin(bin *syntax.BinaryCmd) {
 	}
 
 	if content, ok := literalCommandOutput(producer); ok {
-		w.recordStdin(consumer, content)
+		w.recordStdin(consumer, content, ShellText{Parts: []TextPart{{Text: content}}})
 
 		return
 	}
@@ -249,7 +257,7 @@ func (w *astWalker) extractPipedStdin(bin *syntax.BinaryCmd) {
 
 	switch {
 	case info.hasHeredoc && copiesStdinVerbatim(producer):
-		w.recordStdin(consumer, info.heredocContent)
+		w.recordStdin(consumer, info.heredocContent, catText(info.heredocText))
 	case info.inputPath != "" && copiesStdinVerbatim(producer):
 		w.stdinFileByCall[consumer] = info.inputPath
 	case len(producer.Args) == 2 && isLiteralWord(producer.Args[1]):
@@ -525,6 +533,18 @@ func printfEscape(c byte) (byte, bool) {
 // extractCommand extracts a command from a CallExpr node.
 func (w *astWalker) extractCommand(call *syntax.CallExpr) {
 	w.inLoop = w.outerLoop || w.loopCalls[call]
+
+	// The shell expands arguments before a prefix assignment takes effect.
+	var argTexts map[string]ShellText
+	if len(call.Args) > 1 {
+		argTexts = w.argTexts(call.Args[1:])
+	}
+
+	var env map[string]EnvValue
+	if len(call.Args) > 0 {
+		env = w.envSnapshot(call)
+	}
+
 	w.extractAssigns(call)
 
 	if len(call.Args) == 0 {
@@ -568,6 +588,9 @@ func (w *astWalker) extractCommand(call *syntax.CallExpr) {
 		StdinFile:        w.stdinFileByCall[call],
 		startup:          prefixStartup(call),
 		dynamicWords:     dynamicArgs(call.Args[1:]),
+		argTexts:         argTexts,
+		stdinText:        prefixGaps(w.stdinTextByCall[call], call),
+		env:              env,
 	}, w.depth, view)
 }
 
@@ -708,6 +731,7 @@ func (w *astWalker) trackShellState(cmd Command) {
 		w.state.pathChanged = true
 	case setBuiltin:
 		w.trackPositional(cmd)
+		w.noteAllExport(cmd.Args)
 		w.noteKeywordMode(cmd.Args)
 	}
 }
@@ -764,6 +788,7 @@ func (w *astWalker) gitEnvScripts(cmd Command) []string {
 // extractDecl records assignments made by export, declare, local and
 // readonly, and notes a changed PATH.
 func (w *astWalker) extractDecl(decl *syntax.DeclClause) {
+	w.noteExports(decl)
 	w.distrustDecl(decl)
 
 	for _, assign := range decl.Args {
@@ -871,6 +896,7 @@ type redirInfo struct {
 	outputOp       WriteOp
 	outputLoc      Location
 	heredocContent string
+	heredocText    ShellText
 	heredocLoc     Location
 	inputPath      string // file redirected to stdin (<)
 	hasOutput      bool
@@ -955,6 +981,8 @@ func collectRedirs(stmt *syntax.Stmt) redirInfo {
 			syntax.RdrAllClob, syntax.AppAll, syntax.AppAllClob, syntax.RdrInOut, syntax.DplOut:
 			info.addOutput(redir)
 		case syntax.Hdoc, syntax.DashHdoc, syntax.WordHdoc:
+			info.heredocText = heredocText(redir)
+
 			switch {
 			case redir.Op == syntax.WordHdoc:
 				// A here-string feeds its word, plus a newline, to stdin.
@@ -1007,7 +1035,7 @@ func (w *astWalker) extractRedirect(stmt *syntax.Stmt) {
 	// stdin-fed content (e.g. "git commit -F - <<EOF ... EOF >/dev/null").
 	if info.hasHeredoc {
 		if call := callExprOf(stmt); call != nil {
-			w.recordStdin(call, info.heredocContent)
+			w.recordStdin(call, info.heredocContent, info.heredocText)
 		}
 	}
 
