@@ -40,9 +40,9 @@ const (
 // commentStyle is the line-comment marker a language uses. commentLoose, for
 // files whose language is not known, accepts both "//" and "#" but only at line
 // start or after whitespace. commentHash accepts only "#", also only at line
-// start or after whitespace; a "#" right after code ends the scan of the line
-// instead, since it is either a comment or text in a Python 3.12 f-string field
-// that reuses the outer quote, and neither may open a string.
+// start or after whitespace. A "#" right after code is either an unspaced
+// comment or text in a Python 3.12 f-string field that reuses the outer quote,
+// so no triple-quoted string may open after it on that line.
 type commentStyle uint8
 
 const (
@@ -177,13 +177,13 @@ func findCommentStart(
 	return idx, endState
 }
 
-// scanLine is findCommentStart that also reports whether the scan stopped at
-// a "#" right after code, which may be an unspaced comment.
+// scanLine is findCommentStart that also reports whether the line holds a
+// "#" right after code, which may start an unspaced comment.
 func scanLine(
 	line string,
 	state stringState,
 	syntax langSyntax,
-) (idx int, endState stringState, stopped bool) {
+) (idx int, endState stringState, bareHash bool) {
 	if state == stateLineComment {
 		return -1, stateCode, false
 	}
@@ -200,7 +200,7 @@ func scanLine(
 		c := line[i]
 
 		opened := stateCode
-		if quote == 0 {
+		if quote == 0 && !bareHash {
 			opened = opensTripleQuote(line, i, syntax)
 		}
 
@@ -219,13 +219,13 @@ func scanLine(
 		case c == '\'' || c == '"':
 			quote = c
 		case isCommentMarker(line, i, syntax.comment):
-			return i, state, false
+			return i, state, bareHash
 		case syntax.comment == commentHash && c == '#':
-			return -1, state, true
+			bareHash = true
 		}
 	}
 
-	return -1, state, false
+	return -1, state, bareHash
 }
 
 // commentScan is where scanning a Write or Edit payload starts: the language
@@ -331,9 +331,13 @@ func readRegularFile(path string) ([]byte, bool) {
 	return data, true
 }
 
+// maxStartStateOccurrences bounds the old_string matches stateAtOccurrences
+// checks; each rescans its line, so many matches on a long line are quadratic.
+const maxStartStateOccurrences = 32
+
 // stateAtOccurrences returns the multi-line string state shared by every
 // occurrence of old in content (stateLineComment when it starts inside a line
-// comment), or stateCode when there is none or the occurrences disagree.
+// comment), or stateCode when there is none, too many, or they disagree.
 func stateAtOccurrences(content, old string, syntax langSyntax) stringState {
 	lines := strings.Split(content, "\n")
 	lineStates := make([]stringState, len(lines))
@@ -351,17 +355,21 @@ func stateAtOccurrences(content, old string, syntax langSyntax) stringState {
 		found  bool
 	)
 
-	for from := 0; ; {
+	for from, seen := 0, 0; ; seen++ {
 		rel := strings.Index(content[from:], old)
 		if rel < 0 {
 			break
 		}
 
+		if seen == maxStartStateOccurrences {
+			return stateCode
+		}
+
 		pos := from + rel
 		li := sort.SearchInts(lineOffsets, pos+1) - 1
 
-		idx, at, stopped := scanLine(content[lineOffsets[li]:pos], lineStates[li], syntax)
-		if idx >= 0 || stopped {
+		idx, at, bareHash := scanLine(content[lineOffsets[li]:pos], lineStates[li], syntax)
+		if idx >= 0 || bareHash {
 			at = stateLineComment
 		}
 

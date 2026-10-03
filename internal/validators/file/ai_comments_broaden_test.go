@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -457,6 +459,23 @@ var _ = Describe("AICommentValidator multi-line string literals", func() {
 			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
 		})
 
+		It("checks a bounded number of old_string matches", func() {
+			ctx.ToolInput.FilePath = writeSource(
+				"DATA = [" + strings.Repeat("foo, ", 20000) + "]\n",
+			)
+			ctx.ToolInput.OldString = "foo"
+			ctx.ToolInput.NewString = "bar"
+			ctx.ToolInput.Additional = map[string]json.RawMessage{
+				"replace_all": json.RawMessage("true"),
+			}
+
+			start := time.Now()
+			passed := sv.Validate(context.Background(), ctx).Passed
+
+			Expect(passed).To(BeTrue())
+			Expect(time.Since(start)).To(BeNumerically("<", 2*time.Second))
+		})
+
 		It("matches an LF old_string in a CRLF file", func() {
 			ctx.ToolInput.FilePath = writeSource("BODY = \"\"\"\r\n## Old\r\nText.\r\n\"\"\"\r\n")
 			ctx.ToolInput.OldString = "## Old\nText."
@@ -518,6 +537,8 @@ var _ = Describe("AICommentValidator multi-line string literals", func() {
 			"x = 1#\"\"\"\ny = 2\n# add tax before rounding", false),
 		Entry("hash in a python 3.12 f-string field reusing the quote", "/repo/gen.py",
 			"line = f\"{\"#\" * depth} {title}\"", true),
+		Entry("comment after a python 3.12 f-string field reusing the quote", "/repo/gen.py",
+			"x = f\"{d[\"#\"]}\"  # holds the value", false),
 		Entry("toml basic string closing on a quote run", "/repo/config.toml",
 			"s = \"\"\"\"hi\"\"\"\"  # Set the value", false),
 		Entry("triple quote inside a comment does not open a string", "/repo/gen.py",
