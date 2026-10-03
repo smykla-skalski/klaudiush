@@ -99,14 +99,14 @@ func (v *TerraformValidator) Validate(
 			warnings = append(warnings, fmtWarning)
 		}
 
-		unavailable = cmp.Or(unavailable, notRun)
+		unavailable = mergeUnavailable(unavailable, notRun)
 	}
 
 	// Run tflint if enabled and available
 	if v.isUseTflint() {
 		lintWarnings, notRun := v.runTflint(ctx, tmpFile)
 		warnings = append(warnings, lintWarnings...)
-		unavailable = cmp.Or(unavailable, notRun)
+		unavailable = mergeUnavailable(unavailable, notRun)
 	}
 
 	inspected = inspected && unavailable == nil
@@ -133,6 +133,25 @@ func (v *TerraformValidator) Validate(
 	}
 
 	return inspectedIf(inspected, validator.Pass())
+}
+
+// mergeUnavailable combines the results of two checks that could not run.
+// A missing tool is ignored by default, so any other reason decides; the
+// other check's message is kept either way.
+func mergeUnavailable(first, second *validator.Result) *validator.Result {
+	if first == nil || second == nil {
+		return cmp.Or(first, second)
+	}
+
+	kept, other := first, second
+	if kept.UnavailableReason == validator.ReasonMissingTool &&
+		other.UnavailableReason != validator.ReasonMissingTool {
+		kept, other = other, kept
+	}
+
+	kept.Message += "\n" + other.Message
+
+	return kept
 }
 
 // getContent extracts terraform content from context

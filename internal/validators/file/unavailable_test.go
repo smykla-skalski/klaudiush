@@ -194,6 +194,20 @@ var _ = Describe("checks that could not run", func() {
 			expectUnavailable(result, validator.ReasonError)
 		})
 
+		It("lets a failed tflint outrank a missing formatter", func() {
+			result := build("", passed, nil).Validate(context.Background(), hc)
+			expectUnavailable(result, validator.ReasonError)
+			Expect(result.Message).To(ContainSubstring("tflint returned no result"))
+			Expect(result.Message).To(ContainSubstring("Neither 'tofu' nor 'terraform'"))
+		})
+
+		It("keeps a failed formatter ahead of a missing tflint", func() {
+			result := build("tofu", &linters.LintResult{RawOut: "boom", Err: errToolExit}, skipped).
+				Validate(context.Background(), hc)
+			expectUnavailable(result, validator.ReasonError)
+			Expect(result.Message).To(ContainSubstring("tflint is not installed"))
+		})
+
 		It("keeps real findings ahead of an unavailable check", func() {
 			findings := &linters.LintResult{RawOut: "main.tf:1:1: Warning - x (rule)"}
 
@@ -233,20 +247,6 @@ var _ = Describe("checks that could not run", func() {
 	})
 
 	Describe("MarkdownValidator", func() {
-		It("reports a check cut short", func() {
-			v := file.NewMarkdownValidator(
-				nil,
-				linters.NewMarkdownLinter(execpkg.NewCommandRunner(10*time.Second)),
-				log,
-				nil,
-			)
-
-			canceled, cancel := context.WithCancel(context.Background())
-			cancel()
-
-			expectUnavailable(
-				v.Validate(canceled, write("a.md", "# Title\n")),
-				validator.ReasonCanceled,
 		withLintResult := func(r *linters.LintResult) *file.MarkdownValidator {
 			linter := linters.NewMockMarkdownLinter(ctrl)
 			linter.EXPECT().
@@ -274,6 +274,20 @@ var _ = Describe("checks that could not run", func() {
 			Expect(result.Passed).To(BeFalse())
 		})
 
+		It("reports a check cut short", func() {
+			v := file.NewMarkdownValidator(
+				nil,
+				linters.NewMarkdownLinter(execpkg.NewCommandRunner(10*time.Second)),
+				log,
+				nil,
+			)
+
+			canceled, cancel := context.WithCancel(context.Background())
+			cancel()
+
+			expectUnavailable(
+				v.Validate(canceled, write("a.md", "# Title\n")),
+				validator.ReasonCanceled,
 			)
 		})
 	})
