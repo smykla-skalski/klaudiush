@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"os"
@@ -18,6 +19,20 @@ import (
 	"github.com/smykla-skalski/klaudiush/pkg/hook"
 	"github.com/smykla-skalski/klaudiush/pkg/logger"
 )
+
+// stubValidator answers every hook with validate.
+type stubValidator struct {
+	name     string
+	validate func() *validator.Result
+}
+
+func (v stubValidator) Name() string { return v.name }
+
+func (stubValidator) Category() validator.ValidatorCategory { return validator.CategoryCPU }
+
+func (v stubValidator) Validate(context.Context, *hook.Context) *validator.Result {
+	return v.validate()
+}
 
 // captureStdout returns what fn writes to stdout.
 func captureStdout(fn func()) string {
@@ -231,6 +246,55 @@ var _ = Describe("hook failures", func() {
 		resp := decode(out)
 		Expect(permissionDecision(resp)).To(Equal("deny"))
 		Expect(resp["systemMessage"]).To(ContainSubstring("bad script"))
+		Expect(resp["systemMessage"]).To(ContainSubstring("timed out"))
+	})
+
+	It("keeps a deny published while a later validator never returns", func() {
+		watchdogGrace = 10 * time.Millisecond
+
+		h := newRun(hook.ProviderClaude, "PreToolUse")
+		h.setPolicy(failpolicy.New(&config.FailurePolicyConfig{
+			Deadline: config.Duration(20 * time.Millisecond),
+		}))
+
+		release := make(chan struct{})
+		defer close(release)
+
+		reg := validator.NewRegistry()
+		reg.Register(
+			stubValidator{name: "validate-deny", validate: func() *validator.Result {
+				return validator.Fail("bad command")
+			}},
+			validator.EventTypeIs(hook.EventTypePreToolUse),
+		)
+		reg.Register(
+			stubValidator{name: "validate-stuck", validate: func() *validator.Result {
+				<-release
+
+				return validator.Pass()
+			}},
+			validator.EventTypeIs(hook.EventTypePreToolUse),
+		)
+
+		disp := dispatcher.NewDispatcherWithOptions(reg, log,
+			dispatcher.NewSequentialExecutor(log), dispatcher.WithProgress(h.publish))
+
+		out := captureStdout(func() {
+			Expect(h.supervise(func() error {
+				disp.Dispatch(context.Background(), &hook.Context{
+					Event:     hook.CanonicalEventBeforeTool,
+					EventType: hook.EventTypePreToolUse,
+					ToolName:  hook.ToolTypeBash,
+					ToolInput: hook.ToolInput{Command: "ls"},
+				})
+
+				return nil
+			})).To(Succeed())
+		})
+
+		resp := decode(out)
+		Expect(permissionDecision(resp)).To(Equal("deny"))
+		Expect(resp["systemMessage"]).To(ContainSubstring("bad command"))
 		Expect(resp["systemMessage"]).To(ContainSubstring("timed out"))
 	})
 

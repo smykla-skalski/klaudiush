@@ -273,6 +273,7 @@ func (h *hookRun) validate() error {
 		dispatcher.WithOverrides(cfg.Overrides),
 		dispatcher.WithBypassPolicy(bypassPolicy),
 		dispatcher.WithFailurePolicy(policy),
+		dispatcher.WithProgress(h.publish),
 	)
 
 	dispatchCtx, cancel := context.WithDeadline(

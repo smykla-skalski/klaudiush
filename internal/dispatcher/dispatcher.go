@@ -111,6 +111,7 @@ type Dispatcher struct {
 	bypassPolicy     BypassPolicy
 	pathResolver     parser.Resolver
 	failurePolicy    *failpolicy.Policy
+	publish          func([]*ValidationError)
 }
 
 // NewDispatcher creates a new Dispatcher with sequential execution.
@@ -213,7 +214,7 @@ func (d *Dispatcher) Dispatch(ctx context.Context, hookCtx *hook.Context) []*Val
 func (d *Dispatcher) DispatchWithChecks(ctx context.Context, hookCtx *hook.Context) Outcome {
 	var checks []Check
 
-	errs := d.validate(ctx, hookCtx, &checks)
+	errs := d.validate(ctx, hookCtx, &checks, newProgress(d.publish))
 
 	return Outcome{Errors: errs, Checks: checks}
 }
@@ -222,6 +223,7 @@ func (d *Dispatcher) validate(
 	ctx context.Context,
 	hookCtx *hook.Context,
 	checks *[]Check,
+	p *progress,
 ) []*ValidationError {
 	d.logger.Info("dispatching",
 		"event", hookCtx.EventType,
@@ -237,17 +239,17 @@ func (d *Dispatcher) validate(
 	}
 
 	if len(hookCtx.PatchFiles) > 0 {
-		return d.validatePatchFiles(ctx, hookCtx, checks)
+		return d.validatePatchFiles(ctx, hookCtx, checks, p)
 	}
 
-	validationErrors := afterToolFindings(hookCtx, d.runValidators(ctx, hookCtx, checks))
+	validationErrors := afterToolFindings(hookCtx, d.runValidators(ctx, hookCtx, checks, p))
 
 	// Validate the files a Bash command writes, before and after it runs.
 	if hookCtx.ToolName == hook.ToolTypeBash && (hookCtx.Event == hook.CanonicalEventBeforeTool ||
 		hookCtx.Event == hook.CanonicalEventAfterTool ||
 		hookCtx.EventType == hook.EventTypePreToolUse ||
 		hookCtx.EventType == hook.EventTypePostToolUse) {
-		syntheticErrors := d.validateBashFileWrites(ctx, hookCtx, checks)
+		syntheticErrors := d.validateBashFileWrites(ctx, hookCtx, checks, p)
 		validationErrors = append(validationErrors, syntheticErrors...)
 	}
 
@@ -255,11 +257,13 @@ func (d *Dispatcher) validate(
 }
 
 // runValidators runs validators on a context and returns validation errors.
-// Each validator that ran to completion is added to checks.
+// Each validator that ran to completion is added to checks, and its findings
+// are published to p as they come.
 func (d *Dispatcher) runValidators(
 	ctx context.Context,
 	hookCtx *hook.Context,
 	checks *[]Check,
+	p *progress,
 ) []*ValidationError {
 	validators := d.registry.FindValidators(hookCtx)
 
@@ -277,7 +281,7 @@ func (d *Dispatcher) runValidators(
 	)
 
 	// Use executor to run validators (sequential or parallel)
-	runs := d.executor.Run(ctx, hookCtx, validators)
+	runs := d.run(ctx, hookCtx, validators, p)
 	validationErrors := d.applyFailurePolicy(failures(runs))
 
 	resource := hookCtx.Resource()
@@ -293,6 +297,8 @@ func (d *Dispatcher) runValidators(
 	for _, verr := range validationErrors {
 		verr.Resource = resource
 	}
+
+	p.settle(afterToolFindings(hookCtx, validationErrors))
 
 	// Log results
 	for _, verr := range validationErrors {
@@ -549,6 +555,7 @@ func (d *Dispatcher) validateBashFileWrites(
 	ctx context.Context,
 	bashCtx *hook.Context,
 	checks *[]Check,
+	p *progress,
 ) []*ValidationError {
 	result, err := bashCtx.ParsedCommand()
 	if err != nil {
@@ -606,7 +613,7 @@ func (d *Dispatcher) validateBashFileWrites(
 			"file", target.path,
 		)
 
-		errs := d.runValidators(ctx, syntheticCtx, checks)
+		errs := d.runValidators(ctx, syntheticCtx, checks, p)
 		if bashCtx.IsAfterTool() {
 			errs = namedAfter(target.path, advisory(errs))
 		}
@@ -624,6 +631,7 @@ func (d *Dispatcher) validatePatchFiles(
 	ctx context.Context,
 	patchCtx *hook.Context,
 	checks *[]Check,
+	p *progress,
 ) []*ValidationError {
 	allErrors := make([]*ValidationError, 0, len(patchCtx.PatchFiles))
 
@@ -655,7 +663,7 @@ func (d *Dispatcher) validatePatchFiles(
 
 		d.logger.Debug("validating patch file", "file", file.Input.FilePath)
 
-		errs := afterToolFindings(fileCtx, d.runValidators(ctx, fileCtx, checks))
+		errs := afterToolFindings(fileCtx, d.runValidators(ctx, fileCtx, checks, p))
 		allErrors = append(allErrors, errs...)
 	}
 

@@ -95,6 +95,12 @@ func (h *hookRun) claim() bool {
 	return h.claimed.CompareAndSwap(false, true)
 }
 
+// publish records the findings validation made so far, which the watchdog
+// keeps when it answers for a validation that overran its deadline.
+func (h *hookRun) publish(errs []*dispatcher.ValidationError) {
+	h.errs.Store(&errs)
+}
+
 // setPolicy records the effective policy and tells the watchdog its deadline.
 func (h *hookRun) setPolicy(policy *failpolicy.Policy) {
 	h.policy.Store(policy)

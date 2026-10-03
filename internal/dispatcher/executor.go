@@ -76,16 +76,38 @@ func (se *SequentialExecutor) Run(
 	hookCtx *hook.Context,
 	validators []validator.Validator,
 ) []ValidatorRun {
+	return se.RunObserved(ctx, hookCtx, validators, nil)
+}
+
+// RunObserved runs validators sequentially, handing each run to observe as
+// it completes.
+func (se *SequentialExecutor) RunObserved(
+	ctx context.Context,
+	hookCtx *hook.Context,
+	validators []validator.Validator,
+	observe RunObserver,
+) []ValidatorRun {
 	runs := make([]ValidatorRun, 0, len(validators))
 
 	for _, v := range validators {
-		runs = append(runs, ValidatorRun{
+		run := ValidatorRun{
 			Validator: v,
 			Result:    runValidator(ctx, hookCtx, v, se.logger),
-		})
+		}
+
+		observe.notify(run)
+
+		runs = append(runs, run)
 	}
 
 	return runs
+}
+
+// notify hands run to the observer, if there is one.
+func (observe RunObserver) notify(run ValidatorRun) {
+	if observe != nil {
+		observe(run)
+	}
 }
 
 // runValidator runs one validator and turns every way it can fail to answer
@@ -227,6 +249,17 @@ func (e *ParallelExecutor) Run(
 	hookCtx *hook.Context,
 	validators []validator.Validator,
 ) []ValidatorRun {
+	return e.RunObserved(ctx, hookCtx, validators, nil)
+}
+
+// RunObserved runs validators like Run, handing each run to observe as it
+// completes. observe is called from the validator goroutines.
+func (e *ParallelExecutor) RunObserved(
+	ctx context.Context,
+	hookCtx *hook.Context,
+	validators []validator.Validator,
+	observe RunObserver,
+) []ValidatorRun {
 	if len(validators) == 0 {
 		return nil
 	}
@@ -234,8 +267,11 @@ func (e *ParallelExecutor) Run(
 	// For a single validator, run directly without goroutine overhead
 	if len(validators) == 1 {
 		v := validators[0]
+		run := ValidatorRun{Validator: v, Result: runValidator(ctx, hookCtx, v, e.logger)}
 
-		return []ValidatorRun{{Validator: v, Result: runValidator(ctx, hookCtx, v, e.logger)}}
+		observe.notify(run)
+
+		return []ValidatorRun{run}
 	}
 
 	var (
@@ -269,9 +305,13 @@ func (e *ParallelExecutor) Run(
 				pool.Release(1)
 			}
 
+			run := ValidatorRun{Validator: v, Result: result}
+
+			observe.notify(run)
+
 			mu.Lock()
 
-			runs = append(runs, ValidatorRun{Validator: v, Result: result})
+			runs = append(runs, run)
 
 			mu.Unlock()
 		}(v)
