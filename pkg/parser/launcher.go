@@ -466,6 +466,10 @@ func launcherLaunch(cmd Command, spec launcher) launch {
 	}
 
 	child := childCommand(cmd, cmd.Args[idx], cmd.Args[idx+1:])
+	if spec.assignments {
+		child = withEnvOperands(child, cmd, cmd.Args[:idx])
+	}
+
 	if spec.stdinArgs && cmd.Stdin != "" {
 		l.commands = xargsCommands(child, cmd.Stdin, xargsReplace(cmd.Args[:idx]))
 	} else {
@@ -908,5 +912,7 @@ func childCommand(parent Command, name string, args []string) Command {
 		Dynamic:          parent.Dynamic,
 		Stdin:            parent.Stdin,
 		StdinFile:        parent.StdinFile,
+		startup:          parent.startup,
+		dynamicWords:     parent.dynamicWords,
 	}
 }

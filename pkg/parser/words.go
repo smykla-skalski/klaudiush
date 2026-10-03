@@ -130,6 +130,8 @@ func (w *astWalker) prepare(stmt *syntax.Stmt) {
 		switch n := node.(type) {
 		case *syntax.WhileClause, *syntax.ForClause:
 			syntax.Walk(n, func(inner syntax.Node) bool {
+				w.noteLoopStartup(inner)
+
 				if call, ok := inner.(*syntax.CallExpr); ok {
 					w.loopCalls[call] = true
 				}
@@ -394,6 +396,7 @@ func (w *astWalker) launchedFrom(cmd, followed Command) launch {
 func (w *astWalker) forget(name string) {
 	for p := w; p != nil; p = p.parent {
 		p.unknownVars[name] = true
+		delete(p.startupUnset, name)
 	}
 }
 
@@ -446,7 +449,7 @@ func (w *astWalker) forgetDeclared(cmd Command) {
 	for _, arg := range cmd.Args {
 		if strings.HasPrefix(arg, "-") || strings.HasPrefix(arg, "+") {
 			if strings.ContainsAny(arg[1:], "lucn") {
-				w.state.untrusted = true
+				w.distrustOption(arg)
 			}
 
 			continue
@@ -454,7 +457,7 @@ func (w *astWalker) forgetDeclared(cmd Command) {
 
 		name, _, _ := strings.Cut(arg, "=")
 		if !variableName.MatchString(name) {
-			w.state.untrusted = true
+			w.distrustNames()
 
 			continue
 		}
@@ -468,11 +471,15 @@ var defaultVars = map[string]string{"read": "REPLY", "mapfile": "MAPFILE", "read
 
 // forgetWritten forgets the variables cmd sets other than by assignment.
 func (w *astWalker) forgetWritten(cmd Command) {
-	if HasUnresolvedVars(cmd.Invoked) || strings.Contains(cmd.Invoked, unresolvedProgram) ||
-		assignmentPattern.MatchString(
-			cmd.Invoked,
-		) || cmd.Name == sourceBuiltin || cmd.Name == dotBuiltin ||
+	if assignmentPattern.MatchString(cmd.Invoked) ||
 		(mapfiles[cmd.Name] && slices.ContainsFunc(cmd.Args, callbackFlag)) {
+		w.distrustNames()
+
+		return
+	}
+
+	if HasUnresolvedVars(cmd.Invoked) || strings.Contains(cmd.Invoked, unresolvedProgram) ||
+		cmd.Name == sourceBuiltin || cmd.Name == dotBuiltin {
 		w.state.untrusted = true
 
 		return
@@ -480,6 +487,7 @@ func (w *astWalker) forgetWritten(cmd Command) {
 
 	if declWriters[cmd.Name] {
 		w.forgetDeclared(cmd)
+		w.caseChanged = false
 
 		return
 	}
@@ -497,9 +505,16 @@ func (w *astWalker) forgetWritten(cmd Command) {
 		names = []string{defaultVars[cmd.Name]}
 	}
 
+	wasUnknown := make(map[string]bool, len(startupVars))
+	for name := range startupVars {
+		wasUnknown[name] = w.startupUnknown(name)
+	}
+
 	for _, name := range names {
 		w.forgetName(name)
 	}
+
+	w.noteUnset(cmd, wasUnknown)
 }
 
 // forgetName forgets a written variable. A target built from an expansion
@@ -510,7 +525,7 @@ func (w *astWalker) forgetName(name string) {
 	case variableName.MatchString(name):
 		w.forget(name)
 	case strings.ContainsAny(name, "$[") || marked(name):
-		w.state.untrusted = true
+		w.distrustNames()
 	}
 }
 
@@ -527,10 +542,7 @@ func (w *astWalker) distrustDecl(decl *syntax.DeclClause) {
 		}
 
 		option := wordToString(a.Value)
-		if !strings.HasPrefix(option, "-") && !strings.HasPrefix(option, "+") ||
-			strings.ContainsAny(option, "lucn") {
-			w.state.untrusted = true
-		}
+		w.distrustOption(option)
 	}
 }
 

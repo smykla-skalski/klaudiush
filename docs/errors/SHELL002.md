@@ -2,7 +2,7 @@
 
 ## Error
 
-Klaudiush cannot see what the command finally runs. The command does not parse as bash, runs another command through more layers of launchers, scripts, aliases or functions than klaudiush follows, runs a script klaudiush cannot read, runs a git subcommand that is neither built in, installed, nor an alias klaudiush can see, or takes eval's command line or a git or gh command word from a variable or command output klaudiush cannot resolve.
+Klaudiush cannot see what the command finally runs. The command does not parse as bash, runs another command through more layers of launchers, scripts, aliases or functions than klaudiush follows, runs a script klaudiush cannot read, runs a git subcommand that is neither built in, installed, nor an alias klaudiush can see, takes eval's command line or a git or gh command word from a variable or command output klaudiush cannot resolve, or starts a shell whose startup file (`BASH_ENV`, `ENV`, `--rcfile`) klaudiush cannot read.
 
 ## Why this matters
 
@@ -35,6 +35,7 @@ Each finding names the operation klaudiush could not see through, the programs t
 | git or gh word from command output    | `git $(echo commit)`, `git c?mmit`              | Write the subcommand literally                            |
 | eval of a variable or command output  | `eval "$LINE"`, `eval "$(tool init)"`           | Run the commands directly instead of through eval         |
 | eval of a known tool's shell setup    | `eval "$(mise activate bash)"`                  | Run the command through the tool (see below)              |
+| Startup file it cannot read           | `BASH_ENV=$(mktemp) bash -c true`               | Set it to a literal path of a readable file, or unset it  |
 
 When eval runs the output of one command substitution whose program is a literal name from the list below, with arguments that make it print shell setup, the finding names the tool and a form klaudiush can inspect. The block stays. A computed program name (`$TOOL`, `$(which mise)`) or argument, a name that only contains a known one (`evil-mise`), or a tool or `eval` redefined as an alias or function on the same line gets the generic repair. A literal path is named by its last part (`/opt/homebrew/bin/brew` is `brew`); this changes only the text.
 
@@ -51,6 +52,8 @@ When eval runs the output of one command substitution whose program is a literal
 | `fnm env`                                                          | `fnm exec --using=<version> <command>`               |
 
 If the eval is really needed and your exception policy allows it, add `# EXC:SHELL002:<reason>` to the command.
+
+A shell reads a startup file before its script: `BASH_ENV` for bash run without `-i` (and any program that starts bash, such as git hooks or make), `ENV` for an interactive shell, and the `--rcfile` or `--init-file` of interactive bash. When the line sets one of these (as a prefix, an `env` operand, `export` or a plain assignment), klaudiush reads the file and checks its commands with the shell's script, in the same shell, so functions it defines are followed too. The file is blocked when its path comes from command output, a variable klaudiush cannot resolve, or an expansion the shell runs at startup (`'$(cmd)'`), when it is a relative path after an unknown `cd`, written earlier on the line with unknown content, a device other than `/dev/null` or `/dev/stdin`, or cannot be read in full. A missing file is skipped, as the shell skips it. A value set only in the environment klaudiush runs in is not read. `/dev/stdin` is followed when stdin is literal or a redirected file. After a write to a name klaudiush cannot read (`export $(cat .env)`, `env $(cat .env)`, `declare "$n"`, `set -k`), a shell or a script run by path is blocked, while other programs are not: a program that starts bash itself may still read a file set that way.
 
 A variable assigned a literal value earlier on the same line, or set in the environment klaudiush runs in, is resolved: `X=status; git $X` is checked as `git status`. Only a plain assignment statement counts. A variable also assigned in a subshell, pipeline, condition, loop, function or background job, or as a command prefix, or set by `read`, `printf -v`, `mapfile`, `getopts`, a `for` loop, `eval` or a sourced script, is treated as unknown, and so is every variable used inside a loop. After a write to a name klaudiush cannot read (`declare "$v"`, `printf -v "$v"`) a `declare -l`, `-u` or `-n`, a `source`, a `mapfile -C` callback, or a program named by a variable or command output, no variable is resolved. Inside a new shell (`bash -c`, a script file), which sees only exported variables and may source `BASH_ENV` first, no variable is resolved either. A subcommand that is not a valid git command name, such as `'push '` or `$'push\n'`, is checked as the builtin git autocorrect would run, or blocked as an unknown subcommand.
 
