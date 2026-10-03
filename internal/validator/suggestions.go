@@ -70,6 +70,7 @@ var DefaultSuggestions = map[Reference]string{
 
 	// Hook operation suggestions
 	RefValidationUnavailable: "Ask the user to run 'klaudiush doctor' and fix the cause this message names",
+	RefEvidenceMissing:       "Run the required check against the current files and let it finish before stopping",
 
 	// MCP Elicitation suggestions
 	RefMCPServerBlocked:    "Remove MCP server from deny list or use a different server",

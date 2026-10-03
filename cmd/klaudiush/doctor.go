@@ -14,6 +14,7 @@ import (
 	backupchecker "github.com/smykla-skalski/klaudiush/internal/doctor/checkers/backup"
 	"github.com/smykla-skalski/klaudiush/internal/doctor/checkers/binary"
 	configchecker "github.com/smykla-skalski/klaudiush/internal/doctor/checkers/config"
+	evidencechecker "github.com/smykla-skalski/klaudiush/internal/doctor/checkers/evidence"
 	failurepolicychecker "github.com/smykla-skalski/klaudiush/internal/doctor/checkers/failurepolicy"
 	"github.com/smykla-skalski/klaudiush/internal/doctor/checkers/hook"
 	overrideschecker "github.com/smykla-skalski/klaudiush/internal/doctor/checkers/overrides"
@@ -80,7 +81,7 @@ func init() {
 		&categoryFlag,
 		"category",
 		[]string{},
-		"Filter checks by category (binary, hook, config, tools, patterns, backup, overrides, xdg, failure_policy)",
+		"Filter checks by category (binary, hook, config, tools, patterns, backup, overrides, xdg, failure_policy, evidence)",
 	)
 }
 
@@ -179,6 +180,9 @@ func buildDoctorRegistry(cfg *pkgConfig.Config) *doctor.Registry {
 	// Register failure policy checkers
 	registry.RegisterChecker(failurepolicychecker.NewDeadlineChecker(cfg))
 	registry.RegisterChecker(failurepolicychecker.NewCriticalToolsChecker(cfg))
+
+	// Register evidence gate checkers
+	registry.RegisterChecker(evidencechecker.NewGateChecker(cfg))
 
 	// Register XDG checkers
 	registry.RegisterChecker(xdgchecker.NewLegacyPathChecker())
@@ -302,6 +306,7 @@ func parseCategories(names []string) []doctor.Category {
 		cmdUseOverrides:  doctor.CategoryOverrides,
 		"xdg":            doctor.CategoryXDG,
 		"failure_policy": doctor.CategoryFailurePolicy,
+		cmdUseEvidence:   doctor.CategoryEvidence,
 	}
 
 	var categories []doctor.Category

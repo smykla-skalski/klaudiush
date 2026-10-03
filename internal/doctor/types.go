@@ -51,6 +51,8 @@ const (
 	CategoryXDG Category = "xdg"
 	// CategoryFailurePolicy checks the validation failure policy can be met
 	CategoryFailurePolicy Category = "failure_policy"
+	// CategoryEvidence checks the evidence gate can see completion attempts
+	CategoryEvidence Category = "evidence"
 )
 
 // CheckResult represents the result of a health check

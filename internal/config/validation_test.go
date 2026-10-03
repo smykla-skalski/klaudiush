@@ -651,6 +651,35 @@ var _ = Describe("Validator", func() {
 		})
 	})
 
+	Describe("evidence", func() {
+		It("accepts valid checks", func() {
+			cfg := &config.Config{Evidence: &config.EvidenceConfig{
+				Checks: []*config.EvidenceCheckConfig{
+					{
+						Name:     "tests",
+						Commands: []string{"mise run test"},
+						Paths:    []string{"**/*.go"},
+					},
+				},
+			}}
+			Expect(validator.Validate(cfg)).To(Succeed())
+		})
+
+		It("rejects checks it cannot match exactly", func() {
+			cfg := &config.Config{Evidence: &config.EvidenceConfig{
+				Checks: []*config.EvidenceCheckConfig{
+					{Name: "tests", Commands: []string{"mise run test || true"}},
+				},
+			}}
+
+			err := validator.Validate(cfg)
+			Expect(err).To(HaveOccurred())
+			Expect(errors.Is(err, ErrInvalidConfig)).To(BeTrue())
+			Expect(validatePolicySections(cfg)).To(HaveLen(1))
+			Expect(validatePolicySections(cfg)[0].Error()).To(ContainSubstring("evidence"))
+		})
+	})
+
 	Describe("validatePatternsConfig", func() {
 		It("should allow empty patterns config", func() {
 			err := validator.validatePatternsConfig(&config.PatternsConfig{})

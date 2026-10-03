@@ -96,6 +96,10 @@ func mainWithExitCode() (exitCode int) {
 	}()
 
 	if err := rootCmd.Execute(); err != nil {
+		if code, ok := commandExitCode(err); ok {
+			return code
+		}
+
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 
 		return 1
@@ -282,10 +286,13 @@ func (h *hookRun) validate() error {
 	)
 	defer cancel()
 
+	sessionStore := hooksession.NewStore()
+
 	errs, sessionCleanup, gateNotice := dispatchInSession(
 		dispatchCtx,
 		disp,
-		hooksession.NewStore(),
+		sessionStore,
+		newEvidenceGate(cfg, sessionStore, policy, log),
 		ctx,
 		log,
 	)
@@ -366,12 +373,14 @@ func (h *hookRun) loadPolicyAndRegistry(
 }
 
 // dispatchInSession validates the hook and applies the session state: it
-// rechecks unresolved files, records or replays findings, and bounds
-// completion gates. The returned cleanup runs after the response is written.
+// rechecks unresolved files, records or replays findings, ties check runs to
+// the content they ran against, and bounds completion gates. The returned
+// cleanup runs after the response is written.
 func dispatchInSession(
 	ctx context.Context,
 	disp *dispatcher.Dispatcher,
 	sessionStore *hooksession.Store,
+	evidenceGate *evidenceGate,
 	hookCtx *hook.Context,
 	log logger.Logger,
 ) ([]*dispatcher.ValidationError, func(), string) {
@@ -385,6 +394,7 @@ func dispatchInSession(
 		outcome.Checks,
 		log,
 	)
+	errs = evidenceGate.apply(ctx, hookCtx, errs)
 	errs, gateNotice := applyCompletionGate(sessionStore, hookCtx, errs, log)
 
 	return errs, cleanup, gateNotice

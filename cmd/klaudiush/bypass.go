@@ -41,7 +41,7 @@ Examples:
 }
 
 var bypassStatusCmd = &cobra.Command{
-	Use:   "status",
+	Use:   cmdUseStatus,
 	Short: "Show whether validation runs in bypass permission modes",
 	RunE:  runBypassStatus,
 }

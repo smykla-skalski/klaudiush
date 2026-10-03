@@ -205,6 +205,14 @@ const (
 	RefValidationUnavailable Reference = ReferenceBaseURL + "/HOOK001"
 )
 
+// Evidence references (EVID001).
+const (
+	// RefEvidenceMissing indicates a required check has no passing result
+	// for the current content: it never ran, failed, is still running, was
+	// canceled, or ran on content that has changed since.
+	RefEvidenceMissing Reference = ReferenceBaseURL + "/EVID001"
+)
+
 // minCodeLength is the minimum length for a valid reference code.
 const minCodeLength = 3
 

@@ -287,6 +287,10 @@ Framework: Ginkgo/Gomega. Run: `mise exec -- go test -v ./pkg/parser -run TestBa
 
 **Error Handling**: NEVER use `fmt.Errorf`, `errors`, or `github.com/pkg/errors` - linter will reject. ALWAYS use `github.com/cockroachdb/errors` for error creation and wrapping
 
+### Evidence Gate (`internal/evidence/`, `cmd/klaudiush/evidence_gate.go`, `cmd/klaudiush/evidence.go`)
+
+Opt-in `[evidence]` (off by default). Each `[[evidence.checks]]` has `commands` (plain literal argv, validated by `evidence.Compile`), `paths`/`exclude` globs, `kind` (`test` digests covered file content; `review` digests the diff from `git merge-base <base> HEAD`, `base` required). The first hook of a session records a content-digest baseline per check (`hooksession` `evidence_baselines`; `unknown` when the first hook comes after a tool ran). At `TurnStop` (Claude/Codex Stop, Gemini AfterAgent) a check is required when its digest differs from the baseline, and `evidence.Judge` accepts only the latest receipt with status `passed` on the current digest (failed/running/canceled/stale/unverified/missing block with EVID001, still capped by `maxCompletionBlocks`). Receipts are repository-scoped in the state file. Sources: Claude `PreToolUse`/`PostToolUse(Failure)` of a command `evidence.MatchCommand` accepts (exact argv, only `cd <dir> &&` prefixes ending at the repo root), fingerprinted at start and end; or `klaudiush evidence run <check>`, which runs the check itself. `hook.ReportsCommandOutcome` is true only for Claude; Codex/Gemini need the verifier. `klaudiush evidence status`, `klaudiush doctor --category evidence`. Fingerprint failures are HOOK001 resolved by `Policy.Resolve("evidence", ReasonState, false)`. See `docs/EVIDENCE_GUIDE.md`.
+
 ## Hook output
 
 klaudiush always exits 0. Validation results are JSON on stdout:

@@ -116,7 +116,7 @@ Examples:
 }
 
 var backupStatusCmd = &cobra.Command{
-	Use:   "status",
+	Use:   cmdUseStatus,
 	Short: "Show backup system status",
 	Long: `Show status of the backup system.
 

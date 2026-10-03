@@ -46,6 +46,10 @@ func mainFunc() {
 	gitpkg.ResetRepositoryCache()
 
 	if err := rootCmd.Execute(); err != nil {
+		if code, ok := commandExitCode(err); ok {
+			os.Exit(code)
+		}
+
 		os.Exit(1)
 	}
 }

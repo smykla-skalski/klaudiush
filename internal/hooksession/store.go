@@ -49,6 +49,9 @@ var errCorruptState = errors.New("corrupt hook session state")
 
 type state struct {
 	Sessions map[string]*sessionEntry `json:"sessions"`
+
+	// Evidence holds check receipts by repository root.
+	Evidence map[string]*repoEvidence `json:"evidence,omitempty"`
 }
 
 // sessionEntry holds one provider session. Findings lists only what is still
@@ -63,6 +66,11 @@ type sessionEntry struct {
 
 	// CompletionBlocks counts consecutive completion-gate blocks per gate.
 	CompletionBlocks map[string]int `json:"completion_blocks,omitempty"`
+
+	// Baselines holds, by repository root and check ID, the content digest
+	// each required check covered when the session first touched the
+	// repository.
+	Baselines map[string]map[string]string `json:"evidence_baselines,omitempty"`
 }
 
 type finding struct {
@@ -450,6 +458,9 @@ func (s *Store) update(fn func(*state) bool) (err error) {
 	}
 
 	changed := s.cleanupExpired(st)
+	if s.cleanupExpiredEvidence(st) {
+		changed = true
+	}
 
 	if fn(st) {
 		changed = true

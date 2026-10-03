@@ -259,6 +259,22 @@ critical = ["git.commit", "secrets"]
 
 klaudiush always answers with exit code 0 and a response the provider honors, because every provider lets the action through when a hook exits non-zero or times out. See the [failure policy guide](docs/FAILURE_POLICY_GUIDE.md) for deadlines, provider behavior, and what hooks cannot guarantee.
 
+### Requiring fresh test and review results
+
+Opt in to keep an agent from finishing until required checks passed against the files as they are now:
+
+```toml
+[evidence]
+enabled = true
+
+[[evidence.checks]]
+name = "tests"
+commands = ["mise run test"]
+paths = ["**/*.go", "go.mod", "go.sum"]
+```
+
+When a session changed covered files, the completion gate (Claude `Stop`, Codex `Stop`, Gemini `AfterAgent`) blocks with EVID001 until the check passed on exactly that content. Results are tied to a digest of the covered files, so a later edit makes them stale; failed, running, canceled and background runs never count; review checks record the exact diff they reviewed. Read-only sessions and changes the check does not cover are not gated. Claude reports how a shell command ended, so running a check's command there counts; in every provider, `klaudiush evidence run tests` runs the check and records its exit status itself. See the [evidence guide](docs/EVIDENCE_GUIDE.md).
+
 ## Performance
 
 End-to-end binary execution on Apple M3 Max (hyperfine, 30 runs, CLI git backend):
