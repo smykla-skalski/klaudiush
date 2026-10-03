@@ -48,11 +48,8 @@ var _ = Describe("BashParser", func() {
 				Entry("short for loop", `for x (a b) git push`, "short for loops"),
 				Entry("short for loop after another command",
 					`echo hi; for x (a b) echo $x`, "short for loops"),
-				Entry(
-					"for loop with braces",
-					`for x in a b; { git push }`,
-					"for loops with braces",
-				),
+				Entry("two short for loops",
+					`for x (a b) echo $x; for y (c) git status`, "short for loops"),
 				Entry("flags zsh itself rejects, still bash-unparseable", `echo ${(Y)x}`,
 					"parameter expansion flags"),
 			)
@@ -68,6 +65,11 @@ var _ = Describe("BashParser", func() {
 				Entry("unclosed subshell", `git commit -m "x" && (`),
 				Entry("for without a list", `for x y`),
 				Entry("for with a stray paren later", `for x in a; do echo (; done`),
+				Entry("unclosed short for loop", `for x (`),
+				Entry("short for loop then an unclosed paren", `echo hi; for x ( ; done`),
+				Entry("short for loop then an unclosed quote",
+					`for x (a b) git push; echo "unclosed`),
+				Entry("brace for loop with an error inside", `for x in a; { echo (`),
 			)
 		})
 

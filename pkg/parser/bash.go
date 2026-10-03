@@ -156,26 +156,39 @@ func parseFailure(command string, err error) error {
 	return zerr
 }
 
-// zshShortFor matches the zsh short loop form "for x (a b) cmd" at the start
-// of the text.
+// zshShortFor matches the header of the zsh short loop "for x (a b) cmd" at
+// the start of the text, up to and including the opening parenthesis.
 var zshShortFor = regexp.MustCompile(`^for\s+[A-Za-z_][A-Za-z0-9_]*\s*\(`)
 
-// zshBraceFor is the feature mvdan names when it rejects "for x in a; { }"
-// in zsh mode, a loop form zsh itself accepts.
-const zshBraceFor = "for loops with braces"
+// maxZshRewrites bounds how many short for loops one command may hold before
+// it is reported as a plain parse failure.
+const maxZshRewrites = 8
 
-// unparsedZshForm names valid zsh loop forms the zsh grammar of mvdan.cc/sh
-// rejects, so they are not reported as broken syntax either.
+// unparsedZshForm reports "short for loops" when the command is valid zsh
+// except for short for loops, which the zsh grammar of mvdan.cc/sh rejects.
+// Each loop header "for x (" is rewritten to ": $(", which keeps the word
+// list and the body, and the result must then parse as zsh.
 func unparsedZshForm(command string, zshErr error) string {
-	var langErr syntax.LangError
-	if errors.As(zshErr, &langErr) && langErr.Feature == zshBraceFor {
-		return zshBraceFor
-	}
+	for range maxZshRewrites {
+		var parseErr syntax.ParseError
+		if !errors.As(zshErr, &parseErr) {
+			return ""
+		}
 
-	var parseErr syntax.ParseError
-	if errors.As(zshErr, &parseErr) {
 		offset := int(parseErr.Pos.Offset())
-		if offset < len(command) && zshShortFor.MatchString(command[offset:]) {
+		if offset >= len(command) {
+			return ""
+		}
+
+		header := zshShortFor.FindString(command[offset:])
+		if header == "" {
+			return ""
+		}
+
+		command = command[:offset] + ": $(" + command[offset+len(header):]
+
+		zshParser := syntax.NewParser(syntax.Variant(syntax.LangZsh))
+		if _, zshErr = zshParser.Parse(strings.NewReader(command), ""); zshErr == nil {
 			return "short for loops"
 		}
 	}
