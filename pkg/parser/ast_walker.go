@@ -228,13 +228,16 @@ func (w *astWalker) recordStdin(call *syntax.CallExpr, content string) {
 
 // noteRedirectedOutput notes a statement that may send output to a program:
 // a redirect to a process substitution (cmd > >(sh)), an exec that redirects
-// the shell's descriptors, or a coprocess. Its redirects are walked after the
-// command itself, so they are checked here first.
+// the shell's descriptors, a coprocess, or a named pipe another command may
+// read as it is written. Its redirects are walked after the command itself,
+// so they are checked here first.
 func (w *astWalker) noteRedirectedOutput(stmt *syntax.Stmt) {
 	_, coproc := stmt.Cmd.(*syntax.CoprocClause)
-	execRedirect := len(stmt.Redirs) > 0 && isCommand(callExprOf(stmt), "exec")
+	call := callExprOf(stmt)
+	execRedirect := len(stmt.Redirs) > 0 && isCommand(call, "exec")
+	namedPipe := isCommand(call, "mkfifo") || isCommand(call, "mknod")
 
-	if coproc || stmt.Coprocess || execRedirect ||
+	if coproc || stmt.Coprocess || execRedirect || namedPipe ||
 		slices.ContainsFunc(stmt.Redirs, func(r *syntax.Redirect) bool {
 			return r.Word != nil &&
 				slices.ContainsFunc(r.Word.Parts, func(part syntax.WordPart) bool {

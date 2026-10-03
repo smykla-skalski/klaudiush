@@ -73,13 +73,27 @@ var docstringOwner = regexp.MustCompile(`^\s*(?:async\s+)?(?:def|class)\b`)
 // maxStringPrefix is the longest string prefix before a quote (rb, f, u).
 const maxStringPrefix = 2
 
+// docRead matches code that reads docstrings back as values.
+var docRead = regexp.MustCompile(`__doc__|getdoc`)
+
+// errorCaught matches code that catches an error into a name, whose message
+// can then be handed on as a value.
+var errorCaught = regexp.MustCompile(`\bexcept\b[^:\n]*\bas\s|\bcatch\s*\(`)
+
+// textReuse says which kinds of prose the code reads back as values.
+type textReuse struct {
+	docs   bool
+	errors bool
+}
+
 // proseLiteral reports whether the string literal opening at start in code is
 // text rather than a command line: a docstring at the top of a module, def
 // or class, or the first argument of a message call (print, fail, raise
 // ValueError). A string anywhere else may run, and a backtick string runs in
 // Ruby and Perl, so neither is prose; nor is one that interpolates a command
-// or expression (`...`, #{...}, @{[...]}, $(...)).
-func proseLiteral(code string, start, end int) bool {
+// or expression (`...`, #{...}, @{[...]}, $(...)). Docstrings and error
+// messages the code reads back (__doc__, except ... as e) are values too.
+func proseLiteral(code string, start, end int, reuse textReuse) bool {
 	if code[start] == '`' || strings.Contains(code[start+1:end], "`") ||
 		strings.Contains(code[start:end], "#{") || strings.Contains(code[start:end], "@{") ||
 		strings.Contains(code[start:end], "$(") {
@@ -102,13 +116,13 @@ func proseLiteral(code string, start, end int) bool {
 	prev := significantCode(before)
 
 	if triple && prev == "" {
-		return true
+		return !reuse.docs
 	}
 
 	if triple && strings.HasSuffix(prev, ":") {
-		lineStart := strings.LastIndexByte(prev, '\n') + 1
+		header := prev[strings.LastIndexByte(prev, '\n')+1:]
 
-		return docstringOwner.MatchString(prev[lineStart:]) &&
+		return !reuse.docs && docstringOwner.MatchString(header) && bracketsClosed(header) &&
 			strings.Contains(before[len(prev):], "\n")
 	}
 
@@ -120,7 +134,16 @@ func proseLiteral(code string, start, end int) bool {
 	callee = strings.TrimRight(callee, " \t")
 
 	return messageCalls[strings.ToLower(trailingName.FindString(callee))] ||
-		raisedError.MatchString(callee)
+		!reuse.errors && raisedError.MatchString(callee)
+}
+
+// bracketsClosed reports whether every bracket opened in line is closed in
+// it, so a colon at its end ends a def or class header rather than a dict key
+// in a default argument.
+func bracketsClosed(line string) bool {
+	return strings.Count(line, "(") == strings.Count(line, ")") &&
+		strings.Count(line, "[") == strings.Count(line, "]") &&
+		strings.Count(line, "{") == strings.Count(line, "}")
 }
 
 // significantCode trims trailing whitespace and whole comment lines (a
@@ -157,11 +180,12 @@ func commandLines(code string) []codeLine {
 	execs := quotedExec.FindAllStringSubmatch(code, -1)
 	lines := make([]codeLine, 0, len(literals)+len(lists)+len(calls)+len(execs))
 	unsafe := proseUnsafe.MatchString(code)
+	reuse := textReuse{docs: docRead.MatchString(code), errors: errorCaught.MatchString(code)}
 
 	for _, m := range literals {
 		lines = append(lines, codeLine{
 			text:  literalEscapes.Replace(submatchText(code, m)),
-			prose: !unsafe && proseLiteral(code, m[0], m[1]),
+			prose: !unsafe && proseLiteral(code, m[0], m[1], reuse),
 		})
 	}
 

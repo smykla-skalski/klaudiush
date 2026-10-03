@@ -308,6 +308,18 @@ def run_git(args):
 			`python3 -c 'import os; os.system(str(ValueError("git zz")))'`),
 		Entry("a call named in a trailing comment",
 			"python3 -c 'import os\nos.system(  # print(\n    \"git zz\")'"),
+		Entry("a module docstring read back",
+			"python3 -c '\"\"\"git zz\"\"\"\nimport os; os.system(__doc__)'"),
+		Entry("a function docstring read back",
+			"python3 -c 'def f():\n    \"\"\"git zz\"\"\"\nimport os; os.system(f.__doc__)'"),
+		Entry(
+			"a raised message caught and run",
+			"python3 -c 'import subprocess\ntry:\n    raise RuntimeError(\"git zz\")\nexcept Exception as e:\n    subprocess.run(str(e), shell=True)'",
+		),
+		Entry("a default argument split after a colon",
+			"python3 -c 'def run(cmd={\"k\":\n\"\"\"git zz\"\"\"}):\n    pass'"),
+		Entry("output written into a named pipe",
+			`mkfifo p; sh < p & python3 -c 'print("git zz")' > p`),
 	)
 
 	DescribeTable(
