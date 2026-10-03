@@ -37,6 +37,12 @@ def run_git(args):
     if result.returncode != 0:
         fail("git is required and must run inside a git work tree")
     return subprocess.run(["git", "log", "--name-only"]).stdout
+
+
+def fail(message):
+    """Print a diagnostic to stderr and exit."""
+    sys.stderr.write(f"hotspots: {message}\n")
+    raise SystemExit(2)
 `,
 		},
 		programs: map[string]parser.Program{
@@ -405,7 +411,32 @@ with contextlib.redirect_stdout(b): print("git zz")'`),
 		Entry("console.log rebound to execSync",
 			`node -e 'console.log = require("child_process").execSync; console.log("git zz")'`),
 		Entry("a python shebang run by awk", "awk -f awk.py"),
+		Entry("an exec function imported under a message name",
+			`python3 -c 'from os import system as echo; echo("git zz")'`),
+		Entry("a message-named function that runs commands",
+			"python3 -c 'import os\ndef echo(c):\n    os.system(c)\necho(\"git zz\")'"),
+		Entry(
+			"a one-line message-named function that runs commands",
+			"python3 -c 'import subprocess\ndef log(c): subprocess.run(c, shell=True)\nlog(\"git zz\")'",
+		),
+		Entry(
+			"a message-named method that runs commands",
+			"python3 -c 'import os\nclass A:\n    def log(self, c):\n        os.system(c)\nA().log(\"git zz\")'",
+		),
+		Entry(
+			"a docstring read back through ast",
+			"python3 -c '\"\"\"git zz\"\"\"\nimport ast, os; os.system(ast.get_docstring(ast.parse(\"\")))'",
+		),
+		Entry("a destructured exec function",
+			`node -e 'const {execSync: log} = require("child_process"); log("git zz")'`),
+		Entry("a js function named like a message",
+			`node -e 'function log(c) { require("child_process").execSync(c) }; log("git zz")'`),
 	)
+
+	It("keeps prose in a message function that only prints and exits", func() {
+		command := "python3 -c 'import sys\ndef fail(m):\n    sys.stderr.write(m)\n    raise SystemExit(2)\nfail(\"git zz is not set up\")'"
+		Expect(parse(command).Truncated).To(BeFalse())
+	})
 
 	DescribeTable(
 		"reads raised and thrown errors as prose",

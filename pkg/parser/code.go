@@ -45,21 +45,85 @@ var proseUnsafe = regexp.MustCompile(
 		`GIT_CONFIG|GIT_DIR|GIT_COMMON_DIR|GIT_WORK_TREE|GIT_EXEC_PATH|XDG_CONFIG_HOME|` +
 		`chdir|\bcwd\b|popen|open3|\bstdin\b|\$stdout\s*=|\bstdout\s*=[^=]|` +
 		`\bstd(?:out|err)\.write\s*=[^=]|` +
-		`\b(?:print|log|info|warn|warning|error|debug|fail|echo|puts)\s*=[^=\n]*` +
-		`(?:system|exec|subprocess|popen|spawn|child_process|run\b|call\b)|` +
 		`dup2|\bfork\b|\bpipe\s*\(|fdopen|redirect_std|StringIO|BytesIO|` +
 		`\b(?:file|stream)\s*=\s*(?:[^s\s]|s[^y])|` +
 		`\|\s*["'\x60]|["'\x60]\s*\||` +
 		`(?-i:\bHOME\b|["']PATH["']|\bPATH\s*=|\.PATH\b|\{PATH\})`,
 )
 
-// messageCalls name calls that show their argument to a person: printing,
+// messageCallNames name calls that show their argument to a person: printing,
 // logging, failing and exiting. Any other call may run it, so the list is
 // closed: an exec function or wrapper missing from it fails closed.
-var messageCalls = nameSet(
-	"print println printf eprint eprintln puts fail die warn warning error info debug " +
-		"critical exception log notice exit abort echo alert",
+const messageCallNames = "print println printf eprint eprintln puts fail die warn warning " +
+	"error info debug critical exception log notice exit abort echo alert"
+
+// messageCalls is messageCallNames as a set.
+var messageCalls = nameSet(messageCallNames)
+
+// messageAlternation matches any one of messageCallNames as a whole word.
+var messageAlternation = `\b(` + strings.ReplaceAll(messageCallNames, " ", "|") + `)\b`
+
+// messageRebound matches code that gives a message-call name another meaning:
+// an import (from os import system as echo), an assignment (print =
+// os.system), a JavaScript function or binding, or a destructured name
+// ({execSync: log}).
+var messageRebound = regexp.MustCompile(
+	`(?:\bimport\b[^\n;]*|\bas\s+|\bfunction\s*\*?\s*|\b(?:const|let|var)\s+|[{,][ \t]*|` +
+		`\{[^{}]*:[ \t]*)` + messageAlternation + `|` + messageAlternation + `\s*=[^=>]`,
 )
+
+// pythonDef matches a Python def line, capturing its indent and name.
+var pythonDef = regexp.MustCompile(`(?m)^([ \t]*)(?:async[ \t]+)?def[ \t]+([A-Za-z_]\w*)[ \t]*\(`)
+
+// runsCommands matches code that may run a command line.
+var runsCommands = regexp.MustCompile(
+	`system|popen|subprocess|\bexec|spawn|eval|getoutput|check_output|\brun\s*\(|\bcall\s*\(`,
+)
+
+// untrustedMessages returns the message-call names the code redefines in a
+// way that may run their argument: rebound, imported or destructured, or a
+// Python def whose body may run commands. A def that only prints and exits
+// (fail writing to stderr) keeps its name trusted.
+func untrustedMessages(code string) map[string]bool {
+	untrusted := make(map[string]bool)
+
+	for _, m := range messageRebound.FindAllStringSubmatch(code, -1) {
+		untrusted[m[1]+m[2]] = true
+	}
+
+	for _, m := range pythonDef.FindAllStringSubmatchIndex(code, -1) {
+		name := code[m[4]:m[5]]
+		if messageCalls[name] && runsCommands.MatchString(defBody(code, m[1], m[3]-m[2])) {
+			untrusted[name] = true
+		}
+	}
+
+	return untrusted
+}
+
+// defBody returns the lines after a def header at headerEnd that are indented
+// deeper than indent columns, or blank: the body of that def.
+func defBody(code string, headerEnd, indent int) string {
+	rest := code[headerEnd:]
+
+	_, body, found := strings.Cut(rest, "\n")
+	if !found {
+		return rest
+	}
+
+	end := 0
+
+	for line := range strings.Lines(body) {
+		trimmed := strings.TrimLeft(line, " \t")
+		if strings.TrimSpace(line) != "" && len(line)-len(trimmed) <= indent {
+			break
+		}
+
+		end += len(line)
+	}
+
+	return rest[:len(rest)-len(body)+end]
+}
 
 // raisedError matches an exception or error raised or thrown right where it
 // is built (raise ValueError(, throw new Error(), whose message is shown
@@ -79,7 +143,7 @@ var docstringOwner = regexp.MustCompile(`^\s*(?:async\s+)?(?:def|class)\b`)
 const maxStringPrefix = 2
 
 // docRead matches code that reads docstrings back as values.
-var docRead = regexp.MustCompile(`__doc__|getdoc`)
+var docRead = regexp.MustCompile(`__doc__|getdoc|get_docstring`)
 
 // errorCaught matches code that catches an error into a name or reads the
 // current one back, so its message can be handed on as a value.
@@ -88,10 +152,12 @@ var errorCaught = regexp.MustCompile(
 		`sys\.exception|excepthook|uncaughtException|unhandledRejection|\.then\s*\(`,
 )
 
-// textReuse says which kinds of prose the code reads back as values.
+// textReuse says which kinds of prose the code reads back as values, and
+// which message-call names it gave another meaning.
 type textReuse struct {
-	docs   bool
-	errors bool
+	docs      bool
+	errors    bool
+	untrusted map[string]bool
 }
 
 // proseLiteral reports whether the string literal opening at start in code is
@@ -141,7 +207,9 @@ func proseLiteral(code string, start, end int, reuse textReuse) bool {
 		return false
 	}
 
-	return messageCalls[trailingName.FindString(callee)] ||
+	name := trailingName.FindString(callee)
+
+	return messageCalls[name] && !reuse.untrusted[name] ||
 		!reuse.errors && raisedError.MatchString(callee)
 }
 
@@ -195,7 +263,11 @@ func commandLines(code string) []codeLine {
 	execs := quotedExec.FindAllStringSubmatch(code, -1)
 	lines := make([]codeLine, 0, len(literals)+len(lists)+len(calls)+len(execs))
 	unsafe := proseUnsafe.MatchString(code)
-	reuse := textReuse{docs: docRead.MatchString(code), errors: errorCaught.MatchString(code)}
+	reuse := textReuse{
+		docs:      docRead.MatchString(code),
+		errors:    errorCaught.MatchString(code),
+		untrusted: untrustedMessages(code),
+	}
 
 	for _, m := range literals {
 		text := literalEscapes.Replace(submatchText(code, m))
