@@ -254,7 +254,8 @@ func (s *Snapshot) hash(ctx context.Context, path string) (string, error) {
 
 // submoduleState identifies a submodule by its checked-out commit and its
 // uncommitted changes. An uninitialized submodule is an empty directory,
-// where git would answer for the parent repository instead.
+// where git would answer for the parent repository instead. A nested
+// repository without commits has no HEAD; its status still identifies it.
 func (s *Snapshot) submoduleState(ctx context.Context, path string) (string, error) {
 	dir := filepath.Join(s.root, filepath.FromSlash(path))
 
@@ -262,9 +263,9 @@ func (s *Snapshot) submoduleState(ctx context.Context, path string) (string, err
 		return submoduleMarker + ":uninitialized", nil
 	}
 
-	head, err := runGit(ctx, dir, "rev-parse", "HEAD")
+	head, err := runGit(ctx, dir, "rev-parse", "--verify", "--quiet", "HEAD")
 	if err != nil {
-		return "", errors.Wrapf(err, "failed to read submodule %s", path)
+		head = []byte("unborn")
 	}
 
 	status, err := runGit(ctx, dir, "status", "--porcelain", "--untracked-files=all")

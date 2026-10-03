@@ -148,7 +148,7 @@ The gate stops an agent from claiming a check passed without one. It does not st
 - A check passes if its command exits 0. A test suite with tests removed or skipped still passes.
 - A program earlier on `PATH` with the same name as the check's command runs instead of it.
 - The verifier runs the check with the caller's environment, so a variable the check honours (`GOFLAGS`, a skip switch) changes what it runs.
-- A requirement belongs to the session that made the change. Once the completion gate's block limit lets a session stop, a new session starts from the changed files as its baseline. A `.git/info/exclude` entry hides a new file from the fingerprint.
+- A requirement belongs to the session that made the change. Once the completion gate's block limit lets a session stop, a new session starts from the changed files as its baseline. Ignored files are not fingerprinted, so include `**/.gitignore` in `paths`; changes to `.git/info/exclude` already make results stale.
 
 ## Inspecting results
 

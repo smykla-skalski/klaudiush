@@ -246,6 +246,24 @@ var _ = Describe("Snapshot", func() {
 		Expect(after).NotTo(Equal(before))
 	})
 
+	It("fingerprints a nested repository without commits", func() {
+		checks, err := evidence.Compile(&config.EvidenceConfig{
+			Checks: []*config.EvidenceCheckConfig{{Name: "all", Commands: []string{"t"}}},
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		scratch := filepath.Join(repo, "scratch")
+		Expect(os.Mkdir(scratch, 0o755)).To(Succeed())
+		git(scratch, "init", "-q")
+
+		empty, _ := digest(checks[0])
+
+		write(repo, "scratch/x.txt", "x\n")
+
+		dirty, _ := digest(checks[0])
+		Expect(dirty).NotTo(Equal(empty))
+	})
+
 	It("tracks a submodule by its commit and uncommitted changes", func() {
 		sub := filepath.Join(repo, "sub")
 		write(repo, "sub/s.go", "package s\n")
