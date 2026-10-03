@@ -58,6 +58,7 @@ func newAstWalker(resolver Resolver) *astWalker {
 		commands:        make([]Command, 0),
 		fileWrites:      make([]FileWrite, 0),
 		stdinByCall:     make(map[*syntax.CallExpr]string),
+		stdinTextByCall: make(map[*syntax.CallExpr]*ShellText),
 		stdinFileByCall: make(map[*syntax.CallExpr]string),
 		assignments:     make(map[string]string),
 		unknownVars:     make(map[string]bool),
