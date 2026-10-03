@@ -197,6 +197,8 @@ func (d *CodexDriver) listHooks(ctx context.Context, sb *Sandbox) ([]codexHook, 
 
 	result := execpkg.NewCommandRunner(0).RunWithOptions(ctx, opts, d.resolve(ctx), "app-server")
 
+	_, _ = sb.Processes()
+
 	if hooks, ok, err := reply.result(); ok {
 		return hooks, err
 	}

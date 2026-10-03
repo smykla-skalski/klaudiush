@@ -1,6 +1,7 @@
 package harness
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -65,8 +66,6 @@ func (s *Sandbox) StopProcesses() error {
 		}
 
 		if len(pids) == 0 {
-			s.forgetSessions()
-
 			return nil
 		}
 
@@ -88,8 +87,11 @@ func (s *Sandbox) StopProcesses() error {
 }
 
 // Processes lists the live processes that belong to the sandbox, other
-// than the caller.
+// than the caller. A recorded session with no live member is dropped, so a
+// later process that reuses its id is never taken for a sandbox process.
 func (s *Sandbox) Processes() ([]int, error) {
+	tracked := s.trackedSessions()
+
 	procs, err := listProcesses()
 	if err != nil {
 		return nil, errors.Wrap(err, "listing processes")
@@ -97,12 +99,21 @@ func (s *Sandbox) Processes() ([]int, error) {
 
 	self := os.Getpid()
 	owned := map[int]bool{}
+	live := map[int]bool{}
 
 	s.mu.Lock()
 	for _, p := range procs {
+		live[p.SID] = true
+
 		_, tracked := s.sessions[p.SID]
 		if p.PID != self && (tracked || s.ownsEnv(p.Env)) {
 			owned[p.PID] = true
+		}
+	}
+
+	for _, sid := range tracked {
+		if !live[sid] {
+			delete(s.sessions, sid)
 		}
 	}
 	s.mu.Unlock()
@@ -128,14 +139,13 @@ func (s *Sandbox) Processes() ([]int, error) {
 	return pids, nil
 }
 
-// forgetSessions drops the recorded session ids once nothing runs in them,
-// so a later process that reuses one of those ids is never mistaken for a
-// sandbox process.
-func (s *Sandbox) forgetSessions() {
+// trackedSessions copies the recorded session ids. Only ids recorded before
+// a listing may be dropped for having no member in it.
+func (s *Sandbox) trackedSessions() []int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	clear(s.sessions)
+	return slices.Collect(maps.Keys(s.sessions))
 }
 
 func (s *Sandbox) ownsEnv(env []string) bool {

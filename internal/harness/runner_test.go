@@ -365,6 +365,7 @@ var _ = Describe("Runner", func() {
 				"1.0.0",
 				scenarioNamed("deny_shell"),
 			)
+			DeferCleanup(result.Sandbox.Close)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(len(result.Lingering)).To(BeNumerically(">=", lingeringCount))
 			Expect(result.Sandbox.Processes()).To(BeEmpty(), "keep=%v", keep)

@@ -13,3 +13,6 @@ func SetCodexTrustLimit(limit time.Duration) func() {
 
 // CodexCatalog is the model catalog the Codex driver writes.
 const CodexCatalog = codexCatalog
+
+// SessionCount returns how many session ids the sandbox still records.
+func (s *Sandbox) SessionCount() int { return len(s.trackedSessions()) }

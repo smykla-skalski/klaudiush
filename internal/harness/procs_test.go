@@ -59,6 +59,14 @@ func sandboxGone(sb *harness.Sandbox) func() bool {
 	}
 }
 
+// startBlocker starts the test binary as a sleeper with env.
+func startBlocker(env ...string) *exec.Cmd {
+	self, err := os.Executable()
+	Expect(err).NotTo(HaveOccurred())
+
+	return startOutside(self, append(env, blockEnv+"=1"))
+}
+
 func startOutside(name string, env []string, args ...string) *exec.Cmd {
 	cmd := exec.Command(name, args...)
 	cmd.Env = env
@@ -86,6 +94,7 @@ var _ = Describe("Sandbox processes", func() {
 	It("stops lingering children and leaves no files behind on Close", func() {
 		sb, err := harness.NewSandbox(GinkgoT().TempDir())
 		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(sb.Close)
 
 		startLingering(context.Background(), sb)
 
@@ -94,33 +103,53 @@ var _ = Describe("Sandbox processes", func() {
 		Consistently(sandboxGone(sb)).WithTimeout(500 * time.Millisecond).Should(BeTrue())
 	})
 
+	It("forgets a session once nothing runs in it", func() {
+		sb, err := harness.NewSandbox(GinkgoT().TempDir())
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(sb.Close)
+
+		out, err := harness.RunIn(context.Background(), sb, sb.Work, "true")
+		Expect(err).NotTo(HaveOccurred(), string(out))
+		Expect(sb.SessionCount()).To(BeZero())
+
+		startLingering(context.Background(), sb)
+		Expect(sb.SessionCount()).To(Equal(1))
+
+		Expect(sb.StopProcesses()).To(Succeed())
+		Expect(sb.Processes()).To(BeEmpty())
+		Expect(sb.SessionCount()).To(BeZero())
+	})
+
 	It("leaves processes that do not run with the sandbox environment alone", func() {
 		sb, err := harness.NewSandbox(GinkgoT().TempDir())
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(sb.Close)
 
-		outside := startOutside("sleep", []string{
-			"HOME=" + filepath.Dir(sb.Root),
-			"TMPDIR=" + sb.Root + "-other",
-			"UNRELATED=" + sb.Home,
-		}, "300")
+		outside := startBlocker(
+			"HOME="+filepath.Dir(sb.Root),
+			"TMPDIR="+sb.Root+"-other",
+			"UNRELATED="+sb.Home,
+		)
+
+		Eventually(func() bool {
+			pids, err := sb.Processes()
+			Expect(err).NotTo(HaveOccurred())
+
+			return len(pids) == 0
+		}).Should(BeTrue())
 
 		Expect(sb.StopProcesses()).To(Succeed())
 		Expect(outside.Process.Signal(syscall.Signal(0))).To(Succeed())
 	})
 
 	It("finds an untracked process by its sandbox environment", func() {
-		if runtime.GOOS == "darwin" {
-			Skip("macOS hides the environment of Apple binaries such as sleep")
-		}
-
 		sb, err := harness.NewSandbox(GinkgoT().TempDir())
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(sb.Close)
 
-		stray := startOutside("sleep", []string{"PATH=/usr/bin:/bin", "TMPDIR=" + sb.Root}, "300")
+		stray := startBlocker("TMPDIR=" + sb.Root)
 
-		Expect(sb.Processes()).To(ConsistOf(stray.Process.Pid))
+		Eventually(sb.Processes).Should(ConsistOf(stray.Process.Pid))
 		Expect(sb.StopProcesses()).To(Succeed())
 		Expect(sb.Processes()).To(BeEmpty())
 	})

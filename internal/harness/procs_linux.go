@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"strconv"
+	"syscall"
 
 	"github.com/cockroachdb/errors"
 	"golang.org/x/sys/unix"
@@ -16,8 +17,8 @@ const (
 	statFields  = 4
 )
 
-// listProcesses returns the live processes whose environment the caller
-// can read, which on Linux means the processes it may signal.
+// listProcesses returns the live processes the caller's user owns. Env is
+// nil for those whose environment cannot be read (non-dumpable ones).
 func listProcesses() ([]process, error) {
 	proc, err := os.OpenRoot("/proc")
 	if err != nil {
@@ -60,8 +61,12 @@ func readProcess(proc *os.Root, pid int) (process, bool) {
 		return process{}, false
 	}
 
-	raw, err := proc.ReadFile(dir + "environ")
+	info, err := proc.Stat(strconv.Itoa(pid))
 	if err != nil {
+		return process{}, false
+	}
+
+	if st, ok := info.Sys().(*syscall.Stat_t); !ok || int(st.Uid) != os.Getuid() {
 		return process{}, false
 	}
 
@@ -69,6 +74,11 @@ func readProcess(proc *os.Root, pid int) (process, bool) {
 	sid, _ := strconv.Atoi(fields[statSession])
 
 	p := process{PID: pid, PPID: ppid, SID: sid}
+
+	raw, err := proc.ReadFile(dir + "environ")
+	if err != nil {
+		return p, true
+	}
 
 	for field := range bytes.SplitSeq(raw, []byte{0}) {
 		if len(field) > 0 {
