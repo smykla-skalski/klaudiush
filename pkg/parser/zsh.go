@@ -293,7 +293,7 @@ const (
 // sits in the word and whatever runs the word, which may flag a bash-only
 // command such as bash -c 'ls *(e:x:)'.
 func codeQualifier(word *syntax.Word) string {
-	if strings.Contains(unquotedText(word), "$~") {
+	if hasGlobSubst(word) {
 		return GlobSubst
 	}
 
@@ -354,6 +354,44 @@ func numericGlobQualifier(stmt *syntax.Stmt) string {
 	}
 
 	return ""
+}
+
+// hasGlobSubst reports an unescaped $~ in a run of adjacent unquoted
+// literals of word, which the parser splits into a $ and a ~ literal.
+func hasGlobSubst(word *syntax.Word) bool {
+	var run strings.Builder
+
+	for _, part := range word.Parts {
+		lit, ok := part.(*syntax.Lit)
+		if !ok {
+			if hasUnescaped(run.String(), "$~") {
+				return true
+			}
+
+			run.Reset()
+
+			continue
+		}
+
+		run.WriteString(lit.Value)
+	}
+
+	return hasUnescaped(run.String(), "$~")
+}
+
+// hasUnescaped reports whether text holds seq at an offset no backslash
+// escapes.
+func hasUnescaped(text, seq string) bool {
+	for i := 0; i < len(text); i++ {
+		switch {
+		case text[i] == '\\':
+			i++
+		case strings.HasPrefix(text[i:], seq):
+			return true
+		}
+	}
+
+	return false
 }
 
 // globForm returns the code-running form of one extended glob pattern, or

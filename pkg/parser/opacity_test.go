@@ -187,6 +187,8 @@ var _ = Describe("Opacity explanations", func() {
 			`q='*(e:git push:)'; ls $~q`, parser.GlobSubst),
 		Entry("a glob-subst variable inside a word", `ls a$~q`, parser.GlobSubst),
 		Entry("a non-ASCII function name", `ls *(+é)`, "(+func)"),
+		Entry("a qualifier in a command substitution in a heredoc",
+			"cat <<EOF\n$(ls *(+fn))\nEOF", "(+func)"),
 		Entry("an e qualifier after a numeric glob", `ls <0-9>(e:'git push':)`, "(e)"),
 		Entry("a function qualifier after an open numeric glob", `echo <->(+fn)`, "(+func)"),
 		Entry("a qualifier after a half-open numeric glob", `ls a<1->(.e,x,)`, "(e)"),
@@ -208,6 +210,14 @@ var _ = Describe("Opacity explanations", func() {
 		Entry("an e qualifier after a qualifier it cannot read",
 			`ls *(f<u+x>Ze:"git push":)`, "(+func)"),
 	)
+
+	It("flags a glob qualifier in a heredoc fed to a shell", func() {
+		Expect(only("zsh <<'EOF'\nls *(+fn)\nEOF")).To(Equal(parser.Opacity{
+			Cause:     parser.OpacityZshGlobQualifier,
+			Operation: "(+func)",
+			Origin:    []string{"zsh"},
+		}))
+	})
 
 	It("flags a glob qualifier inside an inline script", func() {
 		Expect(only(`zsh -c "ls *(e:'git push':)"`)).To(Equal(parser.Opacity{
@@ -243,6 +253,12 @@ var _ = Describe("Opacity explanations", func() {
 		Entry("a digit range", `ls +([0-9]).txt`),
 		Entry("an alternation in a default value", `ls ${x:-@(a|b)}`),
 		Entry("a harmless qualifier after a numeric glob", `ls <->(N)`),
+		Entry("a qualifier in a quoted heredoc", "cat <<'EOF'\nls *(+fn)\nEOF"),
+		Entry("a qualifier in a heredoc", "cat <<EOF\nls *(e:x:) $~q\nEOF"),
+		Entry("a qualifier in a here-string", `cat <<< *(+fn)`),
+		Entry("an escaped glob substitution", `printf '%s\n' \$~q`),
+		Entry("a dollar and a tilde split by quotes", `echo $'x'~q`),
+		Entry("a dollar and a tilde across a quoted part", `echo a$"b"~q`),
 		Entry("a process substitution feeding tee", `ls | tee >(grep -e foo)`),
 		Entry("parentheses in a default value", `echo ${x:-f(a)}`),
 	)

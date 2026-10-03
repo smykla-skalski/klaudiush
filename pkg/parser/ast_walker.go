@@ -98,6 +98,9 @@ type parseState struct {
 	truncated bool
 	// seq orders commands and file writes across nested scripts.
 	seq int
+	// unglobbed holds heredoc bodies and here-strings, which zsh passes as
+	// data without globbing, so glob qualifiers in them run nothing.
+	unglobbed map[*syntax.Word]bool
 	// pathChanged records that the line changes PATH or the shell's command
 	// table, so a bare name may no longer run what it runs outside it.
 	pathChanged   bool
@@ -130,6 +133,28 @@ func (s *parseState) nextSeq() int {
 	return s.seq
 }
 
+// markUnglobbed records the heredoc bodies and here-strings of stmt.
+// Command substitutions in them are still walked, and a shell reading one
+// as its script parses it again.
+func (w *astWalker) markUnglobbed(stmt *syntax.Stmt) {
+	for _, redir := range stmt.Redirs {
+		word := redir.Hdoc
+		if redir.Op == syntax.WordHdoc {
+			word = redir.Word
+		}
+
+		if word == nil {
+			continue
+		}
+
+		if w.state.unglobbed == nil {
+			w.state.unglobbed = make(map[*syntax.Word]bool)
+		}
+
+		w.state.unglobbed[word] = true
+	}
+}
+
 // visit is called for each node in the AST.
 func (w *astWalker) visit(node syntax.Node) bool {
 	switch n := node.(type) {
@@ -155,8 +180,10 @@ func (w *astWalker) visit(node syntax.Node) bool {
 		if form := numericGlobQualifier(n); form != "" {
 			w.opaque(OpacityZshGlobQualifier, form, "")
 		}
+
+		w.markUnglobbed(n)
 	case *syntax.Word:
-		if form := codeQualifier(n); form != "" {
+		if form := codeQualifier(n); form != "" && !w.state.unglobbed[n] {
 			w.opaque(OpacityZshGlobQualifier, form, "")
 		}
 	case *syntax.Subshell:
