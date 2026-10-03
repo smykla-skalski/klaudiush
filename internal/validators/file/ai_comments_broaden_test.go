@@ -2,6 +2,8 @@ package file_test
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -371,6 +373,64 @@ var _ = Describe("AICommentValidator multi-line string literals", func() {
 		ctx.ToolInput.FilePath = "/repo/gen.py"
 		ctx.ToolInput.Content = "HELP = \"\"\"\n# Set the value first\n\"\"\""
 		Expect(v.Validate(context.Background(), ctx).Passed).To(BeTrue())
+	})
+
+	DescribeTable(
+		"does not treat a backslash as an escape in raw triple-quoted strings",
+		func(path, content string) {
+			ctx.ToolInput.FilePath = path
+			ctx.ToolInput.Content = content
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
+		},
+		Entry("kotlin raw string ending in a backslash", "/repo/Main.kt",
+			"val p = \"\"\"C:\\dir\\\"\"\"\n// holds the running total"),
+		Entry("scala raw string ending in a backslash", "/repo/Main.scala",
+			"val p = \"\"\"C:\\dir\\\"\"\"\n// holds the running total"),
+	)
+
+	It("still honours escapes in python triple-quoted strings", func() {
+		ctx.ToolInput.FilePath = "/repo/gen.py"
+		ctx.ToolInput.Content = "p = \"\"\"C:\\dir\\\"\"\"\n# still inside\n\"\"\""
+		Expect(sv.Validate(context.Background(), ctx).Passed).To(BeTrue())
+	})
+
+	Context("Edit fragments", func() {
+		var dir string
+
+		BeforeEach(func() {
+			dir = GinkgoT().TempDir()
+			ctx.ToolName = hook.ToolTypeEdit
+		})
+
+		writeSource := func(content string) string {
+			path := filepath.Join(dir, "gen.py")
+			Expect(os.WriteFile(path, []byte(content), 0o600)).To(Succeed())
+
+			return path
+		}
+
+		It("allows a heading in a fragment inside an existing triple string", func() {
+			ctx.ToolInput.FilePath = writeSource("BODY = \"\"\"\n## Old\n\nText.\n\"\"\"\n")
+			ctx.ToolInput.OldString = "## Old"
+			ctx.ToolInput.NewString = "## Problem\n\n## Steps"
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeTrue())
+		})
+
+		It("flags a comment after a fragment closes an existing docstring", func() {
+			ctx.ToolInput.FilePath = writeSource(
+				"def total():\n    \"\"\"Compute.\n\n    Returns the sum.\n    \"\"\"\n    return 1\n",
+			)
+			ctx.ToolInput.OldString = "    Returns the sum.\n    \"\"\"\n    return 1"
+			ctx.ToolInput.NewString = "    Returns the total.\n    \"\"\"\n    # add tax before rounding\n    return 1"
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
+		})
+
+		It("scans from code state when the file cannot be read", func() {
+			ctx.ToolInput.FilePath = filepath.Join(dir, "missing.py")
+			ctx.ToolInput.OldString = "x = 1"
+			ctx.ToolInput.NewString = "x = 1\n# holds the total"
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
+		})
 	})
 
 	It("treats triple quotes as plain quotes in languages without them", func() {

@@ -2,6 +2,7 @@ package file
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -140,16 +141,27 @@ const (
 // tripleQuoteTail is how many bytes of a triple quote follow its first byte.
 const tripleQuoteTail = 2
 
+// tripleKind says whether a language has a triple-quoted string delimiter and
+// whether a backslash escapes the next byte inside it.
+type tripleKind uint8
+
+const (
+	tripleNone tripleKind = iota
+	tripleEscaped
+	tripleRaw
+)
+
 // tripleQuotes holds the triple-quoted multi-line string delimiters a file's
 // language recognizes. Elsewhere `"""` is an empty string plus a quote.
 type tripleQuotes struct {
-	double bool
-	single bool
+	double tripleKind
+	single tripleKind
 }
 
 var (
-	bothTripleQuotes   = tripleQuotes{double: true, single: true}
-	doubleTripleQuotes = tripleQuotes{double: true}
+	bothTripleQuotes   = tripleQuotes{double: tripleEscaped, single: tripleEscaped}
+	doubleTripleQuotes = tripleQuotes{double: tripleEscaped}
+	rawTripleQuotes    = tripleQuotes{double: tripleRaw}
 )
 
 // tripleQuoteLanguages maps file extensions to the triple-quoted string
@@ -158,19 +170,19 @@ var tripleQuoteLanguages = map[string]tripleQuotes{
 	".py":     bothTripleQuotes,
 	".pyi":    bothTripleQuotes,
 	".pyw":    bothTripleQuotes,
-	".toml":   bothTripleQuotes,
+	".toml":   {double: tripleEscaped, single: tripleRaw},
 	".groovy": bothTripleQuotes,
 	".gradle": bothTripleQuotes,
 	".dart":   bothTripleQuotes,
-	".kt":     doubleTripleQuotes,
-	".kts":    doubleTripleQuotes,
 	".swift":  doubleTripleQuotes,
-	".scala":  doubleTripleQuotes,
-	".sc":     doubleTripleQuotes,
 	".jl":     doubleTripleQuotes,
 	".java":   doubleTripleQuotes,
 	".ex":     doubleTripleQuotes,
 	".exs":    doubleTripleQuotes,
+	".kt":     rawTripleQuotes,
+	".kts":    rawTripleQuotes,
+	".scala":  rawTripleQuotes,
+	".sc":     rawTripleQuotes,
 }
 
 // tripleQuotesForPath returns the triple-quoted delimiters recognized for path.
@@ -188,9 +200,9 @@ func hasTripleQuote(line string, i int, q byte) bool {
 // enabled by triple opens at line[i], or stateCode when none opens there.
 func opensTripleQuote(line string, i int, triple tripleQuotes) stringState {
 	switch {
-	case triple.double && hasTripleQuote(line, i, '"'):
+	case triple.double != tripleNone && hasTripleQuote(line, i, '"'):
 		return stateTripleDouble
-	case triple.single && hasTripleQuote(line, i, '\''):
+	case triple.single != tripleNone && hasTripleQuote(line, i, '\''):
 		return stateTripleSingle
 	default:
 		return stateCode
@@ -199,7 +211,12 @@ func opensTripleQuote(line string, i int, triple tripleQuotes) stringState {
 
 // scanMultiLineString advances over line[i] while inside a multi-line string
 // and returns the index of the last byte consumed and the resulting state.
-func scanMultiLineString(line string, i int, state stringState) (int, stringState) {
+func scanMultiLineString(
+	line string,
+	i int,
+	state stringState,
+	triple tripleQuotes,
+) (int, stringState) {
 	c := line[i]
 
 	if state == stateBacktick {
@@ -210,13 +227,13 @@ func scanMultiLineString(line string, i int, state stringState) (int, stringStat
 		return i, state
 	}
 
-	q := byte('"')
+	q, kind := byte('"'), triple.double
 	if state == stateTripleSingle {
-		q = '\''
+		q, kind = '\'', triple.single
 	}
 
 	switch {
-	case c == '\\':
+	case c == '\\' && kind == tripleEscaped:
 		return i + 1, state
 	case hasTripleQuote(line, i, q):
 		return i + tripleQuoteTail, stateCode
@@ -252,7 +269,7 @@ func findCommentStart(
 
 	for i := 0; i < len(line); i++ {
 		if state != stateCode {
-			i, state = scanMultiLineString(line, i, state)
+			i, state = scanMultiLineString(line, i, state, triple)
 
 			continue
 		}
@@ -362,12 +379,15 @@ func (v *AICommentValidator) Validate(
 
 	cov := fileCoverage(hookCtx, false)
 
+	triple := tripleQuotesForPath(path)
+
 	violations := findAICommentViolations(
 		content,
 		v.patterns,
 		strict,
 		allowTestPhaseMarkers,
-		tripleQuotesForPath(path),
+		triple,
+		editStartState(hookCtx, triple),
 	)
 	if len(violations) == 0 {
 		return cov.mark(validator.Pass())
@@ -382,6 +402,35 @@ func (v *AICommentValidator) Validate(
 		validator.RefAIComments,
 		formatPatternViolations(header, violations),
 	))
+}
+
+// editStartState returns the multi-line string state at the point an Edit's
+// old_string sits in the file on disk, so a new_string fragment that begins
+// inside (or closes) a docstring or raw string is scanned in the right state.
+// It returns stateCode when the call is not a fragment edit or the edited text
+// cannot be located.
+func editStartState(hookCtx *hook.Context, triple tripleQuotes) stringState {
+	old := hookCtx.ToolInput.OldString
+	if hookCtx.ToolName != hook.ToolTypeEdit || hookCtx.ToolInput.Content != "" || old == "" {
+		return stateCode
+	}
+
+	data, err := os.ReadFile(filepath.Clean(hookCtx.GetFilePath()))
+	if err != nil {
+		return stateCode
+	}
+
+	idx := strings.Index(string(data), old)
+	if idx < 0 {
+		return stateCode
+	}
+
+	state := stateCode
+	for line := range strings.SplitSeq(string(data[:idx]), "\n") {
+		_, state = findCommentStart(line, state, triple)
+	}
+
+	return state
 }
 
 // strictForPath reports whether the strict block-all policy applies to the given
@@ -425,12 +474,13 @@ func findAICommentViolations(
 	strict bool,
 	allowTestPhaseMarkers bool,
 	triple tripleQuotes,
+	start stringState,
 ) []violation {
 	var violations []violation
 
 	lines := strings.Split(content, "\n")
 
-	state := stateCode
+	state := start
 
 	for i, line := range lines {
 		var idx int
