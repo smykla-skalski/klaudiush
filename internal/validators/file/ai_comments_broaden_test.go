@@ -483,8 +483,12 @@ var _ = Describe("AICommentValidator multi-line string literals", func() {
 			ctx.ToolInput.Content = content
 			Expect(sv.Validate(context.Background(), ctx).Passed).To(Equal(passes))
 		},
-		Entry("python hash comment without leading space", "/repo/gen.py",
-			"x = 1#\"\"\"\ny = 2", false),
+		Entry("triple quote after an unspaced hash does not open a string", "/repo/gen.py",
+			"x = 1#\"\"\"\ny = 2\n# add tax before rounding", false),
+		Entry("hash in a python 3.12 f-string field reusing the quote", "/repo/gen.py",
+			"line = f\"{\"#\" * depth} {title}\"", true),
+		Entry("toml basic string closing on a quote run", "/repo/config.toml",
+			"s = \"\"\"\"hi\"\"\"\"  # Set the value", false),
 		Entry("triple quote inside a comment does not open a string", "/repo/gen.py",
 			"x = 1  # EXC:FILE011:keep \"\"\"\ny = 2\n# add tax before rounding", false),
 		Entry("python floor division is not a comment", "/repo/calc.py",

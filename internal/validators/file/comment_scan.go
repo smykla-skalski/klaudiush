@@ -38,7 +38,10 @@ const (
 
 // commentStyle is the line-comment marker a language uses. commentLoose, for
 // files whose language is not known, accepts both "//" and "#" but only at line
-// start or after whitespace. commentHash accepts "#" anywhere outside a string.
+// start or after whitespace. commentHash accepts only "#", also only at line
+// start or after whitespace; a "#" right after code ends the scan of the line
+// instead, since it is either a comment or text in a Python 3.12 f-string field
+// that reuses the outer quote, and neither may open a string.
 type commentStyle uint8
 
 const (
@@ -50,21 +53,28 @@ const (
 // The zero value keeps the language-agnostic behaviour: no triple-quoted
 // strings and loose comment markers.
 type langSyntax struct {
-	double  tripleKind
-	single  tripleKind
-	comment commentStyle
+	double     tripleKind
+	single     tripleKind
+	comment    commentStyle
+	closeOnRun bool
 }
 
 // langSyntaxByExt maps file extensions of languages with triple-quoted
 // multi-line strings to their syntax. Elsewhere `"""` is an empty string plus
-// a quote. Only languages with no block comments and no use of "#" outside
+// a quote. closeOnRun closes a triple-quoted string on the last three quotes
+// of a longer run, as TOML does. Only languages with no block comments and no use of "#" outside
 // comments and strings are listed: a block comment holding `"""` would
 // otherwise open a string that hides every later comment.
 var langSyntaxByExt = map[string]langSyntax{
-	".py":   {double: tripleEscaped, single: tripleEscaped, comment: commentHash},
-	".pyi":  {double: tripleEscaped, single: tripleEscaped, comment: commentHash},
-	".pyw":  {double: tripleEscaped, single: tripleEscaped, comment: commentHash},
-	".toml": {double: tripleEscaped, single: tripleRaw, comment: commentHash},
+	".py":  {double: tripleEscaped, single: tripleEscaped, comment: commentHash},
+	".pyi": {double: tripleEscaped, single: tripleEscaped, comment: commentHash},
+	".pyw": {double: tripleEscaped, single: tripleEscaped, comment: commentHash},
+	".toml": {
+		double:     tripleEscaped,
+		single:     tripleRaw,
+		comment:    commentHash,
+		closeOnRun: true,
+	},
 }
 
 // langSyntaxForPath returns the comment and string syntax for path.
@@ -92,9 +102,8 @@ func opensTripleQuote(line string, i int, syntax langSyntax) stringState {
 }
 
 // scanMultiLineString advances over line[i] while inside a multi-line string
-// and returns the index of the last byte consumed and the resulting state. A
-// raw triple-quoted string closes on the last three quotes of a longer run, so
-// a TOML literal string ending in four quotes keeps one quote in its value.
+// and returns the index of the last byte consumed and the resulting state.
+// With closeOnRun, a string ending in four quotes keeps one in its value.
 func scanMultiLineString(
 	line string,
 	i int,
@@ -120,7 +129,7 @@ func scanMultiLineString(
 	case c == '\\' && kind == tripleEscaped:
 		return i + 1, state
 	case hasTripleQuote(line, i, q):
-		for kind == tripleRaw && i+tripleQuoteTail+1 < len(line) &&
+		for syntax.closeOnRun && i+tripleQuoteTail+1 < len(line) &&
 			line[i+tripleQuoteTail+1] == q {
 			i++
 		}
@@ -138,12 +147,15 @@ func isCommentMarker(line string, i int, style commentStyle) bool {
 	isSlash := line[i] == '/' && i+1 < len(line) && line[i+1] == '/'
 
 	if style == commentHash {
-		return isHash
+		return isHash && afterSpace(line, i)
 	}
 
-	afterSpace := i == 0 || line[i-1] == ' ' || line[i-1] == '\t'
+	return (isHash || isSlash) && afterSpace(line, i)
+}
 
-	return (isHash || isSlash) && afterSpace
+// afterSpace reports whether line[i] is at line start or after whitespace.
+func afterSpace(line string, i int) bool {
+	return i == 0 || line[i-1] == ' ' || line[i-1] == '\t'
 }
 
 // findCommentStart returns the byte index of the first line-comment marker
@@ -195,6 +207,8 @@ func findCommentStart(
 			quote = c
 		case isCommentMarker(line, i, syntax.comment):
 			return i, state
+		case syntax.comment == commentHash && c == '#':
+			return -1, state
 		}
 	}
 
