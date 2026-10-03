@@ -3,6 +3,7 @@ package file
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -240,17 +241,25 @@ func (s commentScan) lineStart(state stringState) stringState {
 // at its old_string in the file on disk, so a fragment that begins inside (or
 // closes) a docstring is scanned correctly; when old_string occurs at several
 // places in different states, it falls back to code. Only languages with
-// triple-quoted strings read the file. An Edit with no
+// triple-quoted strings, and extension-less files that may hold a Python
+// shebang, read the file; CRLF line endings are matched as LF. An Edit with no
 // old_string on a non-empty file joins added lines from several patch hunks
 // whose boundaries are lost, so triple-quoted state is not carried between its
 // lines.
 func newCommentScan(hookCtx *hook.Context) commentScan {
 	path := hookCtx.GetFilePath()
 	scan := commentScan{syntax: langSyntaxForPath(path)}
+	detectShebang := scan.syntax == (langSyntax{}) && filepath.Ext(path) == ""
 
-	if scan.syntax == (langSyntax{}) ||
-		hookCtx.ToolName != hook.ToolTypeEdit ||
-		hookCtx.ToolInput.Content != "" {
+	if hookCtx.ToolName != hook.ToolTypeEdit || hookCtx.ToolInput.Content != "" {
+		if detectShebang {
+			scan.syntax = shebangSyntax(hookCtx.ToolInput.Content)
+		}
+
+		return scan
+	}
+
+	if scan.syntax == (langSyntax{}) && !detectShebang {
 		return scan
 	}
 
@@ -259,16 +268,39 @@ func newCommentScan(hookCtx *hook.Context) commentScan {
 		return scan
 	}
 
-	old := hookCtx.ToolInput.OldString
+	original := strings.ReplaceAll(string(data), "\r\n", "\n")
+
+	if detectShebang {
+		scan.syntax = shebangSyntax(original)
+		if scan.syntax == (langSyntax{}) {
+			return scan
+		}
+	}
+
+	old := strings.ReplaceAll(hookCtx.ToolInput.OldString, "\r\n", "\n")
 	if old == "" {
 		scan.lineLocalTriple = true
 
 		return scan
 	}
 
-	scan.start = stateAtOccurrences(string(data), old, scan.syntax)
+	scan.start = stateAtOccurrences(original, old, scan.syntax)
 
 	return scan
+}
+
+// pythonShebang matches a first line that runs the file with Python.
+var pythonShebang = regexp.MustCompile(`^#!.*\bpython[0-9.]*(\s|$)`)
+
+// shebangSyntax returns the Python syntax when text starts with a Python
+// shebang, for scripts without an extension, and the default syntax otherwise.
+func shebangSyntax(text string) langSyntax {
+	firstLine, _, _ := strings.Cut(text, "\n")
+	if pythonShebang.MatchString(firstLine) {
+		return langSyntaxByExt[".py"]
+	}
+
+	return langSyntax{}
 }
 
 // readRegularFile reads path when it is a regular file; a FIFO or device would

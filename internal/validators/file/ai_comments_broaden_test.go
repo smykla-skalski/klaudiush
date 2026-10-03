@@ -450,6 +450,30 @@ var _ = Describe("AICommentValidator multi-line string literals", func() {
 			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
 		})
 
+		It("matches an LF old_string in a CRLF file", func() {
+			ctx.ToolInput.FilePath = writeSource("BODY = \"\"\"\r\n## Old\r\nText.\r\n\"\"\"\r\n")
+			ctx.ToolInput.OldString = "## Old\nText."
+			ctx.ToolInput.NewString = "## Problem\nText."
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeTrue())
+		})
+
+		It("recognises a python shebang in an extension-less file", func() {
+			path := filepath.Join(dir, "gen")
+			Expect(
+				os.WriteFile(
+					path,
+					[]byte("#!/usr/bin/env python3\nBODY = \"\"\"\n## Old\n\"\"\"\n"),
+					0o600,
+				),
+			).
+				To(Succeed())
+
+			ctx.ToolInput.FilePath = path
+			ctx.ToolInput.OldString = "## Old"
+			ctx.ToolInput.NewString = "## Problem"
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeTrue())
+		})
+
 		It("resolves a relative path against the hook working directory", func() {
 			writeSource("BODY = \"\"\"\n## Old\n\nText.\n\"\"\"\n")
 
@@ -498,6 +522,12 @@ var _ = Describe("AICommentValidator multi-line string literals", func() {
 		Entry("triple quote in kdoc does not open a string", "/repo/Main.kt",
 			"/** Wraps the value in \"\"\" quotes. */\n// add tax before rounding", false),
 	)
+
+	It("recognises a python shebang in an extension-less Write", func() {
+		ctx.ToolInput.FilePath = "/repo/bin/gen"
+		ctx.ToolInput.Content = "#!/usr/bin/env python3\nBODY = \"\"\"\n## Problem\n\"\"\""
+		Expect(sv.Validate(context.Background(), ctx).Passed).To(BeTrue())
+	})
 
 	It("treats triple quotes as plain quotes in languages without them", func() {
 		ctx.ToolInput.FilePath = "/repo/main.go"
