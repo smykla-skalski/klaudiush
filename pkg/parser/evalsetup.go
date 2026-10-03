@@ -26,8 +26,8 @@ var evalSetupTools = map[string]func(args []string) bool{
 	"fnm":       subcommandIn("env"),
 }
 
-// EvalSetupTools returns the programs whose printed shell setup an eval
-// opacity can name in Opacity.Tool, sorted.
+// EvalSetupTools returns the programs whose printed shell setup an eval or
+// sourced-stream opacity can name in Opacity.Tool, sorted.
 func EvalSetupTools() []string {
 	return slices.Sorted(maps.Keys(evalSetupTools))
 }
@@ -109,10 +109,8 @@ func subcommandIn(names ...string) func([]string) bool {
 }
 
 // evalSetupTool returns the tool whose shell setup an eval call runs: eval
-// given one command substitution, quoted or not, of a known program named by
-// a literal word, with only literal arguments that make it print setup.
-// Anything else, a computed program name or argument, or a name that only
-// contains a known one (evil-mise), returns "".
+// given one command substitution, quoted or not, of a known setup command
+// (see setupTool). Anything else returns "".
 func evalSetupTool(call *syntax.CallExpr) string {
 	if len(call.Args) != 2 || !isLiteralWord(call.Args[0]) ||
 		argWord(call.Args[0]) != evalBuiltin {
@@ -120,11 +118,23 @@ func evalSetupTool(call *syntax.CallExpr) string {
 	}
 
 	sub := soleSubstitution(call.Args[1])
-	if sub == nil || len(sub.Stmts) != 1 {
+	if sub == nil {
 		return ""
 	}
 
-	stmt := sub.Stmts[0]
+	return setupTool(sub.Stmts)
+}
+
+// setupTool returns the tool whose shell setup stmts print: one plain call
+// of a known program named by a literal word, with only literal arguments
+// that make it print setup. Anything else, a computed program name or
+// argument, or a name that only contains a known one (evil-mise), returns "".
+func setupTool(stmts []*syntax.Stmt) string {
+	if len(stmts) != 1 {
+		return ""
+	}
+
+	stmt := stmts[0]
 	inner := callExprOf(stmt)
 
 	if inner == nil || stmt.Negated || stmt.Background || stmt.Coprocess ||
@@ -179,4 +189,15 @@ func (w *astWalker) noteEvalSetup(call *syntax.CallExpr, seq int) {
 	}
 
 	w.state.evalSetups[seq] = tool
+}
+
+// knownSetupTool is setupTool, unless the tool is an alias or function from
+// this line.
+func (w *astWalker) knownSetupTool(stmts []*syntax.Stmt) string {
+	tool := setupTool(stmts)
+	if tool == "" || w.defined(tool) {
+		return ""
+	}
+
+	return tool
 }

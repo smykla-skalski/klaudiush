@@ -189,6 +189,8 @@ func causeSummary(cause parser.OpacityCause) string {
 		return "it starts a shell whose startup file klaudiush cannot read"
 	case parser.OpacityZshGlobQualifier:
 		return "it uses a glob that runs code klaudiush cannot inspect"
+	case parser.OpacitySourcedStream:
+		return "it sources a script klaudiush cannot see"
 	default:
 		return "part of it is opaque"
 	}
@@ -260,6 +262,8 @@ func opacityFinding(o parser.Opacity) validator.Finding {
 		f.Repair = startupFileRepair(o)
 	case parser.OpacityZshGlobQualifier:
 		f.Message, f.Required, f.Repair = globCodeFinding(o)
+	case parser.OpacitySourcedStream:
+		f.Message, f.Required, f.Repair = sourcedStreamFinding(o)
 	default:
 		f.Message = o.Operation + " cannot be inspected"
 		f.Repair = validator.GetSuggestion(validator.RefShellNesting)
@@ -340,6 +344,37 @@ func programWordFinding(o parser.Opacity) (message, required, repair string) {
 	return message, required, repair
 }
 
+// sourcedStreamFinding explains source or . of a stream klaudiush cannot
+// see, naming the setup tool that prints it when one is known.
+func sourcedStreamFinding(o parser.Opacity) (message, required, repair string) {
+	name := o.Operation
+	if name == "." {
+		name = ". (source)"
+	}
+
+	message = name + " " + strings.TrimPrefix(o.Detail, "it ")
+	required = "source of a readable file, a here-string or a heredoc"
+	repair = "Save the script to a file in a separate command and source that file, " +
+		"or run its commands directly"
+
+	switch o.Detail {
+	case parser.DetailSourceOutput:
+		required = "a literal path to the sourced file"
+		repair = "Write the path of the sourced file literally"
+	case parser.DetailSourceOption:
+		required = "source given the file's path, with no options but --"
+		repair = "Source the file by its path, without -p or other options"
+	}
+
+	if setup, ok := evalSetupRepairs[o.Tool]; ok {
+		message = name + " runs the shell setup " + o.Tool + " prints, which klaudiush cannot see"
+		repair = setup + "; or, if your exception policy allows it, add " +
+			"# EXC:SHELL002:<reason> to the command"
+	}
+
+	return message, required, repair
+}
+
 // containerExecFinding explains a container exec whose container or an
 // option before it comes from a variable, command output or a glob.
 func containerExecFinding(o parser.Opacity) (message, required, repair string) {
@@ -371,8 +406,8 @@ var programWordRepairs = map[string]string{
 		"command from the one that changed IFS, sourced a file or redeclared variables",
 }
 
-// evalSetupRepairs replace eval of a tool's printed shell setup with a form
-// klaudiush can inspect, keyed by parser.EvalSetupTools.
+// evalSetupRepairs replace eval or source of a tool's printed shell setup
+// with a form klaudiush can inspect, keyed by parser.EvalSetupTools.
 var evalSetupRepairs = map[string]string{
 	"ssh-agent": "Run the command as the agent's child instead: ssh-agent <command>, " +
 		"or ssh-agent bash -c 'ssh-add && <command>' when it needs a key " +
@@ -385,9 +420,9 @@ var evalSetupRepairs = map[string]string{
 	"conda":  "Run the command in the environment instead: conda run -n <env> <command>",
 	"brew": "Call the program by its path instead: <prefix>/bin/<program>, " +
 		"where brew --prefix prints <prefix>",
-	"starship": "Drop the eval: starship init only sets up the interactive prompt, " +
+	"starship": "Drop it: starship init only sets up the interactive prompt, " +
 		"which a single command does not need",
-	"zoxide": "Drop the eval: run zoxide query <keywords> to print the directory, " +
+	"zoxide": "Drop it: run zoxide query <keywords> to print the directory, " +
 		"then cd to that path literally",
 	"fnm": "Run the command with fnm's Node instead: fnm exec --using=<version> <command>",
 }

@@ -59,7 +59,11 @@ type astWalker struct {
 	aliases map[string]string
 	funcs   map[string]string
 	// scriptFiles holds the content of process substitutions by stand-in path.
-	scriptFiles map[string]string
+	scriptFiles     map[string]string
+	pipedByCall     map[*syntax.CallExpr]string
+	untrustedByCall map[*syntax.CallExpr]string
+	stdinFed        bool
+	stdinReplaced   bool
 	// state is shared by every walker of one parse.
 	state *parseState
 	// expanding holds the aliases, functions and git aliases being expanded
@@ -124,7 +128,10 @@ type parseState struct {
 	expandedWords map[string]bool
 	// evalSetups names the setup tool whose output an eval call runs, by
 	// the call's seq.
-	evalSetups map[int]string
+	evalSetups     map[int]string
+	unseenSubsts   map[string]string
+	pipedStdin     map[int]string
+	untrustedStdin map[int]string
 	// distinct holds every distinct command recorded so far, so a pass that
 	// confirms a script's repeat can tell whether it found anything new.
 	distinct map[string]bool
@@ -181,6 +188,8 @@ func (w *astWalker) visit(node syntax.Node) bool {
 		w.extractPipedStdin(n)
 	case *syntax.CallExpr:
 		w.extractCommand(n)
+	case *syntax.ProcSubst:
+		w.markOutputSubst(n)
 	case *syntax.FuncDecl:
 		// The body runs only when the function is called, and each call is
 		// followed with its arguments, so it is not walked here.
@@ -197,6 +206,7 @@ func (w *astWalker) visit(node syntax.Node) bool {
 		}
 	case *syntax.Stmt:
 		w.extractRedirect(n)
+		w.noteStdinRedirects(n)
 
 		if form := numericGlobQualifier(n); form != "" {
 			w.opaque(OpacityZshGlobQualifier, form, "")
@@ -228,7 +238,8 @@ func (w *astWalker) recordStdin(call *syntax.CallExpr, content string, text Shel
 
 // extractPipedStdin handles "producer | consumer" pipelines, capturing the
 // producer's literal output (echo/printf) as the consumer's stdin. This lets
-// validators inspect messages fed via "git commit -F -".
+// validators inspect messages fed via "git commit -F -". A consumer whose
+// stdin is not captured is marked as reading a pipe.
 func (w *astWalker) extractPipedStdin(bin *syntax.BinaryCmd) {
 	if bin.Op != syntax.Pipe && bin.Op != syntax.PipeAll {
 		return
@@ -237,34 +248,54 @@ func (w *astWalker) extractPipedStdin(bin *syntax.BinaryCmd) {
 	producer := callExprOf(bin.X)
 	consumer := callExprOf(bin.Y)
 
-	if producer == nil || consumer == nil {
+	if consumer != nil && producer != nil && w.capturePipedStdin(bin.X, producer, consumer) {
 		return
 	}
 
+	w.markPiped(bin.Y, w.knownSetupTool([]*syntax.Stmt{bin.X}))
+}
+
+// capturePipedStdin records what a simple producer writes to a simple
+// consumer, reporting whether it could. cat passes on a heredoc or a file
+// unchanged, so "cat <<EOF | bash" and "cat x.sh | bash" hand bash that
+// script.
+func (w *astWalker) capturePipedStdin(
+	stmt *syntax.Stmt,
+	producer, consumer *syntax.CallExpr,
+) bool {
 	if content, ok := literalCommandOutput(producer); ok {
 		w.recordStdin(consumer, content, ShellText{Parts: []TextPart{{Text: content}}})
 
-		return
+		return true
 	}
 
-	// cat passes on a heredoc or a file unchanged, so "cat <<EOF | bash" and
-	// "cat x.sh | bash" hand bash that script.
 	if !isCommand(producer, "cat") {
-		return
+		return false
 	}
 
-	info := collectRedirs(bin.X)
+	info := collectRedirs(stmt)
 
 	switch {
 	case info.hasHeredoc && copiesStdinVerbatim(producer):
 		w.recordStdin(consumer, info.heredocContent, catText(info.heredocText))
+
+		if stmtHeredocExpands(stmt) {
+			w.setUntrusted(consumer, "")
+		}
 	case info.inputPath != "" && copiesStdinVerbatim(producer):
 		w.stdinFileByCall[consumer] = info.inputPath
 	case len(producer.Args) == 2 && isLiteralWord(producer.Args[1]):
-		if file := wordToString(producer.Args[1]); file != "-" && !strings.HasPrefix(file, "-") {
-			w.stdinFileByCall[consumer] = file
+		file := wordToString(producer.Args[1])
+		if file == "-" || strings.HasPrefix(file, "-") {
+			return false
 		}
+
+		w.stdinFileByCall[consumer] = file
+	default:
+		return false
 	}
+
+	return true
 }
 
 // isCommand reports whether call runs the named program.
@@ -570,6 +601,7 @@ func (w *astWalker) extractCommand(call *syntax.CallExpr) {
 
 	seq := w.state.nextSeq()
 	w.noteEvalSetup(call, seq)
+	w.notePiped(call, seq)
 
 	w.record(Command{
 		Name: name,
