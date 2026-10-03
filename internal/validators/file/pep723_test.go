@@ -186,6 +186,21 @@ var _ = Describe("AICommentValidator PEP 723 metadata", func() {
 			Expect(flaggedLines(sv.Validate(context.Background(), ctx))).To(BeEmpty())
 		})
 
+		It("flags a second block added far below the first", func() {
+			ctx.ToolInput.FilePath = writeSource(
+				pep723Script + strings.Repeat("x = 1\n", 300) + "y = 2\n",
+			)
+			ctx.ToolInput.OldString = "y = 2"
+			ctx.ToolInput.NewString = "# /// script\n# sum the values\n# ///\ny = 2"
+			Expect(flaggedLines(sv.Validate(context.Background(), ctx))).To(Equal([]int{1, 2, 3}))
+		})
+
+		It("flags a block in a patch-style Edit to a file that has one", func() {
+			ctx.ToolInput.FilePath = writeSource(pep723Script)
+			ctx.ToolInput.NewString = "# /// script\n# sum the values\n# ///"
+			Expect(flaggedLines(sv.Validate(context.Background(), ctx))).To(Equal([]int{1, 2, 3}))
+		})
+
 		It("exempts a block in a patch-style Edit with no old_string", func() {
 			ctx.ToolInput.FilePath = writeSource("import sys\n")
 			ctx.ToolInput.NewString = "# /// script\n# dependencies = []\n# ///"

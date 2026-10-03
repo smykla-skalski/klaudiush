@@ -2,6 +2,7 @@ package file
 
 import (
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -16,11 +17,7 @@ const (
 )
 
 // pep723Lines reports which of lines, scanned from state, belong to the
-// first well-formed PEP 723 script block; the spec allows only one. As in the
-// spec's reference regex, a block opens with "# /// script", holds at least one line that is "#" or
-// "# ...", and closes on the last "# ///" of that unbroken run of comment
-// lines. Every line must be a top-level comment starting in column 0, so an
-// unterminated block, or one broken by code, exempts nothing.
+// first well-formed PEP 723 script block (see pep723Block).
 func pep723Lines(lines []string, state stringState, scan commentScan) []bool {
 	topLevel := make([]bool, len(lines))
 
@@ -33,6 +30,17 @@ func pep723Lines(lines []string, state stringState, scan commentScan) []bool {
 		topLevel[i] = idx == 0 && start == stateCode
 	}
 
+	return pep723Block(lines, topLevel)
+}
+
+// pep723Block marks the first well-formed PEP 723 script block in lines; the
+// spec allows only one. As in the spec's reference regex, a block opens with
+// "# /// script", holds at least one line that is "#" or "# ...", and closes
+// on the last "# ///" of that unbroken run of comment lines. topLevel says
+// which lines are comments starting in column 0 outside any string, and
+// every block line must be one, so an unterminated block, or one broken by
+// code, marks nothing.
+func pep723Block(lines []string, topLevel []bool) []bool {
 	inBlock := make([]bool, len(lines))
 
 	for i := range lines {
@@ -60,6 +68,17 @@ func pep723Lines(lines []string, state stringState, scan commentScan) []bool {
 	}
 
 	return inBlock
+}
+
+// lastMarked returns the index of the last true entry, or -1.
+func lastMarked(marks []bool) int {
+	for i, mark := range slices.Backward(marks) {
+		if mark {
+			return i
+		}
+	}
+
+	return -1
 }
 
 func trimCR(line string) string {

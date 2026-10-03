@@ -375,7 +375,7 @@ func findLeadViolations(
 // around it, so a line edited inside an existing block is still recognised.
 func pep723Metadata(lines, docLines []string, scan commentScan, lead editLead) []bool {
 	inBlock := make([]bool, len(lines))
-	if !scan.syntax.python {
+	if !scan.syntax.python || scan.metadataTaken || lead.metadataAbove {
 		return inBlock
 	}
 

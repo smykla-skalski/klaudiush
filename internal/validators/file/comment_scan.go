@@ -467,23 +467,31 @@ func endPythonLine(state stringState) stringState {
 // syntax, the leads it is scanned from (none means once from code), and
 // whether triple-quoted state is dropped at each line break because the
 // payload's lines are not contiguous in the file.
+//
+// metadataTaken is set when an Edit with no old_string targets a file that
+// already holds a PEP 723 script block, so the payload's block cannot be the
+// file's only one.
 type commentScan struct {
 	syntax          langSyntax
 	leads           []editLead
 	lineLocalTriple bool
+	metadataTaken   bool
 }
 
 // editLead is one place an Edit's new_string lands: the multi-line string
 // state its line starts in, the file text before it on that line, and the
 // file text after it, only used to find the declaration a comment documents.
 // before holds the file lines above it, starting in beforeState, only used to
-// find a PEP 723 metadata block the Edit lands in.
+// find a PEP 723 metadata block the Edit lands in; metadataAbove is set when
+// the file's script block ends above before, so none the Edit adds is the
+// first.
 type editLead struct {
-	state       stringState
-	prefix      string
-	suffix      string
-	before      []string
-	beforeState stringState
+	state         stringState
+	prefix        string
+	suffix        string
+	before        []string
+	beforeState   stringState
+	metadataAbove bool
 }
 
 // lineStart returns the state the next line starts in after a line ended in
@@ -524,15 +532,8 @@ func newCommentScan(hookCtx *hook.Context) commentScan {
 		}
 	}
 
-	if hookCtx.ToolInput.OldString == "" {
-		scan.lineLocalTriple = true
-
-		if !detectShebang {
-			return scan
-		}
-	}
-
-	if scan.syntax == (langSyntax{}) && !detectShebang {
+	scan.lineLocalTriple = hookCtx.ToolInput.OldString == ""
+	if !needsSource(scan.syntax, detectShebang, scan.lineLocalTriple) {
 		return scan
 	}
 
@@ -552,12 +553,39 @@ func newCommentScan(hookCtx *hook.Context) commentScan {
 
 	old := strings.ReplaceAll(hookCtx.ToolInput.OldString, "\r\n", "\n")
 	if old == "" {
+		scan.metadataTaken = hasMetadata(original, scan.syntax)
+
 		return scan
 	}
 
 	scan.leads = editLeads(original, old, scan.syntax, toolEdits(hookCtx)[0].ReplaceAll)
 
 	return scan
+}
+
+// needsSource reports whether an Edit reads the file on disk: to detect a
+// shebang, to find its start state, or, with no old_string, to find a PEP 723
+// block already in a Python file.
+func needsSource(syntax langSyntax, detectShebang, noOldString bool) bool {
+	switch {
+	case detectShebang:
+		return true
+	case noOldString:
+		return syntax.python
+	default:
+		return syntax != (langSyntax{})
+	}
+}
+
+// hasMetadata reports whether a Python source holds a PEP 723 script block.
+func hasMetadata(source string, syntax langSyntax) bool {
+	if !syntax.python {
+		return false
+	}
+
+	lines := strings.Split(source, "\n")
+
+	return lastMarked(pep723Lines(lines, stateCode, commentScan{syntax: syntax})) >= 0
 }
 
 // pythonShebang matches a first line that runs the file with Python,
@@ -606,12 +634,22 @@ func editLeads(content, old string, syntax langSyntax, all bool) []editLead {
 	lines := strings.Split(content, "\n")
 	lineStates := make([]stringState, len(lines))
 	lineOffsets := make([]int, len(lines))
+	topLevel := make([]bool, len(lines))
 
 	state, offset := stateCode, 0
+
 	for i, line := range lines {
+		var idx int
+
 		lineStates[i], lineOffsets[i] = state, offset
-		_, state = findCommentStart(line, state, syntax)
+		idx, state = findCommentStart(line, state, syntax)
+		topLevel[i] = idx == 0 && lineStates[i] == stateCode
 		offset += len(line) + 1
+	}
+
+	metadataEnd := -1
+	if syntax.python {
+		metadataEnd = lastMarked(pep723Block(lines, topLevel))
 	}
 
 	var leads []editLead
@@ -638,8 +676,9 @@ func editLeads(content, old string, syntax langSyntax, all bool) []editLead {
 				firstLines(content[from:], maxDocContextLines),
 				content[from:],
 			),
-			before:      lines[first:li],
-			beforeState: lineStates[first],
+			before:        lines[first:li],
+			beforeState:   lineStates[first],
+			metadataAbove: metadataEnd >= 0 && metadataEnd < first,
 		})
 
 		if !all {
