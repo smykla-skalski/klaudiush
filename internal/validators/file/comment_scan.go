@@ -259,8 +259,8 @@ const (
 	pyKindMask  byte = 0xF0
 )
 
-// maxPythonDepth bounds the frame stack. Deeper openers are ignored, which
-// leaves the scanner in code, where comments are still found.
+// maxPythonDepth bounds the frame stack. An opener past it resets the
+// scanner to code, where comments are still found and closers pop nothing.
 const maxPythonDepth = 64
 
 func isPyString(frame byte) bool { return frame&pyKindMask == pyFrame }
@@ -275,7 +275,7 @@ func pyTop(stack []byte) byte {
 
 func pyPush(stack []byte, frame byte) []byte {
 	if len(stack) >= maxPythonDepth {
-		return stack
+		return stack[:0]
 	}
 
 	return append(stack, frame)
@@ -541,11 +541,15 @@ func shebangSyntax(text string) langSyntax {
 	return langSyntax{}
 }
 
-// readRegularFile reads path when it is a regular file; a FIFO or device would
-// block or never end.
+// maxEditSourceBytes bounds the file an Edit reads to find its start state;
+// a larger file is scanned from code.
+const maxEditSourceBytes = 4 << 20
+
+// readRegularFile reads path when it is a regular file of at most
+// maxEditSourceBytes; a FIFO or device would block or never end.
 func readRegularFile(path string) ([]byte, bool) {
 	info, err := os.Stat(path)
-	if err != nil || !info.Mode().IsRegular() {
+	if err != nil || !info.Mode().IsRegular() || info.Size() > maxEditSourceBytes {
 		return nil, false
 	}
 

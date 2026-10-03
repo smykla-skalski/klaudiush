@@ -570,6 +570,23 @@ var _ = Describe("AICommentValidator multi-line string literals", func() {
 			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeTrue())
 		})
 
+		It("scans from code state when the file is too large to read", func() {
+			ctx.ToolInput.FilePath = writeSource(
+				"BODY = \"\"\"\n## Old\n" + strings.Repeat("text\n", 1<<20) + "\"\"\"\n",
+			)
+			ctx.ToolInput.OldString = "## Old"
+			ctx.ToolInput.NewString = "## Problem"
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
+		})
+
+		It("finds a comment after f-string fields nested past the depth limit", func() {
+			ctx.ToolName = hook.ToolTypeWrite
+			ctx.ToolInput.FilePath = filepath.Join(dir, "deep.py")
+			ctx.ToolInput.Content = "s = f\"\"\"{ " + strings.Repeat("{ ", 70) +
+				strings.Repeat("} ", 70) + "\n    x  # add tax\n}\"\"\""
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
+		})
+
 		It("starts in the shared string state of matches on different lines", func() {
 			ctx.ToolInput.FilePath = writeSource(
 				"A = \"\"\"\nfoo\n\"\"\"\nB = \"\"\"\n  foo\n\"\"\"\n",
