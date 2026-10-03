@@ -39,6 +39,7 @@ type astWalker struct {
 	loopCalls   map[*syntax.CallExpr]bool
 	inLoop      bool
 	outerLoop   bool
+	distrust    bool
 	// depth counts the launchers, scripts and aliases that led here.
 	depth int
 	// resolver answers what the command text cannot: environment, script

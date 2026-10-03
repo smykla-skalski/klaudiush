@@ -214,6 +214,12 @@ var _ = Describe("Unresolved eval and command words", func() {
 			opacity("git", parser.DetailWordVariable)),
 		Entry("sourced process substitution", `x=status; v=x; source <(echo "$v=commit"); git $x`,
 			opacity("git", parser.DetailWordVariable)),
+		Entry("new shell with BASH_ENV", `x=status; BASH_ENV=./g bash -c 'git $x'`,
+			opacity("git", parser.DetailWordVariable, "bash")),
+		Entry("exported, then a new shell", `export x=status; env BASH_ENV=./g bash -c 'git $x'`,
+			opacity("git", parser.DetailWordVariable, "env", "bash")),
+		Entry("environment value in a new shell", `bash -c 'git $SUB'`,
+			opacity("git", parser.DetailWordVariable, "bash")),
 	)
 
 	DescribeTable("keeps a flag with a substituted value from taking the next argument",

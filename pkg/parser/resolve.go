@@ -850,6 +850,7 @@ func (w *astWalker) walkScript(script string, parent Command, depth int, sw scri
 
 	child := w.child(parent.WorkingDirectory, depth)
 	child.literal = sw.literal
+	child.distrust = w.distrust || !runsInShell(parent, sw)
 
 	if sw.name != "" {
 		child.expanding[sw.name] = true

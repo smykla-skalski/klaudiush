@@ -202,7 +202,8 @@ func (w *astWalker) resolveWord(word string) (string, bool) {
 	known := true
 
 	expanded := expandVars(word, func(name string) (string, bool) {
-		if w.inLoop || w.state.untrusted || w.state.dynamicVars[name] || w.unknownVars[name] {
+		if w.inLoop || w.distrust || w.state.untrusted || w.state.dynamicVars[name] ||
+			w.unknownVars[name] {
 			known = false
 
 			return "", false
@@ -410,6 +411,25 @@ var mapfiles = nameSet("mapfile readarray")
 func callbackFlag(arg string) bool {
 	return strings.HasPrefix(arg, "-") && !strings.HasPrefix(arg, "--") &&
 		strings.Contains(arg, "C")
+}
+
+// sameShellRunners run a command line in the current shell, which sees the
+// variables as the parser tracked them. Any other runner starts a new
+// process, which sees only exported variables and may first source a file
+// named by BASH_ENV or ENV, so no variable resolves inside it.
+var sameShellRunners = nameSet(strings.Join(
+	[]string{evalBuiltin, sourceBuiltin, dotBuiltin, "trap"}, " ",
+))
+
+// runsInShell reports whether the script parent runs shares its shell: eval,
+// source, a trap, or a same-line alias or function (not a git or gh alias).
+func runsInShell(parent Command, sw scriptWalk) bool {
+	if sameShellRunners[parent.Name] {
+		return true
+	}
+
+	return sw.name != "" && !strings.HasPrefix(sw.name, "git:") &&
+		!strings.HasPrefix(sw.name, "gh:")
 }
 
 // forgetDeclared forgets every variable a declaration run as a command sets,
