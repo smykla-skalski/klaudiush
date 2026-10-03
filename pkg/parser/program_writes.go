@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"unicode/utf8"
 )
 
 // programWrite is what one command writes: the paths it names, and whether
@@ -17,11 +18,13 @@ type programWrite struct {
 // optionSpec says which options of a program take a value: short ones
 // from the next word or the rest of their cluster, attached ones only from
 // the rest of their cluster (sed -i.bak), long ones from "=" or the next
-// word. abbrev allows GNU-style unique prefixes of long options.
+// word. flags are long options without a value. abbrev allows GNU-style
+// unique prefixes of the long options and flags.
 type optionSpec struct {
 	short    string
 	attached string
 	long     string
+	flags    string
 	abbrev   bool
 }
 
@@ -65,13 +68,14 @@ func scanLong(args []string, i int, spec optionSpec, onOpt func(name, value stri
 
 // longName resolves an abbreviated long option to the one it stands for.
 func (spec optionSpec) longName(name string) string {
-	if !spec.abbrev || slices.Contains(strings.Fields(spec.long), name) {
+	known := strings.Fields(spec.long + " " + spec.flags)
+	if !spec.abbrev || slices.Contains(known, name) {
 		return name
 	}
 
 	match := ""
 
-	for long := range strings.FieldsSeq(spec.long) {
+	for _, long := range known {
 		if strings.HasPrefix(long, name) {
 			if match != "" {
 				return name
@@ -93,8 +97,10 @@ func (spec optionSpec) longName(name string) string {
 func scanShort(args []string, i int, spec optionSpec, onOpt func(name, value string)) int {
 	cluster := args[i][1:]
 
-	for j, c := range cluster {
-		rest := cluster[j+len(string(c)):]
+	for j := 0; j < len(cluster); {
+		c, size := utf8.DecodeRuneInString(cluster[j:])
+		j += size
+		rest := cluster[j:]
 
 		switch {
 		case strings.ContainsRune(spec.attached, c):
@@ -120,20 +126,32 @@ func scanShort(args []string, i int, spec optionSpec, onOpt func(name, value str
 
 var (
 	copySpec = optionSpec{
-		short:  "St",
-		long:   "--suffix --target-directory",
+		short: "St",
+		long:  "--suffix --target-directory",
+		flags: `--recursive --force --interactive --no-clobber --link --symbolic-link
+			--parents --update --verbose --archive --no-target-directory
+			--strip-trailing-slashes --dereference --no-dereference --relative --logical
+			--physical`,
 		abbrev: true,
 	}
 	installSpec = optionSpec{
-		short:  "gmoSt",
-		long:   "--group --mode --owner --suffix --target-directory --strip-program",
+		short: "gmoSt",
+		long:  "--group --mode --owner --suffix --target-directory --strip-program",
+		flags: `--strip --directory --compare --preserve-timestamps --verbose
+			--no-target-directory --preserve-context`,
 		abbrev: true,
 	}
 	sedSpec = optionSpec{
 		short:    "efl",
 		attached: "iI",
 		long:     "--expression --file --line-length",
-		abbrev:   true,
+		flags: `--in-place --quiet --silent --regexp-extended --separate --null-data
+			--posix --sandbox --debug --unbuffered --follow-symlinks`,
+		abbrev: true,
+	}
+	perlSpec = optionSpec{
+		short:    "eE",
+		attached: "iIMmdDxlC0F",
 	}
 	curlSpec = optionSpec{
 		short: "AbcCdDeEFHKmoPQrtTuUwxXyYz",
@@ -141,7 +159,22 @@ var (
 			--etag-save --stderr --output-dir --config --hsts --alt-svc --data --data-raw
 			--data-binary --data-urlencode --header --user --request --user-agent --referer
 			--cookie --form --upload-file --write-out --proxy --range --max-time
-			--connect-timeout --url --cacert --cert --key --retry`,
+			--connect-timeout --url --cacert --cert --key --retry --json --resolve
+			--connect-to --form-string --data-ascii --oauth2-bearer --variable`,
+	}
+	wgetSpec = optionSpec{
+		short: "OoaPeUtTwQARDIXlBi",
+		long: `--output-document --output-file --append-output --directory-prefix
+			--user-agent --tries --timeout --wait --input-file --header --post-data
+			--post-file --user --password --level --accept --reject --domains`,
+		flags:  "--recursive --mirror --content-disposition --page-requisites",
+		abbrev: true,
+	}
+	rsyncSpec = optionSpec{
+		short: "eTBfM",
+		long: `--rsh --exclude --include --exclude-from --include-from --files-from
+			--filter --backup-dir --suffix --chmod --temp-dir --partial-dir --log-file
+			--compare-dest --copy-dest --link-dest --rsync-path`,
 	}
 )
 
@@ -151,10 +184,17 @@ var (
 	makeDirOpts     = nameSet("-d --directory")
 	sedInPlaceOpts  = nameSet("-i -I --in-place")
 	sedScriptOpts   = nameSet("-e -f --expression --file")
+	perlScriptOpts  = nameSet("-e -E")
 	curlRemoteOpts  = nameSet("-O --remote-name --remote-name-all")
 	curlUnknownOpts = nameSet("-J --remote-header-name -K --config")
 	curlDirOpts     = nameSet("--output-dir")
 	curlURLOpts     = nameSet("--url")
+	wgetOutputOpts  = nameSet("-O --output-document -o --output-file -a --append-output")
+	wgetDirOpts     = nameSet("-P --directory-prefix")
+	wgetUnknownOpts = nameSet(
+		"-r --recursive -m --mirror -i --input-file --content-disposition -p --page-requisites",
+	)
+	curlDirOutputOps = nameSet("-o --output")
 )
 
 // minDestOperands is the fewest operands of a copy that names a destination.
@@ -175,24 +215,30 @@ func writesOf(cmd Command) programWrite {
 		return programWrite{op: WriteOpCopy, targets: destination(cmd.Args, copySpec)}
 	case "mv", "move":
 		return programWrite{op: WriteOpMove, targets: destination(cmd.Args, copySpec)}
+	case "rsync":
+		return programWrite{op: WriteOpCopy, targets: destination(cmd.Args, rsyncSpec)}
 	case "ln":
 		return programWrite{op: WriteOpLink, targets: linkDestination(cmd.Args)}
 	case "install":
 		return programWrite{op: WriteOpOutput, targets: installDestination(cmd.Args)}
 	case "dd":
 		return programWrite{op: WriteOpOutput, targets: ddOutputs(cmd.Args)}
-	case "sed":
-		return programWrite{op: WriteOpEdit, targets: sedInPlaceFiles(cmd.Args)}
+	case "sed", "gsed":
+		return programWrite{
+			op:      WriteOpEdit,
+			targets: inPlaceFiles(cmd.Args, sedSpec, sedScriptOpts),
+		}
+	case "perl":
+		return programWrite{
+			op:      WriteOpEdit,
+			targets: inPlaceFiles(cmd.Args, perlSpec, perlScriptOpts),
+		}
 	case "curl":
 		return curlWrites(cmd.Args)
-	case "unzip":
-		return programWrite{op: WriteOpUnpack, unknown: unzipExtracts(cmd.Args)}
-	case "patch":
-		return programWrite{op: WriteOpUnpack, unknown: patchApplies(cmd.Args)}
-	case gitProgram:
-		return programWrite{op: WriteOpUnpack, unknown: gitRewritesTree(cmd.Args)}
+	case "wget":
+		return wgetWrites(cmd.Args)
 	default:
-		return programWrite{}
+		return treeWritesOf(cmd)
 	}
 }
 
@@ -269,15 +315,15 @@ func ddOutputs(args []string) []string {
 	return outputs
 }
 
-// sedInPlaceFiles returns the files sed -i rewrites: every operand after
-// the script. BSD sed takes the word after -i as a backup suffix, which is
-// read here as an operand, so the file is still among the targets.
-func sedInPlaceFiles(args []string) []string {
+// inPlaceFiles returns the files sed -i or perl -i rewrites: every operand
+// after the script. BSD sed takes the word after -i as a backup suffix,
+// which is read here as an operand, so the file is still among the targets.
+func inPlaceFiles(args []string, spec optionSpec, scriptOpts map[string]bool) []string {
 	inPlace, scripted := false, false
 
-	operands := scanArgs(args, sedSpec, func(name, _ string) {
+	operands := scanArgs(args, spec, func(name, _ string) {
 		inPlace = inPlace || sedInPlaceOpts[name]
-		scripted = scripted || sedScriptOpts[name]
+		scripted = scripted || scriptOpts[name]
 	})
 
 	if !inPlace {
@@ -298,10 +344,12 @@ func curlWrites(args []string) programWrite {
 	write := programWrite{op: WriteOpOutput}
 	remote, dir := false, ""
 
-	var urls []string
+	var urls, named []string
 
 	operands := scanArgs(args, curlSpec, func(name, value string) {
 		switch {
+		case curlDirOutputOps[name] && value != "-":
+			named = append(named, value)
 		case curlOutputs[name] && value != "-":
 			write.targets = append(write.targets, value)
 		case curlRemoteOpts[name]:
@@ -316,31 +364,82 @@ func curlWrites(args []string) programWrite {
 	})
 
 	if remote {
-		for _, url := range append(urls, operands...) {
-			name, ok := remoteName(url)
-			if !ok {
-				write.unknown = true
-
-				continue
-			}
-
-			write.targets = append(write.targets, name)
-		}
+		named = append(named, remoteNames(append(urls, operands...), &write)...)
 	}
 
-	if dir != "" {
-		for i, target := range write.targets {
-			if !filepath.IsAbs(target) {
-				write.targets[i] = filepath.Join(dir, target)
+	write.targets = append(write.targets, underDir(dir, named)...)
+
+	return write
+}
+
+// wgetWrites returns the files wget writes: -O, else each URL's own name.
+// A recursive or listed download writes files the command does not name.
+func wgetWrites(args []string) programWrite {
+	write := programWrite{op: WriteOpOutput}
+	dir, document := "", false
+
+	operands := scanArgs(args, wgetSpec, func(name, value string) {
+		switch {
+		case wgetOutputOpts[name]:
+			document = document || name == "-O" || name == "--output-document"
+
+			if value != "-" {
+				write.targets = append(write.targets, value)
 			}
+		case wgetDirOpts[name]:
+			dir = value
+		case wgetUnknownOpts[name]:
+			write.unknown = true
 		}
+	})
+
+	if !document {
+		write.targets = append(write.targets, underDir(dir, remoteNames(operands, &write))...)
 	}
 
 	return write
 }
 
-// remoteName returns the file name curl -O saves url under: the last
-// segment of its path.
+// remoteNames returns the names downloads of urls are saved under, marking
+// write unknown for a URL without one.
+func remoteNames(urls []string, write *programWrite) []string {
+	names := make([]string, 0, len(urls))
+
+	for _, url := range urls {
+		name, ok := remoteName(url)
+		if !ok {
+			write.unknown = true
+
+			continue
+		}
+
+		names = append(names, name)
+	}
+
+	return names
+}
+
+// underDir joins relative paths onto dir.
+func underDir(dir string, paths []string) []string {
+	if dir == "" {
+		return paths
+	}
+
+	joined := make([]string, 0, len(paths))
+
+	for _, path := range paths {
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(dir, path)
+		}
+
+		joined = append(joined, path)
+	}
+
+	return joined
+}
+
+// remoteName returns the file name a download of url is saved under: the
+// last segment of its path.
 func remoteName(url string) (string, bool) {
 	if _, rest, found := strings.Cut(url, "://"); found {
 		url = rest
@@ -355,68 +454,9 @@ func remoteName(url string) (string, bool) {
 	}
 
 	name := url[i+1:]
-	if name == "" || name == "." || name == ".." || HasUnresolvedVars(name) || marked(name) {
+	if name == "" || name == "." || name == parentDir || HasUnresolvedVars(name) || marked(name) {
 		return "", false
 	}
 
 	return name, true
-}
-
-// unzipReadOnly are unzip options that list, test or print an archive
-// instead of extracting it.
-const unzipReadOnly = "lptvzZ"
-
-// unzipExtracts reports unzip extracting an archive, which writes files the
-// command line does not name.
-func unzipExtracts(args []string) bool {
-	operands := 0
-
-	for _, arg := range args {
-		switch {
-		case strings.HasPrefix(arg, "-") && arg != "-" && !strings.HasPrefix(arg, "--"):
-			if strings.ContainsAny(arg[1:], unzipReadOnly) {
-				return false
-			}
-		case strings.HasPrefix(arg, "--"):
-		default:
-			operands++
-		}
-	}
-
-	return operands > 0
-}
-
-// patchApplies reports patch changing files, which are named in the patch
-// rather than on the command line.
-func patchApplies(args []string) bool {
-	return !slices.ContainsFunc(args, func(arg string) bool {
-		return arg == "--dry-run" || arg == "--check" || arg == "--help" || arg == "--version"
-	})
-}
-
-// stashWrites are the git stash subcommands that change the work tree;
-// stash without one pushes.
-var stashWrites = nameSet("push save pop apply branch")
-
-// gitRewritesTree reports a git command that changes work tree files it
-// does not name: reset --hard, --merge or --keep, and stash push, pop,
-// apply or branch.
-func gitRewritesTree(args []string) bool {
-	idx := gitSubcommandIndex(args)
-	if idx < 0 {
-		return false
-	}
-
-	rest := args[idx+1:]
-
-	switch args[idx] {
-	case "reset":
-		return slices.ContainsFunc(rest, func(arg string) bool {
-			return arg == "--hard" || arg == "--merge" || arg == "--keep"
-		})
-	case "stash":
-		return len(rest) == 0 || strings.HasPrefix(rest[0], "-") || stashWrites[rest[0]]
-	default:
-		return false
-	}
 }

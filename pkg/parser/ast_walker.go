@@ -77,7 +77,8 @@ type astWalker struct {
 	// it tracks may be wrong.
 	dirComputed bool
 	// dirStack holds the directories pushd saved.
-	dirStack []string
+	dirStack        []string
+	dirStackUnknown []bool
 	// dirSynced records that a cd set PWD, which then no longer holds a
 	// value assigned on the line.
 	dirSynced bool
@@ -737,7 +738,7 @@ func (w *astWalker) trackShellState(cmd Command) {
 	switch cmd.Name {
 	case "shift":
 		w.trackPositional(cmd)
-	case "cd":
+	case cdBuiltin:
 		defer w.syncDirVars()()
 
 		w.moveDir(cmd)
@@ -745,12 +746,14 @@ func (w *astWalker) trackShellState(cmd Command) {
 		defer w.syncDirVars()()
 
 		w.dirStack = append(w.dirStack, w.currentDir)
+		w.dirStackUnknown = append(w.dirStackUnknown, w.dirUnknown)
 		w.moveDir(cmd)
 	case "popd":
 		defer w.syncDirVars()()
 
 		if n := len(w.dirStack); n > 0 {
 			w.currentDir, w.dirStack = w.dirStack[n-1], w.dirStack[:n-1]
+			w.dirUnknown, w.dirStackUnknown = w.dirStackUnknown[n-1], w.dirStackUnknown[:n-1]
 		} else {
 			w.dirUnknown = true
 		}
@@ -776,6 +779,7 @@ func (w *astWalker) changeDir(target string) {
 		w.currentDir, w.dirUnknown = "~", false
 	case target == "-" || HasUnresolvedVars(target):
 		w.dirUnknown = true
+	case w.dirUnknown && !filepath.IsAbs(target) && !strings.HasPrefix(target, "~"):
 	default:
 		w.currentDir, w.dirUnknown = resolvePath(w.currentDir, target), false
 	}
@@ -1264,7 +1268,7 @@ func (w *astWalker) extractFileWriteCommand(cmd, followed Command) {
 		Vars:             cmd.Vars,
 	}
 
-	unknown := write.unknown
+	unknown := write.unknown || (placesIntoDirs[write.op] && splitsSubstitution(followed))
 
 	for _, target := range write.targets {
 		path := strings.ReplaceAll(target, unresolvedWord, "")

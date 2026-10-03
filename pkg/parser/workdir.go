@@ -9,6 +9,8 @@ import (
 const (
 	pwdVar    = "PWD"
 	oldPWDVar = "OLDPWD"
+	cdBuiltin = "cd"
+	parentDir = ".."
 )
 
 // moveDir follows cd or pushd. A directory built from command output, or

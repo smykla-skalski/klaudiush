@@ -12,7 +12,7 @@ import (
 // by running the lookup the way the shell would. It returns "" for
 // anything else, which leaves a computed directory unknown.
 func (w *astWalker) lookupDir(name string, words []*syntax.Word) string {
-	if name != "cd" && name != "pushd" {
+	if name != cdBuiltin && name != "pushd" {
 		return ""
 	}
 

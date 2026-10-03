@@ -138,6 +138,50 @@ var _ = Describe("Writes by programs", func() {
 		Entry("git stash pop", "git -C . stash pop", parser.WriteOpUnpack, nil, true),
 		Entry("git stash list", "git stash list", parser.WriteOpNone, nil, false),
 		Entry("git status", "git status", parser.WriteOpNone, nil, false),
+		Entry("tar x", "tar xzf a.tgz", parser.WriteOpUnpack, nil, true),
+		Entry("tar -x", "tar -C d -xf a.tar", parser.WriteOpUnpack, nil, true),
+		Entry("tar --extract", "tar --extract -f a.tar", parser.WriteOpUnpack, nil, true),
+		Entry("tar -c", "tar -cf a.tar d", parser.WriteOpNone, nil, false),
+		Entry("git apply", "git apply x.patch", parser.WriteOpUnpack, nil, true),
+		Entry("git apply --check", "git apply --check x.patch", parser.WriteOpNone, nil, false),
+		Entry("git apply --cached --index", "git apply --cached --index x", parser.WriteOpUnpack,
+			nil, true),
+		Entry("git checkout -b", "git checkout -b feat", parser.WriteOpNone, nil, false),
+		Entry("git switch -c from a start", "git switch -c feat origin/main", parser.WriteOpUnpack,
+			nil, true),
+		Entry(
+			"git checkout a path",
+			"git checkout evil -- run.sh",
+			parser.WriteOpUnpack,
+			nil,
+			true,
+		),
+		Entry("git restore --staged", "git restore --staged f", parser.WriteOpNone, nil, false),
+		Entry("git restore", "git restore --source=evil f", parser.WriteOpUnpack, nil, true),
+		Entry("git restore -SW", "git restore -S -W f", parser.WriteOpUnpack, nil, true),
+		Entry("git pull", "git pull", parser.WriteOpUnpack, nil, true),
+		Entry("perl -pi", "perl -pi -e 's/a/b/' f", parser.WriteOpEdit, []string{"f"}, false),
+		Entry("perl without -i", "perl -Mstrict -e 'print 1' f", parser.WriteOpNone, nil, false),
+		Entry("gsed -i", "gsed -i 's/a/b/' f", parser.WriteOpEdit, []string{"f"}, false),
+		Entry("sed abbreviated --in-place", "sed --in s/a/b/ f", parser.WriteOpEdit,
+			[]string{"f"}, false),
+		Entry("wget -O", "wget -q -O f https://x/y", parser.WriteOpOutput, []string{"f"}, false),
+		Entry("wget -O -", "wget -O - https://x/y", parser.WriteOpNone, nil, false),
+		Entry("wget by URL name", "wget -P d https://x/a.sh", parser.WriteOpOutput,
+			[]string{"d/a.sh"}, false),
+		Entry("wget -r", "wget -r https://x/a/", parser.WriteOpOutput, nil, true),
+		Entry("rsync", "rsync -a -e ssh src/ dst", parser.WriteOpCopy, []string{"dst"}, false),
+		Entry("cp with a split substitution", "cp $(echo a b)", parser.WriteOpCopy, nil, true),
+		Entry("install --strip", "install --strip a b", parser.WriteOpOutput, []string{"b"}, false),
+		Entry("curl --output-dir only for -o", "curl --output-dir d -D h -o o https://x",
+			parser.WriteOpOutput, []string{"h", "d/o"}, false),
+		Entry("unzip -c", "unzip -c a.zip", parser.WriteOpNone, nil, false),
+		Entry("invalid UTF-8 in an option", `cp -$'\377' a b`, parser.WriteOpCopy,
+			[]string{"b"}, false),
+		Entry("invalid UTF-8 in a sed cluster", `sed -$'\303'i x f`, parser.WriteOpEdit,
+			[]string{"f"}, false),
+		Entry("invalid UTF-8 in a curl cluster", `curl -$'\377' https://x`, parser.WriteOpNone,
+			nil, false),
 	)
 
 	It("marks a partly substituted target dynamic", func() {
@@ -189,9 +233,18 @@ var _ = Describe("Writes by programs", func() {
 			parser.DetailScriptUnplacedWrite),
 		Entry("write after a computed cd", `cd "$(mktemp -d)" && echo x > a.sh; bash /s/a.sh`,
 			parser.DetailScriptUnplacedWrite),
+		Entry("relative cd after a computed cd", `cd "$(echo /e)" && cd sub && bash a.sh`,
+			parser.DetailScriptDirectory),
+		Entry("pushd and popd after a computed cd",
+			`cd "$(echo /e)" && pushd /tmp && popd && bash a.sh`, parser.DetailScriptDirectory),
+		Entry("redirect to a computed name", `echo x > "$(echo /s/a.sh)" && bash /s/a.sh`,
+			parser.DetailScriptUnplacedWrite),
+		Entry("git checkout of a path", "git checkout evil -- /s/a.sh && bash /s/a.sh",
+			parser.DetailScriptUnplacedWrite),
 	)
 
-	DescribeTable("still follows a script nothing on the line changes",
+	DescribeTable(
+		"still follows a script nothing on the line changes",
 		func(command string) {
 			Expect(parse(command).Truncated).To(BeFalse())
 		},
@@ -199,6 +252,12 @@ var _ = Describe("Writes by programs", func() {
 		Entry("sed without -i", "sed 's/hi/x/' /s/a.sh && bash /s/a.sh"),
 		Entry("copy elsewhere", "cp /tmp/a.sh /other && bash /s/a.sh"),
 		Entry("unzip -l", "unzip -l x.zip && bash /s/a.sh"),
+		Entry("its own redirect to a computed name", `bash /s/a.sh > "log-$(date +%s)"`),
+		Entry(
+			"its own redirect after a computed cd",
+			`cd "$(mktemp -d)" && bash /s/a.sh > out.log`,
+		),
+		Entry("git checkout -b", "git checkout -b feat && bash /s/a.sh"),
 	)
 })
 
