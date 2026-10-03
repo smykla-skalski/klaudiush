@@ -144,7 +144,7 @@ func ParseGitCommand(cmd Command) (*GitCommand, error) {
 	// First, parse global options and find the subcommand
 	subcommandIdx := parseGlobalOptions(cmd.Args, gitCmd)
 
-	if subcommandIdx >= len(cmd.Args) {
+	if subcommandIdx >= len(cmd.Args) || strings.TrimSpace(cmd.Args[subcommandIdx]) == "" {
 		return nil, ErrNoSubcommand
 	}
 

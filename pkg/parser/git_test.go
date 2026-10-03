@@ -31,6 +31,30 @@ var _ = Describe("GitCommand", func() {
 			})
 		})
 
+		DescribeTable("with blank subcommand",
+			func(args []string) {
+				_, err := parser.ParseGitCommand(parser.Command{Name: "git", Args: args})
+				Expect(err).To(MatchError(parser.ErrNoSubcommand))
+			},
+			Entry("empty", []string{""}),
+			Entry("space", []string{" "}),
+			Entry("tab", []string{"\t"}),
+			Entry("newline", []string{"\n"}),
+			Entry("after global option", []string{"--no-pager", "", "commit"}),
+			Entry("after -C value", []string{"-C", "/repo", " "}),
+		)
+
+		DescribeTable("with whitespace-padded program name",
+			func(name string) {
+				_, err := parser.ParseGitCommand(
+					parser.Command{Name: name, Args: []string{"commit"}},
+				)
+				Expect(err).To(MatchError(parser.ErrNotGitCommand))
+			},
+			Entry("trailing space", "git "),
+			Entry("trailing newline", "git\n"),
+		)
+
 		Context("with git commit command", func() {
 			It("parses basic commit", func() {
 				cmd := parser.Command{
