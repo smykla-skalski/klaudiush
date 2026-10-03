@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	. "github.com/onsi/ginkgo/v2"
@@ -198,7 +199,7 @@ var _ = Describe("opencode plugin API selection", func() {
 		DescribeTable("extracts the version",
 			func(stdout, want string) {
 				tools.EXPECT().IsAvailable("opencode").Return(true)
-				runner.EXPECT().Run(ctx, "opencode", "--version").
+				runner.EXPECT().Run(gomock.Any(), "opencode", "--version").
 					Return(execpkg.CommandResult{Stdout: stdout})
 
 				Expect(detect()).To(Equal(want))
@@ -210,7 +211,7 @@ var _ = Describe("opencode plugin API selection", func() {
 
 		It("reports a failing opencode", func() {
 			tools.EXPECT().IsAvailable("opencode").Return(true)
-			runner.EXPECT().Run(ctx, "opencode", "--version").
+			runner.EXPECT().Run(gomock.Any(), "opencode", "--version").
 				Return(execpkg.CommandResult{Err: errors.New("exit 1"), Stderr: "broken"})
 
 			_, err := detect()
@@ -219,7 +220,7 @@ var _ = Describe("opencode plugin API selection", func() {
 
 		It("reports output without a version", func() {
 			tools.EXPECT().IsAvailable("opencode").Return(true)
-			runner.EXPECT().Run(ctx, "opencode", "--version").
+			runner.EXPECT().Run(gomock.Any(), "opencode", "--version").
 				Return(execpkg.CommandResult{Stdout: "hello"})
 
 			_, err := detect()
@@ -228,7 +229,7 @@ var _ = Describe("opencode plugin API selection", func() {
 
 		It("takes the last version printed, after any banner", func() {
 			tools.EXPECT().IsAvailable("opencode").Return(true)
-			runner.EXPECT().Run(ctx, "opencode", "--version").
+			runner.EXPECT().Run(gomock.Any(), "opencode", "--version").
 				Return(execpkg.CommandResult{Stdout: "update 2.1.0 available\n2.0.19\n"})
 
 			Expect(detect()).To(Equal("2.0.19"))
@@ -244,7 +245,7 @@ var _ = Describe("opencode plugin API selection", func() {
 			Expect(os.WriteFile(executable, []byte(""), 0o700)).To(Succeed())
 
 			tools.EXPECT().IsAvailable("opencode").Return(false)
-			runner.EXPECT().Run(ctx, executable, "--version").
+			runner.EXPECT().Run(gomock.Any(), executable, "--version").
 				Return(execpkg.CommandResult{Stdout: "2.0.19\n"})
 
 			version, err := settings.NewOpenCodeVersionDetectorWith(
@@ -252,6 +253,24 @@ var _ = Describe("opencode plugin API selection", func() {
 			).Detect(ctx)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(version).To(Equal("2.0.19"))
+		})
+
+		It("gives up on an opencode that hangs", func() {
+			hanging := filepath.Join(GinkgoT().TempDir(), "opencode")
+			Expect(os.WriteFile(hanging, []byte("#!/bin/sh\nexec sleep 30\n"), 0o700)).
+				To(Succeed())
+
+			tools.EXPECT().IsAvailable("opencode").Return(false)
+
+			detector := settings.NewOpenCodeVersionDetectorWith(
+				tools, execpkg.NewCommandRunner(time.Hour), hanging,
+			).WithTimeout(200 * time.Millisecond)
+
+			started := time.Now()
+			_, err := detector.Detect(context.Background())
+
+			Expect(err).To(HaveOccurred())
+			Expect(time.Since(started)).To(BeNumerically("<", 10*time.Second))
 		})
 
 		It("is built from the real PATH by default", func() {

@@ -63,6 +63,7 @@ type CommandOpenCodeVersionDetector struct {
 	tools     execpkg.ToolChecker
 	runner    execpkg.CommandRunner
 	fallbacks []string
+	timeout   time.Duration
 }
 
 // NewOpenCodeVersionDetector creates a detector backed by the real PATH. It
@@ -89,7 +90,21 @@ func NewOpenCodeVersionDetectorWith(
 	runner execpkg.CommandRunner,
 	fallbacks ...string,
 ) *CommandOpenCodeVersionDetector {
-	return &CommandOpenCodeVersionDetector{tools: tools, runner: runner, fallbacks: fallbacks}
+	return &CommandOpenCodeVersionDetector{
+		tools:     tools,
+		runner:    runner,
+		fallbacks: fallbacks,
+		timeout:   openCodeVersionTimeout,
+	}
+}
+
+// WithTimeout bounds each `opencode --version` run.
+func (d *CommandOpenCodeVersionDetector) WithTimeout(
+	timeout time.Duration,
+) *CommandOpenCodeVersionDetector {
+	d.timeout = timeout
+
+	return d
 }
 
 // Detect runs `opencode --version` and extracts the version number.
@@ -98,6 +113,9 @@ func (d *CommandOpenCodeVersionDetector) Detect(ctx context.Context) (string, er
 	if binary == "" {
 		return "", ErrOpenCodeNotInstalled
 	}
+
+	ctx, cancel := context.WithTimeout(ctx, d.timeout)
+	defer cancel()
 
 	result := d.runner.Run(ctx, binary, "--version")
 	if result.Failed() {

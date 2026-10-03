@@ -140,6 +140,30 @@ function appendText(parts: unknown, text: string) {
 }
 
 /**
+ * Returns tool result content with a text part appended. 2.x result content is
+ * either a string or an array of parts, and may be absent.
+ */
+function withText(content: unknown, text: string): unknown {
+  if (!text) {
+    return content
+  }
+
+  if (Array.isArray(content)) {
+    return [...content, { type: "text", text }]
+  }
+
+  if (typeof content === "string" && content) {
+    return [{ type: "text", text: content }, { type: "text", text }]
+  }
+
+  if (content === undefined || content === null || content === "") {
+    return [{ type: "text", text }]
+  }
+
+  return content
+}
+
+/**
  * Refuses moving the session out of the directory this plugin instance
  * validates. After a move opencode starts a new instance bound to the target,
  * so klaudiush would resolve project config and protection from there and stop
@@ -241,7 +265,11 @@ async function setup(ctx: any) {
       const context = extraContext(resp)
 
       if (event.status === "completed") {
-        appendText(event.result?.content, context)
+        if (context && event.result && typeof event.result === "object") {
+          event.result.content = withText(event.result.content, context)
+        } else if (context) {
+          event.result = { content: withText(undefined, context) }
+        }
       } else if (context && typeof event.error?.message === "string") {
         event.error.message = event.error.message + "\n\n" + context
       }
