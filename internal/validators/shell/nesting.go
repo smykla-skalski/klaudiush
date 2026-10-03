@@ -315,6 +315,10 @@ func unresolvedWordFinding(o parser.Opacity) (message, required, repair string) 
 		return message, required, repair
 	}
 
+	if o.Operation == parser.ContainerExecOperation {
+		return containerExecFinding(o)
+	}
+
 	message = "the " + o.Operation + " command word " + strings.TrimPrefix(o.Detail, "it ")
 	required = "a literal " + o.Operation + " subcommand, or one from a variable " +
 		"assigned literally on the same line"
@@ -343,6 +347,24 @@ func programWordFinding(o parser.Opacity) (message, required, repair string) {
 	repair = programWordRepairs[o.Detail]
 	if repair == "" {
 		repair = "Write the program name or path literally instead of computing it"
+	}
+
+	return message, required, repair
+}
+
+// containerExecFinding explains a container exec whose container or an
+// option before it comes from a variable, command output or a glob.
+func containerExecFinding(o parser.Opacity) (message, required, repair string) {
+	message = "the exec container or an option before it " +
+		strings.TrimPrefix(o.Detail, "it ")
+	required = "a literal container and exec options, or ones from variables " +
+		"assigned literally on the same line"
+	repair = "Write the container name and exec options literally"
+
+	if o.Detail == parser.DetailEntrypointOptions {
+		required = "exec options klaudiush can read up to the container"
+		repair = "Attach option values with = (--opt=value), or drop options " +
+			"before the container"
 	}
 
 	return message, required, repair
