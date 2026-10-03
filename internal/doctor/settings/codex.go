@@ -140,9 +140,18 @@ func isCodexDispatcherHook(hook CodexHookCommandConfig, dispatcherPath string) b
 		return false
 	}
 
-	program := commandProgram(hook.Command)
+	return isDispatcherCommand(hook.Command, dispatcherPath)
+}
 
-	return program == dispatcherPath || filepath.Base(program) == filepath.Base(dispatcherPath)
+// isDispatcherCommand reports whether a hook command runs the dispatcher
+// binary itself. Matching on the program, not a substring, keeps a user hook
+// whose path or arguments merely mention klaudiush from being taken for the
+// dispatcher, which made install skip registering it.
+func isDispatcherCommand(command, dispatcherPath string) bool {
+	program := commandProgram(command)
+
+	return program != "" &&
+		(program == dispatcherPath || filepath.Base(program) == filepath.Base(dispatcherPath))
 }
 
 func commandProgram(command string) string {

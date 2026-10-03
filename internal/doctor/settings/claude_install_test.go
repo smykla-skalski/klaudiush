@@ -27,6 +27,42 @@ var _ = Describe("InstallClaudeDispatcher", func() {
 		return hooks
 	}
 
+	It("registers PreToolUse next to a user hook that only mentions klaudiush", func() {
+		path := filepath.Join(GinkgoT().TempDir(), "settings.json")
+		userHook := "/work/klaudiush-notes/log-hook.sh --quiet"
+		seed := `{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[` +
+			`{"type":"command","command":"` + userHook + `"},` +
+			`{"type":"command","command":"/opt/tools/notify --tag klaudiush"}]}]}}`
+		Expect(os.WriteFile(path, []byte(seed), 0o600)).To(Succeed())
+
+		parser := settings.NewSettingsParser(path)
+		Expect(parser.HasEventHookCommand(settings.ClaudeEventPreToolUse, binary)).To(BeFalse())
+		Expect(parser.IsDispatcherRegistered(binary)).To(BeFalse())
+
+		_, err := settings.InstallClaudeDispatcher(path, binary)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(parser.HasEventHookCommand(settings.ClaudeEventPreToolUse, binary)).To(BeTrue())
+
+		pre, ok := readHooks(path)[settings.ClaudeEventPreToolUse].([]any)
+		Expect(ok).To(BeTrue())
+		Expect(pre).To(HaveLen(2), "the user hook group is kept and klaudiush is added")
+
+		data, err := os.ReadFile(path)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(data)).To(ContainSubstring(userHook))
+	})
+
+	It("recognizes the dispatcher by program name with env assignments", func() {
+		path := filepath.Join(GinkgoT().TempDir(), "settings.json")
+		seed := `{"hooks":{"PreToolUse":[{"hooks":[{"type":"command",` +
+			`"command":"KLAUDIUSH_DEBUG=1 /home/u/bin/klaudiush --hook-type PreToolUse"}]}]}}`
+		Expect(os.WriteFile(path, []byte(seed), 0o600)).To(Succeed())
+
+		parser := settings.NewSettingsParser(path)
+		Expect(parser.HasEventHookCommand(settings.ClaudeEventPreToolUse, binary)).To(BeTrue())
+		Expect(parser.IsDispatcherRegistered(binary)).To(BeTrue())
+	})
+
 	It("registers failed tools next to the pre- and post-tool hooks", func() {
 		path := filepath.Join(GinkgoT().TempDir(), "settings.json")
 
