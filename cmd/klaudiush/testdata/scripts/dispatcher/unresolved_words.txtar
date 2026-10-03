@@ -1,0 +1,107 @@
+exec git init --initial-branch=main
+exec git config user.email "test@test.com"
+exec git config user.name "Test User"
+
+cp file.go staged.go
+exec git add staged.go
+
+stdin git-variable.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+stdout 'command word comes from a variable klaudiush cannot resolve'
+! stdout 'KLAUDIUSH_TEST_SECRET'
+
+stdin eval-variable.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+stdout 'eval runs a command line that comes from a variable'
+! stdout 'KLAUDIUSH_TEST_SECRET'
+
+stdin git-output.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+stdout 'comes from command output'
+
+stdin sudo-git-output.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+
+stdin gh-action.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+
+stdin eval-output.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+
+stdin padded-subcommand.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+! stdout 'SHELL002'
+
+stdin newline-subcommand.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+
+stdin git-assigned.json
+exec klaudiush --hook-type PreToolUse
+! stdout .
+
+stdin eval-literal.json
+exec klaudiush --hook-type PreToolUse
+! stdout .
+
+stdin commit-assigned.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+! stdout 'SHELL002'
+
+stdin global-option-output.json
+exec klaudiush --hook-type PreToolUse
+! stdout .
+
+-- file.go --
+package main
+
+-- git-variable.json --
+{"tool_name": "Bash", "tool_input": {"command": "git $KLAUDIUSH_TEST_SECRET"}}
+
+-- eval-variable.json --
+{"tool_name": "Bash", "tool_input": {"command": "eval \"$KLAUDIUSH_TEST_SECRET\""}}
+
+-- git-output.json --
+{"tool_name": "Bash", "tool_input": {"command": "git $(echo commit) -m x"}}
+
+-- sudo-git-output.json --
+{"tool_name": "Bash", "tool_input": {"command": "sudo git \"$(echo commit)\""}}
+
+-- gh-action.json --
+{"tool_name": "Bash", "tool_input": {"command": "gh pr $KLAUDIUSH_TEST_SECRET"}}
+
+-- eval-output.json --
+{"tool_name": "Bash", "tool_input": {"command": "eval \"$(echo git commit -m x)\""}}
+
+-- padded-subcommand.json --
+{"tool_name": "Bash", "tool_input": {"command": "git -c help.autocorrect=immediate 'commit ' -m 'bad title'"}}
+
+-- newline-subcommand.json --
+{"tool_name": "Bash", "tool_input": {"command": "git $'zz\\n' status"}}
+
+-- git-assigned.json --
+{"tool_name": "Bash", "tool_input": {"command": "X=status; git $X"}}
+
+-- eval-literal.json --
+{"tool_name": "Bash", "tool_input": {"command": "eval \"echo hi\""}}
+
+-- commit-assigned.json --
+{"tool_name": "Bash", "tool_input": {"command": "X=commit; git $X -m 'bad title'"}}
+
+-- global-option-output.json --
+{"tool_name": "Bash", "tool_input": {"command": "git -C \"$(pwd)\" status"}}

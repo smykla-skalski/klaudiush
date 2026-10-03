@@ -34,6 +34,12 @@ type astWalker struct {
 	// as a prefix on a command, so consumers can resolve a variable used later
 	// in the same command line.
 	assignments map[string]string
+	unknownVars map[string]bool
+	safeAssigns map[*syntax.Assign]bool
+	loopCalls   map[*syntax.CallExpr]bool
+	inLoop      bool
+	outerLoop   bool
+	distrust    bool
 	// depth counts the launchers, scripts and aliases that led here.
 	depth int
 	// resolver answers what the command text cannot: environment, script
@@ -87,7 +93,9 @@ type parseState struct {
 	seq int
 	// pathChanged records that the line changes PATH or the shell's command
 	// table, so a bare name may no longer run what it runs outside it.
-	pathChanged bool
+	pathChanged   bool
+	untrusted     bool
+	expandedWords map[string]bool
 }
 
 // spend takes one unit of work, reporting false once the budget is gone.
@@ -119,6 +127,10 @@ func (w *astWalker) visit(node syntax.Node) bool {
 		return false
 	case *syntax.DeclClause:
 		w.extractDecl(n)
+	case *syntax.ForClause:
+		if iter, ok := n.Loop.(*syntax.WordIter); ok {
+			w.forget(iter.Name.Value)
+		}
 	case *syntax.Stmt:
 		w.extractRedirect(n)
 	case *syntax.Subshell:
@@ -209,7 +221,7 @@ func literalCommandOutput(call *syntax.CallExpr) (string, bool) {
 	}
 
 	name := wordToString(call.Args[0])
-	if name != "echo" && name != "printf" {
+	if name != "echo" && name != printfBuiltin {
 		return "", false
 	}
 
@@ -444,6 +456,7 @@ func printfEscape(c byte) (byte, bool) {
 
 // extractCommand extracts a command from a CallExpr node.
 func (w *astWalker) extractCommand(call *syntax.CallExpr) {
+	w.inLoop = w.outerLoop || w.loopCalls[call]
 	w.extractAssigns(call)
 
 	if len(call.Args) == 0 {
@@ -492,6 +505,7 @@ func (w *astWalker) recordCommand(cmd Command, depth int) {
 		return
 	}
 
+	cmd.Name = strings.ReplaceAll(cmd.Name, unresolvedWord, unresolvedProgram)
 	cmd.Invoked = w.expandName(cmd.Name)
 
 	// An expansion splits into words, so x="git commit"; $x runs git.
@@ -509,6 +523,8 @@ func (w *astWalker) recordCommand(cmd Command, depth int) {
 	}
 
 	cmd, nested := w.resolveProgram(cmd)
+	followed := cmd
+	cmd.Args = storedArgs(cmd)
 
 	w.defineAliases(cmd)
 
@@ -518,12 +534,13 @@ func (w *astWalker) recordCommand(cmd Command, depth int) {
 
 	w.commands = append(w.commands, cmd)
 	w.trackShellState(cmd)
+	w.forgetWritten(followed)
 	w.extractFileWriteCommand(cmd)
 
-	l := launched(cmd)
+	l := w.launchedFrom(cmd, followed)
 	l.scripts = append(l.scripts, w.gitEnvScripts(cmd)...)
 	l.files = append(l.files, w.pathScripts(cmd, l)...)
-	nested = append(nested, w.definitionScripts(cmd)...)
+	nested = append(nested, w.definitionScripts(followed)...)
 
 	if l.empty() && len(nested) == 0 {
 		return
@@ -655,6 +672,8 @@ func (w *astWalker) gitEnvScripts(cmd Command) []string {
 // extractDecl records assignments made by export, declare, local and
 // readonly, and notes a changed PATH.
 func (w *astWalker) extractDecl(decl *syntax.DeclClause) {
+	w.distrustDecl(decl)
+
 	for _, assign := range decl.Args {
 		if assign.Name == nil {
 			continue
@@ -669,6 +688,8 @@ func (w *astWalker) extractDecl(decl *syntax.DeclClause) {
 		if assign.Value != nil && !assign.Append {
 			w.assign(assign.Name.Value, wordToString(assign.Value))
 		}
+
+		w.forgetUnlessSafe(assign)
 	}
 }
 
@@ -698,6 +719,12 @@ func (w *astWalker) noteDynamic(assign *syntax.Assign) {
 func (w *astWalker) assign(name, value string) {
 	w.assignments[name] = value
 	w.scope = nil
+
+	delete(w.unknownVars, name)
+
+	if w.parent != nil {
+		w.parent.forget(name)
+	}
 }
 
 // varScope returns the variables as they stand now, for the command or
@@ -981,6 +1008,8 @@ func (w *astWalker) extractAssigns(call *syntax.CallExpr) {
 
 			w.assign(assign.Name.Value, strings.Join(elems, " "))
 		}
+
+		w.forgetUnlessSafe(assign)
 	}
 }
 

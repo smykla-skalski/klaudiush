@@ -271,9 +271,9 @@ func launchedBy(cmd Command) (launch, bool) {
 		return launch{}, true
 	case shells[cmd.Name]:
 		return shellLaunch(cmd), true
-	case cmd.Name == "eval":
+	case cmd.Name == evalBuiltin:
 		return launch{scripts: []string{strings.Join(cmd.Args, " ")}}, true
-	case cmd.Name == "source" || cmd.Name == ".":
+	case cmd.Name == sourceBuiltin || cmd.Name == dotBuiltin:
 		return sourceLaunch(cmd), true
 	case cmd.Name == "find":
 		return launch{commands: findExecCommands(cmd)}, true
@@ -492,6 +492,7 @@ func commandIndex(spec launcher, args []string) (int, bool) {
 		case strings.HasPrefix(arg, "-"):
 			// A flag, with any value attached (-uroot, --user=root).
 		case spec.assignments && assignmentPattern.MatchString(arg):
+		case spec.assignments && arg == unresolvedWord:
 		case operands > 0:
 			operands--
 		default:
@@ -833,17 +834,20 @@ func launchesTracked(arg string, rest []string) bool {
 	case name == gitProgram || name == hubCLI:
 		idx := gitSubcommandIndex(rest)
 
-		return idx >= 0 && validatedGitSubcommands[rest[idx]]
+		return idx >= 0 &&
+			(validatedGitSubcommands[rest[idx]] || commandWordDetail(rest[idx]) != "")
 	case strings.HasPrefix(name, "git-"):
-		return validatedGitSubcommands[strings.TrimPrefix(name, "git-")]
+		sub := strings.TrimPrefix(name, "git-")
+
+		return validatedGitSubcommands[sub] || commandWordDetail(sub) != ""
 	case name == ghCLI:
-		return len(rest) > 0 && validatedGHCommands[rest[0]]
+		return len(rest) > 0 && (validatedGHCommands[rest[0]] || commandWordDetail(rest[0]) != "")
 	case shells[name]:
 		_, _, ok := shellOperand(rest)
 
 		return ok
 	default:
-		return isInterpreter || isLauncher || name == "eval" || name == "source"
+		return isInterpreter || isLauncher || name == evalBuiltin || name == sourceBuiltin
 	}
 }
 

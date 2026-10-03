@@ -121,6 +121,8 @@ func causeSummary(cause parser.OpacityCause) string {
 		return "it runs a git subcommand klaudiush cannot resolve"
 	case parser.OpacityUnresolvedArgs:
 		return "it calls a function whose arguments klaudiush cannot follow"
+	case parser.OpacityUnresolvedWord:
+		return "it runs eval, git or gh with a word klaudiush cannot resolve"
 	default:
 		return "part of it is opaque"
 	}
@@ -179,12 +181,39 @@ func opacityFinding(o parser.Opacity) validator.Finding {
 		f.Required = `arguments forwarded as "$@", "$*" or $1 to $9`
 		f.Repair = "Run the command inside the function directly, or forward " +
 			`arguments with plain "$@"`
+	case parser.OpacityUnresolvedWord:
+		f.Message, f.Required, f.Repair = unresolvedWordFinding(o)
 	default:
 		f.Message = o.Operation + " cannot be inspected"
 		f.Repair = validator.GetSuggestion(validator.RefShellNesting)
 	}
 
 	return f
+}
+
+// unresolvedWordFinding explains an eval line or a git or gh command word
+// that comes from a variable or command output.
+func unresolvedWordFinding(o parser.Opacity) (message, required, repair string) {
+	if o.Operation == "eval" {
+		message = "eval runs a command line that " + strings.TrimPrefix(o.Detail, "it ")
+		required = "eval of literal text or variables assigned literally on the same line"
+		repair = "Run the commands directly instead of through eval"
+
+		return message, required, repair
+	}
+
+	message = "the " + o.Operation + " command word " + strings.TrimPrefix(o.Detail, "it ")
+	required = "a literal " + o.Operation + " subcommand, or one from a variable " +
+		"assigned literally on the same line"
+
+	if o.Detail == parser.DetailWordVariable {
+		repair = "Write the subcommand literally, or assign the variable a " +
+			"literal value earlier on the same line"
+	} else {
+		repair = "Write the subcommand literally instead of computing it"
+	}
+
+	return message, required, repair
 }
 
 func unreadableScriptRepair(detail string) string {

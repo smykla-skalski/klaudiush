@@ -57,6 +57,9 @@ func newAstWalker(resolver Resolver) *astWalker {
 		stdinByCall:     make(map[*syntax.CallExpr]string),
 		stdinFileByCall: make(map[*syntax.CallExpr]string),
 		assignments:     make(map[string]string),
+		unknownVars:     make(map[string]bool),
+		safeAssigns:     make(map[*syntax.Assign]bool),
+		loopCalls:       make(map[*syntax.CallExpr]bool),
 		resolver:        resolver,
 		aliases:         make(map[string]string),
 		funcs:           make(map[string]string),
@@ -80,6 +83,9 @@ func (w *astWalker) child(dir string, depth int) *astWalker {
 	child.via = slices.Clone(w.via)
 
 	maps.Copy(child.assignments, w.assignments)
+	maps.Copy(child.unknownVars, w.unknownVars)
+
+	child.outerLoop = w.inLoop
 	maps.Copy(child.aliases, w.aliases)
 	maps.Copy(child.funcs, w.funcs)
 	maps.Copy(child.expanding, w.expanding)
@@ -117,6 +123,10 @@ func (w *astWalker) lastLineWrite(target string) (content string, found, capture
 // assigned earlier on the line, then the environment.
 func (w *astWalker) expandName(word string) string {
 	return expandVars(word, func(name string) (string, bool) {
+		if w.unknownVars[name] {
+			return "", false
+		}
+
 		if value, ok := w.assignments[name]; ok {
 			return value, true
 		}
@@ -226,9 +236,24 @@ func (w *astWalker) resolveProgram(cmd Command) (Command, []nestedScript) {
 
 	switch cmd.Name {
 	case gitProgram:
-		return w.expandGitAlias(cmd)
+		resolved, ok := w.resolveGitSubcommand(cmd)
+		if !ok {
+			return resolved, nil
+		}
+
+		return w.expandGitAlias(resolved)
 	case ghCLI:
-		return w.expandGHAlias(ghCommandFirst(cmd))
+		resolved, ok := w.resolveGHCommand(ghCommandFirst(cmd))
+		if !ok {
+			return resolved, nil
+		}
+
+		expanded, nested := w.expandGHAlias(resolved)
+		if len(nested) == 0 {
+			expanded, _ = w.resolveGHCommand(expanded)
+		}
+
+		return expanded, nested
 	default:
 		return cmd, nil
 	}
@@ -384,8 +409,12 @@ func (w *astWalker) programBehind(cmd Command) string {
 func (w *astWalker) expandGitAlias(cmd Command) (Command, []nestedScript) {
 	for range maxAliasDepth {
 		idx := gitSubcommandIndex(cmd.Args)
-		if idx < 0 || gitBuiltins[cmd.Args[idx]] || !gitAliasName.MatchString(cmd.Args[idx]) {
+		if idx < 0 || gitBuiltins[cmd.Args[idx]] {
 			return cmd, nil
+		}
+
+		if !gitAliasName.MatchString(cmd.Args[idx]) {
+			return w.unknownGitCommand(cmd, idx), nil
 		}
 
 		name, rest := cmd.Args[idx], cmd.Args[idx+1:]
@@ -436,8 +465,8 @@ func (w *astWalker) unknownGitCommand(cmd Command, idx int) Command {
 		return cmd
 	}
 
-	if !w.resolver.GitCommand(name) {
-		w.opaque(OpacityUnresolvedProgram, gitProgram+" "+safeName(name), "")
+	if !gitAliasName.MatchString(name) || !w.resolver.GitCommand(name) {
+		w.opaque(OpacityUnresolvedProgram, gitProgram+" "+w.shownWord(name), "")
 	}
 
 	return cmd
@@ -826,6 +855,7 @@ func (w *astWalker) walkScript(script string, parent Command, depth int, sw scri
 
 	child := w.child(parent.WorkingDirectory, depth)
 	child.literal = sw.literal
+	child.distrust = w.distrust || !runsInShell(parent, sw)
 
 	if sw.name != "" {
 		child.expanding[sw.name] = true
@@ -845,6 +875,7 @@ func (w *astWalker) walkScript(script string, parent Command, depth int, sw scri
 			break
 		}
 
+		child.prepare(stmt)
 		syntax.Walk(stmt, child.visit)
 	}
 
@@ -874,7 +905,7 @@ func (w *astWalker) argStrings(words []*syntax.Word) []string {
 			continue
 		}
 
-		if s := argWord(word); s != "" {
+		if s := markSubstituted(word, argWord(word)); s != "" {
 			args = append(args, s)
 		}
 	}

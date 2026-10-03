@@ -1,6 +1,7 @@
 package protection_test
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/smykla-skalski/klaudiush/internal/protection"
+	"github.com/smykla-skalski/klaudiush/pkg/parser"
 )
 
 var _ = Describe("CheckCommand for commands that rewrite the work tree", func() {
@@ -150,8 +152,13 @@ var _ = Describe("CheckCommand for git pointed elsewhere", func() {
 		Expect(checkCommand(set, `GIT_DIR=/tmp/evil/.git git log`)).To(BeEmpty())
 		Expect(checkCommand(set, `source /tmp/gitenv.sh; git checkout -f`)).NotTo(BeEmpty())
 		Expect(checkCommand(set, `. /tmp/gitenv.sh && git reset --hard`)).NotTo(BeEmpty())
-		Expect(checkCommand(set, `eval "$(cat /tmp/gitenv.sh)"; git checkout -f`)).NotTo(BeEmpty())
 		Expect(checkCommand(set, `source /tmp/env.sh; git status`)).To(BeEmpty())
+
+		evalOutput := `eval "$(cat /tmp/gitenv.sh)"; git checkout -f`
+		parsed, err := parser.NewBashParser().Parse(evalOutput)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(parsed.Truncated).To(BeTrue())
+		Expect(set.CheckCommand(context.Background(), parsed, evalOutput)).NotTo(BeEmpty())
 
 		for _, command := range []string{
 			`export $(cat ~/envonly); git checkout -f`,
