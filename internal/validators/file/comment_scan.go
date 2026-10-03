@@ -70,7 +70,6 @@ var langSyntaxByExt = map[string]langSyntax{
 	".jl":     {double: tripleEscaped, comment: commentHashSpaced},
 	".groovy": {double: tripleEscaped, single: tripleEscaped, comment: commentSlash},
 	".gradle": {double: tripleEscaped, single: tripleEscaped, comment: commentSlash},
-	".dart":   {double: tripleEscaped, single: tripleEscaped, comment: commentSlash},
 	".java":   {double: tripleEscaped, comment: commentSlash},
 	".kt":     {double: tripleRaw, comment: commentSlash},
 	".kts":    {double: tripleRaw, comment: commentSlash},
@@ -242,10 +241,10 @@ func (s commentScan) lineStart(state stringState) stringState {
 // at its old_string in the file on disk, so a fragment that begins inside (or
 // closes) a docstring is scanned correctly; when old_string occurs at several
 // places in different states, it falls back to code. An Edit with no
-// old_string on a non-empty file joins added lines from several patch hunks;
-// a string that does not close within them means hunk boundaries split it, so
-// triple-quoted state is then not carried between lines.
-func newCommentScan(hookCtx *hook.Context, content string) commentScan {
+// old_string on a non-empty file joins added lines from several patch hunks
+// whose boundaries are lost, so triple-quoted state is not carried between its
+// lines.
+func newCommentScan(hookCtx *hook.Context) commentScan {
 	path := hookCtx.GetFilePath()
 	scan := commentScan{syntax: langSyntaxForPath(path)}
 
@@ -260,7 +259,7 @@ func newCommentScan(hookCtx *hook.Context, content string) commentScan {
 
 	old := hookCtx.ToolInput.OldString
 	if old == "" {
-		scan.lineLocalTriple = endState(content, scan.syntax) != stateCode
+		scan.lineLocalTriple = true
 
 		return scan
 	}
@@ -268,16 +267,6 @@ func newCommentScan(hookCtx *hook.Context, content string) commentScan {
 	scan.start = stateAtOccurrences(string(data), old, scan.syntax)
 
 	return scan
-}
-
-// endState returns the multi-line string state content ends in.
-func endState(content string, syntax langSyntax) stringState {
-	state := stateCode
-	for line := range strings.SplitSeq(content, "\n") {
-		_, state = findCommentStart(line, state, syntax)
-	}
-
-	return state
 }
 
 // stateAtOccurrences returns the multi-line string state shared by every

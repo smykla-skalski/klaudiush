@@ -434,10 +434,12 @@ var _ = Describe("AICommentValidator multi-line string literals", func() {
 			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
 		})
 
-		It("keeps string state across patch lines whose strings close", func() {
-			ctx.ToolInput.FilePath = writeSource("import os\n")
-			ctx.ToolInput.NewString = "BODY = \"\"\"\n## Problem\n\"\"\""
-			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeTrue())
+		It("does not pair openers from different patch hunks", func() {
+			ctx.ToolInput.FilePath = writeSource("def total():\n    return 1\n")
+			ctx.ToolInput.NewString = "    \"\"\"Compute the total.\n" +
+				"    # add tax before rounding\n" +
+				"    \"\"\"Compute the average."
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
 		})
 
 		It("falls back to code state when replaced occurrences disagree", func() {
