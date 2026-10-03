@@ -3,6 +3,8 @@ package parser
 
 import (
 	"fmt"
+	"slices"
+	"strconv"
 	"strings"
 
 	"mvdan.cc/sh/v3/syntax"
@@ -62,6 +64,50 @@ type Command struct {
 	Stdin            string   // Content fed to stdin via heredoc or a piped echo/printf
 	StdinFile        string   // File redirected to stdin (<)
 	Invoked          string   // Program word as written, before resolving it to Name
+	// DirUnknown reports that an earlier cd went somewhere the parser cannot
+	// resolve, so WorkingDirectory is only the last directory it knew.
+	DirUnknown bool
+	// Dynamic reports that a word of the command comes from command output,
+	// arithmetic or an extended glob, which Args leave out or render
+	// partially: rm "$(echo dir)/f" has the argument "/f".
+	Dynamic bool
+	// Vars are the variables as they stood when the command ran.
+	Vars *VarScope
+}
+
+// anyWordDynamic reports whether any word takes part of its value from
+// something the rendered argument leaves out.
+func anyWordDynamic(words []*syntax.Word) bool {
+	return slices.ContainsFunc(words, wordDynamic)
+}
+
+// wordDynamic reports whether word contains a command or process
+// substitution, arithmetic expansion or extended glob.
+func wordDynamic(word *syntax.Word) bool {
+	if word == nil {
+		return false
+	}
+
+	return partsDynamic(word.Parts)
+}
+
+func partsDynamic(parts []syntax.WordPart) bool {
+	for _, part := range parts {
+		switch p := part.(type) {
+		case *syntax.CmdSubst, *syntax.ProcSubst, *syntax.ArithmExp, *syntax.ExtGlob:
+			return true
+		case *syntax.DblQuoted:
+			if partsDynamic(p.Parts) {
+				return true
+			}
+		case *syntax.ParamExp:
+			if p.Exp != nil && wordDynamic(p.Exp.Word) {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 // String returns a string representation of the command.
@@ -110,7 +156,11 @@ func renderWord(word *syntax.Word, unescape bool) string {
 		case *syntax.Lit:
 			result.WriteString(renderLit(p.Value, unescape, allEscapable))
 		case *syntax.SglQuoted:
-			result.WriteString(p.Value)
+			if p.Dollar {
+				result.WriteString(decodeANSIC(p.Value))
+			} else {
+				result.WriteString(p.Value)
+			}
 		case *syntax.ParamExp:
 			// Render a variable reference as a stable braced token ("${MSG}")
 			// instead of dropping it. Keeping the token preserves argument
@@ -177,6 +227,10 @@ func removeEscapes(s, escapable string) string {
 	var b strings.Builder
 
 	for i := 0; i < len(s); i++ {
+		if s[i] == '\\' && i+1 >= len(s) && escapable == allEscapable {
+			continue
+		}
+
 		if s[i] != '\\' || i+1 >= len(s) {
 			b.WriteByte(s[i])
 
@@ -407,4 +461,116 @@ func analyzeDoubleQuoted(dq *syntax.DblQuoted, location *BacktickLocation) *Back
 	location.SuggestSingle = !hasVars
 
 	return location
+}
+
+// escapeByte is the ASCII escape character, $'\e'.
+const escapeByte = 0x1b
+
+// ansiCEscapes maps the single-letter escapes of $'...' strings.
+var ansiCEscapes = map[byte]byte{
+	'a': '\a', 'b': '\b', 'e': escapeByte, 'E': escapeByte, 'f': '\f', 'n': '\n', 'r': '\r',
+	't': '\t', 'v': '\v', '\\': '\\', '\'': '\'', '"': '"', '?': '?',
+}
+
+// decodeANSIC returns the value of a $'...' string: \x2e is ".", \101 is
+// "A" and \u00e9 is "é", so a path spelled with escapes compares equal.
+func decodeANSIC(value string) string {
+	var b strings.Builder
+
+	for i := 0; i < len(value); i++ {
+		if value[i] != '\\' || i+1 >= len(value) {
+			b.WriteByte(value[i])
+
+			continue
+		}
+
+		i++
+
+		if c, ok := ansiCEscapes[value[i]]; ok {
+			b.WriteByte(c)
+
+			continue
+		}
+
+		consumed := decodeNumericEscape(&b, value[i:])
+		if consumed == 0 {
+			b.WriteByte('\\')
+			b.WriteByte(value[i])
+
+			continue
+		}
+
+		i += consumed - 1
+	}
+
+	return b.String()
+}
+
+// numericEscapes lists the $'...' numeric escapes: the letter after the
+// backslash, the digits it takes at most, the Go escape that spells it, and
+// whether its digits are octal.
+var numericEscapes = map[byte]struct {
+	maxDigits int
+	goPrefix  string
+	octal     bool
+}{
+	'x': {maxDigits: hexByteDigits, goPrefix: `\x`},
+	'u': {maxDigits: shortRuneDigits, goPrefix: `\u`},
+	'U': {maxDigits: longRuneDigits, goPrefix: `\U`},
+}
+
+// Digits each numeric escape takes at most.
+const (
+	octalDigits     = 3
+	hexByteDigits   = 2
+	shortRuneDigits = 4
+	longRuneDigits  = 8
+)
+
+// decodeNumericEscape writes the character of a \xHH, \NNN, \uHHHH or
+// \UHHHHHHHH escape (rest starts after the backslash) and returns how many
+// bytes of rest it used, or 0 when rest is no such escape.
+func decodeNumericEscape(b *strings.Builder, rest string) int {
+	spec, ok := numericEscapes[rest[0]]
+	start := 1
+
+	if !ok {
+		if rest[0] < '0' || rest[0] > '7' {
+			return 0
+		}
+
+		spec.maxDigits, spec.goPrefix, spec.octal, start = octalDigits, `\`, true, 0
+	}
+
+	end := start
+	for end < len(rest) && end-start < spec.maxDigits && isEscapeDigit(rest[end], spec.octal) {
+		end++
+	}
+
+	if end == start {
+		return 0
+	}
+
+	digits := strings.Repeat("0", spec.maxDigits-(end-start)) + rest[start:end]
+
+	decoded, err := strconv.Unquote(`"` + spec.goPrefix + digits + `"`)
+	if err != nil {
+		return 0
+	}
+
+	b.WriteString(decoded)
+
+	return end
+}
+
+func isEscapeDigit(c byte, octal bool) bool {
+	if c >= '0' && c <= '7' {
+		return true
+	}
+
+	if octal {
+		return false
+	}
+
+	return (c >= '8' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
 }

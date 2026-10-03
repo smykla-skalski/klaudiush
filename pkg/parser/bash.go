@@ -31,6 +31,13 @@ type ParseResult struct {
 	// most a few entries and may be empty only when Truncated is false.
 	Opacities     []Opacity
 	MoreOpacities bool
+	// DynamicWrites counts output redirects whose target name comes from
+	// command output ("> \"$(...)\""), which no FileWrite can name in full.
+	DynamicWrites int
+	// DynamicVars names variables assigned a value from command output,
+	// arithmetic or an append, whose rendered value in Assignments is
+	// partial or stale.
+	DynamicVars map[string]bool
 }
 
 // BashParser parses Bash commands using mvdan.cc/sh.
@@ -93,6 +100,8 @@ func (p *BashParser) Parse(command string) (*ParseResult, error) {
 		Truncated:     walker.state.truncated,
 		Opacities:     walker.state.opacities,
 		MoreOpacities: walker.state.moreOpacities,
+		DynamicWrites: walker.dynamicWrites,
+		DynamicVars:   walker.state.dynamicVars,
 	}, nil
 }
 
@@ -114,6 +123,35 @@ func (r *ParseResult) ExpandVars(s string) string {
 
 		return value, ok
 	})
+}
+
+// VarScope holds the variables as they stood when a command or write ran.
+// Commands and writes on one line can see different values: in
+// d=x; rm "$d/f"; d=y the rm sees x, which ParseResult.Assignments (the
+// final values) no longer holds.
+type VarScope struct {
+	Assignments map[string]string // Literal NAME=value assignments
+	DynamicVars map[string]bool   // Variables whose value comes from command output
+}
+
+// ExpandVars substitutes the assignments of the scope into s, leaving
+// unknown references as they are.
+func (v *VarScope) ExpandVars(s string) string {
+	if v == nil {
+		return s
+	}
+
+	return expandVars(s, func(name string) (string, bool) {
+		value, ok := v.Assignments[name]
+
+		return value, ok
+	})
+}
+
+// IsDynamic reports whether name held a value from command output,
+// arithmetic or an append in the scope.
+func (v *VarScope) IsDynamic(name string) bool {
+	return v != nil && v.DynamicVars[name]
 }
 
 // expandVars substitutes the values lookup knows into s, leaving unknown

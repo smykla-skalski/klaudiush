@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"maps"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -16,6 +17,9 @@ type astWalker struct {
 	via        []string
 	commands   []Command
 	fileWrites []FileWrite
+	// dynamicWrites counts output redirects whose target name comes from
+	// command output, so it is unknown until the command runs.
+	dynamicWrites int
 	// parent is the walker of the script that runs this one. What it recorded
 	// earlier on the line (writes, git config) is in place when this runs.
 	parent     *astWalker
@@ -53,6 +57,10 @@ type astWalker struct {
 	dirUnknown bool
 	// dirStack holds the directories pushd saved.
 	dirStack []string
+	// scope caches the variable snapshot until an assignment changes it;
+	// scopeDynamic is the dynamicVersion it was taken at.
+	scope        *VarScope
+	scopeDynamic int
 }
 
 // parseState is shared by a walker and all the child walkers of one parse.
@@ -60,6 +68,11 @@ type astWalker struct {
 // some explanations were dropped, and budgetReported keeps the exhausted work
 // budget from being explained more than once.
 type parseState struct {
+	// dynamicVars names variables last assigned a value from command
+	// output, arithmetic or an append, which assignments cannot hold.
+	dynamicVars map[string]bool
+	// dynamicVersion counts changes to dynamicVars.
+	dynamicVersion int
 	opacities      []Opacity
 	moreOpacities  bool
 	budgetReported bool
@@ -460,6 +473,8 @@ func (w *astWalker) extractCommand(call *syntax.CallExpr) {
 		},
 		Type:             CmdTypeSimple,
 		WorkingDirectory: w.currentDir,
+		DirUnknown:       w.dirUnknown,
+		Dynamic:          anyWordDynamic(call.Args),
 		Stdin:            w.stdinByCall[call],
 		StdinFile:        w.stdinFileByCall[call],
 	}, w.depth)
@@ -496,6 +511,11 @@ func (w *astWalker) recordCommand(cmd Command, depth int) {
 	cmd, nested := w.resolveProgram(cmd)
 
 	w.defineAliases(cmd)
+
+	if cmd.Vars == nil {
+		cmd.Vars = w.varScope()
+	}
+
 	w.commands = append(w.commands, cmd)
 	w.trackShellState(cmd)
 	w.extractFileWriteCommand(cmd)
@@ -644,14 +664,73 @@ func (w *astWalker) extractDecl(decl *syntax.DeclClause) {
 			w.state.pathChanged = true
 		}
 
+		w.noteDynamic(assign)
+
 		if assign.Value != nil && !assign.Append {
-			w.assignments[assign.Name.Value] = wordToString(assign.Value)
+			w.assign(assign.Name.Value, wordToString(assign.Value))
 		}
 	}
 }
 
+// noteDynamic records whether an assignment's value is known: one from
+// command output, arithmetic or an append is not.
+func (w *astWalker) noteDynamic(assign *syntax.Assign) {
+	if assign.Name == nil {
+		return
+	}
+
+	if w.state.dynamicVars == nil {
+		w.state.dynamicVars = make(map[string]bool)
+	}
+
+	w.state.dynamicVersion++
+
+	if assign.Append || (assign.Value != nil && wordDynamic(assign.Value)) {
+		w.state.dynamicVars[assign.Name.Value] = true
+
+		return
+	}
+
+	delete(w.state.dynamicVars, assign.Name.Value)
+}
+
+// assign records a literal assignment.
+func (w *astWalker) assign(name, value string) {
+	w.assignments[name] = value
+	w.scope = nil
+}
+
+// varScope returns the variables as they stand now, for the command or
+// write being recorded: a later assignment must not change what an earlier
+// command named. The snapshot is shared until the variables change.
+func (w *astWalker) varScope() *VarScope {
+	if w.scope != nil && w.scopeDynamic == w.state.dynamicVersion {
+		return w.scope
+	}
+
+	w.scope = &VarScope{
+		Assignments: maps.Clone(w.assignments),
+		DynamicVars: maps.Clone(w.state.dynamicVars),
+	}
+	w.scopeDynamic = w.state.dynamicVersion
+
+	return w.scope
+}
+
+// redirOutput is one file an output redirect opens.
+type redirOutput struct {
+	path    string
+	op      WriteOp
+	loc     Location
+	dynamic bool
+}
+
 // redirInfo holds the output redirection and heredoc found on a statement.
+// The output fields describe the last output redirect, where stdout ends
+// up; earlierOutputs holds the ones before it, which the shell still opens
+// (and truncates) before the command runs.
 type redirInfo struct {
+	earlierOutputs []redirOutput
 	outputPath     string
 	outputOp       WriteOp
 	outputLoc      Location
@@ -660,6 +739,74 @@ type redirInfo struct {
 	inputPath      string // file redirected to stdin (<)
 	hasOutput      bool
 	hasHeredoc     bool
+	outputDynamic  bool // the target name comes from command output
+	dynamicWrites  int  // output targets whose name comes from command output
+}
+
+// appendsOutput reports whether a redirect appends instead of truncating.
+func appendsOutput(op syntax.RedirOperator) bool {
+	switch op {
+	case syntax.AppOut, syntax.AppClob, syntax.AppAll, syntax.AppAllClob, syntax.RdrInOut:
+		return true
+	default:
+		return false
+	}
+}
+
+// duplicatesDescriptor reports whether a >& redirect copies a descriptor
+// (>&2, >&-) rather than writing a file (>&out.log).
+func duplicatesDescriptor(word *syntax.Word) bool {
+	target := wordToString(word)
+	if target == "-" {
+		return true
+	}
+
+	for _, r := range target {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+
+	return target != ""
+}
+
+// addOutput records an output redirect. The previous last one moves to
+// earlierOutputs.
+func (info *redirInfo) addOutput(redir *syntax.Redirect) {
+	if redir.Op == syntax.DplOut && duplicatesDescriptor(redir.Word) {
+		return
+	}
+
+	path := argWord(redir.Word)
+	dynamic := wordDynamic(redir.Word)
+
+	if dynamic {
+		info.dynamicWrites++
+	}
+
+	if path == "" {
+		return
+	}
+
+	if info.hasOutput {
+		info.earlierOutputs = append(info.earlierOutputs, redirOutput{
+			path:    info.outputPath,
+			op:      info.outputOp,
+			loc:     info.outputLoc,
+			dynamic: info.outputDynamic,
+		})
+	}
+
+	info.outputPath = path
+	info.outputDynamic = dynamic
+
+	info.outputOp = WriteOpRedirect
+	if appendsOutput(redir.Op) {
+		info.outputOp = WriteOpAppend
+	}
+
+	info.outputLoc = Location{Line: redir.Pos().Line(), Column: redir.Pos().Col()}
+	info.hasOutput = true
 }
 
 // collectRedirs gathers output redirection and heredoc details from a statement.
@@ -668,21 +815,9 @@ func collectRedirs(stmt *syntax.Stmt) redirInfo {
 
 	for _, redir := range stmt.Redirs {
 		switch redir.Op {
-		case syntax.RdrOut, syntax.AppOut:
-			path := wordToString(redir.Word)
-			if path == "" {
-				continue
-			}
-
-			info.outputPath = path
-
-			info.outputOp = WriteOpRedirect
-			if redir.Op == syntax.AppOut {
-				info.outputOp = WriteOpAppend
-			}
-
-			info.outputLoc = Location{Line: redir.Pos().Line(), Column: redir.Pos().Col()}
-			info.hasOutput = true
+		case syntax.RdrOut, syntax.AppOut, syntax.RdrClob, syntax.AppClob, syntax.RdrAll,
+			syntax.RdrAllClob, syntax.AppAll, syntax.AppAllClob, syntax.RdrInOut, syntax.DplOut:
+			info.addOutput(redir)
 		case syntax.Hdoc, syntax.DashHdoc, syntax.WordHdoc:
 			switch {
 			case redir.Op == syntax.WordHdoc:
@@ -696,7 +831,7 @@ func collectRedirs(stmt *syntax.Stmt) redirInfo {
 			info.heredocLoc = Location{Line: redir.Pos().Line(), Column: redir.Pos().Col()}
 			info.hasHeredoc = true
 		case syntax.RdrIn:
-			info.inputPath = wordToString(redir.Word)
+			info.inputPath = argWord(redir.Word)
 		default:
 			// Other redirection operators are not relevant here.
 		}
@@ -712,6 +847,7 @@ func (w *astWalker) extractRedirect(stmt *syntax.Stmt) {
 	}
 
 	info := collectRedirs(stmt)
+	w.dynamicWrites += info.dynamicWrites
 
 	// A redirect happens as its command starts, before any later command.
 	seq := w.state.nextSeq()
@@ -732,6 +868,19 @@ func (w *astWalker) extractRedirect(stmt *syntax.Stmt) {
 		}
 	}
 
+	for _, out := range info.earlierOutputs {
+		out.loc.Seq = seq
+		w.fileWrites = append(w.fileWrites, FileWrite{
+			Path:             out.path,
+			Dynamic:          out.dynamic,
+			Operation:        out.op,
+			Location:         out.loc,
+			WorkingDirectory: w.currentDir,
+			DirUnknown:       w.dirUnknown,
+			Vars:             w.varScope(),
+		})
+	}
+
 	switch {
 	case info.hasOutput && info.hasHeredoc:
 		// Output redirection combined with a heredoc. The heredoc body equals the
@@ -742,11 +891,14 @@ func (w *astWalker) extractRedirect(stmt *syntax.Stmt) {
 		captured := info.outputOp == WriteOpRedirect && copiesStdinVerbatim(callExprOf(stmt))
 		w.fileWrites = append(w.fileWrites, FileWrite{
 			Path:             info.outputPath,
+			Dynamic:          info.outputDynamic,
 			Operation:        WriteOpHeredoc,
 			Content:          info.heredocContent,
 			ContentCaptured:  captured,
 			Location:         info.heredocLoc,
 			WorkingDirectory: w.currentDir,
+			DirUnknown:       w.dirUnknown,
+			Vars:             w.varScope(),
 		})
 	case info.hasOutput:
 		// Just output redirection without heredoc. A literal overwrite's output
@@ -757,9 +909,12 @@ func (w *astWalker) extractRedirect(stmt *syntax.Stmt) {
 		// tripping gofumpt).
 		fw := FileWrite{
 			Path:             info.outputPath,
+			Dynamic:          info.outputDynamic,
 			Operation:        info.outputOp,
 			Location:         info.outputLoc,
 			WorkingDirectory: w.currentDir,
+			DirUnknown:       w.dirUnknown,
+			Vars:             w.varScope(),
 		}
 
 		if info.outputOp == WriteOpRedirect {
@@ -803,6 +958,8 @@ func copiesStdinVerbatim(call *syntax.CallExpr) bool {
 // skipped rather than recorded with a partial one.
 func (w *astWalker) extractAssigns(call *syntax.CallExpr) {
 	for _, assign := range call.Assigns {
+		w.noteDynamic(assign)
+
 		if assign.Name == nil || assign.Append || assign.Naked {
 			continue
 		}
@@ -813,7 +970,7 @@ func (w *astWalker) extractAssigns(call *syntax.CallExpr) {
 
 		switch {
 		case assign.Value != nil:
-			w.assignments[assign.Name.Value] = wordToString(assign.Value)
+			w.assign(assign.Name.Value, wordToString(assign.Value))
 		case assign.Array != nil:
 			// An array is kept as its elements joined by spaces, which is what
 			// "${NAME[@]}" expands to as separate words.
@@ -822,7 +979,7 @@ func (w *astWalker) extractAssigns(call *syntax.CallExpr) {
 				elems = append(elems, wordToString(elem.Value))
 			}
 
-			w.assignments[assign.Name.Value] = strings.Join(elems, " ")
+			w.assign(assign.Name.Value, strings.Join(elems, " "))
 		}
 	}
 }
@@ -841,6 +998,9 @@ func (w *astWalker) extractFileWriteCommand(cmd Command) {
 			Source:           cmd.Name,
 			Location:         cmd.Location,
 			WorkingDirectory: cmd.WorkingDirectory,
+			DirUnknown:       cmd.DirUnknown,
+			Dynamic:          cmd.Dynamic,
+			Vars:             cmd.Vars,
 		}
 
 		w.fileWrites = append(w.fileWrites, fw)

@@ -53,6 +53,17 @@ type Config struct {
 
 	// Evidence gates completion on fresh results of required checks.
 	Evidence *EvidenceConfig `json:"evidence,omitempty" koanf:"evidence" toml:"evidence,omitempty"`
+
+	// Protection keeps the agent from changing policy and hook files.
+	Protection *ProtectionConfig `json:"protection,omitempty" koanf:"protection" toml:"protection,omitempty"`
+
+	// MCPTrust decides which MCP servers the agent may call by provenance.
+	MCPTrust *MCPTrustConfig `json:"mcp_trust,omitempty" koanf:"mcp_trust" toml:"mcp_trust,omitempty"`
+
+	// PolicySources are the configurations of other project directories
+	// (the hook's own project when a command cd's elsewhere) whose
+	// protection applies to this hook. Never read from a file.
+	PolicySources []*Config `json:"-" koanf:"-" toml:"-"`
 }
 
 // ValidatorsConfig groups all validator configurations by category.

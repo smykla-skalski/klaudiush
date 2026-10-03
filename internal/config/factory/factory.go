@@ -60,6 +60,7 @@ type DefaultValidatorFactory struct {
 	shellFactory        *ShellValidatorFactory
 	pluginFactory       *PluginValidatorFactory
 	elicitationFactory  *ElicitationValidatorFactory
+	policyFactory       *PolicyValidatorFactory
 	lifecycleFactory    *LifecycleValidatorFactory
 }
 
@@ -74,6 +75,7 @@ func NewValidatorFactory(log logger.Logger) *DefaultValidatorFactory {
 		shellFactory:        NewShellValidatorFactory(log),
 		pluginFactory:       NewPluginValidatorFactory(log),
 		elicitationFactory:  NewElicitationValidatorFactory(log),
+		policyFactory:       NewPolicyValidatorFactory(log),
 		lifecycleFactory:    NewLifecycleValidatorFactory(log),
 	}
 }
@@ -166,6 +168,7 @@ func (f *DefaultValidatorFactory) CreateAll(cfg *config.Config) []ValidatorWithP
 	all = append(all, f.CreatePluginValidators(cfg)...)
 	all = append(all, f.CreateElicitationValidators(cfg)...)
 	all = append(all, f.CreateLifecycleValidators(cfg)...)
+	all = append(all, f.policyFactory.CreateValidators(cfg)...)
 
 	return all
 }

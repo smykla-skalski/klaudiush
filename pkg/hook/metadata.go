@@ -72,6 +72,10 @@ const (
 	// CanonicalEventStopFailure is an observational turn-failure event (the
 	// turn ended on an API or runtime error).
 	CanonicalEventStopFailure CanonicalEvent = "stop_failure"
+
+	// CanonicalEventConfigChange reports that a harness settings file changed
+	// during the session (Claude ConfigChange).
+	CanonicalEventConfigChange CanonicalEvent = "config_change"
 )
 
 // ToolFamily represents the normalized cross-provider tool family.
@@ -114,6 +118,7 @@ const (
 	eventNameStop              = "Stop"
 	eventNameSubagentStop      = "SubagentStop"
 	eventNameStopFailure       = "StopFailure"
+	eventNameConfigChange      = "ConfigChange"
 	eventNamePermissionRequest = "PermissionRequest"
 	geminiEventBeforeTool      = "BeforeTool"
 	geminiEventAfterTool       = "AfterTool"
@@ -225,6 +230,8 @@ func NormalizeEventName(name string) CanonicalEvent {
 		return CanonicalEventElicitationResult
 	case "postcompact", tokenPostCompress, "sessioncompacted":
 		return CanonicalEventPostCompact
+	case "configchange":
+		return CanonicalEventConfigChange
 	default:
 		return CanonicalEventUnknown
 	}
@@ -242,7 +249,8 @@ func ResolveLegacyEventType(
 	case CanonicalEventUnknown, CanonicalEventSessionStart, CanonicalEventTurnStop,
 		CanonicalEventPreCompress, CanonicalEventElicitation, CanonicalEventElicitationResult,
 		CanonicalEventPostCompact, CanonicalEventUserPromptSubmit,
-		CanonicalEventSubagentStop, CanonicalEventSessionEnd, CanonicalEventStopFailure:
+		CanonicalEventSubagentStop, CanonicalEventSessionEnd, CanonicalEventStopFailure,
+		CanonicalEventConfigChange:
 	case CanonicalEventBeforeTool:
 		return EventTypePreToolUse
 	case CanonicalEventAfterTool:

@@ -1,0 +1,22 @@
+#:schema https://klaudiu.sh/schema/v1/config.json
+# MCP trust: see docs/PROTECTION_GUIDE.md#mcp-trust
+# Trust follows what the harness reports about a server, never the name in
+# the mcp__<server>__<tool> tool name
+
+[mcp_trust]
+enabled = true
+trusted_sources = ["managed", "enterprise", "user"]
+untrusted = "block"
+
+# Codex and opencode send no provenance
+unknown_provenance = "warn"
+
+# A project server pinned by name and source, limited to some tools
+[[mcp_trust.servers]]
+name = "docs"
+source = "project"
+tools = ["search*", "read*"]
+
+# A Gemini server identified by its endpoint
+[[mcp_trust.servers]]
+url = "https://mcp.example.com/*"

@@ -1,0 +1,43 @@
+cd project
+
+stdin $WORK/project-settings.json
+exec klaudiush --event ConfigChange
+stdout '"decision":"block"'
+stdout 'POL002'
+! stdout 'permissionDecision'
+
+stdin $WORK/user-settings.json
+exec klaudiush --event ConfigChange
+stdout '"decision":"block"'
+
+stdin $WORK/policy-settings.json
+exec klaudiush --event ConfigChange
+! stdout .
+
+stdin $WORK/skills.json
+exec klaudiush --event ConfigChange
+! stdout .
+
+stdin $WORK/local-settings.json
+exec klaudiush --event ConfigChange
+! stdout .
+
+-- project/.klaudiush/config.toml --
+[protection]
+enabled = true
+allow = [".claude/settings.local.json"]
+
+-- project-settings.json --
+{"session_id":"s1","hook_event_name":"ConfigChange","source":"project_settings","file_path":".claude/settings.json"}
+
+-- user-settings.json --
+{"session_id":"s1","hook_event_name":"ConfigChange","source":"user_settings"}
+
+-- policy-settings.json --
+{"session_id":"s1","hook_event_name":"ConfigChange","source":"policy_settings","file_path":"/etc/claude-code/managed-settings.json"}
+
+-- skills.json --
+{"session_id":"s1","hook_event_name":"ConfigChange","source":"skills","file_path":".claude/skills/x/SKILL.md"}
+
+-- local-settings.json --
+{"session_id":"s1","hook_event_name":"ConfigChange","source":"local_settings","file_path":".claude/settings.local.json"}

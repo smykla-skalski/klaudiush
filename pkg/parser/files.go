@@ -70,11 +70,19 @@ type FileWrite struct {
 	// echo/printf (e.g. "printf 'package x' > f.go") would produce spurious
 	// failures.
 	RedirectContent string
+	// DirUnknown reports that an earlier cd went somewhere the parser cannot
+	// resolve, so a relative Path is relative to an unknown directory.
+	DirUnknown bool
+	// Dynamic reports that part of Path comes from command output, which the
+	// rendered Path leaves out: "$(echo dir)/f" renders as "/f".
+	Dynamic bool
 	// RedirectContentCaptured reports whether RedirectContent was reconstructed.
 	// It is true only for an overwrite redirect (">", not ">>") whose producer is
 	// a literal echo or a printf using only %s/%% directives and known escapes;
 	// otherwise the output cannot be reproduced.
 	RedirectContentCaptured bool
+	// Vars are the variables as they stood when the write happened.
+	Vars *VarScope
 }
 
 // CapturedOverwrite returns the reconstructed content an overwrite write produced
