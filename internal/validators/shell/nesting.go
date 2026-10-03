@@ -353,9 +353,13 @@ func sourcedStreamFinding(o parser.Opacity) (message, required, repair string) {
 	repair = "Save the script to a file in a separate command and source that file, " +
 		"or run its commands directly"
 
-	if o.Detail == parser.DetailSourceOutput {
+	switch o.Detail {
+	case parser.DetailSourceOutput:
 		required = "a literal path to the sourced file"
 		repair = "Write the path of the sourced file literally"
+	case parser.DetailSourceOption:
+		required = "source given the file's path, with no options but --"
+		repair = "Source the file by its path, without -p or other options"
 	}
 
 	if setup, ok := evalSetupRepairs[o.Tool]; ok {

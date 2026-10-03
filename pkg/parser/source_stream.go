@@ -3,6 +3,8 @@ package parser
 import (
 	"fmt"
 	"path/filepath"
+	"regexp"
+	"slices"
 	"strings"
 
 	"mvdan.cc/sh/v3/syntax"
@@ -21,6 +23,7 @@ const (
 	DetailSourceStdin        = "it reads stdin, fed by a command or redirect klaudiush cannot see"
 	DetailSourceDescriptor   = "it reads a file descriptor or device klaudiush cannot follow"
 	DetailSourceOutput       = "it reads a file whose path comes from command output"
+	DetailSourceOption       = "it takes an option klaudiush does not follow"
 )
 
 // unseenInfix marks the stand-in path of a process substitution whose
@@ -85,7 +88,7 @@ func (w *astWalker) sourcedFile(name string, before []string, word *syntax.Word)
 	}
 
 	if sub := soleProcSubst(word); sub != nil {
-		if _, literal := procSubstOutput(word); literal {
+		if _, literal := procSubstOutput(word); literal && !stmtHeredocExpands(sub.Stmts[0]) {
 			return "", false
 		}
 
@@ -98,16 +101,48 @@ func (w *astWalker) sourcedFile(name string, before []string, word *syntax.Word)
 // sourceOperandNext reports whether the next word of a command named name,
 // after the arguments before, is the file source or . reads.
 func sourceOperandNext(name string, before []string) bool {
-	if name == builtinCommand || name == commandBuiltin {
-		if len(before) == 0 || (before[0] != sourceBuiltin && before[0] != dotBuiltin) {
+	for name == builtinCommand || name == commandBuiltin {
+		for len(before) > 0 && strings.HasPrefix(before[0], "-") {
+			before = before[1:]
+		}
+
+		if len(before) == 0 {
 			return false
 		}
 
 		name, before = before[0], before[1:]
 	}
 
-	return (name == sourceBuiltin || name == dotBuiltin) &&
-		(len(before) == 0 || (len(before) == 1 && before[0] == endOfOptions))
+	if name != sourceBuiltin && name != dotBuiltin {
+		return false
+	}
+
+	rest, _, ok := sourceOptions(before)
+
+	return ok && len(rest) == 0
+}
+
+// sourcePathOption is bash 5.3's source -p PATH, which searches PATH for the
+// file instead of $PATH.
+const sourcePathOption = "-p"
+
+// sourceOptions skips the options of source: -p PATH and --. It reports
+// whether -p was given, and fails on an option it does not know.
+func sourceOptions(args []string) (rest []string, searched, ok bool) {
+	for len(args) > 0 {
+		switch arg := args[0]; {
+		case arg == endOfOptions:
+			return args[1:], searched, true
+		case arg == sourcePathOption && len(args) > 1:
+			args, searched = args[2:], true
+		case len(arg) > 1 && strings.HasPrefix(arg, "-"):
+			return nil, searched, false
+		default:
+			return args, searched, true
+		}
+	}
+
+	return nil, searched, true
 }
 
 func (w *astWalker) sourcedParts(parts []syntax.WordPart) (string, bool) {
@@ -142,8 +177,13 @@ func (w *astWalker) sourcedParts(parts []syntax.WordPart) (string, bool) {
 }
 
 // lookedUpDir returns the directory a command substitution prints when it is
-// dirname "$0" of a script file or an allowed lookup.
+// dirname "$0" of a script file, an allowed lookup, or cd to one of those
+// followed by pwd (the usual SCRIPT_DIR idiom).
 func (w *astWalker) lookedUpDir(sub *syntax.CmdSubst) (string, bool) {
+	if dir, ok := w.changedDir(sub); ok {
+		return dir, true
+	}
+
 	call := plainCall(sub)
 	if call == nil {
 		return "", false
@@ -156,6 +196,62 @@ func (w *astWalker) lookedUpDir(sub *syntax.CmdSubst) (string, bool) {
 	return w.lookupOutput(call.Args)
 }
 
+// markOutputSubst marks the commands of an output process substitution,
+// >(cmd), as reading a pipe: they read what the command around it writes.
+func (w *astWalker) markOutputSubst(sub *syntax.ProcSubst) {
+	if sub.Op != syntax.CmdOut {
+		return
+	}
+
+	for _, stmt := range sub.Stmts {
+		w.markPiped(stmt, "")
+	}
+}
+
+// changedDir returns the directory $(cd DIR && pwd) prints when DIR is one
+// sourcedParts can render. pwd prints an absolute path, so a relative DIR
+// is joined to the walker's directory when it is known.
+func (w *astWalker) changedDir(sub *syntax.CmdSubst) (string, bool) {
+	if len(sub.Stmts) != 1 || len(sub.Stmts[0].Redirs) > 0 {
+		return "", false
+	}
+
+	and, ok := sub.Stmts[0].Cmd.(*syntax.BinaryCmd)
+	if !ok || and.Op != syntax.AndStmt {
+		return "", false
+	}
+
+	cd, pwd := callExprOf(and.X), callExprOf(and.Y)
+	if cd == nil || pwd == nil || len(cd.Args) != 2 || len(and.X.Redirs) > 0 ||
+		len(and.Y.Redirs) > 0 || !isLiteralWord(cd.Args[0]) || argWord(cd.Args[0]) != "cd" ||
+		!printsDir(pwd) {
+		return "", false
+	}
+
+	dir, ok := w.sourcedParts(cd.Args[1].Parts)
+	if !ok || dir == "" || HasUnresolvedVars(dir) {
+		return "", false
+	}
+
+	return resolvePath(w.currentDir, dir), true
+}
+
+// printsDir reports pwd, with -P or -L at most.
+func printsDir(call *syntax.CallExpr) bool {
+	args, literal := literalArgs(call.Args)
+	if !literal || len(args) == 0 || args[0] != "pwd" {
+		return false
+	}
+
+	for _, arg := range args[1:] {
+		if arg != "-P" && arg != "-L" {
+			return false
+		}
+	}
+
+	return true
+}
+
 func (w *astWalker) setPiped(call *syntax.CallExpr, tool string) {
 	if w.pipedByCall == nil {
 		w.pipedByCall = make(map[*syntax.CallExpr]string)
@@ -164,46 +260,122 @@ func (w *astWalker) setPiped(call *syntax.CallExpr, tool string) {
 	w.pipedByCall[call] = tool
 }
 
-// notePiped carries the piped stdin of call over to the command recorded
-// at seq.
+// notePiped carries the piped and untrusted stdin of call over to the
+// command recorded at seq.
 func (w *astWalker) notePiped(call *syntax.CallExpr, seq int) {
-	tool, ok := w.pipedByCall[call]
-	if !ok {
-		return
+	if tool, ok := w.pipedByCall[call]; ok {
+		if w.state.pipedStdin == nil {
+			w.state.pipedStdin = make(map[int]string)
+		}
+
+		w.state.pipedStdin[seq] = tool
 	}
 
-	if w.state.pipedStdin == nil {
-		w.state.pipedStdin = make(map[int]string)
-	}
+	if tool, ok := w.untrustedByCall[call]; ok {
+		if w.state.untrustedStdin == nil {
+			w.state.untrustedStdin = make(map[int]string)
+		}
 
-	w.state.pipedStdin[seq] = tool
+		w.state.untrustedStdin[seq] = tool
+	}
 }
 
 // noteStdinRedirects marks the commands whose stdin a redirect of stmt
 // feeds in a way the walker does not capture: a redirect on a group or
-// loop, a duplicated descriptor, or a process substitution. exec with only
-// redirects changes the stdin of every later command.
+// loop, more than one stdin redirect (the shell takes the last), a
+// duplicated descriptor, a process substitution, or a heredoc or
+// here-string with an expansion. exec changes the stdin of every later
+// command in the shell, so it marks the whole parse.
 func (w *astWalker) noteStdinRedirects(stmt *syntax.Stmt) {
-	call := callExprOf(stmt)
+	var redirs []*syntax.Redirect
 
 	for _, redir := range stmt.Redirs {
-		if !redirectsStdin(redir) {
-			continue
+		if redirectsStdin(redir) {
+			redirs = append(redirs, redir)
+		}
+	}
+
+	if len(redirs) == 0 {
+		return
+	}
+
+	call := callExprOf(stmt)
+
+	switch last := redirs[len(redirs)-1]; {
+	case call == nil:
+		w.markPiped(stmt, "")
+	case runsExec(call):
+		w.state.stdinReplaced = true
+	case len(redirs) > 1, last.Op == syntax.DplIn, last.Op == syntax.RdrInOut,
+		heredocExpands(last):
+		w.setUntrusted(call, "")
+	case last.Op == syntax.RdrIn:
+		if sub := soleProcSubst(last.Word); sub != nil {
+			w.setUntrusted(call, w.knownSetupTool(sub.Stmts))
+		}
+	}
+}
+
+// runsExec reports a call of exec, also through builtin or command, which
+// replaces the shell's own stdin when given only redirects.
+func runsExec(call *syntax.CallExpr) bool {
+	for _, word := range call.Args {
+		if !isLiteralWord(word) {
+			return false
 		}
 
-		switch {
-		case call == nil:
-			w.markPiped(stmt, "")
-		case len(call.Args) == 1 && isLiteralWord(call.Args[0]) && argWord(call.Args[0]) == execBuiltin:
-			w.stdinFed = true
-		case redir.Op == syntax.DplIn || redir.Op == syntax.RdrInOut:
-			w.setPiped(call, "")
-		case redir.Op == syntax.RdrIn:
-			if sub := soleProcSubst(redir.Word); sub != nil {
-				w.setPiped(call, w.knownSetupTool(sub.Stmts))
+		switch name := argWord(word); {
+		case name == execBuiltin:
+			return true
+		case name != builtinCommand && name != commandBuiltin && !strings.HasPrefix(name, "-"):
+			return false
+		}
+	}
+
+	return false
+}
+
+// heredocExpands reports a heredoc or here-string whose text holds an
+// expansion, which the shell fills in with output or values the parser
+// does not see.
+func heredocExpands(redir *syntax.Redirect) bool {
+	word := redir.Hdoc
+	if redir.Op == syntax.WordHdoc {
+		word = redir.Word
+	}
+
+	return word != nil && expands(word.Parts)
+}
+
+func expands(parts []syntax.WordPart) bool {
+	for _, part := range parts {
+		switch p := part.(type) {
+		case *syntax.CmdSubst, *syntax.ProcSubst, *syntax.ArithmExp, *syntax.ParamExp:
+			return true
+		case *syntax.DblQuoted:
+			if expands(p.Parts) {
+				return true
 			}
 		}
 	}
+
+	return false
+}
+
+// stmtHeredocExpands reports a statement fed a heredoc or here-string with
+// an expansion.
+func stmtHeredocExpands(stmt *syntax.Stmt) bool {
+	return slices.ContainsFunc(stmt.Redirs, func(redir *syntax.Redirect) bool {
+		return redirectsStdin(redir) && heredocExpands(redir)
+	})
+}
+
+func (w *astWalker) setUntrusted(call *syntax.CallExpr, tool string) {
+	if w.untrustedByCall == nil {
+		w.untrustedByCall = make(map[*syntax.CallExpr]string)
+	}
+
+	w.untrustedByCall[call] = tool
 }
 
 // redirectsStdin reports a redirect that replaces stdin.
@@ -233,9 +405,11 @@ func (w *astWalker) feedsStdin(cmd Command) bool {
 // before command output is dropped from them. What klaudiush cannot see,
 // such as source <(curl ...), fails closed.
 func (w *astWalker) sourceLaunch(cmd Command) []scriptFile {
-	args := cmd.Args
-	if len(args) > 0 && args[0] == endOfOptions {
-		args = args[1:]
+	args, searched, ok := sourceOptions(cmd.Args)
+	if !ok || (searched && len(args) > 0 && !strings.Contains(args[0], "/")) {
+		w.addOpacity(sourceOpacity(cmd, DetailSourceOption, ""))
+
+		return nil
 	}
 
 	if len(args) == 0 {
@@ -264,7 +438,7 @@ func (w *astWalker) sourcePath(cmd Command, operand string) (string, Opacity) {
 		return "", sourceOpacity(cmd, DetailSourceSubstitution, tool)
 	}
 
-	if marked(operand) {
+	if marked(operand) || w.fromOutput(operand) {
 		return "", sourceOpacity(cmd, DetailSourceOutput, "")
 	}
 
@@ -296,6 +470,10 @@ func (w *astWalker) sourcePath(cmd Command, operand string) (string, Opacity) {
 // descriptor, or inherited from the command running the script, is opaque.
 // With nothing on stdin it reads nothing.
 func (w *astWalker) sourceStdin(cmd Command) (string, Opacity) {
+	if tool, untrusted := w.state.untrustedStdin[cmd.Location.Seq]; untrusted {
+		return "", sourceOpacity(cmd, DetailSourceStdin, tool)
+	}
+
 	tool, piped := w.state.pipedStdin[cmd.Location.Seq]
 
 	switch {
@@ -304,15 +482,30 @@ func (w *astWalker) sourceStdin(cmd Command) (string, Opacity) {
 	case cmd.StdinFile != "":
 		path, detail := redirectedStdin(cmd, cmd.StdinFile)
 		if detail != "" {
-			return "", sourceOpacity(cmd, DetailSourceStdin, tool)
+			return "", sourceOpacity(cmd, DetailSourceStdin, "")
 		}
 
 		return path, Opacity{}
-	case piped || w.stdinFed:
+	case piped || w.stdinFed || w.state.stdinReplaced:
 		return "", sourceOpacity(cmd, DetailSourceStdin, tool)
 	default:
 		return "", Opacity{}
 	}
+}
+
+// referencedVar matches a variable a rendered word refers to.
+var referencedVar = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)`)
+
+// fromOutput reports a word using a variable last assigned command output,
+// as in f=$(curl ...); source "$f".
+func (w *astWalker) fromOutput(word string) bool {
+	for _, match := range referencedVar.FindAllStringSubmatch(word, -1) {
+		if w.state.dynamicVars[match[1]] {
+			return true
+		}
+	}
+
+	return false
 }
 
 func sourceOpacity(cmd Command, detail, tool string) Opacity {

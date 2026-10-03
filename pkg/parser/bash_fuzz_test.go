@@ -10,7 +10,9 @@ import (
 
 // fixedOperations are the fixed placeholders an opacity may name instead of
 // command text; they are not names taken from the command.
-var fixedOperations = []string{parser.GlobCommandSubst, parser.GlobVariable, parser.GlobSubst}
+var fixedOperations = []string{
+	parser.GlobCommandSubst, parser.GlobVariable, parser.GlobSubst, "(e)", "(+func)", "([...])",
+}
 
 func FuzzBashParse(f *testing.F) {
 	// Seed from bash_test.go and common patterns

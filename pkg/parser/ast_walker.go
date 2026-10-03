@@ -54,9 +54,10 @@ type astWalker struct {
 	aliases map[string]string
 	funcs   map[string]string
 	// scriptFiles holds the content of process substitutions by stand-in path.
-	scriptFiles map[string]string
-	pipedByCall map[*syntax.CallExpr]string
-	stdinFed    bool
+	scriptFiles     map[string]string
+	pipedByCall     map[*syntax.CallExpr]string
+	untrustedByCall map[*syntax.CallExpr]string
+	stdinFed        bool
 	// state is shared by every walker of one parse.
 	state *parseState
 	// expanding holds the aliases, functions and git aliases being expanded
@@ -121,9 +122,11 @@ type parseState struct {
 	expandedWords map[string]bool
 	// evalSetups names the setup tool whose output an eval call runs, by
 	// the call's seq.
-	evalSetups   map[int]string
-	unseenSubsts map[string]string
-	pipedStdin   map[int]string
+	evalSetups     map[int]string
+	unseenSubsts   map[string]string
+	pipedStdin     map[int]string
+	untrustedStdin map[int]string
+	stdinReplaced  bool
 	// distinct holds every distinct command recorded so far, so a pass that
 	// confirms a script's repeat can tell whether it found anything new.
 	distinct map[string]bool
@@ -179,6 +182,8 @@ func (w *astWalker) visit(node syntax.Node) bool {
 		w.extractPipedStdin(n)
 	case *syntax.CallExpr:
 		w.extractCommand(n)
+	case *syntax.ProcSubst:
+		w.markOutputSubst(n)
 	case *syntax.FuncDecl:
 		// The body runs only when the function is called, and each call is
 		// followed with its arguments, so it is not walked here.
@@ -265,6 +270,10 @@ func (w *astWalker) capturePipedStdin(
 	switch {
 	case info.hasHeredoc && copiesStdinVerbatim(producer):
 		w.recordStdin(consumer, info.heredocContent)
+
+		if stmtHeredocExpands(stmt) {
+			w.setUntrusted(consumer, "")
+		}
 	case info.inputPath != "" && copiesStdinVerbatim(producer):
 		w.stdinFileByCall[consumer] = info.inputPath
 	case len(producer.Args) == 2 && isLiteralWord(producer.Args[1]):
