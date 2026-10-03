@@ -262,16 +262,7 @@ func checkOpenCodeResponse(event string, fields map[string]json.RawMessage) erro
 	}
 
 	if raw, ok := fields[keyHookSpecificOutput]; ok {
-		var specific map[string]json.RawMessage
-		if err := json.Unmarshal(raw, &specific); err != nil {
-			problems = append(problems, keyHookSpecificOutput+" is not an object")
-		}
-
-		for key := range specific {
-			if key != keyHookEventName && key != "additionalContext" {
-				problems = append(problems, "unsupported field "+keyHookSpecificOutput+"."+key)
-			}
-		}
+		problems = append(problems, checkOpenCodeSpecific(event, raw)...)
 	}
 
 	if len(problems) == 0 {
@@ -286,6 +277,43 @@ func checkOpenCodeResponse(event string, fields map[string]json.RawMessage) erro
 		event,
 		strings.Join(problems, "; "),
 	)
+}
+
+func checkOpenCodeSpecific(event string, raw json.RawMessage) []string {
+	var specific map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &specific); err != nil {
+		return []string{keyHookSpecificOutput + " is not an object"}
+	}
+
+	var problems []string
+
+	for key := range specific {
+		if key != keyHookEventName && key != "additionalContext" {
+			problems = append(problems, "unsupported field "+keyHookSpecificOutput+"."+key)
+		}
+	}
+
+	if _, ok := specific[keyHookEventName]; !ok {
+		return problems
+	}
+
+	var name string
+
+	_ = json.Unmarshal(specific[keyHookEventName], &name)
+
+	native := hook.DisplayEventName(
+		hook.ProviderOpenCode,
+		hook.NormalizeEventName(event),
+		hook.EventTypeUnknown,
+	)
+	if name != event && name != native {
+		problems = append(
+			problems,
+			keyHookEventName+" "+quote(name)+" does not match "+quote(event),
+		)
+	}
+
+	return problems
 }
 
 func quote(s string) string {
