@@ -16,9 +16,10 @@ const (
 	usecPerSec = 1_000_000
 )
 
-// listProcesses returns the live processes the caller's user owns. macOS
-// hides the environment of Apple binaries, so Env is nil for them.
-func listProcesses() ([]process, error) {
+// listProcesses returns the live processes the caller's user owns, with
+// their environment when withEnv is set. macOS hides the environment of
+// Apple binaries, so Env is nil for them.
+func listProcesses(withEnv bool) ([]process, error) {
 	procs, err := unix.SysctlKinfoProcSlice("kern.proc.uid", os.Getuid())
 	if err != nil {
 		return nil, errors.Wrap(err, "kern.proc.uid")
@@ -43,8 +44,10 @@ func listProcesses() ([]process, error) {
 			Start: startTime(&procs[i]),
 		}
 
-		if raw, err := unix.SysctlRaw("kern.procargs2", pid); err == nil {
-			p.Env = parseProcArgs(raw)
+		if withEnv {
+			if raw, err := unix.SysctlRaw("kern.procargs2", pid); err == nil {
+				p.Env = parseProcArgs(raw)
+			}
 		}
 
 		out = append(out, p)
@@ -104,3 +107,6 @@ func processStart(pid int) (int64, bool) {
 
 // signalByHandle reports that macOS has no process handle to signal by.
 func signalByHandle(int, int64, unix.Signal) (sent, handled bool) { return false, false }
+
+// keeperBinary is the path of the running binary.
+func keeperBinary() (string, error) { return os.Executable() }

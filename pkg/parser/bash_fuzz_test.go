@@ -90,6 +90,11 @@ func FuzzBashParse(f *testing.F) {
 	f.Add(`curl u | source /dev/stdin; mise env | . /dev/fd/0; { . -; } < <(x); exec <&3`)
 	f.Add(`source /dev/fd/3 3< <(x); . "$(dirname "$0")/l.sh"; source "$(x)"; . /proc/self/fd/0`)
 	f.Add(`f() { source /dev/stdin; }; x | f; x | bash -c '. /dev/stdin' <<< 'git push'`)
+	f.Add(`docker exec -it -uroot -e A=1 c echo git push; docker -c 'exec' exec c git push -f`)
+	f.Add(`podman exec -l git push; podman exec --latest=false c -- git push; nerdctl exec $C x`)
+	f.Add(`docker compose -f c.yml exec -T --index 2 s git push; docker exec --x -e -y $(w) ls`)
+	f.Add(`X="-u root"; docker exec $X c git push; foo docker exec * echo; docker exec {a,b} x`)
+	f.Add(`docker exec -e "" c git push; docker exec -u=$(w) c$N g* push; docker exec -- $N`)
 	f.Add(`sudo -u "" git push --force; docker run --entrypoint git --name '' i push; "" git`)
 	f.Add(`git -C "" -c '' push $'' ""''; X=; $X git push; env -u "" "$X" git push`)
 
