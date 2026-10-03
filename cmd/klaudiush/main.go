@@ -484,7 +484,9 @@ func (h *hookRun) answerToolSelection(
 		return nil
 	}
 
-	defer h.recordSelection(hookCtx, response != nil)
+	filtered := false
+
+	defer func() { h.recordSelection(hookCtx, filtered) }()
 
 	if response == nil {
 		return nil
@@ -498,6 +500,8 @@ func (h *hookRun) answerToolSelection(
 	if _, err := fmt.Fprintf(os.Stdout, "%s\n", data); err != nil {
 		return errors.Wrap(err, "write tool selection response")
 	}
+
+	filtered = true
 
 	return nil
 }
@@ -669,8 +673,13 @@ func writeResponse(
 		return false, errors.Wrap(jsonErr, "marshal hook response")
 	}
 
-	//nolint:errcheck // Writing marshalled JSON to stdout is best-effort for hook responses.
-	fmt.Fprintf(os.Stdout, "%s\n", data)
+	// Writing the response is best-effort; a response that was not
+	// delivered stopped nothing.
+	if _, writeErr := fmt.Fprintf(os.Stdout, "%s\n", data); writeErr != nil {
+		log.Error("failed to write hook response", "error", writeErr)
+
+		return false, nil
+	}
 
 	if dispatcher.ShouldBlock(errs) {
 		log.Error("validation blocked", "errorCount", len(errs))

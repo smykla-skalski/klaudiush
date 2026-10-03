@@ -196,6 +196,68 @@ var _ = Describe("hook metrics", func() {
 		Expect(records[1].Outcome).To(Equal(metrics.ClassAdvisory))
 	})
 
+	It("counts a response as stopping only once it is written", func() {
+		hookCtx := &hook.Context{
+			Provider:     hook.ProviderClaude,
+			Event:        hook.CanonicalEventBeforeTool,
+			RawEventName: "PreToolUse",
+			ToolName:     hook.ToolTypeBash,
+			ToolInput:    hook.ToolInput{Command: "git commit"},
+		}
+		errs := []*dispatcher.ValidationError{{
+			Validator:   "validate-commit",
+			Reference:   validator.RefGitMissingFlags,
+			Message:     "missing flags",
+			ShouldBlock: true,
+		}}
+
+		var (
+			stopped bool
+			err     error
+		)
+
+		out := captureStdout(func() {
+			stopped, err = writeResponse(hookCtx, errs, nil, nil, nil, logger.NewNoOpLogger())
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(stopped).To(BeTrue())
+		Expect(out).To(ContainSubstring(`"permissionDecision":"deny"`))
+
+		withUnwritableStdout(func() {
+			stopped, err = writeResponse(hookCtx, errs, nil, nil, nil, logger.NewNoOpLogger())
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(stopped).To(BeFalse())
+	})
+
+	It("records a tool selection as filtered only once its answer is written", func() {
+		repo := evidenceRepo()
+		cfg := toolPhaseConfig("PLAN.md")
+		policy := failpolicy.New(nil)
+		selectionCtx := geminiCtx(hook.CanonicalEventToolSelection, repo, "")
+
+		answer := func() *hookRun {
+			h := newRun(hook.ProviderGemini, "BeforeToolSelection")
+			h.metrics.Store(&config.MetricsConfig{})
+
+			return h
+		}
+
+		out := captureStdout(func() {
+			Expect(answer().answerToolSelection(selectionCtx, cfg, policy)).To(Succeed())
+		})
+		Expect(out).To(ContainSubstring("allowedFunctionNames"))
+
+		withUnwritableStdout(func() {
+			Expect(answer().answerToolSelection(selectionCtx, cfg, policy)).NotTo(Succeed())
+		})
+
+		records := load()
+		Expect(records).To(HaveLen(2))
+		Expect(records[0].Outcome).To(Equal(metrics.ClassAdvisory))
+		Expect(records[1].Outcome).To(Equal(metrics.ClassPassed))
+	})
+
 	It("records nothing when metrics are disabled", func() {
 		h := newRun(hook.ProviderClaude, "PreToolUse")
 		h.metrics.Store(&config.MetricsConfig{Enabled: new(false)})
@@ -244,3 +306,24 @@ var _ = Describe("hook metrics", func() {
 		Entry("garbage", "soon", time.Duration(0), false),
 	)
 })
+
+// withUnwritableStdout runs fn with a stdout every write to fails.
+func withUnwritableStdout(fn func()) {
+	GinkgoHelper()
+
+	path := filepath.Join(GinkgoT().TempDir(), "stdout")
+	Expect(os.WriteFile(path, nil, 0o600)).To(Succeed())
+
+	readOnly, err := os.Open(path)
+	Expect(err).NotTo(HaveOccurred())
+
+	original := os.Stdout
+	os.Stdout = readOnly
+
+	defer func() {
+		os.Stdout = original
+		Expect(readOnly.Close()).To(Succeed())
+	}()
+
+	fn()
+}
