@@ -59,6 +59,7 @@ func newAstWalker(resolver Resolver) *astWalker {
 		fileWrites:      make([]FileWrite, 0),
 		stdinByCall:     make(map[*syntax.CallExpr]string),
 		stdinFileByCall: make(map[*syntax.CallExpr]string),
+		capturedCalls:   make(map[*syntax.CallExpr]bool),
 		assignments:     make(map[string]string),
 		unknownVars:     make(map[string]bool),
 		safeAssigns:     make(map[*syntax.Assign]bool),
@@ -506,8 +507,8 @@ func (w *astWalker) expandGitAlias(cmd Command) (Command, []nestedScript) {
 // found"): no builtin, installed command, typo git would correct or alias
 // klaudiush can see, with nothing on the line moving git's configuration or
 // directory. Such a string is a message; run as a command, git would refuse
-// it. A word with a brace or glob is not prose: the shell may expand it to a
-// real subcommand ("{push,}").
+// it. Only a plain alias-shaped word qualifies: an option, a brace or glob
+// the shell may expand ("{push,}") or any other form stays opaque.
 func (w *astWalker) proseGit(cmd Command, depth int) bool {
 	if !w.prose || depth != w.depth || cmd.Name != gitProgram || cmd.Invoked != gitProgram ||
 		cmd.Dynamic || len(cmd.Args) == 0 || w.dirUnknown || w.dirComputed ||
@@ -516,13 +517,8 @@ func (w *astWalker) proseGit(cmd Command, depth int) bool {
 	}
 
 	name := cmd.Args[0]
-	if strings.HasPrefix(name, "-") || gitBuiltins[name] || HasUnresolvedVars(name) ||
-		strings.ContainsAny(name, shellPatternChars) {
+	if gitBuiltins[name] || !gitAliasName.MatchString(name) {
 		return false
-	}
-
-	if !gitAliasName.MatchString(name) {
-		return true
 	}
 
 	if _, found := w.autocorrect(name); found || w.resolver.GitCommand(name) {
@@ -925,7 +921,7 @@ func (w *astWalker) followFile(
 func (w *astWalker) followCode(cmd Command, code string, depth int, sw scriptWalk) {
 	for _, line := range commandLines(code) {
 		lineWalk := sw
-		lineWalk.prose = line.prose
+		lineWalk.prose = line.prose && !w.outputCaptured && !cmd.outputCaptured
 
 		w.walkScript(line.text, cmd, depth, lineWalk)
 	}
@@ -1013,6 +1009,7 @@ func (w *astWalker) walkScript(script string, parent Command, depth int, sw scri
 	child := w.child(parent.WorkingDirectory, depth)
 	child.literal = sw.literal
 	child.prose = sw.prose
+	child.outputCaptured = w.outputCaptured || parent.outputCaptured
 	child.distrust = w.distrust || !runsInShell(parent, sw)
 	child.scriptRun = w.childRun(parent, sw)
 	child.launchSeq = parent.Location.Seq

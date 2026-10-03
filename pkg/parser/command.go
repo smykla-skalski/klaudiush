@@ -77,8 +77,9 @@ type Command struct {
 	// Vars are the variables as they stood when the command ran.
 	Vars *VarScope
 
-	startup      map[string]startupValue
-	dynamicWords map[string]bool
+	startup        map[string]startupValue
+	dynamicWords   map[string]bool
+	outputCaptured bool
 }
 
 // anyWordDynamic reports whether any word takes part of its value from

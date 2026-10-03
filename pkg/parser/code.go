@@ -31,14 +31,19 @@ var (
 	literalEscapes = strings.NewReplacer(`\\`, `\`, `\"`, `"`, `\'`, `'`, "\\`", "`", `\n`, "\n")
 )
 
-// gitConfigChange matches code that may make an unknown git word run
-// something klaudiush cannot see: git config, config files, the variables
-// that move or extend the configuration git reads, a directory change to
-// another repository, or a PATH that finds other git commands. PATH counts
+// proseUnsafe matches code where a message may still run or an unknown git
+// word may run something klaudiush cannot see: git config, config files, the
+// variables that move or extend the configuration git reads, a directory
+// change to another repository, a PATH that finds other git commands, or
+// output piped or redirected into a program (awk print | "sh", perl open
+// "|sh" and select, popen, a process's stdin, a replaced stdout). PATH counts
 // only as a key or assignment, since messages name it ("not found on PATH").
-var gitConfigChange = regexp.MustCompile(
+// Reading a result's stdout or printing to stderr does not count.
+var proseUnsafe = regexp.MustCompile(
 	`(?i)alias\.|\[alias|\[include|include(?:if)?\.|gitconfig|git/config|` +
 		`GIT_CONFIG|GIT_DIR|GIT_EXEC_PATH|XDG_CONFIG_HOME|chdir|\bcwd\b|` +
+		`popen|open3|\bstdin\b|\$stdout\s*=|\bstdout\s*=[^=]|\bselect\b|` +
+		`\|\s*["'\x60]|["'\x60]\s*\||` +
 		`(?-i:\bHOME\b|["']PATH["']|\bPATH\s*=|\.PATH\b|\{PATH\})`,
 )
 
@@ -59,9 +64,6 @@ var trailingName = regexp.MustCompile(`([A-Za-z_$][\w$]*)$`)
 
 // docstringOwner matches the line a Python docstring follows: a def or class.
 var docstringOwner = regexp.MustCompile(`^\s*(?:async\s+)?(?:def|class)\b`)
-
-// shellPatternChars start a brace expansion or glob in a shell word.
-const shellPatternChars = "{}[]*?"
 
 // maxStringPrefix is the longest string prefix before a quote (rb, f, u).
 const maxStringPrefix = 2
@@ -155,12 +157,12 @@ func commandLines(code string) []codeLine {
 	calls := programThenList.FindAllStringSubmatch(code, -1)
 	execs := quotedExec.FindAllStringSubmatch(code, -1)
 	lines := make([]codeLine, 0, len(literals)+len(lists)+len(calls)+len(execs))
-	configChange := gitConfigChange.MatchString(code)
+	unsafe := proseUnsafe.MatchString(code)
 
 	for _, m := range literals {
 		lines = append(lines, codeLine{
 			text:  literalEscapes.Replace(submatchText(code, m)),
-			prose: !configChange && proseLiteral(code, m[0]),
+			prose: !unsafe && proseLiteral(code, m[0]),
 		})
 	}
 

@@ -31,6 +31,8 @@ type astWalker struct {
 	stdinByCall map[*syntax.CallExpr]string
 	// stdinFileByCall maps a CallExpr to the file redirected to its stdin (<).
 	stdinFileByCall map[*syntax.CallExpr]string
+	capturedCalls   map[*syntax.CallExpr]bool
+	outputCaptured  bool
 	// assignments records literal NAME=value assignments, both standalone and
 	// as a prefix on a command, so consumers can resolve a variable used later
 	// in the same command line.
@@ -176,6 +178,12 @@ func (w *astWalker) visit(node syntax.Node) bool {
 	switch n := node.(type) {
 	case *syntax.BinaryCmd:
 		w.extractPipedStdin(n)
+
+		if n.Op == syntax.Pipe || n.Op == syntax.PipeAll {
+			w.markCaptured(n.X)
+		}
+	case *syntax.CmdSubst, *syntax.ProcSubst:
+		w.markCaptured(n)
 	case *syntax.CallExpr:
 		w.extractCommand(n)
 	case *syntax.FuncDecl:
@@ -207,9 +215,6 @@ func (w *astWalker) visit(node syntax.Node) bool {
 	case *syntax.Subshell:
 		// Subshells are handled recursively by syntax.Walk
 		return true
-	case *syntax.CmdSubst:
-		// Command substitution is handled recursively
-		return true
 	}
 
 	return true
@@ -219,6 +224,19 @@ func (w *astWalker) visit(node syntax.Node) bool {
 // to the Command when that CallExpr is later extracted.
 func (w *astWalker) recordStdin(call *syntax.CallExpr, content string) {
 	w.stdinByCall[call] = content
+}
+
+// markCaptured records the commands under node whose output another command
+// reads (a pipe, a command or process substitution). Text such a program
+// prints may run, so none of it counts as prose.
+func (w *astWalker) markCaptured(node syntax.Node) {
+	syntax.Walk(node, func(n syntax.Node) bool {
+		if call, ok := n.(*syntax.CallExpr); ok {
+			w.capturedCalls[call] = true
+		}
+
+		return true
+	})
 }
 
 // extractPipedStdin handles "producer | consumer" pipelines, capturing the
@@ -571,6 +589,7 @@ func (w *astWalker) extractCommand(call *syntax.CallExpr) {
 		StdinFile:        w.stdinFileByCall[call],
 		startup:          prefixStartup(call),
 		dynamicWords:     dynamicArgs(call.Args[1:]),
+		outputCaptured:   w.outputCaptured || w.capturedCalls[call],
 	}, w.depth, view)
 }
 

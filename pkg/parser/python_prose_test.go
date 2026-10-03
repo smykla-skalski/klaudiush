@@ -200,9 +200,14 @@ def run_git(args):
 		),
 		Entry("a console message", `node -e 'console.log("git zz is not set up")'`),
 		Entry("a perl die", `perl -e 'die("git zz is not set up")'`),
+		Entry(
+			"a message beside output reads",
+			`python3 -c 'import sys; out = r.stdout; sys.stdout.write(out); fail("git zz failed")'`,
+		),
 	)
 
-	DescribeTable("fails closed on a git word in a string some call may run",
+	DescribeTable(
+		"fails closed on a git word in a string some call may run",
 		func(command string) {
 			Expect(parse(command).Truncated).To(BeTrue(), "not truncated: %q", command)
 		},
@@ -214,5 +219,24 @@ def run_git(args):
 		Entry("sudo", `python3 -c 'sudo("git zz")'`),
 		Entry("a dict value after a colon", "python3 -c 'C = {\"a\":\n    \"\"\"git zz\"\"\"}'"),
 		Entry("a docstring-like string in a call", "python3 -c 'run(\n\"\"\"git zz\"\"\")'"),
+		Entry("an unusual subcommand word", `python3 -c 'print("git z+z")'`),
+		Entry("awk print piped to a shell", `awk 'BEGIN { print("git zz") | "sh" }'`),
+		Entry("perl print to a shell", `perl -e 'open(SH, "|sh"); select SH; print("git zz\n")'`),
+		Entry(
+			"print to a process stdin",
+			`python3 -c 'import subprocess as s; p = s.Popen("sh", stdin=s.PIPE); print("git zz", file=p.stdin)'`,
+		),
+		Entry("print to a replaced stdout",
+			`python3 -c 'import os, sys; sys.stdout = os.popen("sh", "w"); print("git zz")'`),
+		Entry("ruby puts to a shell", `ruby -e 'IO.popen("sh", "w") { |io| io.puts("git zz") }'`),
+		Entry("a message piped to a shell", `python3 -c 'print("git zz")' | sh`),
+		Entry("a message piped through another command", `python3 -c 'print("git zz")' | cat | sh`),
+		Entry("a message in a command substitution", `sh -c "$(python3 -c 'print("git zz")')"`),
+		Entry("a message in a process substitution", `sh <(python3 -c 'print("git zz")')`),
+		Entry("a nested message piped to a shell", `bash -c "python3 -c 'print(\"git zz\")'" | sh`),
+		Entry(
+			"cd printed into a shell",
+			`awk 'BEGIN { print("cd /tmp/e") | "sh"; print("git zz") | "sh" }'`,
+		),
 	)
 })
