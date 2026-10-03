@@ -450,6 +450,24 @@ var _ = Describe("AICommentValidator multi-line string literals", func() {
 			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
 		})
 
+		It("resolves a relative path against the hook working directory", func() {
+			writeSource("BODY = \"\"\"\n## Old\n\nText.\n\"\"\"\n")
+
+			ctx.WorkingDir = dir
+			ctx.ToolInput.FilePath = "gen.py"
+			ctx.ToolInput.OldString = "## Old"
+			ctx.ToolInput.NewString = "## Problem"
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeTrue())
+		})
+
+		It("does not open a string from quotes in an edited comment", func() {
+			ctx.ToolInput.FilePath = writeSource("def f():\n    # use docstrings\n    return 1\n")
+			ctx.ToolInput.OldString = "use docstrings\n    return 1"
+			ctx.ToolInput.NewString = "use \"\"\" for docstrings\n" +
+				"    # add tax before rounding\n    return 1"
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
+		})
+
 		It("scans from code state when the file cannot be read", func() {
 			ctx.ToolInput.FilePath = filepath.Join(dir, "missing.py")
 			ctx.ToolInput.OldString = "x = 1"

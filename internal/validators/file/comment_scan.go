@@ -11,6 +11,8 @@ import (
 
 // stringState is the multi-line string literal a line starts inside of.
 // Single and double quoted strings are line-local and not tracked here.
+// stateLineComment marks an Edit fragment that starts inside a line comment:
+// the rest of that first line is comment text already in the file.
 type stringState uint8
 
 const (
@@ -18,6 +20,7 @@ const (
 	stateBacktick
 	stateTripleDouble
 	stateTripleSingle
+	stateLineComment
 )
 
 // tripleQuoteTail is how many bytes of a triple quote follow its first byte.
@@ -156,6 +159,10 @@ func findCommentStart(
 	state stringState,
 	syntax langSyntax,
 ) (idx int, endState stringState) {
+	if state == stateLineComment {
+		return -1, stateCode
+	}
+
 	var quote byte
 
 	for i := 0; i < len(line); i++ {
@@ -218,7 +225,8 @@ func (s commentScan) lineStart(state stringState) stringState {
 // Write starts in code. An Edit's new_string starts in the string state found
 // at its old_string in the file on disk, so a fragment that begins inside (or
 // closes) a docstring is scanned correctly; when old_string occurs at several
-// places in different states, it falls back to code. An Edit with no
+// places in different states, it falls back to code. Only languages with
+// triple-quoted strings read the file. An Edit with no
 // old_string on a non-empty file joins added lines from several patch hunks
 // whose boundaries are lost, so triple-quoted state is not carried between its
 // lines.
@@ -226,12 +234,14 @@ func newCommentScan(hookCtx *hook.Context) commentScan {
 	path := hookCtx.GetFilePath()
 	scan := commentScan{syntax: langSyntaxForPath(path)}
 
-	if hookCtx.ToolName != hook.ToolTypeEdit || hookCtx.ToolInput.Content != "" {
+	if scan.syntax == (langSyntax{}) ||
+		hookCtx.ToolName != hook.ToolTypeEdit ||
+		hookCtx.ToolInput.Content != "" {
 		return scan
 	}
 
-	data, err := os.ReadFile(filepath.Clean(path))
-	if err != nil || len(data) == 0 {
+	data, ok := readRegularFile(hook.CanonicalFilePath(hookCtx.WorkingDir, path))
+	if !ok || len(data) == 0 {
 		return scan
 	}
 
@@ -247,9 +257,25 @@ func newCommentScan(hookCtx *hook.Context) commentScan {
 	return scan
 }
 
+// readRegularFile reads path when it is a regular file; a FIFO or device would
+// block or never end.
+func readRegularFile(path string) ([]byte, bool) {
+	info, err := os.Stat(path)
+	if err != nil || !info.Mode().IsRegular() {
+		return nil, false
+	}
+
+	data, err := os.ReadFile(filepath.Clean(path))
+	if err != nil {
+		return nil, false
+	}
+
+	return data, true
+}
+
 // stateAtOccurrences returns the multi-line string state shared by every
-// occurrence of old in content, or stateCode when there is none or the
-// occurrences disagree.
+// occurrence of old in content (stateLineComment when it starts inside a line
+// comment), or stateCode when there is none or the occurrences disagree.
 func stateAtOccurrences(content, old string, syntax langSyntax) stringState {
 	lines := strings.Split(content, "\n")
 	lineStates := make([]stringState, len(lines))
@@ -275,7 +301,11 @@ func stateAtOccurrences(content, old string, syntax langSyntax) stringState {
 
 		pos := from + rel
 		li := sort.SearchInts(lineOffsets, pos+1) - 1
-		_, at := findCommentStart(content[lineOffsets[li]:pos], lineStates[li], syntax)
+
+		idx, at := findCommentStart(content[lineOffsets[li]:pos], lineStates[li], syntax)
+		if idx >= 0 {
+			at = stateLineComment
+		}
 
 		if found && at != shared {
 			return stateCode
