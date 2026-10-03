@@ -39,14 +39,16 @@ const OpacityUnresolvedWord OpacityCause = "unresolved-word"
 
 // Opacity describes one operation the parser could not see through: why
 // (Cause), what (Operation), the programs that led to it, outermost first
-// (Origin), and for some causes a fixed explanation (Detail). It names
-// programs, scripts and subcommands only, never their arguments, so it is
-// safe to show.
+// (Origin), for some causes a fixed explanation (Detail), and for eval of a
+// known tool's printed shell setup that tool, one of EvalSetupTools (Tool).
+// It names programs, scripts and subcommands only, never their arguments,
+// so it is safe to show.
 type Opacity struct {
 	Cause     OpacityCause
 	Operation string
 	Origin    []string
 	Detail    string
+	Tool      string
 }
 
 // MaxOpacities bounds the opacities one parse keeps. One slot is held for an
@@ -131,9 +133,14 @@ func scriptName(path string) string {
 // closed. Only the first opacities are kept; the parse is marked truncated
 // regardless.
 func (w *astWalker) opaque(cause OpacityCause, operation, detail string) {
+	w.addOpacity(Opacity{Cause: cause, Operation: operation, Detail: detail})
+}
+
+// addOpacity records o, reached through the programs being walked.
+func (w *astWalker) addOpacity(o Opacity) {
 	w.state.truncated = true
 
-	if cause == OpacityWorkBudget {
+	if o.Cause == OpacityWorkBudget {
 		if w.state.budgetReported {
 			return
 		}
@@ -141,12 +148,7 @@ func (w *astWalker) opaque(cause OpacityCause, operation, detail string) {
 		w.state.budgetReported = true
 	}
 
-	o := Opacity{
-		Cause:     cause,
-		Operation: operation,
-		Origin:    slices.Clone(w.via),
-		Detail:    detail,
-	}
+	o.Origin = slices.Clone(w.via)
 
 	if slices.ContainsFunc(w.state.opacities, o.equal) {
 		return
@@ -168,7 +170,8 @@ func (w *astWalker) opaque(cause OpacityCause, operation, detail string) {
 
 func (o Opacity) equal(other Opacity) bool {
 	return o.Cause == other.Cause && o.Operation == other.Operation &&
-		o.Detail == other.Detail && slices.Equal(o.Origin, other.Origin)
+		o.Detail == other.Detail && o.Tool == other.Tool &&
+		slices.Equal(o.Origin, other.Origin)
 }
 
 // enter adds cmd to the origin of what it launches until the returned

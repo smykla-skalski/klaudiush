@@ -223,7 +223,54 @@ var _ = Describe("NestingValidator", func() {
 			"eval runs a command line that comes from a variable",
 			"Run the commands directly instead of through eval",
 		),
+		Entry("eval of ssh-agent's setup",
+			`eval "$(ssh-agent -s)"`,
+			"runs eval, git or gh with a word klaudiush cannot resolve",
+			"command",
+			"eval runs the shell setup ssh-agent prints",
+			"ssh-agent <command>",
+		),
+		Entry("eval of mise's setup",
+			`eval "$(mise activate bash)"`,
+			"runs eval, git or gh with a word klaudiush cannot resolve",
+			"command",
+			"eval runs the shell setup mise prints",
+			"mise exec -- <command>",
+		),
+		Entry("eval of direnv's setup",
+			`eval "$(direnv export bash)"`,
+			"runs eval, git or gh with a word klaudiush cannot resolve",
+			"command",
+			"eval runs the shell setup direnv prints",
+			"direnv exec . <command>",
+		),
+		Entry("eval of an unknown tool's output",
+			`eval "$(evil-mise activate bash)"`,
+			"runs eval, git or gh with a word klaudiush cannot resolve",
+			"command",
+			"eval runs a command line that comes from command output",
+			"Run the commands directly instead of through eval",
+		),
 	)
+
+	It("offers an exception token for eval of a tool's setup", func() {
+		result := blocked(`eval "$(direnv export bash)"`)
+
+		Expect(result.Findings).To(ConsistOf(
+			HaveField("Repair", HaveSuffix("add # EXC:SHELL002:<reason> to the command")),
+		))
+	})
+
+	It("does not show the arguments of a tool whose setup eval runs", func() {
+		result := blocked(`eval "$(mise activate SECRET-VALUE)"`)
+
+		for _, f := range result.Findings {
+			Expect(f.Message + f.Location + f.Actual + f.Repair).
+				NotTo(ContainSubstring("SECRET-VALUE"))
+		}
+
+		Expect(result.Message).NotTo(ContainSubstring("SECRET-VALUE"))
+	})
 
 	It("passes eval and git words it can resolve", func() {
 		for _, command := range []string{

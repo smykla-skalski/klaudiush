@@ -96,6 +96,17 @@ var _ = Describe("Command resolution", func() {
 		Entry("path to git as an argument", "ls -la /usr/bin/git"),
 		Entry("su without -c", "su - root"),
 		Entry("bare timeout", "timeout 30"),
+		Entry("direnv exec echoing a git command", "direnv exec . echo git commit -S -m x"),
+		Entry("direnv exec in ./ echoing a git command", "direnv exec ./ echo git commit -S -m x"),
+	)
+
+	DescribeTable("finds git after a runner's directory operand",
+		func(command string) {
+			Expect(gitCommitArgs(command)).NotTo(BeEmpty(), command)
+		},
+		Entry("current directory", "direnv exec . git commit -S -m x"),
+		Entry("relative directory", "direnv exec ./ git commit -S -m x"),
+		Entry("direnv by path", "/usr/local/bin/direnv exec . git commit -S -m x"),
 	)
 
 	It("keeps the launcher itself in the command list", func() {

@@ -432,7 +432,12 @@ func (w *astWalker) resolveEval(cmd Command) (string, bool) {
 	line := strings.Join(cmd.Args, " ")
 
 	if cmd.Dynamic || strings.Contains(line, unresolvedWord) {
-		w.opaque(OpacityUnresolvedWord, cmd.Name, DetailWordOutput)
+		w.addOpacity(Opacity{
+			Cause:     OpacityUnresolvedWord,
+			Operation: cmd.Name,
+			Detail:    DetailWordOutput,
+			Tool:      w.state.evalSetups[cmd.Location.Seq],
+		})
 
 		return line, false
 	}
