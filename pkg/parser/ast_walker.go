@@ -66,6 +66,9 @@ type astWalker struct {
 	// literal marks a walker over a string found in interpreter code: its
 	// top-level commands count only when they name something tracked.
 	literal bool
+	// prose marks a walker over a plain string literal in interpreter code,
+	// where a git word no subcommand stands for is a message.
+	prose bool
 	// dirUnknown records that a cd went somewhere that cannot be resolved.
 	dirUnknown bool
 	// dirComputed records a cd to a directory computed by a command
@@ -115,6 +118,7 @@ type parseState struct {
 	// table, so a bare name may no longer run what it runs outside it.
 	pathChanged   bool
 	untrusted     bool
+	outputRouted  bool
 	arrays        map[string]bool
 	expandedWords map[string]bool
 	// evalSetups names the setup tool whose output an eval call runs, by
@@ -173,6 +177,12 @@ func (w *astWalker) visit(node syntax.Node) bool {
 	switch n := node.(type) {
 	case *syntax.BinaryCmd:
 		w.extractPipedStdin(n)
+
+		if (n.Op == syntax.Pipe || n.Op == syntax.PipeAll) && !w.pipeFilter(n.Y) {
+			w.noteOutputRoute()
+		}
+	case *syntax.CmdSubst, *syntax.ProcSubst:
+		w.noteOutputRoute()
 	case *syntax.CallExpr:
 		w.extractCommand(n)
 	case *syntax.FuncDecl:
@@ -191,6 +201,7 @@ func (w *astWalker) visit(node syntax.Node) bool {
 		}
 	case *syntax.Stmt:
 		w.extractRedirect(n)
+		w.noteRedirectedOutput(n)
 
 		if form := numericGlobQualifier(n); form != "" {
 			w.opaque(OpacityZshGlobQualifier, form, "")
@@ -204,9 +215,6 @@ func (w *astWalker) visit(node syntax.Node) bool {
 	case *syntax.Subshell:
 		// Subshells are handled recursively by syntax.Walk
 		return true
-	case *syntax.CmdSubst:
-		// Command substitution is handled recursively
-		return true
 	}
 
 	return true
@@ -216,6 +224,62 @@ func (w *astWalker) visit(node syntax.Node) bool {
 // to the Command when that CallExpr is later extracted.
 func (w *astWalker) recordStdin(call *syntax.CallExpr, content string) {
 	w.stdinByCall[call] = content
+}
+
+// noteRedirectedOutput notes a statement that may send output to a program:
+// a redirect to a process substitution (cmd > >(sh)), an exec that redirects
+// the shell's descriptors, a coprocess, or a named pipe another command may
+// read as it is written. Its redirects are walked after the command itself,
+// so they are checked here first.
+func (w *astWalker) noteRedirectedOutput(stmt *syntax.Stmt) {
+	_, coproc := stmt.Cmd.(*syntax.CoprocClause)
+	call := callExprOf(stmt)
+	execRedirect := len(stmt.Redirs) > 0 && isCommand(call, "exec")
+	namedPipe := isCommand(call, "mkfifo") || isCommand(call, "mknod")
+
+	if coproc || stmt.Coprocess || execRedirect || namedPipe ||
+		slices.ContainsFunc(stmt.Redirs, func(r *syntax.Redirect) bool {
+			return r.Word != nil &&
+				slices.ContainsFunc(r.Word.Parts, func(part syntax.WordPart) bool {
+					_, ok := part.(*syntax.ProcSubst)
+
+					return ok
+				})
+		}) {
+		w.noteOutputRoute()
+	}
+}
+
+// noteOutputRoute records that the line hands some command's output to
+// another (a pipe, a substitution, a redirect into a program). Text an
+// interpreter prints may then run, so none of it counts as prose for the
+// rest of the parse. A prose string itself runs nothing, so it routes
+// nothing; a command string an interpreter runs (os.system) does.
+func (w *astWalker) noteOutputRoute() {
+	if !w.prose {
+		w.state.outputRouted = true
+	}
+}
+
+// pipeFilters only read and print or save their input; none runs any of it.
+// sort (--compress-program) and rg (--pre) are left out: they can.
+var pipeFilters = nameSet("head tail jq grep egrep fgrep wc uniq cut tr column nl cat tee")
+
+// pipeFilter reports whether a pipeline stage is one of pipeFilters, written
+// literally and not redefined on the line, so what flows into it is displayed
+// rather than run. A stage with a redirect or a substitution (tee >(sh)) may
+// hand its input on, and is walked only after the stage before it, so it is
+// not a filter.
+func (w *astWalker) pipeFilter(stmt *syntax.Stmt) bool {
+	call := callExprOf(stmt)
+	if call == nil || len(stmt.Redirs) > 0 || len(call.Assigns) > 0 || len(call.Args) == 0 ||
+		!isLiteralWord(call.Args[0]) || anyWordDynamic(call.Args) {
+		return false
+	}
+
+	name := wordToString(call.Args[0])
+
+	return pipeFilters[name] && !w.defined(name) && !w.state.pathChanged
 }
 
 // extractPipedStdin handles "producer | consumer" pipelines, capturing the
@@ -593,7 +657,7 @@ func (w *astWalker) record(cmd Command, depth int, view string) {
 	cmd, detail := w.programWord(cmd, view)
 
 	// Prose in interpreter code ("hint: run git commit") runs nothing.
-	if w.literal && depth == w.depth && !literalCommand(cmd.Name) {
+	if w.literal && depth == w.depth && !literalCommand(cmd.Name) || w.proseGit(cmd, depth) {
 		return
 	}
 
