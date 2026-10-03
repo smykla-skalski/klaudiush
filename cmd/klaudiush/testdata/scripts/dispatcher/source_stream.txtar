@@ -1,7 +1,6 @@
 exec git init --initial-branch=main
 exec git config user.email "test@test.com"
 exec git config user.name "Test User"
-exec git remote add origin https://github.com/test/repo.git
 
 stdin source-curl.json
 exec klaudiush --hook-type PreToolUse
@@ -40,7 +39,7 @@ stdout 'source runs the shell setup mise prints'
 stdin source-file.json
 exec klaudiush --hook-type PreToolUse
 stdout '"permissionDecision":"deny"'
-stdout 'GIT026'
+stdout 'GIT010'
 ! stdout 'SHELL002'
 
 stdin source-clean-file.json
@@ -52,7 +51,7 @@ exec klaudiush --hook-type PreToolUse
 ! stdout 'deny'
 
 -- force.sh --
-git push --force origin main
+git commit -m "fix(x): y"
 -- clean.sh --
 git status
 -- source-curl.json --
