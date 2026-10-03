@@ -312,6 +312,7 @@ func findLeadViolations(
 	lines := strings.Split(content, "\n")
 	lines[0] = lead.prefix + lines[0]
 	docLines := withFollowingSource(lines, lead.suffix)
+	metadata := pep723Metadata(lines, docLines, scan, lead)
 
 	state := lead.state
 
@@ -330,7 +331,8 @@ func findLeadViolations(
 		if aiTodoMarker.MatchString(body) ||
 			isShebangOrDocMarker(body) ||
 			aiDirectiveMarker.MatchString(strings.TrimLeft(body, " \t")) ||
-			aiExceptionToken.MatchString(body) {
+			aiExceptionToken.MatchString(body) ||
+			metadata[i] {
 			continue
 		}
 
@@ -366,6 +368,23 @@ func findLeadViolations(
 	}
 
 	return violations
+}
+
+// pep723Metadata reports which payload lines belong to a PEP 723 metadata
+// block in a Python file. An Edit's block is matched against the file text
+// around it, so a line edited inside an existing block is still recognised.
+func pep723Metadata(lines, docLines []string, scan commentScan, lead editLead) []bool {
+	inBlock := make([]bool, len(lines))
+	if !scan.syntax.python {
+		return inBlock
+	}
+
+	around := make([]string, 0, len(lead.before)+len(docLines))
+	around = append(append(around, lead.before...), docLines...)
+
+	copy(inBlock, pep723Lines(around, lead.beforeState, scan)[len(lead.before):])
+
+	return inBlock
 }
 
 // maxDocContextLines bounds the source lines after an Edit that are read to

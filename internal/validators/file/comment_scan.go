@@ -476,10 +476,14 @@ type commentScan struct {
 // editLead is one place an Edit's new_string lands: the multi-line string
 // state its line starts in, the file text before it on that line, and the
 // file text after it, only used to find the declaration a comment documents.
+// before holds the file lines above it, starting in beforeState, only used to
+// find a PEP 723 metadata block the Edit lands in.
 type editLead struct {
-	state  stringState
-	prefix string
-	suffix string
+	state       stringState
+	prefix      string
+	suffix      string
+	before      []string
+	beforeState stringState
 }
 
 // lineStart returns the state the next line starts in after a line ended in
@@ -624,11 +628,14 @@ func editLeads(content, old string, syntax langSyntax, all bool) []editLead {
 		pos := from + rel
 		li := sort.SearchInts(lineOffsets, pos+1) - 1
 		from = pos + len(old)
+		first := max(0, li-maxDocContextLines)
 
 		leads = append(leads, editLead{
-			state:  lineStates[li],
-			prefix: content[lineOffsets[li]:pos],
-			suffix: firstLines(content[from:], maxDocContextLines),
+			state:       lineStates[li],
+			prefix:      content[lineOffsets[li]:pos],
+			suffix:      firstLines(content[from:], maxDocContextLines),
+			before:      lines[first:li],
+			beforeState: lineStates[first],
 		})
 
 		if !all {
