@@ -37,6 +37,7 @@ type miniHarness struct {
 	model  *harness.ScriptedModel
 	hooks  string
 	runErr error
+	linger bool
 }
 
 func (*miniHarness) Name() string            { return "mini" }
@@ -91,6 +92,10 @@ func (m *miniHarness) Run(
 ) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
+	}
+
+	if m.linger {
+		startLingering(ctx, sb)
 	}
 
 	messages := []map[string]any{{"role": "user", "content": prompt}}
@@ -344,9 +349,30 @@ var _ = Describe("Runner", func() {
 		)
 		Expect(err).NotTo(HaveOccurred())
 
-		cleanup()
+		Expect(cleanup()).To(Succeed())
 		Expect(result.Sandbox.Root).To(BeADirectory())
 		Expect(result.Sandbox.Close()).To(Succeed())
+	})
+
+	It("stops what the harness left running before the run returns", func() {
+		requireProcessListing()
+
+		for _, keep := range []bool{false, true} {
+			runner.Keep = keep
+			result, cleanup, err := runner.Run(
+				context.Background(),
+				&miniHarness{linger: true},
+				"1.0.0",
+				scenarioNamed("deny_shell"),
+			)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(len(result.Lingering)).To(BeNumerically(">=", lingeringCount))
+			Expect(result.Sandbox.Processes()).To(BeEmpty(), "keep=%v", keep)
+
+			Expect(cleanup()).To(Succeed())
+			Expect(sandboxGone(result.Sandbox)()).To(Equal(!keep))
+			Expect(result.Sandbox.Close()).To(Succeed())
+		}
 	})
 
 	It("lists every scenario with a check and a summary", func() {

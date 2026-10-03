@@ -201,7 +201,13 @@ func runScenario(
 	}
 
 	result, cleanup, err := runner.Run(ctx, driver, version, scenario)
-	DeferCleanup(cleanup)
+
+	DeferCleanup(func() { expectCleanSandbox(result, cleanup) })
+
+	if result != nil && len(result.Lingering) > 0 {
+		GinkgoWriter.Printf("%s/%s: stopped %d processes left running: %v\n",
+			driver.Name(), scenario.Name, len(result.Lingering), result.Lingering)
+	}
 
 	if err != nil {
 		record(harness.StatusFailed, err.Error())
@@ -245,6 +251,29 @@ func runScenario(
 	}
 
 	record(harness.StatusPassed, "")
+}
+
+// expectCleanSandbox runs the cleanup and checks that no sandbox process
+// survived it and, unless the sandbox is kept, that no file reappears.
+func expectCleanSandbox(result *harness.Result, cleanup func() error) {
+	Expect(cleanup()).To(Succeed())
+
+	if result == nil {
+		return
+	}
+
+	sb := result.Sandbox
+	Expect(sb.Processes()).To(BeEmpty(), "sandbox processes survived the cleanup")
+
+	if runner.Keep {
+		return
+	}
+
+	Consistently(func() bool {
+		_, err := os.Lstat(sb.Root)
+
+		return os.IsNotExist(err)
+	}).WithTimeout(time.Second).Should(BeTrue(), "files reappeared in %s", sb.Root)
 }
 
 func probeVersion(base, binary string) (string, error) {

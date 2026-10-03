@@ -92,7 +92,8 @@ Each scenario gets its own sandbox with `home/`, `work/`, `bin/` and `captures/`
 - Claude Code keeps per-project task files under `/tmp/claude-<uid>` whatever `TMPDIR` says, so `CLAUDE_CODE_TMPDIR` points into the sandbox too.
 - Before the run the suite records the size, mode and modification time of the real harness hook and configuration files and the klaudiush configuration (never their contents), and fails if any changed afterwards. Credential files are left out: an agent session running elsewhere may refresh its token mid-run.
 - opencode loads its OpenAI-compatible provider package from npm on first use, so its run needs network access to the registry. Nothing is written outside the sandbox.
-- A harness killed at the run timeout can leave child processes behind; they write only into the removed sandbox.
+- Every command the suite starts in a sandbox runs in a new session. When the harness exits, and again before the sandbox is removed, the suite kills whatever is still running in those sessions, any process whose `HOME`, `TMPDIR`, `CODEX_HOME`, `CLAUDE_CONFIG_DIR` or `XDG_STATE_HOME` points into the sandbox, and their children. That stops background work such as the Codex plugin clone under `.codex/.tmp/plugins-clone-*` and children left by a harness killed at the timeout. The sandbox is removed, checked again after a pause, and removed again if anything reappeared; the cleanup fails if files keep coming back. With `KLAUDIUSH_HARNESS_KEEP=1` the processes are still stopped and only the files stay.
+- Processes are found only on macOS and Linux. On macOS the environment of Apple binaries (`/bin/sh`, `sleep`) is hidden, so an Apple binary that starts its own session after its parent exited is not found.
 
 ## Contract checks in CI
 
