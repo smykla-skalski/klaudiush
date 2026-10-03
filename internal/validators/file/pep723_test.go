@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -118,6 +119,17 @@ var _ = Describe("AICommentValidator PEP 723 metadata", func() {
 		Entry("only python files are exempt", "/repo/main.rb",
 			"# /// script\n# a = 1\n# ///\n", 1, 2, 3),
 	)
+
+	It("scans many unterminated start lines in linear time", func() {
+		ctx.ToolInput.FilePath = "/repo/fetch.py"
+		ctx.ToolInput.Content = strings.Repeat("# /// script\n", 30000)
+
+		start := time.Now()
+		result := sv.Validate(context.Background(), ctx)
+
+		Expect(result.Passed).To(BeFalse())
+		Expect(time.Since(start)).To(BeNumerically("<", 5*time.Second))
+	})
 
 	Context("Edit", func() {
 		var dir string

@@ -43,20 +43,25 @@ func pep723Lines(lines []string, state stringState, scan commentScan) []bool {
 func pep723Block(lines []string, topLevel []bool) []bool {
 	inBlock := make([]bool, len(lines))
 
-	for i := range lines {
+	for i := 0; i < len(lines); i++ {
 		if !topLevel[i] || trimCR(lines[i]) != pep723Start {
 			continue
 		}
 
-		end := -1
+		end, runEnd := -1, i+1
 
-		for j := i + 1; j < len(lines) && topLevel[j] && pep723Body.MatchString(trimCR(lines[j])); j++ {
-			if trimCR(lines[j]) == pep723End {
-				end = j
+		for ; runEnd < len(lines) && topLevel[runEnd] &&
+			pep723Body.MatchString(trimCR(lines[runEnd])); runEnd++ {
+			if trimCR(lines[runEnd]) == pep723End {
+				end = runEnd
 			}
 		}
 
 		if end <= i+1 {
+			// Any later start in this run sees the same closing lines, so it
+			// cannot close either; skipping the run keeps the scan linear.
+			i = runEnd - 1
+
 			continue
 		}
 
