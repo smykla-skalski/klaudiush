@@ -74,7 +74,7 @@ A `git commit` is blocked with `Commit message cannot be inspected` when klaudiu
 - `-C <rev>`, `-c <rev>` and `--fixup=amend:<rev>`/`reword:<rev>`: the reused commit's message, read with `git log`. It is blocked when the rev is not a literal, git is pointed at another repository (`--git-dir`, `--work-tree`, `GIT_DIR`), or a command or file write earlier on the line may move it (a full commit hash is never moved).
 - `-t <file>`: the template, when no other source gives the message.
 
-After an editor, `#` lines are dropped as git's default cleanup drops them; with `--cleanup` other than `strip`, or `-c core.commentChar` or `commit.cleanup`, they are kept. A variable is unknown after arithmetic anywhere on the line (`let`, `((...))`, `$((...))`, a computed array subscript), and a heredoc or here-string variable that the command's own prefix assignment sets is unknown too, since bash and zsh expand it differently.
+After an editor, `#` lines are dropped as git's default cleanup drops them; with `--cleanup` other than `strip`, or `-c core.commentChar` or `commit.cleanup`, they are kept. `$PWD` and `$OLDPWD`, which the shell keeps itself, are never read, and a variable is unknown after arithmetic anywhere on the line (`let`, `((...))`, `$((...))`, a computed array subscript), and a heredoc or here-string variable that the command's own prefix assignment sets is unknown too, since bash and zsh expand it differently.
 
 These are blocked:
 

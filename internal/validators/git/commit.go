@@ -406,7 +406,9 @@ func (v *CommitValidator) extractCommitMessage(
 		return "", err
 	}
 
-	edits := editorRuns(gitCmd)
+	fixupRev, fixupGap, fixupReuses := src.fixupRev(gitCmd)
+
+	edits := editorRuns(gitCmd, fixupReuses)
 	if edits {
 		if err := src.checkEditor(gitCmd); err != nil {
 			return "", err
@@ -415,7 +417,6 @@ func (v *CommitValidator) extractCommitMessage(
 
 	strip := edits && src.cleanupStrips(gitCmd)
 	reuse, reuses := lastValue(gitCmd, reuseFlags)
-	fixupRev, fixupGap, fixupReuses := src.fixupRev(gitCmd)
 
 	switch {
 	case hasFileFlag(gitCmd):

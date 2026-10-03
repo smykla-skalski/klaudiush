@@ -219,7 +219,8 @@ func checkMessageFlags(gitCmd *parser.GitCommand) error {
 
 // abbreviates reports a long flag git would expand to option.
 func abbreviates(flag, option string) bool {
-	return len(flag) >= minAbbrevLen && flag != option && strings.HasPrefix(option, flag)
+	return !slices.Contains(exactOptions, flag) && len(flag) >= minAbbrevLen && flag != option &&
+		strings.HasPrefix(option, flag)
 }
 
 // isStdinPath reports a path that reads the commit's stdin.

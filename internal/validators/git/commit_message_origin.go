@@ -76,12 +76,16 @@ var (
 // message, which git also accepts abbreviated.
 var abbreviatedOptions = []string{
 	"--file", "--message", "--template", "--reuse-message", reeditMessageFlag,
-	"--fixup", "--squash", "--edit", "--no-edit", cleanupFlag,
+	"--fixup", "--squash", "--edit", "--no-edit", cleanupFlag, "--allow-empty-message",
 }
 
 // noOpEditors leave the prepared message as it is. A bare "true" is looked
 // up in PATH, so it counts only when it resolves to one of the system ones.
 var noOpEditors = []string{":", "/usr/bin/true", "/bin/true"}
+
+// exactOptions are commit options that are also a prefix of a longer one,
+// which git takes as themselves, not as an abbreviation.
+var exactOptions = []string{"--all", "--allow-empty"}
 
 // gitConfigVars set git config from the environment, which may name the
 // editor.
@@ -98,10 +102,6 @@ var cleanupKeys = []string{"commit.cleanup", "core.commentchar", "core.commentst
 
 // stripModes are the --cleanup modes that drop # lines after an editor.
 var stripModes = []string{"", "strip", "default"}
-
-// fullObjectID matches a SHA-1 or SHA-256 object name, which no ref move
-// changes.
-var fullObjectID = regexp.MustCompile(`^(?:[0-9a-f]{40}|[0-9a-f]{64})$`)
 
 // commentLine matches a line git's default cleanup removes after an editor.
 var commentLine = regexp.MustCompile(`(?m)^#.*(?:\n|$)`)
@@ -186,7 +186,7 @@ func (src messageSource) stdinMessage(gitCmd *parser.GitCommand) (string, error)
 }
 
 // editorRuns reports whether git commit opens an editor for the message.
-func editorRuns(gitCmd *parser.GitCommand) bool {
+func editorRuns(gitCmd *parser.GitCommand, fixupReuses bool) bool {
 	if gitCmd.HasFlag("--dry-run") {
 		return false
 	}
@@ -200,13 +200,10 @@ func editorRuns(gitCmd *parser.GitCommand) bool {
 		}
 	}
 
-	fixup, hasFixup := lastValue(gitCmd, []string{fixupFlag})
-
 	switch {
 	case gitCmd.HasFlag(reeditShortFlag), gitCmd.HasFlag(reeditMessageFlag):
 		return true
-	case hasFixup && (strings.HasPrefix(fixup.Value, fixupAmendPrefix) ||
-		strings.HasPrefix(fixup.Value, fixupRewordPrefx)):
+	case fixupReuses:
 		return true
 	case slices.ContainsFunc(commitMessageFlags, gitCmd.HasFlag),
 		slices.ContainsFunc(commitFileFlags, gitCmd.HasFlag),
@@ -353,17 +350,25 @@ func (src messageSource) cleanupStrips(gitCmd *parser.GitCommand) bool {
 
 // fixupRev returns the commit --fixup=amend: or reword: takes its message
 // from, which autosquash makes the final message when the editor leaves it.
+// The mode is read from the value the shell builds, and a value klaudiush
+// cannot see counts as reusing a message, with the gap that hides it.
 func (src messageSource) fixupRev(gitCmd *parser.GitCommand) (rev, gap string, ok bool) {
 	fv, found := lastValue(gitCmd, []string{fixupFlag})
-	if !found || !strings.HasPrefix(fv.Value, fixupAmendPrefix) &&
-		!strings.HasPrefix(fv.Value, fixupRewordPrefx) {
+	if !found {
 		return "", "", false
 	}
 
 	value, gap := src.flagText(gitCmd, fv)
-	_, rev, _ = strings.Cut(value, ":")
+	if gap != "" {
+		return "", gap, true
+	}
 
-	return rev, gap, true
+	mode, rev, cut := strings.Cut(value, ":")
+	if !cut || mode+":" != fixupAmendPrefix && mode+":" != fixupRewordPrefx {
+		return "", "", false
+	}
+
+	return rev, "", true
 }
 
 // reusedMessage returns the message of the commit -C, -c or
@@ -386,7 +391,7 @@ func (v *CommitValidator) reusedMessage(
 		return "", opaqueSourceWith(fmt.Sprintf(reasonReuseUnread, rev), repairReuse)
 	case !dir.known || src.otherRepo(gitCmd):
 		return "", opaqueSourceWith(reasonReuseRepo, repairReuse)
-	case !fullObjectID.MatchString(rev) && src.refsMayMove(gitCmd):
+	case src.refsMayMove(gitCmd):
 		return "", opaqueSourceWith(fmt.Sprintf(reasonReuseMoved, rev), repairReuse)
 	}
 
@@ -425,6 +430,10 @@ func (src messageSource) otherRepo(gitCmd *parser.GitCommand) bool {
 func (src messageSource) refsMayMove(gitCmd *parser.GitCommand) bool {
 	if src.parsed == nil {
 		return false
+	}
+
+	if src.cmd.Dynamic || slices.Contains(src.cmd.SubstitutedArgs, true) {
+		return true
 	}
 
 	if len(src.parsed.WritesBefore(gitCmd.Location)) > 0 {

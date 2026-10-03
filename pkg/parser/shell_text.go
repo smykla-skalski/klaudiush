@@ -369,7 +369,7 @@ func (w *astWalker) resolveVar(part TextPart) TextPart {
 	value, set, trusted := w.trustedValue(part.Var)
 
 	switch {
-	case !trusted || w.state.arithmetic:
+	case !trusted || w.state.arithmetic || movedDir[part.Var]:
 		part.Gap = fmt.Sprintf(gapUntrustedFmt, part.Var)
 	case !set:
 		part.Gap = fmt.Sprintf(gapUnsetFormat, part.Var)
@@ -425,6 +425,8 @@ type EnvValue struct {
 // envSnapshot records envNames as call runs with them: from its own prefix
 // assignments, else as they stand on the line. It runs before the prefix
 // assignments are recorded, which marks them unknown for later commands.
+// Prefix values expand in order, so one naming a variable an earlier prefix
+// of the same call sets is unknown.
 func (w *astWalker) envSnapshot(call *syntax.CallExpr) map[string]EnvValue {
 	env := make(map[string]EnvValue, len(envNames))
 
@@ -432,19 +434,32 @@ func (w *astWalker) envSnapshot(call *syntax.CallExpr) map[string]EnvValue {
 		env[name] = w.exportedValue(name)
 	}
 
+	prefixed := make(map[string]bool, len(call.Assigns))
+
 	for _, assign := range call.Assigns {
-		if assign.Name == nil || !slices.Contains(envNames, assign.Name.Value) {
+		if assign.Name == nil {
 			continue
 		}
 
-		if assign.Append || assign.Naked || assign.Index != nil || assign.Array != nil {
-			env[assign.Name.Value] = EnvValue{}
+		name := assign.Name.Value
+		usesPrefix := slices.ContainsFunc(wordText(assign.Value).Parts, func(p TextPart) bool {
+			return prefixed[p.Var]
+		})
+		prefixed[name] = true
+
+		if !slices.Contains(envNames, name) {
+			continue
+		}
+
+		if usesPrefix || assign.Append || assign.Naked || assign.Index != nil ||
+			assign.Array != nil {
+			env[name] = EnvValue{}
 
 			continue
 		}
 
 		value, gap := w.resolveText(wordText(assign.Value)).Value()
-		env[assign.Name.Value] = EnvValue{Value: value, Set: true, Known: gap == ""}
+		env[name] = EnvValue{Value: value, Set: true, Known: gap == ""}
 	}
 
 	return env
@@ -452,60 +467,87 @@ func (w *astWalker) envSnapshot(call *syntax.CallExpr) map[string]EnvValue {
 
 // exportedValue returns name as a program the line starts sees it. A value
 // assigned on the line reaches the program only when the name is exported:
-// by export or declare -x, set -a, or because it came from the environment.
-// PATH is unknown once the line changes it or the command table.
+// by export or declare -x, by set -a before the assignment, or because it
+// came from the environment, unless export -n or declare +x took that away.
+// Export state stays in the shell that set it. PATH is unknown once the line
+// changes it or the command table.
 func (w *astWalker) exportedValue(name string) EnvValue {
 	value, set, trusted := w.trustedValue(name)
 
 	_, assigned := w.assignments[name]
 	_, inEnv := w.resolver.LookupEnv(name)
+	exported, marked := w.exported[name]
 
 	switch {
 	case name == pathVar && w.state.pathChanged:
 		return EnvValue{}
-	case set && assigned && !inEnv && !w.state.allExport && !w.state.exported[name]:
+	case !set:
+		return EnvValue{Known: trusted}
+	case marked && !exported, !marked && assigned && !inEnv:
 		return EnvValue{Known: trusted}
 	default:
 		return EnvValue{Value: value, Set: set, Known: trusted}
 	}
 }
 
-// noteExports records the names export, declare -x and typeset -x export.
+// noteExports records the names export and declare -x export, and the ones
+// export -n and declare +x stop exporting.
 func (w *astWalker) noteExports(decl *syntax.DeclClause) {
-	exports := decl.Variant != nil && decl.Variant.Value == "export"
+	isExport := decl.Variant != nil && decl.Variant.Value == "export"
+	export, changes := isExport, isExport
 
 	for _, arg := range decl.Args {
-		if arg.Name == nil && arg.Value != nil {
-			option := wordToString(arg.Value)
-			exports = exports || strings.HasPrefix(option, "-") && strings.Contains(option, "x")
+		if arg.Name != nil || arg.Value == nil {
+			continue
+		}
+
+		switch option := wordToString(arg.Value); {
+		case isExport && strings.HasPrefix(option, "-") && strings.Contains(option, "n"),
+			strings.HasPrefix(option, "+") && strings.Contains(option, "x"):
+			export, changes = false, true
+		case strings.HasPrefix(option, "-") && strings.Contains(option, "x"):
+			export, changes = true, true
 		}
 	}
 
-	if !exports {
+	if !changes {
 		return
-	}
-
-	if w.state.exported == nil {
-		w.state.exported = make(map[string]bool)
 	}
 
 	for _, arg := range decl.Args {
 		if arg.Name != nil {
-			w.state.exported[arg.Name.Value] = true
+			w.markExported(arg.Name.Value, export)
 		}
 	}
 }
 
-// noteAllExport records set -a and set -o allexport, which export every
-// variable assigned after them.
-func (w *astWalker) noteAllExport(args []string) {
-	for i, arg := range args {
-		short := strings.HasPrefix(arg, "-") && !strings.HasPrefix(arg, "--") &&
-			strings.Contains(arg, "a")
-		long := arg == setOption && i+1 < len(args) && args[i+1] == "allexport"
+// markExported records whether the shell exports name.
+func (w *astWalker) markExported(name string, export bool) {
+	if w.exported == nil {
+		w.exported = make(map[string]bool)
+	}
 
-		if short || long {
-			w.state.allExport = true
+	w.exported[name] = export
+}
+
+// noteAllExport follows set -a, set +a and set -o/+o allexport, which decide
+// whether variables assigned after them are exported. Options end at "--" or
+// the first operand.
+func (w *astWalker) noteAllExport(args []string) {
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+
+		switch {
+		case arg == "" || arg == "--" || arg == "-" || (arg[0] != '-' && arg[0] != '+'):
+			return
+		case (arg == setOption || arg == "+o") && i+1 < len(args):
+			if args[i+1] == "allexport" {
+				w.allExport = arg == setOption
+			}
+
+			i++
+		case !strings.HasPrefix(arg, "--") && strings.Contains(arg[1:], "a"):
+			w.allExport = arg[0] == '-'
 		}
 	}
 }

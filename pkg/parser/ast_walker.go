@@ -39,6 +39,8 @@ type astWalker struct {
 	unknownVars  map[string]bool
 	safeAssigns  map[*syntax.Assign]bool
 	chainAssigns map[*syntax.Assign]bool
+	exported     map[string]bool
+	allExport    bool
 	chained      []string
 	certain      map[*syntax.Stmt]certainty
 	loopCalls    map[*syntax.CallExpr]bool
@@ -134,8 +136,6 @@ type parseState struct {
 
 	namesUnknown bool
 	arithmetic   bool
-	allExport    bool
-	exported     map[string]bool
 }
 
 // spend takes one unit of work, reporting false once the budget is gone.
@@ -907,6 +907,11 @@ func (w *astWalker) noteDynamic(assign *syntax.Assign) {
 // assign records a literal assignment.
 func (w *astWalker) assign(name, value string) {
 	w.distrustSplitting(name)
+
+	if w.allExport {
+		w.markExported(name, true)
+	}
+
 	w.assignments[name] = value
 	w.scope = nil
 

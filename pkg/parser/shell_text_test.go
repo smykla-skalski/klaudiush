@@ -191,7 +191,8 @@ var _ = Describe("ShellText", func() {
 		Entry("through a launcher", "env GIT_EDITOR=true git commit", parser.EnvValue{}),
 	)
 
-	DescribeTable("passes a line assignment to git only when exported",
+	DescribeTable(
+		"passes a line assignment to git only when exported",
 		func(command string, want parser.EnvValue) {
 			result, err := parser.NewBashParserWithResolver(fakeResolver{}).Parse(command)
 			Expect(err).NotTo(HaveOccurred())
@@ -207,6 +208,31 @@ var _ = Describe("ShellText", func() {
 		Entry("set -a", "set -a; GIT_EDITOR=true; git commit",
 			parser.EnvValue{Value: "true", Set: true, Known: true}),
 		Entry("unset", "git commit", parser.EnvValue{Known: true}),
+		Entry(
+			"export in a child shell",
+			"bash -c 'export GIT_EDITOR=true'; GIT_EDITOR=true; git commit",
+			parser.EnvValue{Known: true},
+		),
+		Entry("set -a after the assignment", "GIT_EDITOR=true; set -a; git commit",
+			parser.EnvValue{Known: true}),
+		Entry(
+			"set +a",
+			"set -a; set +a; GIT_EDITOR=true; git commit",
+			parser.EnvValue{Known: true},
+		),
+		Entry("set +o allexport", "set -o allexport; set +o allexport; GIT_EDITOR=true; git commit",
+			parser.EnvValue{Known: true}),
+		Entry(
+			"-a after --",
+			"set -- -a; GIT_EDITOR=true; git commit",
+			parser.EnvValue{Known: true},
+		),
+		Entry("export -n", "export GIT_EDITOR=true; export -n GIT_EDITOR; git commit",
+			parser.EnvValue{}),
+		Entry("declare +x", "export GIT_EDITOR=true; declare +x GIT_EDITOR; git commit",
+			parser.EnvValue{Known: true}),
+		Entry("prefix value from an earlier prefix", "E=true; E=x GIT_EDITOR=$E git commit",
+			parser.EnvValue{}),
 	)
 
 	It("marks PATH unknown once the line changes it", func() {
