@@ -712,25 +712,34 @@ Summary: 1 error(s)
 
 		Describe("runMarkdownlint", func() {
 			Context("when markdownlint tool is not found", func() {
-				It("should return success without running", func() {
-					useMarkdownlint := true
-					cfg := &config.MarkdownValidatorConfig{
-						UseMarkdownlint: &useMarkdownlint,
-					}
-					linter := linters.NewMarkdownLinterWithDeps(
-						mockRunner,
-						mockToolChecker,
-						mockTempMgr,
-						cfg,
-					)
+				newLinter := func() *linters.RealMarkdownLinter {
+					cfg := &config.MarkdownValidatorConfig{UseMarkdownlint: new(true)}
 
 					mockToolChecker.EXPECT().
 						FindTool("markdownlint-cli2", "markdownlint").
 						Return("")
 
-					result := linter.Lint(ctx, "# Test\n", nil)
+					return linters.NewMarkdownLinterWithDeps(
+						mockRunner,
+						mockToolChecker,
+						mockTempMgr,
+						cfg,
+					)
+				}
+
+				It("should report it as skipped without running", func() {
+					result := newLinter().Lint(ctx, "# Test\n", nil)
 
 					Expect(result.Success).To(BeTrue())
+					Expect(result.Skipped).To(BeTrue())
+				})
+
+				It("should keep built-in rule findings and report it as skipped", func() {
+					result := newLinter().Lint(ctx, "# Test\n```\ncode\n```\n", nil)
+
+					Expect(result.Success).To(BeFalse())
+					Expect(result.Skipped).To(BeTrue())
+					Expect(result.RawOut).NotTo(BeEmpty())
 				})
 			})
 

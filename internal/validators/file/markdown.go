@@ -184,6 +184,13 @@ func (v *MarkdownValidator) Validate(ctx context.Context, hookCtx *hook.Context)
 		return inspectedIf(inspected, v.buildBlockingResult(result))
 	}
 
+	if result.Skipped {
+		return validator.Unavailable(
+			validator.ReasonMissingTool,
+			"markdownlint is not installed, so only the built-in markdown rules checked this file",
+		)
+	}
+
 	// No blocking errors - check for cosmetic table warnings
 	if len(result.CosmeticTableWarnings) > 0 {
 		return inspectedIf(inspected, v.buildCosmeticResult(result))

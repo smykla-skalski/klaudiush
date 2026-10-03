@@ -247,6 +247,33 @@ var _ = Describe("checks that could not run", func() {
 			expectUnavailable(
 				v.Validate(canceled, write("a.md", "# Title\n")),
 				validator.ReasonCanceled,
+		withLintResult := func(r *linters.LintResult) *file.MarkdownValidator {
+			linter := linters.NewMockMarkdownLinter(ctrl)
+			linter.EXPECT().
+				LintWithPath(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				Return(r).AnyTimes()
+
+			return file.NewMarkdownValidator(nil, linter, log, nil)
+		}
+
+		It("reports a missing markdownlint", func() {
+			result := withLintResult(skipped).
+				Validate(context.Background(), write("a.md", "# Title\n"))
+			expectUnavailable(result, validator.ReasonMissingTool)
+			Expect(result.Message).To(ContainSubstring("markdownlint is not installed"))
+		})
+
+		It("keeps built-in findings ahead of a missing markdownlint", func() {
+			result := withLintResult(&linters.LintResult{
+				Skipped: true,
+				RawOut:  "a.md:3: Code block should be preceded by empty line",
+				Err:     linters.ErrMarkdownCustomRules,
+			}).Validate(context.Background(), write("a.md", "# Title\n"))
+
+			Expect(result.Unavailable).To(BeFalse())
+			Expect(result.Passed).To(BeFalse())
+		})
+
 			)
 		})
 	})
