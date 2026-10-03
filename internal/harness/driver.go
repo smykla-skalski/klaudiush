@@ -112,9 +112,17 @@ func RunIn(ctx context.Context, sb *Sandbox, dir, name string, args ...string) (
 		Stdout: &out,
 		Stderr: &out,
 	}
-	sb.track(&opts)
+
+	stopWatch, err := sb.track(&opts)
+	if err != nil {
+		return nil, err
+	}
+
+	defer stopWatch()
 
 	result := execpkg.NewCommandRunner(0).RunWithOptions(ctx, opts, name, args...)
+
+	stopWatch()
 
 	_, _ = sb.Processes()
 
