@@ -393,7 +393,9 @@ func (w *astWalker) forget(name string) {
 }
 
 // varWriters are the builtins that set variables named in their arguments.
-var varWriters = nameSet("read mapfile readarray getopts unset " + printfBuiltin)
+var varWriters = nameSet(
+	strings.Join([]string{"read mapfile readarray unset", getoptsBuiltin, printfBuiltin}, " "),
+)
 
 // declWriters are the declaration builtins. Run through builtin or command
 // they are plain commands rather than declarations, so their assignments
@@ -482,6 +484,10 @@ func (w *astWalker) forgetWritten(cmd Command) {
 	}
 
 	names := writtenVars(cmd)
+	if cmd.Name == getoptsBuiltin {
+		names = append(names, "OPTARG", "OPTIND")
+	}
+
 	if len(names) == 0 && defaultVars[cmd.Name] != "" {
 		names = []string{defaultVars[cmd.Name]}
 	}

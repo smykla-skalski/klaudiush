@@ -248,7 +248,12 @@ func (w *astWalker) resolveProgram(cmd Command) (Command, []nestedScript) {
 			return resolved, nil
 		}
 
-		return w.expandGHAlias(resolved)
+		expanded, nested := w.expandGHAlias(resolved)
+		if len(nested) == 0 {
+			expanded, _ = w.resolveGHCommand(expanded)
+		}
+
+		return expanded, nested
 	default:
 		return cmd, nil
 	}

@@ -8,10 +8,11 @@ const (
 	// hubCLI is GitHub's git wrapper, which runs git for any git command.
 	hubCLI = "hub"
 
-	evalBuiltin   = "eval"
-	printfBuiltin = "printf"
-	sourceBuiltin = "source"
-	dotBuiltin    = "."
+	evalBuiltin    = "eval"
+	printfBuiltin  = "printf"
+	sourceBuiltin  = "source"
+	dotBuiltin     = "."
+	getoptsBuiltin = "getopts"
 )
 
 // nameSet builds a set from a space-separated list of names.

@@ -534,7 +534,7 @@ func (w *astWalker) recordCommand(cmd Command, depth int) {
 
 	w.commands = append(w.commands, cmd)
 	w.trackShellState(cmd)
-	w.forgetWritten(cmd)
+	w.forgetWritten(followed)
 	w.extractFileWriteCommand(cmd)
 
 	l := w.launchedFrom(cmd, followed)

@@ -214,6 +214,15 @@ var _ = Describe("Unresolved eval and command words", func() {
 			opacity("git", parser.DetailWordVariable)),
 		Entry("sourced process substitution", `x=status; v=x; source <(echo "$v=commit"); git $x`,
 			opacity("git", parser.DetailWordVariable)),
+		Entry("read to a substituted name", `x=status; read "$(echo x)" <<< commit; git $x`,
+			opacity("git", parser.DetailWordVariable)),
+		Entry(
+			"getopts setting OPTARG",
+			`OPTARG=status; set -- -a commit; getopts a: X; git $OPTARG`,
+			opacity("git", parser.DetailWordVariable),
+		),
+		Entry("getopts setting OPTIND", `OPTIND=status; getopts a X; git $OPTIND`,
+			opacity("git", parser.DetailWordVariable)),
 		Entry("new shell with BASH_ENV", `x=status; BASH_ENV=./g bash -c 'git $x'`,
 			opacity("git", parser.DetailWordVariable, "bash")),
 		Entry("exported, then a new shell", `export x=status; env BASH_ENV=./g bash -c 'git $x'`,
@@ -263,6 +272,21 @@ var _ = Describe("Unresolved eval and command words", func() {
 			Cause:     parser.OpacityUnresolvedProgram,
 			Operation: "git <hidden>",
 		}))
+	})
+
+	It("checks a gh action word that a gh alias leads to", func() {
+		aliased := fakeResolver{ghAliases: map[string]string{"mk": "pr", "mkc": "pr create"}}
+
+		for command, truncated := range map[string]bool{
+			`gh mk $ACTION`:      true,
+			`gh mk create`:       false,
+			`gh mkc $TITLE`:      false,
+			`X=create; gh mk $X`: false,
+		} {
+			result, err := parser.NewBashParserWithResolver(aliased).Parse(command)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.Truncated).To(Equal(truncated), command)
+		}
 	})
 
 	It("does not take find's {} for a brace expansion", func() {
