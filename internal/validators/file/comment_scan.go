@@ -447,13 +447,15 @@ func endPythonLine(state stringState) stringState {
 
 // commentScan is where scanning a Write or Edit payload starts: the language
 // syntax, the multi-line string state the first line opens in, text from the
-// file that precedes the payload on its first line, and whether triple-quoted
+// file that precedes the payload on its first line, the file text after it
+// (only used to find the declaration a comment documents), and whether triple-quoted
 // state is dropped at each line break because the payload's lines are not
 // contiguous in the file.
 type commentScan struct {
 	syntax          langSyntax
 	start           stringState
 	prefix          string
+	suffix          string
 	lineLocalTriple bool
 }
 
@@ -520,7 +522,7 @@ func newCommentScan(hookCtx *hook.Context) commentScan {
 		return scan
 	}
 
-	scan.start, scan.prefix = editStart(original, old, scan.syntax)
+	scan.start, scan.prefix, scan.suffix = editStart(original, old, scan.syntax)
 
 	return scan
 }
@@ -578,7 +580,8 @@ type editLead struct {
 // and prefix, those are used as they are. Otherwise each occurrence is reduced
 // to the state at its position plus a stand-in prefix for a comment, and those
 // must agree. With no match, too many, or disagreement it starts in code.
-func editStart(content, old string, syntax langSyntax) (stringState, string) {
+// For a single match it also returns the file text that follows it.
+func editStart(content, old string, syntax langSyntax) (stringState, string, string) {
 	lines := strings.Split(content, "\n")
 	lineStates := make([]stringState, len(lines))
 	lineOffsets := make([]int, len(lines))
@@ -590,7 +593,10 @@ func editStart(content, old string, syntax langSyntax) (stringState, string) {
 		offset += len(line) + 1
 	}
 
-	var exact, reduced []editLead
+	var (
+		exact, reduced []editLead
+		suffix         string
+	)
 
 	for from := 0; ; {
 		rel := strings.Index(content[from:], old)
@@ -599,7 +605,7 @@ func editStart(content, old string, syntax langSyntax) (stringState, string) {
 		}
 
 		if len(exact) == maxStartStateOccurrences {
-			return stateCode, ""
+			return stateCode, "", ""
 		}
 
 		pos := from + rel
@@ -620,15 +626,20 @@ func editStart(content, old string, syntax langSyntax) (stringState, string) {
 
 		reduced = append(reduced, lead)
 		from = pos + len(old)
+		suffix = content[from:]
+	}
+
+	if len(exact) != 1 {
+		suffix = ""
 	}
 
 	for _, leads := range [][]editLead{exact, reduced} {
 		if lead, ok := sharedLead(leads); ok {
-			return lead.state, lead.prefix
+			return lead.state, lead.prefix, suffix
 		}
 	}
 
-	return stateCode, ""
+	return stateCode, "", ""
 }
 
 // sharedLead returns the lead every entry of leads has, if any.

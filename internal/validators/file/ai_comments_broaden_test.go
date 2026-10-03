@@ -545,6 +545,31 @@ var _ = Describe("AICommentValidator multi-line string literals", func() {
 			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeTrue())
 		})
 
+		It("keeps the doc comment exemption of an edited comment", func() {
+			ctx.ToolInput.FilePath = writeSource(
+				"# Returns configured value.\ndef get_value():\n    return 1\n",
+			)
+			ctx.ToolInput.OldString = "configured"
+			ctx.ToolInput.NewString = "cached"
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeTrue())
+		})
+
+		It("flags an edited comment that documents no declaration", func() {
+			ctx.ToolInput.FilePath = writeSource(
+				"# Returns configured value.\n\ndef get_value():\n    return 1\n",
+			)
+			ctx.ToolInput.OldString = "configured"
+			ctx.ToolInput.NewString = "cached"
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
+		})
+
+		It("does not check comments after the edited text", func() {
+			ctx.ToolInput.FilePath = writeSource("x = 1  # holds the total\n")
+			ctx.ToolInput.OldString = "x = 1"
+			ctx.ToolInput.NewString = "x = 2"
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeTrue())
+		})
+
 		It("starts in the shared string state of matches on different lines", func() {
 			ctx.ToolInput.FilePath = writeSource(
 				"A = \"\"\"\nfoo\n\"\"\"\nB = \"\"\"\n  foo\n\"\"\"\n",

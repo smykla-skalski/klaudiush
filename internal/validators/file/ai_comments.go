@@ -270,6 +270,7 @@ func findAICommentViolations(
 
 	lines := strings.Split(content, "\n")
 	lines[0] = scan.prefix + lines[0]
+	docLines := withFollowingSource(lines, scan.suffix)
 
 	state := scan.start
 
@@ -297,7 +298,7 @@ func findAICommentViolations(
 			continue
 		}
 
-		if isFullLineComment(line) && precedesDocDecl(lines, i) &&
+		if isFullLineComment(line) && precedesDocDecl(docLines, i) &&
 			!aiGenericDocComment.MatchString(body) {
 			continue
 		}
@@ -324,6 +325,26 @@ func findAICommentViolations(
 	}
 
 	return violations
+}
+
+// maxDocContextLines bounds the source lines after an Edit that are read to
+// find the declaration a comment documents.
+const maxDocContextLines = 256
+
+// withFollowingSource returns lines with the file text after an Edit's
+// old_string appended, so a comment the Edit touches still sees the
+// declaration it documents. Only the returned copy holds that text.
+func withFollowingSource(lines []string, suffix string) []string {
+	if suffix == "" {
+		return lines
+	}
+
+	rest := strings.SplitN(suffix, "\n", maxDocContextLines)
+	out := make([]string, 0, len(lines)+len(rest)-1)
+	out = append(out, lines...)
+	out[len(out)-1] += rest[0]
+
+	return append(out, rest[1:]...)
 }
 
 // isFullLineComment reports whether the line is a standalone comment rather
