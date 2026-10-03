@@ -2,6 +2,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -623,18 +624,30 @@ func performGeminiToolSelectionInstall(settingsPath, binaryPath string) error {
 }
 
 func performOpenCodeInstall(pluginPath, binaryPath string) error {
-	alreadyInstalled, err := settings.InstallOpenCodeDispatcher(pluginPath, binaryPath)
+	target := settings.ResolveOpenCodeTarget(
+		context.Background(),
+		settings.NewOpenCodeVersionDetector(),
+		pluginPath,
+	)
+
+	alreadyInstalled, err := settings.InstallOpenCodeDispatcher(pluginPath, binaryPath, target.API)
 	if err != nil {
 		return err
 	}
 
+	if !target.Detected() {
+		fmt.Printf("warning: could not detect the opencode version (%v); "+
+			"installing the %s bridge plugin\n", target.DetectErr, target.API)
+	}
+
 	if alreadyInstalled {
-		fmt.Printf("klaudiush bridge plugin is already current at %s\n", pluginPath)
+		fmt.Printf("klaudiush bridge plugin for %s is already current at %s\n",
+			target.Describe(), pluginPath)
 
 		return nil
 	}
 
-	fmt.Printf("klaudiush bridge plugin written to %s\n", pluginPath)
+	fmt.Printf("klaudiush bridge plugin for %s written to %s\n", target.Describe(), pluginPath)
 
 	return nil
 }

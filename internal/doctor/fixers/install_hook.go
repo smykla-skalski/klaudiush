@@ -21,6 +21,7 @@ var ErrUserCancelled = errors.New("user cancelled operation")
 type InstallHookFixer struct {
 	prompter prompt.Prompter
 	cfg      *pkgConfig.Config
+	openCode settings.OpenCodeVersionDetector
 }
 
 // NewInstallHookFixer creates a new InstallHookFixer.
@@ -28,7 +29,18 @@ func NewInstallHookFixer(prompter prompt.Prompter, cfg *pkgConfig.Config) *Insta
 	return &InstallHookFixer{
 		prompter: prompter,
 		cfg:      cfg,
+		openCode: settings.NewOpenCodeVersionDetector(),
 	}
+}
+
+// WithOpenCodeVersionDetector replaces how the installed opencode version is
+// found, which picks the bridge plugin API to install.
+func (f *InstallHookFixer) WithOpenCodeVersionDetector(
+	detector settings.OpenCodeVersionDetector,
+) *InstallHookFixer {
+	f.openCode = detector
+
+	return f
 }
 
 // ID returns the fixer identifier.
@@ -47,7 +59,7 @@ func (f *InstallHookFixer) CanFix(result doctor.CheckResult) bool {
 }
 
 // Fix registers the dispatcher in the settings file.
-func (f *InstallHookFixer) Fix(_ context.Context, interactive bool) error {
+func (f *InstallHookFixer) Fix(ctx context.Context, interactive bool) error {
 	binaryPath, err := exec.LookPath("klaudiush")
 	if err != nil {
 		return errors.Wrap(err, "klaudiush binary not found in PATH")
@@ -98,9 +110,12 @@ func (f *InstallHookFixer) Fix(_ context.Context, interactive bool) error {
 	}
 
 	if install.openCodePluginPath != "" {
+		target := settings.ResolveOpenCodeTarget(ctx, f.openCode, install.openCodePluginPath)
+
 		if _, err := settings.InstallOpenCodeDispatcher(
 			install.openCodePluginPath,
 			binaryPath,
+			target.API,
 		); err != nil {
 			return errors.Wrap(err, "failed to install opencode bridge plugin")
 		}

@@ -23,13 +23,13 @@ var _ = Describe("opencode bridge plugin", func() {
 
 	Describe("RenderOpenCodePlugin", func() {
 		It("embeds the resolved binary path", func() {
-			rendered, err := settings.RenderOpenCodePlugin(binaryPath)
+			rendered, err := settings.RenderOpenCodePlugin(binaryPath, settings.OpenCodeAPIV1)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(string(rendered)).To(ContainSubstring(binaryPath))
 		})
 
 		It("leaves no unrendered template directives", func() {
-			rendered, err := settings.RenderOpenCodePlugin(binaryPath)
+			rendered, err := settings.RenderOpenCodePlugin(binaryPath, settings.OpenCodeAPIV1)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(string(rendered)).NotTo(ContainSubstring("{{"))
 		})
@@ -38,7 +38,7 @@ var _ = Describe("opencode bridge plugin", func() {
 		// every forwarded event also appears as an invoke() argument, so a
 		// substring check would pass even with all subscriptions deleted.
 		It("subscribes to every advertised opencode event", func() {
-			rendered, err := settings.RenderOpenCodePlugin(binaryPath)
+			rendered, err := settings.RenderOpenCodePlugin(binaryPath, settings.OpenCodeAPIV1)
 			Expect(err).NotTo(HaveOccurred())
 
 			source := string(rendered)
@@ -58,20 +58,20 @@ var _ = Describe("opencode bridge plugin", func() {
 		// permission.ask fires for a subset of calls that tool.execute.before
 		// already covers; registering both validates one call twice.
 		It("does not register the redundant approval hook", func() {
-			rendered, err := settings.RenderOpenCodePlugin(binaryPath)
+			rendered, err := settings.RenderOpenCodePlugin(binaryPath, settings.OpenCodeAPIV1)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(string(rendered)).NotTo(ContainSubstring(`"permission.ask":`))
 		})
 
 		// A silent fail-open is indistinguishable from a clean pass.
 		It("reports invocation failures on stderr", func() {
-			rendered, err := settings.RenderOpenCodePlugin(binaryPath)
+			rendered, err := settings.RenderOpenCodePlugin(binaryPath, settings.OpenCodeAPIV1)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(string(rendered)).To(ContainSubstring("console.error"))
 		})
 
 		It("refuses tool calls klaudiush cannot answer only when asked to", func() {
-			rendered, err := settings.RenderOpenCodePlugin(binaryPath)
+			rendered, err := settings.RenderOpenCodePlugin(binaryPath, settings.OpenCodeAPIV1)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(
 				string(rendered),
@@ -83,7 +83,10 @@ var _ = Describe("opencode bridge plugin", func() {
 		// An unescaped path would emit broken source for any path containing a
 		// backslash or quote, and the bridge could not launch at all.
 		It("encodes the binary path as a valid string literal", func() {
-			rendered, err := settings.RenderOpenCodePlugin(`C:\Users\me\klaudiush.exe`)
+			rendered, err := settings.RenderOpenCodePlugin(
+				`C:\Users\me\klaudiush.exe`,
+				settings.OpenCodeAPIV1,
+			)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(string(rendered)).
 				To(ContainSubstring(`const BINARY = "C:\\Users\\me\\klaudiush.exe"`))
@@ -92,7 +95,11 @@ var _ = Describe("opencode bridge plugin", func() {
 		It("detects a dispatcher whose path needs escaping", func() {
 			windowsPath := `C:\Users\me\klaudiush.exe`
 
-			_, err := settings.InstallOpenCodeDispatcher(pluginPath, windowsPath)
+			_, err := settings.InstallOpenCodeDispatcher(
+				pluginPath,
+				windowsPath,
+				settings.OpenCodeAPIV1,
+			)
 			Expect(err).NotTo(HaveOccurred())
 
 			registered, err := settings.NewOpenCodePluginParser(pluginPath).
@@ -103,13 +110,13 @@ var _ = Describe("opencode bridge plugin", func() {
 
 		// The validators resolve git state from the process directory.
 		It("runs the dispatcher in the session directory", func() {
-			rendered, err := settings.RenderOpenCodePlugin(binaryPath)
+			rendered, err := settings.RenderOpenCodePlugin(binaryPath, settings.OpenCodeAPIV1)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(string(rendered)).To(ContainSubstring("cwd ? { cwd }"))
 		})
 
 		It("passes the opencode provider on the command line", func() {
-			rendered, err := settings.RenderOpenCodePlugin(binaryPath)
+			rendered, err := settings.RenderOpenCodePlugin(binaryPath, settings.OpenCodeAPIV1)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(string(rendered)).To(ContainSubstring(`"--provider", "opencode"`))
 		})
@@ -117,7 +124,7 @@ var _ = Describe("opencode bridge plugin", func() {
 		// opencode calls every export of a plugin file as a plugin, so a stray
 		// exported helper breaks loading for the whole file.
 		It("exports exactly one symbol", func() {
-			rendered, err := settings.RenderOpenCodePlugin(binaryPath)
+			rendered, err := settings.RenderOpenCodePlugin(binaryPath, settings.OpenCodeAPIV1)
 			Expect(err).NotTo(HaveOccurred())
 
 			exports := 0
@@ -164,10 +171,18 @@ var _ = Describe("opencode bridge plugin", func() {
 		// A truncating write would leave a half-rendered plugin behind if it
 		// were interrupted, and opencode would stop validating entirely.
 		It("leaves no partial file behind when replacing a plugin", func() {
-			_, err := settings.InstallOpenCodeDispatcher(pluginPath, "/old/klaudiush")
+			_, err := settings.InstallOpenCodeDispatcher(
+				pluginPath,
+				"/old/klaudiush",
+				settings.OpenCodeAPIV1,
+			)
 			Expect(err).NotTo(HaveOccurred())
 
-			_, err = settings.InstallOpenCodeDispatcher(pluginPath, binaryPath)
+			_, err = settings.InstallOpenCodeDispatcher(
+				pluginPath,
+				binaryPath,
+				settings.OpenCodeAPIV1,
+			)
 			Expect(err).NotTo(HaveOccurred())
 
 			entries, err := os.ReadDir(filepath.Dir(pluginPath))
@@ -179,7 +194,11 @@ var _ = Describe("opencode bridge plugin", func() {
 		})
 
 		It("creates the plugin and reports it as newly written", func() {
-			alreadyInstalled, err := settings.InstallOpenCodeDispatcher(pluginPath, binaryPath)
+			alreadyInstalled, err := settings.InstallOpenCodeDispatcher(
+				pluginPath,
+				binaryPath,
+				settings.OpenCodeAPIV1,
+			)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(alreadyInstalled).To(BeFalse())
 
@@ -189,19 +208,35 @@ var _ = Describe("opencode bridge plugin", func() {
 		})
 
 		It("is idempotent", func() {
-			_, err := settings.InstallOpenCodeDispatcher(pluginPath, binaryPath)
+			_, err := settings.InstallOpenCodeDispatcher(
+				pluginPath,
+				binaryPath,
+				settings.OpenCodeAPIV1,
+			)
 			Expect(err).NotTo(HaveOccurred())
 
-			alreadyInstalled, err := settings.InstallOpenCodeDispatcher(pluginPath, binaryPath)
+			alreadyInstalled, err := settings.InstallOpenCodeDispatcher(
+				pluginPath,
+				binaryPath,
+				settings.OpenCodeAPIV1,
+			)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(alreadyInstalled).To(BeTrue())
 		})
 
 		It("rewrites a stale plugin when the binary path changes", func() {
-			_, err := settings.InstallOpenCodeDispatcher(pluginPath, "/usr/local/bin/klaudiush")
+			_, err := settings.InstallOpenCodeDispatcher(
+				pluginPath,
+				"/usr/local/bin/klaudiush",
+				settings.OpenCodeAPIV1,
+			)
 			Expect(err).NotTo(HaveOccurred())
 
-			alreadyInstalled, err := settings.InstallOpenCodeDispatcher(pluginPath, binaryPath)
+			alreadyInstalled, err := settings.InstallOpenCodeDispatcher(
+				pluginPath,
+				binaryPath,
+				settings.OpenCodeAPIV1,
+			)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(alreadyInstalled).To(BeFalse())
 
@@ -230,7 +265,11 @@ var _ = Describe("opencode bridge plugin", func() {
 		// prefix, and four events arrive on the shared bus as case labels, so
 		// the checker must recognise all three subscription forms.
 		It("does not credit an event that is only mentioned", func() {
-			_, err := settings.InstallOpenCodeDispatcher(pluginPath, binaryPath)
+			_, err := settings.InstallOpenCodeDispatcher(
+				pluginPath,
+				binaryPath,
+				settings.OpenCodeAPIV1,
+			)
 			Expect(err).NotTo(HaveOccurred())
 
 			parser := settings.NewOpenCodePluginParser(pluginPath)
@@ -241,7 +280,11 @@ var _ = Describe("opencode bridge plugin", func() {
 		})
 
 		It("detects the installed dispatcher and its events", func() {
-			_, err := settings.InstallOpenCodeDispatcher(pluginPath, binaryPath)
+			_, err := settings.InstallOpenCodeDispatcher(
+				pluginPath,
+				binaryPath,
+				settings.OpenCodeAPIV1,
+			)
 			Expect(err).NotTo(HaveOccurred())
 
 			parser := settings.NewOpenCodePluginParser(pluginPath)
@@ -258,7 +301,11 @@ var _ = Describe("opencode bridge plugin", func() {
 		})
 
 		It("does not credit a plugin that calls a different binary", func() {
-			_, err := settings.InstallOpenCodeDispatcher(pluginPath, "/somewhere/else/klaudiush")
+			_, err := settings.InstallOpenCodeDispatcher(
+				pluginPath,
+				"/somewhere/else/klaudiush",
+				settings.OpenCodeAPIV1,
+			)
 			Expect(err).NotTo(HaveOccurred())
 
 			parser := settings.NewOpenCodePluginParser(pluginPath)

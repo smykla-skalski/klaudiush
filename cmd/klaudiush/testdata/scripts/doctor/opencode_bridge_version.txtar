@@ -1,0 +1,42 @@
+mkdir .klaudiush
+cp config.toml .klaudiush/config.toml
+chmod 0755 fakebin2/opencode
+chmod 0755 fakebin1/opencode
+
+env PATH=$WORK/fakebin1:$KLAUDIUSH_TEST_BIN
+exec klaudiush init --install-hooks
+grep 'export const Klaudiush' plugin/klaudiush.ts
+
+exec klaudiush doctor --category hook --verbose
+stdout 'opencode loads the bridge plugin'
+stdout 'opencode 1.14.0, 1.x plugin API'
+
+env PATH=$WORK/fakebin2:$KLAUDIUSH_TEST_BIN
+! exec klaudiush doctor --category hook --verbose
+stdout 'opencode 2.0.19 rejects the bridge plugin and runs every tool unchecked'
+stdout 'Plugin API: 1.x, opencode 2.0.19 loads: 2.x'
+
+exec klaudiush doctor --category hook --fix
+grep 'export default \{ id: "klaudiush", setup \}' plugin/klaudiush.ts
+
+exec klaudiush doctor --category hook --verbose
+stdout 'opencode 2.0.19, 2.x plugin API'
+! stdout 'rejects the bridge plugin'
+
+-- config.toml --
+version = 1
+
+[providers.claude]
+enabled = false
+
+[providers.opencode]
+enabled = true
+plugin_path = "plugin/klaudiush.ts"
+
+-- fakebin2/opencode --
+#!/bin/sh
+echo "2.0.19"
+
+-- fakebin1/opencode --
+#!/bin/sh
+echo "opencode 1.14.0"

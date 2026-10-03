@@ -1,0 +1,44 @@
+mkdir .klaudiush
+cp config.toml .klaudiush/config.toml
+chmod 0755 fakebin2/opencode
+chmod 0755 fakebin1/opencode
+
+env PATH=$WORK/fakebin2:$KLAUDIUSH_TEST_BIN
+exec klaudiush init --install-hooks
+stdout 'bridge plugin for opencode 2.0.19 written to'
+grep 'export default \{ id: "klaudiush", setup \}' plugin/klaudiush.ts
+grep 'ctx.tool.hook\("execute.before",' plugin/klaudiush.ts
+! grep 'export const Klaudiush' plugin/klaudiush.ts
+
+env PATH=$WORK/fakebin1:$KLAUDIUSH_TEST_BIN
+exec klaudiush init --install-hooks
+stdout 'bridge plugin for opencode 1.14.0 written to'
+grep 'export const Klaudiush' plugin/klaudiush.ts
+! grep 'export default' plugin/klaudiush.ts
+
+exec klaudiush init --install-hooks
+stdout 'bridge plugin for opencode 1.14.0 is already current'
+
+env PATH=$KLAUDIUSH_TEST_BIN
+exec klaudiush init --install-hooks
+stdout 'could not detect the opencode version'
+stdout 'already current'
+grep 'export const Klaudiush' plugin/klaudiush.ts
+
+-- config.toml --
+version = 1
+
+[providers.claude]
+enabled = false
+
+[providers.opencode]
+enabled = true
+plugin_path = "plugin/klaudiush.ts"
+
+-- fakebin2/opencode --
+#!/bin/sh
+echo "2.0.19"
+
+-- fakebin1/opencode --
+#!/bin/sh
+echo "opencode 1.14.0"

@@ -245,6 +245,7 @@ func registerOpenCodeHookCheckers(
 	registry.RegisterChecker(hook.NewOpenCodeConfigChecker(cfg))
 	registry.RegisterChecker(hook.NewOpenCodeRegistrationChecker(cfg))
 	registry.RegisterChecker(hook.NewOpenCodeFreshnessChecker(cfg))
+	registry.RegisterChecker(hook.NewOpenCodeAPIChecker(cfg))
 
 	for _, eventName := range settings.OpenCodeEventNames() {
 		registry.RegisterChecker(hook.NewOpenCodeEventChecker(cfg, eventName))
