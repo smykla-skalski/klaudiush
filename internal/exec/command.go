@@ -57,6 +57,24 @@ type CommandRunner interface {
 	RunWithTimeout(timeout time.Duration, name string, args ...string) CommandResult
 }
 
+// OptionsRunner executes external commands with a working directory,
+// environment and streams of the caller's choice.
+type OptionsRunner interface {
+	// RunWithOptions executes a command. The result is always valid; check
+	// result.Err for execution errors.
+	RunWithOptions(ctx context.Context, opts RunOptions, name string, args ...string) CommandResult
+}
+
+// RunOptions configures one command run. Zero values inherit the current
+// directory and environment and capture output into the CommandResult.
+type RunOptions struct {
+	Dir    string
+	Env    []string
+	Stdin  io.Reader
+	Stdout io.Writer
+	Stderr io.Writer
+}
+
 // commandRunner implements CommandRunner.
 type commandRunner struct {
 	defaultTimeout time.Duration
@@ -70,57 +88,51 @@ func NewCommandRunner(defaultTimeout time.Duration) *commandRunner {
 }
 
 // Run executes a command and returns the result.
-func (*commandRunner) Run(
+func (r *commandRunner) Run(
 	ctx context.Context,
 	name string,
 	args ...string,
 ) CommandResult {
-	cmd := exec.CommandContext( //nolint:gosec // G204: subprocess args are the purpose of this abstraction
-		ctx,
-		name,
-		args...)
-
-	var stdout, stderr bytes.Buffer
-
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	cmd.WaitDelay = pipeWaitDelay
-
-	err := cmd.Run()
-
-	result := CommandResult{
-		Stdout: stdout.String(),
-		Stderr: stderr.String(),
-	}
-
-	var exitErr *exec.ExitError
-	if errors.As(err, &exitErr) {
-		result.ExitCode = exitErr.ExitCode()
-		result.Err = err
-	} else if err != nil {
-		result.Err = errors.Wrapf(err, "executing %s", name)
-	}
-
-	return result
+	return r.RunWithOptions(ctx, RunOptions{}, name, args...)
 }
 
 // RunWithStdin executes a command with stdin input.
-func (*commandRunner) RunWithStdin(
+func (r *commandRunner) RunWithStdin(
 	ctx context.Context,
 	stdin io.Reader,
 	name string,
 	args ...string,
 ) CommandResult {
+	return r.RunWithOptions(ctx, RunOptions{Stdin: stdin}, name, args...)
+}
+
+// RunWithOptions executes a command in a chosen directory and environment.
+func (*commandRunner) RunWithOptions(
+	ctx context.Context,
+	opts RunOptions,
+	name string,
+	args ...string,
+) CommandResult {
 	cmd := exec.CommandContext( //nolint:gosec // G204: subprocess args are the purpose of this abstraction
 		ctx,
 		name,
 		args...)
-	cmd.Stdin = stdin
+	cmd.Dir = opts.Dir
+	cmd.Env = opts.Env
+	cmd.Stdin = opts.Stdin
 
 	var stdout, stderr bytes.Buffer
 
 	cmd.Stdout = &stdout
+	if opts.Stdout != nil {
+		cmd.Stdout = opts.Stdout
+	}
+
 	cmd.Stderr = &stderr
+	if opts.Stderr != nil {
+		cmd.Stderr = opts.Stderr
+	}
+
 	cmd.WaitDelay = pipeWaitDelay
 
 	err := cmd.Run()

@@ -98,3 +98,46 @@ func (mr *MockCommandRunnerMockRecorder) RunWithTimeout(timeout, name any, args 
 	varargs := append([]any{timeout, name}, args...)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunWithTimeout", reflect.TypeOf((*MockCommandRunner)(nil).RunWithTimeout), varargs...)
 }
+
+// MockOptionsRunner is a mock of OptionsRunner interface.
+type MockOptionsRunner struct {
+	ctrl     *gomock.Controller
+	recorder *MockOptionsRunnerMockRecorder
+	isgomock struct{}
+}
+
+// MockOptionsRunnerMockRecorder is the mock recorder for MockOptionsRunner.
+type MockOptionsRunnerMockRecorder struct {
+	mock *MockOptionsRunner
+}
+
+// NewMockOptionsRunner creates a new mock instance.
+func NewMockOptionsRunner(ctrl *gomock.Controller) *MockOptionsRunner {
+	mock := &MockOptionsRunner{ctrl: ctrl}
+	mock.recorder = &MockOptionsRunnerMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockOptionsRunner) EXPECT() *MockOptionsRunnerMockRecorder {
+	return m.recorder
+}
+
+// RunWithOptions mocks base method.
+func (m *MockOptionsRunner) RunWithOptions(ctx context.Context, opts RunOptions, name string, args ...string) CommandResult {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx, opts, name}
+	for _, a := range args {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "RunWithOptions", varargs...)
+	ret0, _ := ret[0].(CommandResult)
+	return ret0
+}
+
+// RunWithOptions indicates an expected call of RunWithOptions.
+func (mr *MockOptionsRunnerMockRecorder) RunWithOptions(ctx, opts, name any, args ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx, opts, name}, args...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunWithOptions", reflect.TypeOf((*MockOptionsRunner)(nil).RunWithOptions), varargs...)
+}
