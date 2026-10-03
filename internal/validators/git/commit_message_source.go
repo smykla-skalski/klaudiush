@@ -89,6 +89,20 @@ var readOnlyPrograms = []string{
 	"shasum", "sha1sum", "sha256sum", "sed", "perl",
 }
 
+// filePlacers put, replace or remove files at paths they are given, so a
+// destination klaudiush cannot resolve may be the message file.
+var filePlacers = []string{
+	"cp", "mv", "rsync", "install", "ln", "rm", "rmdir", "tee", "dd", "truncate",
+}
+
+// shellExpanded reports an argument the shell expands to paths the parser
+// does not resolve: ~+ and ~- (the current and previous directory), globs
+// and braces.
+func shellExpanded(arg string) bool {
+	return strings.HasPrefix(arg, "~+") || strings.HasPrefix(arg, "~-") ||
+		strings.ContainsAny(arg, "*?[{")
+}
+
 // readOnlyGitSubcommands leave the work tree files they name unchanged.
 var readOnlyGitSubcommands = []string{"add", "diff", "status", "log", "show", "ls-files"}
 
@@ -330,6 +344,11 @@ func (src messageSource) changedBefore(before parser.Location, readPath string) 
 // namesFile reports a command argument that is the file at readPath or a
 // directory above it, also as the value of a key=value argument (dd of=).
 func (src messageSource) namesFile(cmd parser.Command, readPath string) bool {
+	if slices.Contains(filePlacers, cmd.Name) &&
+		(cmd.Dynamic || slices.Contains(cmd.SubstitutedArgs, true) || slices.ContainsFunc(cmd.Args, shellExpanded)) {
+		return true
+	}
+
 	for _, arg := range cmd.Args {
 		if _, value, found := strings.Cut(arg, "="); found {
 			arg = value

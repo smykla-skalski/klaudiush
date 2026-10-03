@@ -175,6 +175,18 @@ var _ = Describe("CommitValidator message sources", func() {
 			`cp /elsewhere/good.txt {dir} && git commit -sS -F {good}`, "may change"),
 		Entry("copy into the directory as .",
 			`cd {dir} && cp sub/good.txt . && git commit -sS -F good.txt`, "may change"),
+		Entry("copy to a substituted destination",
+			`cd {dir} && cp sub/good.txt "$(pwd)" && git commit -sS -F good.txt`, "may change"),
+		Entry(
+			"copy to ~+",
+			`cd {dir} && cp sub/good.txt ~+ && git commit -sS -F good.txt`,
+			"may change",
+		),
+		Entry(
+			"copy to a glob",
+			`cd {dir} && cp sub/good.txt * && git commit -sS -F good.txt`,
+			"may change",
+		),
 		Entry("move a parent directory",
 			`mv {dir} /elsewhere/old && git commit -sS -F {good}`, "may change"),
 		Entry(
