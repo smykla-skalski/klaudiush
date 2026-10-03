@@ -94,7 +94,11 @@ func (v *ShellScriptValidator) Validate(
 	opts := v.buildShellCheckOptions(ci.IsFragment)
 	result := v.checker.CheckWithOptions(lintCtx, ci.Content, opts)
 
-	inspected := ci.ToolResult && lintRan(lintCtx, result)
+	if notRun := lintUnavailable(lintCtx, "shellcheck", result); notRun != nil {
+		return notRun
+	}
+
+	inspected := ci.ToolResult
 
 	if result.Success {
 		log.Debug("shellcheck passed")

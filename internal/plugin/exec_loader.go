@@ -32,6 +32,10 @@ var (
 
 	// ErrPluginExecFailed is returned when plugin execution fails.
 	ErrPluginExecFailed = errors.New("plugin execution failed with non-zero code")
+
+	// ErrPluginBadResponse is returned when a plugin answers with output that
+	// is not a valid response.
+	ErrPluginBadResponse = errors.New("plugin returned an unreadable response")
 )
 
 // ExecLoader loads plugins as external executables that communicate via JSON.
@@ -114,6 +118,7 @@ func (l *ExecLoader) verifyExecutable(path string) error {
 
 		ctx, cancel := context.WithTimeout(context.Background(), defaultExecPluginTimeout)
 		result := l.runner.Run(ctx, path, "--version")
+		timedOut := ctx.Err() != nil
 
 		cancel()
 
@@ -124,7 +129,9 @@ func (l *ExecLoader) verifyExecutable(path string) error {
 				path,
 			)
 
-			if strings.Contains(result.Err.Error(), "signal: killed") {
+			// A plugin killed by its own timeout hangs; only a kill from
+			// outside (an antivirus scan) is worth another attempt.
+			if !timedOut && strings.Contains(result.Err.Error(), "signal: killed") {
 				continue
 			}
 
@@ -150,7 +157,7 @@ func (l *ExecLoader) verifyExecutable(path string) error {
 func (l *ExecLoader) fetchInfo(cfg *config.PluginInstanceConfig) (plugin.Info, error) {
 	ctx, cancel := context.WithTimeout(
 		context.Background(),
-		cfg.GetTimeout(defaultExecPluginTimeout),
+		min(cfg.GetTimeout(defaultExecPluginTimeout), defaultExecPluginTimeout),
 	)
 	defer cancel()
 
@@ -211,19 +218,18 @@ func (a *execPluginAdapter) Validate(
 		return nil, errors.Wrap(err, "failed to marshal request to JSON")
 	}
 
-	// Apply timeout if context doesn't have one
-	execCtx := ctx
-	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
-		var cancel context.CancelFunc
-
-		execCtx, cancel = context.WithTimeout(ctx, a.timeout)
-
-		defer cancel()
-	}
+	// The plugin timeout applies even inside the hook deadline; whichever
+	// ends first stops the plugin.
+	execCtx, cancel := context.WithTimeout(ctx, a.timeout)
+	defer cancel()
 
 	// Execute the plugin with JSON input via stdin
 	stdin := bytes.NewReader(reqJSON)
 	result := a.runner.RunWithStdin(execCtx, stdin, a.path, a.args...)
+
+	if ctxErr := execCtx.Err(); ctxErr != nil {
+		return nil, errors.Wrap(ctxErr, "plugin did not answer in time")
+	}
 
 	// Check for execution errors
 	if result.Err != nil {
@@ -241,11 +247,40 @@ func (a *execPluginAdapter) Validate(
 
 	// Parse response JSON from stdout
 	var resp plugin.ValidateResponse
+
+	if !hasPassedField(result.Stdout) {
+		return nil, errors.Mark(
+			errors.New("plugin response has no boolean \"passed\" field"),
+			ErrPluginBadResponse,
+		)
+	}
+
 	if err := json.Unmarshal([]byte(result.Stdout), &resp); err != nil {
-		return nil, errors.Wrap(err, "failed to parse response JSON")
+		return nil, errors.Mark(
+			errors.Wrap(err, "failed to parse response JSON"),
+			ErrPluginBadResponse,
+		)
 	}
 
 	return &resp, nil
+}
+
+// hasPassedField reports whether a response is a JSON object whose "passed"
+// field holds true or false; null, {} or {"passed":null} would otherwise
+// decode into a result the plugin never gave. Output that is not a JSON
+// object is left to the decoder to reject.
+func hasPassedField(stdout string) bool {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(stdout), &fields); err != nil {
+		return true
+	}
+
+	switch string(bytes.TrimSpace(fields["passed"])) {
+	case "true", "false":
+		return true
+	default:
+		return false
+	}
 }
 
 // Close releases any resources held by the plugin.

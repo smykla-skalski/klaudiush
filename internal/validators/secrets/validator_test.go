@@ -140,7 +140,9 @@ var _ = Describe("SecretsValidator", func() {
 			hookCtx.ToolInput = hook.ToolInput{FilePath: path}
 
 			result := v.Validate(context.Background(), hookCtx)
-			Expect(result.Passed).To(BeTrue())
+			Expect(result.Passed).To(BeFalse())
+			Expect(result.Unavailable).To(BeTrue())
+			Expect(result.UnavailableReason).To(Equal(validator.ReasonError))
 			Expect(result.Inspected).To(BeFalse())
 
 			gitleaks.result = nil
@@ -430,14 +432,15 @@ secret = os.getenv("SECRET_KEY")
 			Expect(result.Findings[0].Repair).NotTo(BeEmpty())
 		})
 
-		It("should skip gitleaks when not available", func() {
+		It("reports enabled gitleaks that is not available as a missing tool", func() {
 			cfg.UseGitleaks = new(true)
 			gitleaks.available = false
 			v = secrets.NewSecretsValidator(logger.NewNoOpLogger(), detector, gitleaks, cfg, nil)
 
 			hookCtx.ToolInput.Content = `some safe content`
 			result := v.Validate(context.Background(), hookCtx)
-			Expect(result.Passed).To(BeTrue())
+			Expect(result.Passed).To(BeFalse())
+			Expect(result.UnavailableReason).To(Equal(validator.ReasonMissingTool))
 		})
 
 		It("should skip gitleaks when disabled in config", func() {

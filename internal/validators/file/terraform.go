@@ -1,6 +1,7 @@
 package file
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"os"
@@ -86,23 +87,40 @@ func (v *TerraformValidator) Validate(
 	}
 	defer cleanup()
 
-	var warnings []string
+	var (
+		warnings    []string
+		unavailable *validator.Result
+	)
 
 	// Run format check if enabled
 	if v.isCheckFormat() {
-		fmtWarning, ran := v.checkFormat(ctx, content, tool)
+		fmtWarning, notRun := v.checkFormat(ctx, content, tool)
 		if fmtWarning != "" {
 			warnings = append(warnings, fmtWarning)
 		}
 
-		inspected = inspected && ran
+		unavailable = mergeUnavailable(unavailable, notRun)
 	}
 
 	// Run tflint if enabled and available
 	if v.isUseTflint() {
-		lintWarnings, ran := v.runTflint(ctx, tmpFile)
+		lintWarnings, notRun := v.runTflint(ctx, tmpFile)
 		warnings = append(warnings, lintWarnings...)
-		inspected = inspected && ran
+		unavailable = mergeUnavailable(unavailable, notRun)
+	}
+
+	inspected = inspected && unavailable == nil
+
+	// A missing optional tool must not hide what the other check found, as
+	// missing tools are ignored by default; any other failure is reported
+	// with the findings attached.
+	if unavailable != nil &&
+		(len(warnings) == 0 || unavailable.UnavailableReason != validator.ReasonMissingTool) {
+		if len(warnings) > 0 {
+			unavailable.Message += "\n" + strings.Join(warnings, "\n")
+		}
+
+		return unavailable
 	}
 
 	if len(warnings) > 0 {
@@ -115,6 +133,25 @@ func (v *TerraformValidator) Validate(
 	}
 
 	return inspectedIf(inspected, validator.Pass())
+}
+
+// mergeUnavailable combines the results of two checks that could not run.
+// A missing tool is ignored by default, so any other reason decides; the
+// other check's message is kept either way.
+func mergeUnavailable(first, second *validator.Result) *validator.Result {
+	if first == nil || second == nil {
+		return cmp.Or(first, second)
+	}
+
+	kept, other := first, second
+	if kept.UnavailableReason == validator.ReasonMissingTool &&
+		other.UnavailableReason != validator.ReasonMissingTool {
+		kept, other = other, kept
+	}
+
+	kept.Message += "\n" + other.Message
+
+	return kept
 }
 
 // getContent extracts terraform content from context
@@ -185,13 +222,16 @@ func (v *TerraformValidator) getContent(ctx *hook.Context) (string, error) {
 }
 
 // checkFormat runs terraform/tofu fmt -check using TerraformFormatter. The
-// second return value reports whether the check really ran.
+// second return value is set when the check could not run.
 func (v *TerraformValidator) checkFormat(
 	ctx context.Context,
 	content, tool string,
-) (string, bool) {
+) (string, *validator.Result) {
 	if tool == "" {
-		return "Neither 'tofu' nor 'terraform' found in PATH - skipping format check", false
+		return "", validator.Unavailable(
+			validator.ReasonMissingTool,
+			"Neither 'tofu' nor 'terraform' found in PATH, so the format check did not run",
+		)
 	}
 
 	fmtCtx, cancel := context.WithTimeout(ctx, v.getTimeout())
@@ -199,8 +239,12 @@ func (v *TerraformValidator) checkFormat(
 
 	result := v.formatter.CheckFormat(fmtCtx, content)
 
+	if notRun := lintUnavailable(fmtCtx, tool+" fmt", result); notRun != nil {
+		return "", notRun
+	}
+
 	if result.Success {
-		return "", !result.Skipped
+		return "", nil
 	}
 
 	// Format check failed
@@ -210,39 +254,37 @@ func (v *TerraformValidator) checkFormat(
 			"Terraform formatting issues detected:\n%s\nRun '%s fmt' to fix",
 			diff,
 			tool,
-		), true
+		), nil
 	}
 
-	if result.Err != nil {
-		v.Logger().Debug("fmt command failed", "error", result.Err)
-		return fmt.Sprintf("Failed to run '%s fmt -check': %v", tool, result.Err), false
-	}
+	v.Logger().Debug("fmt command failed", "error", result.Err)
 
-	return "", false
+	return "", validator.Unavailable(
+		validator.ReasonError,
+		fmt.Sprintf("Failed to run '%s fmt -check': %v", tool, result.Err),
+	)
 }
 
 // runTflint runs tflint on the file if available using TfLinter. The second
-// return value reports whether tflint really ran.
-func (v *TerraformValidator) runTflint(ctx context.Context, filePath string) ([]string, bool) {
+// return value is set when tflint could not run.
+func (v *TerraformValidator) runTflint(
+	ctx context.Context,
+	filePath string,
+) ([]string, *validator.Result) {
 	lintCtx, cancel := context.WithTimeout(ctx, v.getTimeout())
 	defer cancel()
 
 	result := v.linter.Lint(lintCtx, filePath)
 
+	if notRun := lintUnavailable(lintCtx, "tflint", result); notRun != nil {
+		return nil, notRun
+	}
+
 	if result.Success {
-		return nil, !result.Skipped
+		return nil, nil
 	}
 
-	output := strings.TrimSpace(result.RawOut)
-	if output != "" {
-		return []string{"tflint findings:\n" + output}, true
-	}
-
-	if result.Err != nil {
-		v.Logger().Debug("tflint failed", "error", result.Err)
-	}
-
-	return nil, false
+	return []string{"tflint findings:\n" + strings.TrimSpace(result.RawOut)}, nil
 }
 
 // getTimeout returns the configured timeout for terraform/tofu operations.

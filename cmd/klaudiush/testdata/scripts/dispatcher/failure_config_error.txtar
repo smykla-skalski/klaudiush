@@ -1,0 +1,52 @@
+mkdir project/.klaudiush
+cd project
+cp $WORK/invalid.toml .klaudiush/config.toml
+stdin $WORK/ls.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'configuration error'
+
+cp $WORK/broken.toml .klaudiush/config.toml
+stdin $WORK/ls.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+
+cp $WORK/broken-nomode.toml .klaudiush/config.toml
+stdin $WORK/ls.json
+exec klaudiush --hook-type PreToolUse
+! stdout 'permissionDecision'
+stdout 'Validation unavailable HOOK001'
+
+stdin $WORK/ls.json
+exec klaudiush --hook-type PreToolUse --failure-mode=block
+stdout '"permissionDecision":"deny"'
+
+mkdir $WORK/.klaudiush
+cp $WORK/global.toml $WORK/.klaudiush/config.toml
+stdin $WORK/ls.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+
+-- ls.json --
+{"tool_name": "Bash", "tool_input": {"command": "ls"}}
+
+-- invalid.toml --
+[failure_policy]
+mode = "block"
+
+[validators.git.commit.message]
+title_max_length = -5
+
+-- broken.toml --
+[failure_policy]
+mode = "block"
+[validators.git.commit
+broken
+
+-- broken-nomode.toml --
+[validators.git.commit
+broken
+
+-- global.toml --
+[failure_policy]
+mode = "block"

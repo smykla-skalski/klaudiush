@@ -622,6 +622,35 @@ var _ = Describe("Validator", func() {
 		})
 	})
 
+	Describe("failure policy", func() {
+		It("accepts a valid policy", func() {
+			cfg := &config.Config{FailurePolicy: &config.FailurePolicyConfig{
+				Mode:         config.FailureModeBlock,
+				MissingTools: config.FailureModeIgnore,
+				Critical:     []string{"git.commit"},
+			}}
+			Expect(validator.Validate(cfg)).To(Succeed())
+		})
+
+		It("rejects unknown modes and empty critical names", func() {
+			cfg := &config.Config{FailurePolicy: &config.FailurePolicyConfig{
+				Mode:         "ignore",
+				MissingTools: "sometimes",
+				Critical:     []string{""},
+			}}
+
+			err := validator.Validate(cfg)
+			Expect(err).To(HaveOccurred())
+			Expect(errors.Is(err, ErrInvalidConfig)).To(BeTrue())
+
+			detail := validateFailurePolicyConfig(cfg.FailurePolicy)
+			Expect(detail).To(HaveOccurred())
+			Expect(detail.Error()).To(ContainSubstring("mode must be"))
+			Expect(detail.Error()).To(ContainSubstring("missing_tools must be"))
+			Expect(detail.Error()).To(ContainSubstring("critical must not contain empty names"))
+		})
+	})
+
 	Describe("validatePatternsConfig", func() {
 		It("should allow empty patterns config", func() {
 			err := validator.validatePatternsConfig(&config.PatternsConfig{})

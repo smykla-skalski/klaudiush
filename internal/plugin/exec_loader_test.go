@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -572,13 +573,11 @@ var _ = Describe("ExecLoader", func() {
 					ToolName:  "Bash",       //nolint:staticcheck // SA1019: verifies legacy field normalization
 				}
 
-				// Should timeout since execution takes 200ms but timeout is 100ms
-				// Note: This test depends on the mock runner respecting context cancellation
+				// An answer that arrives after the timeout is not trusted.
 				_, err = adapter2.Validate(ctx, req)
 
-				// The result depends on whether the runner respects context cancellation
-				// In our mock, we just sleep, so it will complete but take longer than timeout
-				Expect(err).NotTo(HaveOccurred())
+				Expect(err).To(HaveOccurred())
+				Expect(errors.Is(err, context.DeadlineExceeded)).To(BeTrue())
 			})
 
 			It("should respect context cancellation", func() {
@@ -652,6 +651,45 @@ var _ = Describe("ExecLoader", func() {
 
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("failed to parse response JSON"))
+			})
+
+			DescribeTable("rejects a response without a boolean passed field",
+				func(stdout string) {
+					runner.runWithStdinFunc = func(
+						_ context.Context,
+						_ io.Reader,
+						_ string,
+						_ ...string,
+					) exec.CommandResult {
+						return exec.CommandResult{Stdout: stdout}
+					}
+
+					_, err := adapter.Validate(ctx, &pluginapi.ValidateRequest{})
+
+					Expect(errors.Is(err, plugin.ErrPluginBadResponse)).To(BeTrue(), "%v", err)
+				},
+				Entry("null", "null"),
+				Entry("empty object", "{}"),
+				Entry("null passed", `{"passed":null}`),
+				Entry("string passed", `{"passed":"true"}`),
+				Entry("number passed", `{"passed":1}`),
+			)
+
+			It("accepts a boolean passed field with spacing", func() {
+				runner.runWithStdinFunc = func(
+					_ context.Context,
+					_ io.Reader,
+					_ string,
+					_ ...string,
+				) exec.CommandResult {
+					return exec.CommandResult{Stdout: `{"passed" :  false , "message": "no"}`}
+				}
+
+				resp, err := adapter.Validate(ctx, &pluginapi.ValidateRequest{})
+
+				Expect(err).NotTo(HaveOccurred())
+				Expect(resp.Passed).To(BeFalse())
+				Expect(resp.Message).To(Equal("no"))
 			})
 
 			It("should pass request as JSON to stdin", func() {

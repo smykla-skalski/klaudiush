@@ -80,11 +80,12 @@ func (v *GofumptValidator) Validate(
 
 	opts := v.buildGofumptOptions(hook.CanonicalFilePath(hookCtx.WorkingDir, filePath))
 
-	result := v.check(ctx, content, opts)
+	result, notRun := v.check(ctx, content, opts)
+	if notRun != nil {
+		return notRun
+	}
 
-	// A timeout or crash reports neither success nor a diff.
-	inspected := hookCtx.IsAfterTool() && !result.Skipped &&
-		(result.Success || isUnformatted(result))
+	inspected := hookCtx.IsAfterTool() && (result.Success || isUnformatted(result))
 
 	if result.Success {
 		log.Debug("gofumpt passed")
@@ -95,7 +96,7 @@ func (v *GofumptValidator) Validate(
 
 	message := v.formatGofumptOutput(result.RawOut)
 
-	if baseline != nil && isUnformatted(v.check(ctx, *baseline, opts)) {
+	if baseline != nil && v.baselineUnformatted(ctx, *baseline, opts) {
 		log.Debug("file was not gofumpt-formatted before the edit")
 
 		return inspectedIf(inspected, validator.WarnWithRef(
@@ -113,15 +114,32 @@ func isUnformatted(result *linters.LintResult) bool {
 	return !result.Success && len(result.Findings) > 0
 }
 
+// check runs gofumpt on content. The second return value is set when
+// gofumpt could not run, in which case the first must not be used.
 func (v *GofumptValidator) check(
 	ctx context.Context,
 	content string,
 	opts *linters.GofumptOptions,
-) *linters.LintResult {
+) (*linters.LintResult, *validator.Result) {
 	lintCtx, cancel := context.WithTimeout(ctx, v.getTimeout())
 	defer cancel()
 
-	return v.checker.CheckWithOptions(lintCtx, content, opts)
+	result := v.checker.CheckWithOptions(lintCtx, content, opts)
+
+	return result, lintUnavailable(lintCtx, "gofumpt", result)
+}
+
+// baselineUnformatted reports whether the file was already unformatted
+// before the edit. A baseline gofumpt could not check counts as formatted,
+// so the edit keeps its blocking finding.
+func (v *GofumptValidator) baselineUnformatted(
+	ctx context.Context,
+	baseline string,
+	opts *linters.GofumptOptions,
+) bool {
+	result, notRun := v.check(ctx, baseline, opts)
+
+	return notRun == nil && isUnformatted(result)
 }
 
 // getContent returns the Go source to check. For an Edit or MultiEdit before

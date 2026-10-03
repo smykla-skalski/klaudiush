@@ -106,6 +106,13 @@ func (v *SecretsValidator) Validate(ctx context.Context, hookCtx *hook.Context) 
 		return inspectedIf(wholeFile, v.createResult(findings))
 	}
 
+	if v.gitleaksMissing() {
+		return validator.Unavailable(
+			validator.ReasonMissingTool,
+			"gitleaks is enabled but not installed, so the second-tier secret scan did not run",
+		)
+	}
+
 	// Optionally run gitleaks as second-tier check
 	if v.shouldUseGitleaks() {
 		result := v.gitleaks.Check(ctx, content)
@@ -113,13 +120,28 @@ func (v *SecretsValidator) Validate(ctx context.Context, hookCtx *hook.Context) 
 			return inspectedIf(wholeFile, v.createGitleaksResult(result.Findings))
 		}
 
-		// A failed run without findings checked nothing.
-		wholeFile = wholeFile && result.Success
+		if !result.Success {
+			return gitleaksUnavailable(ctx, result.Err)
+		}
 	}
 
 	log.Debug("no secrets detected")
 
 	return inspectedIf(wholeFile, validator.Pass())
+}
+
+// gitleaksUnavailable reports a gitleaks run that failed without findings:
+// it checked nothing, so the content is not known to be clean.
+func gitleaksUnavailable(ctx context.Context, err error) *validator.Result {
+	reason := validator.ReasonFromContext(ctx)
+	if reason == "" {
+		reason = validator.ReasonError
+	}
+
+	return validator.Unavailable(
+		reason,
+		fmt.Sprintf("gitleaks failed without reporting a finding: %v", err),
+	)
 }
 
 // inspectedIf marks result as a check of the whole file as the tool left it
@@ -172,6 +194,11 @@ func (v *SecretsValidator) getMaxFileSize() config.ByteSize {
 	}
 
 	return config.DefaultMaxFileSize
+}
+
+// gitleaksMissing reports gitleaks enabled in config but not installed.
+func (v *SecretsValidator) gitleaksMissing() bool {
+	return v.config.IsUseGitleaksEnabled() && (v.gitleaks == nil || !v.gitleaks.IsAvailable())
 }
 
 // shouldUseGitleaks returns whether gitleaks should be used.

@@ -198,6 +198,13 @@ const (
 	RefPluginDangerousChars Reference = ReferenceBaseURL + "/PLUG005"
 )
 
+// Hook operation references (HOOK001).
+const (
+	// RefValidationUnavailable indicates a check, or the whole hook, could
+	// not run, so nothing was validated.
+	RefValidationUnavailable Reference = ReferenceBaseURL + "/HOOK001"
+)
+
 // minCodeLength is the minimum length for a valid reference code.
 const minCodeLength = 3
 

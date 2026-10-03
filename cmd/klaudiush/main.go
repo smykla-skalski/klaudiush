@@ -18,12 +18,14 @@ import (
 	"github.com/smykla-skalski/klaudiush/internal/crashdump"
 	"github.com/smykla-skalski/klaudiush/internal/dispatcher"
 	"github.com/smykla-skalski/klaudiush/internal/exceptions"
+	"github.com/smykla-skalski/klaudiush/internal/failpolicy"
 	"github.com/smykla-skalski/klaudiush/internal/github"
 	"github.com/smykla-skalski/klaudiush/internal/hookresponse"
 	"github.com/smykla-skalski/klaudiush/internal/hooksession"
 	"github.com/smykla-skalski/klaudiush/internal/parser"
 	"github.com/smykla-skalski/klaudiush/internal/patterns"
 	"github.com/smykla-skalski/klaudiush/internal/updatecheck"
+	"github.com/smykla-skalski/klaudiush/internal/validator"
 	"github.com/smykla-skalski/klaudiush/internal/xdg"
 	"github.com/smykla-skalski/klaudiush/pkg/config"
 	"github.com/smykla-skalski/klaudiush/pkg/hook"
@@ -150,6 +152,12 @@ func init() {
 		"",
 		"Deprecated: use --event (Claude compatibility alias)",
 	)
+	rootCmd.Flags().StringVar(
+		&failureMode,
+		"failure-mode",
+		"",
+		"What happens when validation cannot run: warn or block (overrides failure_policy.mode)",
+	)
 	rootCmd.Flags().BoolVar(&debugMode, "debug", true, "Enable debug logging")
 	rootCmd.Flags().BoolVar(&traceMode, "trace", false, "Enable trace logging")
 	rootCmd.Flags().StringVarP(
@@ -181,7 +189,6 @@ func init() {
 }
 
 func run(cmd *cobra.Command, _ []string) error {
-	bt := newBenchTiming()
 	log := loggerFromCmd(cmd)
 
 	// Perform first-run migration if needed
@@ -202,18 +209,32 @@ func run(cmd *cobra.Command, _ []string) error {
 		"trace", traceMode,
 	)
 
-	ctx, err := parseHookContext(provider, eventType, requestedEventName, log)
+	h := newHookRun(provider, eventType, requestedEventName, log)
+
+	return h.supervise(h.validate)
+}
+
+// validate parses the hook input, validates it and writes the response.
+// Failures that stop it before a response is written come back as a
+// hookFailureError, which supervise answers according to the failure policy.
+func (h *hookRun) validate() error {
+	bt := newBenchTiming()
+	log := h.log
+
+	ctx, err := parseHookContext(h.provider, h.eventType, h.eventName, log)
 	if err != nil {
 		if errors.Is(err, parser.ErrEmptyInput) {
 			return nil
 		}
 
-		return err
+		return failHook(validator.ReasonMalformedInput, err)
 	}
 
 	if ctx == nil {
 		return nil
 	}
+
+	h.hookCtx.Store(ctx)
 
 	bt.mark("parse")
 
@@ -230,28 +251,12 @@ func run(cmd *cobra.Command, _ []string) error {
 	// invoked from the shell's CWD (e.g. dotfiles), not the cd target.
 	// We detect the cd target and use it to load the correct project config.
 	workDir := extractEffectiveWorkDir(ctx, log)
+	h.workDir.Store(&workDir)
 
-	// Load configuration with the effective working directory
-	cfg, err := loadConfig(log, workDir)
+	cfg, policy, registry, err := h.loadPolicyAndRegistry(ctx, workDir, bt)
 	if err != nil {
-		return errors.Wrap(err, "failed to load configuration")
+		return err
 	}
-
-	bt.mark("config")
-
-	// Store context and config for crash recovery
-	crashContext = ctx
-	crashConfig = cfg
-
-	// Build validator registry from configuration
-	registryBuilder := factory.NewRegistryBuilder(log)
-
-	registry, _, err := registryBuilder.BuildWithRuleEngine(cfg)
-	if err != nil {
-		return errors.Wrap(err, "failed to build validator registry")
-	}
-
-	bt.mark("registry")
 
 	// Create and initialize exception checker if enabled
 	exceptionHandler, exceptionChecker := initExceptionChecker(cfg, workDir, log)
@@ -267,9 +272,25 @@ func run(cmd *cobra.Command, _ []string) error {
 		dispatcher.WithExceptionChecker(exceptionChecker),
 		dispatcher.WithOverrides(cfg.Overrides),
 		dispatcher.WithBypassPolicy(bypassPolicy),
+		dispatcher.WithFailurePolicy(policy),
+		dispatcher.WithProgress(h.publish),
 	)
 
-	errs, sessionCleanup, gateNotice := dispatchInSession(disp, hooksession.NewStore(), ctx, log)
+	dispatchCtx, cancel := context.WithDeadline(
+		context.Background(),
+		h.start.Add(policy.Deadline()),
+	)
+	defer cancel()
+
+	errs, sessionCleanup, gateNotice := dispatchInSession(
+		dispatchCtx,
+		disp,
+		hooksession.NewStore(),
+		ctx,
+		log,
+	)
+
+	h.errs.Store(&errs)
 
 	bt.mark("dispatch")
 
@@ -285,6 +306,12 @@ func run(cmd *cobra.Command, _ []string) error {
 		notices = append(notices, gateNotice)
 	}
 
+	if !h.claim() {
+		log.Error("validation finished after the watchdog answered")
+
+		return nil
+	}
+
 	// Build and write response
 	writeErr := writeResponse(ctx, errs, patternWarnings, notices, cfg.Output, log)
 
@@ -295,10 +322,54 @@ func run(cmd *cobra.Command, _ []string) error {
 	return writeErr
 }
 
+// loadPolicyAndRegistry loads the configuration, hands the failure policy to
+// the watchdog, and builds the validator registry.
+func (h *hookRun) loadPolicyAndRegistry(
+	hookCtx *hook.Context,
+	workDir string,
+	bt *benchTiming,
+) (*config.Config, *failpolicy.Policy, *validator.Registry, error) {
+	cfg, err := loadConfig(h.log, workDir)
+	if err != nil {
+		return nil, nil, nil, failHook(
+			validator.ReasonConfig,
+			errors.Wrap(err, "failed to load configuration"),
+		)
+	}
+
+	h.output.Store(cfg.Output)
+
+	policy, policyErr := buildPolicy(cfg)
+	h.setPolicy(policy)
+
+	if policyErr != nil {
+		return nil, nil, nil, failHook(validator.ReasonConfig, policyErr)
+	}
+
+	bt.mark("config")
+
+	// Store context and config for crash recovery
+	crashContext = hookCtx
+	crashConfig = cfg
+
+	registry, _, err := factory.NewRegistryBuilder(h.log).BuildWithRuleEngine(cfg)
+	if err != nil {
+		return nil, nil, nil, failHook(
+			validator.ReasonConfig,
+			errors.Wrap(err, "failed to build validator registry"),
+		)
+	}
+
+	bt.mark("registry")
+
+	return cfg, policy, registry, nil
+}
+
 // dispatchInSession validates the hook and applies the session state: it
 // rechecks unresolved files, records or replays findings, and bounds
 // completion gates. The returned cleanup runs after the response is written.
 func dispatchInSession(
+	ctx context.Context,
 	disp *dispatcher.Dispatcher,
 	sessionStore *hooksession.Store,
 	hookCtx *hook.Context,
@@ -306,7 +377,7 @@ func dispatchInSession(
 ) ([]*dispatcher.ValidationError, func(), string) {
 	prepareRecheck(sessionStore, hookCtx, log)
 
-	outcome := disp.DispatchWithChecks(context.Background(), hookCtx)
+	outcome := disp.DispatchWithChecks(ctx, hookCtx)
 	errs, cleanup := applyHookSessionLifecycle(
 		sessionStore,
 		hookCtx,

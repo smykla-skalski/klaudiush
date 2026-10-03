@@ -2,12 +2,11 @@ package file_test
 
 import (
 	"context"
-	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"go.uber.org/mock/gomock"
 
-	execpkg "github.com/smykla-skalski/klaudiush/internal/exec"
 	"github.com/smykla-skalski/klaudiush/internal/github"
 	"github.com/smykla-skalski/klaudiush/internal/linters"
 	"github.com/smykla-skalski/klaudiush/internal/validators/file"
@@ -55,8 +54,12 @@ var _ = Describe("WorkflowValidator", func() {
 
 	BeforeEach(func() {
 		log = logger.NewNoOpLogger()
-		runner := execpkg.NewCommandRunner(10 * time.Second)
-		linter := linters.NewActionLinter(runner)
+		// A clean actionlint keeps these specs about digest pinning only, and
+		// independent of whether actionlint is installed on the runner.
+		linter := linters.NewMockActionLinter(gomock.NewController(GinkgoT()))
+		linter.EXPECT().Lint(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(&linters.LintResult{Success: true}).AnyTimes()
+
 		githubClient = &mockGitHubClient{authenticated: false}
 		githubClientUses = 0
 		validator = file.NewWorkflowValidator(linter, func() github.Client {

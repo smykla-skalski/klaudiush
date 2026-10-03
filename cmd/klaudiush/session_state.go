@@ -5,6 +5,7 @@ import (
 
 	"github.com/smykla-skalski/klaudiush/internal/dispatcher"
 	"github.com/smykla-skalski/klaudiush/internal/hooksession"
+	"github.com/smykla-skalski/klaudiush/internal/validator"
 	"github.com/smykla-skalski/klaudiush/pkg/hook"
 	"github.com/smykla-skalski/klaudiush/pkg/logger"
 )
@@ -74,6 +75,8 @@ func applyHookSessionLifecycle(
 	case hook.CanonicalEventAfterTool:
 		if err := store.Record(hookCtx, errs, checks); err != nil {
 			log.Info("failed to persist hook session findings", "error", err)
+
+			return append(errs, stateUnavailable("record this check for the session", err)), cleanup
 		}
 	case hook.CanonicalEventSessionEnd:
 		// A subagent shares the parent's session ID; its end must not
@@ -113,7 +116,7 @@ func withStoredErrors(
 	if err != nil {
 		log.Info("failed to load hook session findings", "error", err)
 
-		return errs
+		return append(errs, stateUnavailable("read the session's unresolved findings", err))
 	}
 
 	if len(stored) == 0 {
@@ -121,6 +124,24 @@ func withStoredErrors(
 	}
 
 	return append(stored, errs...)
+}
+
+// stateUnavailable reports session state klaudiush could not use. It warns
+// rather than blocks: state errors such as a held lock are transient, and a
+// gate that blocks on them could keep the agent working on nothing.
+func stateUnavailable(what string, err error) *dispatcher.ValidationError {
+	return &dispatcher.ValidationError{
+		Validator: "session-state",
+		Message: fmt.Sprintf(
+			"klaudiush could not %s, so findings from earlier tool calls may be missing: %s",
+			what,
+			firstLine(err.Error()),
+		),
+		Reference:         validator.RefValidationUnavailable,
+		FixHint:           validator.GetSuggestion(validator.RefValidationUnavailable),
+		Unavailable:       true,
+		UnavailableReason: validator.ReasonState,
+	}
 }
 
 // applyCompletionGate bounds how often a completion gate (Claude Stop and

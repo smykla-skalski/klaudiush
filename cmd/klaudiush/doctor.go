@@ -14,6 +14,7 @@ import (
 	backupchecker "github.com/smykla-skalski/klaudiush/internal/doctor/checkers/backup"
 	"github.com/smykla-skalski/klaudiush/internal/doctor/checkers/binary"
 	configchecker "github.com/smykla-skalski/klaudiush/internal/doctor/checkers/config"
+	failurepolicychecker "github.com/smykla-skalski/klaudiush/internal/doctor/checkers/failurepolicy"
 	"github.com/smykla-skalski/klaudiush/internal/doctor/checkers/hook"
 	overrideschecker "github.com/smykla-skalski/klaudiush/internal/doctor/checkers/overrides"
 	patternschecker "github.com/smykla-skalski/klaudiush/internal/doctor/checkers/patterns"
@@ -79,7 +80,7 @@ func init() {
 		&categoryFlag,
 		"category",
 		[]string{},
-		"Filter checks by category (binary, hook, config, tools, patterns, backup, overrides, xdg)",
+		"Filter checks by category (binary, hook, config, tools, patterns, backup, overrides, xdg, failure_policy)",
 	)
 }
 
@@ -174,6 +175,10 @@ func buildDoctorRegistry(cfg *pkgConfig.Config) *doctor.Registry {
 	registry.RegisterChecker(overrideschecker.NewExpiredChecker())
 	registry.RegisterChecker(overrideschecker.NewUnknownTargetChecker())
 	registry.RegisterChecker(overrideschecker.NewRedundantChecker())
+
+	// Register failure policy checkers
+	registry.RegisterChecker(failurepolicychecker.NewDeadlineChecker(cfg))
+	registry.RegisterChecker(failurepolicychecker.NewCriticalToolsChecker(cfg))
 
 	// Register XDG checkers
 	registry.RegisterChecker(xdgchecker.NewLegacyPathChecker())
@@ -288,14 +293,15 @@ func parseCategories(names []string) []doctor.Category {
 	}
 
 	categoryMap := map[string]doctor.Category{
-		"binary":        doctor.CategoryBinary,
-		"hook":          doctor.CategoryHook,
-		"config":        doctor.CategoryConfig,
-		"tools":         doctor.CategoryTools,
-		cmdUsePatterns:  doctor.CategoryPatterns,
-		"backup":        doctor.CategoryBackup,
-		cmdUseOverrides: doctor.CategoryOverrides,
-		"xdg":           doctor.CategoryXDG,
+		"binary":         doctor.CategoryBinary,
+		"hook":           doctor.CategoryHook,
+		"config":         doctor.CategoryConfig,
+		"tools":          doctor.CategoryTools,
+		cmdUsePatterns:   doctor.CategoryPatterns,
+		"backup":         doctor.CategoryBackup,
+		cmdUseOverrides:  doctor.CategoryOverrides,
+		"xdg":            doctor.CategoryXDG,
+		"failure_policy": doctor.CategoryFailurePolicy,
 	}
 
 	var categories []doctor.Category

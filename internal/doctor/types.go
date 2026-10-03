@@ -49,6 +49,8 @@ const (
 	CategoryOverrides Category = "overrides"
 	// CategoryXDG checks for XDG base directory compliance
 	CategoryXDG Category = "xdg"
+	// CategoryFailurePolicy checks the validation failure policy can be met
+	CategoryFailurePolicy Category = "failure_policy"
 )
 
 // CheckResult represents the result of a health check

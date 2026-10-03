@@ -87,6 +87,12 @@ func (v *Validator) Validate(cfg *config.Config) error {
 		}
 	}
 
+	if cfg.FailurePolicy != nil {
+		if err := validateFailurePolicyConfig(cfg.FailurePolicy); err != nil {
+			validationErrors = append(validationErrors, errors.Wrap(err, "failure_policy"))
+		}
+	}
+
 	if len(validationErrors) > 0 {
 		return errors.WithSecondaryError(
 			errors.Wrapf(
@@ -99,6 +105,45 @@ func (v *Validator) Validate(cfg *config.Config) error {
 	}
 
 	return nil
+}
+
+// validateFailurePolicyConfig checks the failure modes and critical names.
+// The deadline is compared with hook timeouts by doctor, which reads them.
+func validateFailurePolicyConfig(cfg *config.FailurePolicyConfig) error {
+	var validationErrors []error
+
+	if mode := strings.ToLower(cfg.Mode); mode != "" && mode != config.FailureModeWarn &&
+		mode != config.FailureModeBlock {
+		validationErrors = append(validationErrors, errors.Wrapf(
+			ErrInvalidOption,
+			"mode must be %q or %q, got %q",
+			config.FailureModeWarn, config.FailureModeBlock, cfg.Mode,
+		))
+	}
+
+	switch strings.ToLower(cfg.MissingTools) {
+	case "", config.FailureModeIgnore, config.FailureModeWarn, config.FailureModeBlock:
+	default:
+		validationErrors = append(validationErrors, errors.Wrapf(
+			ErrInvalidOption,
+			"missing_tools must be %q, %q or %q, got %q",
+			config.FailureModeIgnore, config.FailureModeWarn, config.FailureModeBlock,
+			cfg.MissingTools,
+		))
+	}
+
+	if slices.Contains(cfg.Critical, "") {
+		validationErrors = append(validationErrors, errors.Wrap(
+			ErrEmptyValue,
+			"critical must not contain empty names",
+		))
+	}
+
+	if len(validationErrors) == 0 {
+		return nil
+	}
+
+	return combineErrors(validationErrors)
 }
 
 // validateGlobalConfig validates global configuration.

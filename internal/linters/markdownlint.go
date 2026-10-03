@@ -160,12 +160,17 @@ func (l *RealMarkdownLinter) lintInternal(
 		maps.Copy(cosmeticTableSuggested, analysisResult.CosmeticTableSuggested)
 	}
 
-	// Run markdownlint if enabled and available
+	// Run markdownlint if enabled; Skipped reports that it is not installed
+	// while the built-in rules still ran.
+	var markdownlintSkipped bool
+
 	if l.shouldUseMarkdownlint() {
 		markdownlintResult := l.runMarkdownlint(ctx, content, initialState, originalPath)
 		if !markdownlintResult.Success {
 			allWarnings = append(allWarnings, markdownlintResult.RawOut)
 		}
+
+		markdownlintSkipped = markdownlintResult.Skipped
 	}
 
 	if len(allWarnings) > 0 {
@@ -173,6 +178,7 @@ func (l *RealMarkdownLinter) lintInternal(
 
 		return &LintResult{
 			Success:                false,
+			Skipped:                markdownlintSkipped,
 			RawOut:                 output,
 			Findings:               []LintFinding{},
 			Err:                    ErrMarkdownCustomRules,
@@ -185,6 +191,7 @@ func (l *RealMarkdownLinter) lintInternal(
 	// No blocking warnings, but there may be cosmetic table warnings
 	return &LintResult{
 		Success:                true,
+		Skipped:                markdownlintSkipped,
 		RawOut:                 "",
 		Findings:               []LintFinding{},
 		Err:                    nil,
@@ -371,10 +378,7 @@ func (l *RealMarkdownLinter) runMarkdownlint(
 ) *LintResult {
 	markdownlintPath := l.findMarkdownlintTool()
 	if markdownlintPath == "" {
-		return &LintResult{
-			Success: true, // Don't fail if tool not available
-			RawOut:  "",
-		}
+		return &LintResult{Success: true, Skipped: true}
 	}
 
 	preamble, preambleLines := validators.GeneratePreamble(initialState)

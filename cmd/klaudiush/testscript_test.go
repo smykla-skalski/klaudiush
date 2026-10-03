@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/rogpeppe/go-internal/testscript"
@@ -20,6 +21,7 @@ func TestMain(m *testing.M) {
 func mainFunc() {
 	// Reset flags for each invocation (Cobra reuses the same command)
 	hookType = ""
+	failureMode = ""
 	debugMode = true
 	traceMode = false
 	configPath = ""
@@ -58,6 +60,11 @@ func setupTestEnv(env *testscript.Env) error {
 
 	// Set HOME to the work directory so logger can create the log file
 	env.Setenv("HOME", env.WorkDir)
+
+	// The directory testscript installs klaudiush into, so a script can run
+	// it with a PATH that holds nothing else
+	testBin, _, _ := strings.Cut(env.Getenv("PATH"), string(os.PathListSeparator))
+	env.Setenv("KLAUDIUSH_TEST_BIN", testBin)
 
 	// Force CLI git implementation in tests to avoid singleton caching issues
 	// The SDK implementation uses a singleton cache that persists across test runs

@@ -143,12 +143,14 @@ func (v *WorkflowValidator) Validate(ctx context.Context, hookCtx *hook.Context)
 		}
 	}
 
+	var notRun *validator.Result
+
 	// Run actionlint if enabled and available
 	if v.isUseActionlint() {
-		actionlintWarnings := v.runActionlint(ctx, content, filePath)
-		if len(actionlintWarnings) > 0 {
-			allWarnings = append(allWarnings, actionlintWarnings...)
-		}
+		var actionlintWarnings []string
+
+		actionlintWarnings, notRun = v.runActionlint(ctx, content, filePath)
+		allWarnings = append(allWarnings, actionlintWarnings...)
 	}
 
 	// Report warnings
@@ -175,6 +177,17 @@ func (v *WorkflowValidator) Validate(ctx context.Context, hookCtx *hook.Context)
   - Or provide explanation when digest pinning not possible:
     # Cannot pin by digest: marketplace action with frequent updates
     uses: vendor/custom-action@v1`)
+	}
+
+	// Only digest pinning decides; actionlint just prints warnings. After the
+	// tool ran, the pinning verdict still proves the file clean, so a missing
+	// actionlint must not keep earlier pinning findings unresolved.
+	if notRun != nil && !inspected {
+		return notRun
+	}
+
+	if notRun != nil {
+		log.Info("actionlint did not run", "reason", string(notRun.UnavailableReason))
 	}
 
 	return inspectedIf(inspected, validator.Pass())
@@ -504,30 +517,26 @@ func (*WorkflowValidator) isVersionLatest(current, latest string) bool {
 	return currentVer.Compare(latestVer) >= 0
 }
 
-// runActionlint runs actionlint on the workflow content using ActionLinter
+// runActionlint runs actionlint on the workflow content using ActionLinter.
+// The second return value is set when actionlint could not run.
 func (v *WorkflowValidator) runActionlint(
 	ctx context.Context,
 	content, originalPath string,
-) []string {
+) ([]string, *validator.Result) {
 	lintCtx, cancel := context.WithTimeout(ctx, v.getTimeout())
 	defer cancel()
 
 	result := v.linter.Lint(lintCtx, content, originalPath)
 
+	if notRun := lintUnavailable(lintCtx, "actionlint", result); notRun != nil {
+		return nil, notRun
+	}
+
 	if result.Success {
-		return nil
+		return nil, nil
 	}
 
-	output := strings.TrimSpace(result.RawOut)
-	if output != "" {
-		return v.parseActionlintOutput(output)
-	}
-
-	if result.Err != nil {
-		v.Logger().Debug("actionlint failed", "error", result.Err)
-	}
-
-	return nil
+	return v.parseActionlintOutput(strings.TrimSpace(result.RawOut)), nil
 }
 
 // parseActionlintOutput parses actionlint output into individual warnings

@@ -1,0 +1,42 @@
+stdin bad.json
+exec klaudiush --hook-type PreToolUse
+stdout 'Validation unavailable HOOK001'
+stdout 'unreadable hook input'
+! stdout 'permissionDecision'
+stderr 'validation unavailable'
+
+stdin bad.json
+exec klaudiush --hook-type PreToolUse --failure-mode=block
+stdout '"permissionDecision":"deny"'
+stdout 'Blocked, validation unavailable HOOK001'
+
+env KLAUDIUSH_FAILURE_POLICY_MODE=block
+stdin bad.json
+exec klaudiush --provider codex --event PreToolUse
+stdout '"permissionDecision":"deny"'
+
+stdin bad.json
+exec klaudiush --provider gemini --event BeforeTool
+stdout '"decision":"deny"'
+
+stdin bad.json
+exec klaudiush --provider opencode --event tool.execute.before
+stdout '"decision":"deny"'
+
+stdin bad.json
+exec klaudiush --hook-type Stop
+stdout 'Validation unavailable HOOK001'
+! stdout '"decision"'
+
+stdin bad.json
+exec klaudiush --hook-type PostToolUse
+! stdout '"decision"'
+stdout 'Validation unavailable'
+
+env KLAUDIUSH_FAILURE_POLICY_MODE=
+stdin bad.json
+exec klaudiush --hook-type PreToolUse --failure-mode=sometimes
+stdout '"permissionDecision":"deny"'
+
+-- bad.json --
+{"tool_name": "Bash", "tool_input": {"command": "git push --force

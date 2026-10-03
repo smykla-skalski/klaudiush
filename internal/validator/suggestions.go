@@ -68,6 +68,9 @@ var DefaultSuggestions = map[Reference]string{
 	RefGHAPICommit:       "Clone the repository, stage the files, and run git commit -sS instead of creating the commit through the GitHub API",
 	RefGHAPIUnverifiable: "Spell the endpoint literally instead of building it from a variable, or pass the GraphQL query inline with -f query=...",
 
+	// Hook operation suggestions
+	RefValidationUnavailable: "Ask the user to run 'klaudiush doctor' and fix the cause this message names",
+
 	// MCP Elicitation suggestions
 	RefMCPServerBlocked:    "Remove MCP server from deny list or use a different server",
 	RefMCPServerNotAllowed: "Add MCP server to allow list in config",

@@ -2,6 +2,7 @@
 package parser
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"os"
@@ -218,6 +219,12 @@ func (p *JSONParser) readInput(opts ParseOptions) ([]byte, JSONInput, error) {
 		}
 
 		jsonBytes = []byte(envInput)
+	}
+
+	// null, arrays and scalars decode into an empty input without error,
+	// which would validate nothing and pass.
+	if trimmed := bytes.TrimSpace(jsonBytes); len(trimmed) == 0 || trimmed[0] != '{' {
+		return nil, JSONInput{}, errors.Wrap(ErrInvalidJSON, "hook input is not a JSON object")
 	}
 
 	var input JSONInput

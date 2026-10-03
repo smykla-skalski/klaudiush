@@ -32,6 +32,23 @@ export KLAUDIUSH_USE_SDK_GIT=true
 export KLAUDIUSH_USE_SDK_GIT=false
 ```
 
+### Failure Policy
+
+Decide what happens when validation cannot run. See the [failure policy guide](docs/FAILURE_POLICY_GUIDE.md).
+
+```bash
+# warn (let actions through with a warning) or block (deny them)
+export KLAUDIUSH_FAILURE_POLICY_MODE=block
+
+# What a missing linter does: ignore, warn or block
+export KLAUDIUSH_FAILURE_POLICY_MISSING_TOOLS=warn
+
+# How long one hook run may take
+export KLAUDIUSH_FAILURE_POLICY_DEADLINE=20s
+```
+
+`KLAUDIUSH_FAILURE_POLICY_MODE` also applies when the configuration files cannot be read, and the generated opencode plugin reads it to decide whether to refuse a tool call when klaudiush cannot answer at all.
+
 ## Git Validators
 
 ### Git Add Validator
