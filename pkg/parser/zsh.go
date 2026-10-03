@@ -315,6 +315,47 @@ func codeQualifier(word *syntax.Word) string {
 	return ""
 }
 
+// numericRange matches the text of a zsh numeric glob such as <0-9> or <->
+// between its < and >.
+var numericRange = regexp.MustCompile(`^[0-9]*-[0-9]*$`)
+
+// numericGlobQualifier returns the code-running form of qualifiers after a
+// zsh numeric glob, or "". Bash reads <0-9>(e:cmd:) as input from the file
+// 0-9 and a >(...) process substitution, but zsh reads a numeric glob with
+// qualifiers that run cmd for every match.
+func numericGlobQualifier(stmt *syntax.Stmt) string {
+	for _, redir := range stmt.Redirs {
+		if redir.Op != syntax.RdrIn || redir.Word == nil || len(redir.Word.Parts) != 2 {
+			continue
+		}
+
+		lit, isLit := redir.Word.Parts[0].(*syntax.Lit)
+		proc, isProc := redir.Word.Parts[1].(*syntax.ProcSubst)
+
+		if !isLit || !isProc || proc.Op != syntax.CmdOut || !numericRange.MatchString(lit.Value) {
+			continue
+		}
+
+		var sb strings.Builder
+
+		for i, inner := range proc.Stmts {
+			if i > 0 {
+				sb.WriteString("; ")
+			}
+
+			if err := syntax.NewPrinter().Print(&sb, inner); err != nil {
+				return GlobVariable
+			}
+		}
+
+		if form := globForm(sb.String(), true); form != "" {
+			return form
+		}
+	}
+
+	return ""
+}
+
 // globForm returns the code-running form of one extended glob pattern, or
 // "". Trailing reports that the glob ends its word.
 func globForm(pattern string, trailing bool) string {

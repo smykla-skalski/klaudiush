@@ -151,6 +151,10 @@ func (w *astWalker) visit(node syntax.Node) bool {
 		}
 	case *syntax.Stmt:
 		w.extractRedirect(n)
+
+		if form := numericGlobQualifier(n); form != "" {
+			w.opaque(OpacityZshGlobQualifier, form, "")
+		}
 	case *syntax.Word:
 		if form := codeQualifier(n); form != "" {
 			w.opaque(OpacityZshGlobQualifier, form, "")
