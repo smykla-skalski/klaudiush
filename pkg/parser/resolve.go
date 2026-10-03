@@ -752,7 +752,7 @@ func (w *astWalker) follow(cmd Command, l launch, depth int) {
 	}
 
 	for _, code := range l.code {
-		w.followCode(cmd, code, depth, "")
+		w.followCode(cmd, code, depth, scriptWalk{literal: true})
 	}
 }
 
@@ -765,11 +765,18 @@ func (w *astWalker) followFile(cmd Command, file scriptFile, depth int) {
 
 	switch status {
 	case ScriptText:
-		label := scriptName(file.path)
-		if file.interpreter || interpreterShebang(text) {
-			w.followCode(cmd, text, depth, label)
+		literal := file.interpreter || interpreterShebang(text)
+
+		key := w.sourceKey(cmd, text, literal)
+		if w.expanding[key] {
+			return
+		}
+
+		sw := scriptWalk{literal: literal, label: scriptName(file.path), source: key}
+		if literal {
+			w.followCode(cmd, text, depth, sw)
 		} else {
-			w.walkScript(text, cmd, depth, scriptWalk{label: label})
+			w.walkScript(text, cmd, depth, sw)
 		}
 	case ScriptOpaque:
 		if file.explicit {
@@ -779,11 +786,11 @@ func (w *astWalker) followFile(cmd Command, file scriptFile, depth int) {
 	}
 }
 
-// followCode records the command lines found in program source, naming the
-// source file by label when it came from one.
-func (w *astWalker) followCode(cmd Command, code string, depth int, label string) {
+// followCode records the command lines found in program source, walking
+// each as sw describes.
+func (w *astWalker) followCode(cmd Command, code string, depth int, sw scriptWalk) {
 	for _, line := range commandLines(code) {
-		w.walkScript(line, cmd, depth, scriptWalk{literal: true, label: label})
+		w.walkScript(line, cmd, depth, sw)
 	}
 }
 
@@ -839,6 +846,9 @@ type scriptWalk struct {
 	literal bool
 	// label names the script in diagnostics.
 	label string
+	// source marks a script file being followed, kept from being followed
+	// inside itself in the same state.
+	source string
 }
 
 // walkScript records the commands of a script that parent runs. A cd inside
@@ -859,6 +869,10 @@ func (w *astWalker) walkScript(script string, parent Command, depth int, sw scri
 
 	if sw.name != "" {
 		child.expanding[sw.name] = true
+	}
+
+	if sw.source != "" {
+		child.expanding[sw.source] = true
 	}
 
 	if op := sw.operation(); (sw.name != "" || sw.label != "") &&
