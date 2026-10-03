@@ -92,30 +92,26 @@ func (c *ToolPhaseChecker) Check(context.Context) doctor.CheckResult {
 			}, coverage...)...)
 	}
 
-	return checkGeminiSettings(gemini.SettingsPath, phase, coverage)
+	filters := evidenceCfg.GetToolPhase().FiltersTools()
+
+	return checkGeminiSettings(gemini.SettingsPath, phase, filters, coverage)
 }
 
+// checkGeminiSettings checks the Gemini hooks the phase needs. The
+// BeforeToolSelection hook matters only while the phase filters tools: with
+// filter_tools = false it answers nothing, and BeforeTool alone enforces.
 func checkGeminiSettings(
 	settingsPath string,
 	phase *evidence.Phase,
+	filters bool,
 	coverage []string,
 ) doctor.CheckResult {
 	parser := settings.NewGeminiSettingsParser(settingsPath)
 
-	registered, err := parser.HasEventHook(settings.GeminiEventToolSelection, dispatcherName)
-	if err != nil {
-		return doctor.FailError(toolPhaseCheckName, "Gemini settings cannot be read").
-			WithDetails(settingsPath, err.Error())
-	}
-
-	if !registered {
-		return doctor.FailError(toolPhaseCheckName, fmt.Sprintf(
-			"%s does not run klaudiush on %s, so Gemini offers every tool; "+
-				"BeforeTool still denies withheld calls",
-			settingsPath, settings.GeminiEventToolSelection,
-		)).
-			WithDetails(append([]string{"Register with: klaudiush doctor --fix"}, coverage...)...).
-			WithFixID(installHookFixID)
+	if filters {
+		if result, ok := checkToolSelection(parser, settingsPath, coverage); !ok {
+			return result
+		}
 	}
 
 	matchers, err := parser.GeminiBeforeToolMatchers(dispatcherName)
@@ -137,15 +133,46 @@ func checkGeminiSettings(
 	}
 
 	details := slices.Clone(coverage)
+
 	if open := uncheckedTools(matchers, phaseOpenTools); len(open) > 0 {
-		details = append(details,
-			"Withheld only by the tool selection, no klaudiush BeforeTool matcher selects: "+
-				strings.Join(open, ", "))
+		prefix := "Withheld only by the tool selection, no klaudiush BeforeTool matcher selects: "
+		if !filters {
+			prefix = "Not withheld with filter_tools = false, no klaudiush BeforeTool matcher selects: "
+		}
+
+		details = append(details, prefix+strings.Join(open, ", "))
 	}
 
 	return doctor.Pass(toolPhaseCheckName,
 		"Gemini mutation tools wait for "+strings.Join(phase.RequiredNames(), ", "),
 	).WithDetails(details...)
+}
+
+// checkToolSelection reports a Gemini settings file that does not run
+// klaudiush on BeforeToolSelection. ok is false when result should be
+// returned.
+func checkToolSelection(
+	parser *settings.GeminiSettingsParser,
+	settingsPath string,
+	coverage []string,
+) (doctor.CheckResult, bool) {
+	registered, err := parser.HasEventHook(settings.GeminiEventToolSelection, dispatcherName)
+	if err != nil {
+		return doctor.FailError(toolPhaseCheckName, "Gemini settings cannot be read").
+			WithDetails(settingsPath, err.Error()), false
+	}
+
+	if registered {
+		return doctor.CheckResult{}, true
+	}
+
+	return doctor.FailError(toolPhaseCheckName, fmt.Sprintf(
+		"%s does not run klaudiush on %s, so Gemini offers every tool; "+
+			"BeforeTool still denies withheld calls",
+		settingsPath, settings.GeminiEventToolSelection,
+	)).
+		WithDetails(append([]string{"Register with: klaudiush doctor --fix"}, coverage...)...).
+		WithFixID(installHookFixID), false
 }
 
 func uncheckedTools(matchers, tools []string) []string {

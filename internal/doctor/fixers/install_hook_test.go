@@ -106,9 +106,18 @@ var _ = Describe("InstallHookFixer", func() {
 		Expect(string(data)).NotTo(ContainSubstring("BeforeToolSelection"))
 
 		enabled := true
+		off := false
 		cfg.Evidence = &pkgConfig.EvidenceConfig{
-			ToolPhase: &pkgConfig.EvidenceToolPhaseConfig{Enabled: &enabled},
+			ToolPhase: &pkgConfig.EvidenceToolPhaseConfig{Enabled: &enabled, FilterTools: &off},
 		}
+
+		Expect(NewInstallHookFixer(mockPrompt, cfg).Fix(context.Background(), false)).To(Succeed())
+
+		data, err = os.ReadFile(geminiSettingsPath)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(data)).NotTo(ContainSubstring("BeforeToolSelection"))
+
+		cfg.Evidence.ToolPhase.FilterTools = nil
 
 		Expect(NewInstallHookFixer(mockPrompt, cfg).Fix(context.Background(), false)).To(Succeed())
 

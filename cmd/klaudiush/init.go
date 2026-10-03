@@ -704,7 +704,7 @@ func resolveProviderInstallTargets(cfg *pkgConfig.Config) providerInstallTargets
 	targets.claudeEnabled = providers.GetClaude().IsEnabled()
 	targets.codexHooksPath = codexInstallPath(providers.GetCodex())
 	targets.geminiSettingsPath = geminiInstallPath(providers.GetGemini())
-	targets.geminiToolSelection = cfg.Evidence.GetToolPhase().IsEnabled()
+	targets.geminiToolSelection = cfg.Evidence.GetToolPhase().SelectsTools()
 	targets.openCodePluginPath = openCodeInstallPath(providers.GetOpenCode())
 
 	return targets

@@ -186,7 +186,7 @@ func configuredInstallTargets(cfg *pkgConfig.Config) installTargets {
 		targets.geminiSettingsPath = geminiCfg.SettingsPath
 	}
 
-	targets.geminiToolSelection = cfg.Evidence.GetToolPhase().IsEnabled()
+	targets.geminiToolSelection = cfg.Evidence.GetToolPhase().SelectsTools()
 
 	// opencode falls back to the default plugin location: unlike the JSON-hook
 	// providers there is no pre-existing file an operator must point at, so the

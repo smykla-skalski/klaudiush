@@ -111,6 +111,13 @@ func (p *EvidenceToolPhaseConfig) FiltersTools() bool {
 	return *p.FilterTools
 }
 
+// SelectsTools reports whether the phase answers Gemini
+// BeforeToolSelection: it is on and narrows the tools offered. Only then
+// does the selection hook need registering.
+func (p *EvidenceToolPhaseConfig) SelectsTools() bool {
+	return p.IsEnabled() && p.FiltersTools()
+}
+
 // GetReadOnlyTools returns the tools offered while restricted.
 func (p *EvidenceToolPhaseConfig) GetReadOnlyTools() []string {
 	if p == nil || p.ReadOnlyTools == nil {

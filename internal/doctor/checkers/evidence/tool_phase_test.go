@@ -105,6 +105,32 @@ var _ = Describe("ToolPhaseChecker", func() {
 		Expect(result.FixID).To(Equal("install_hook"))
 	})
 
+	It("does not require BeforeToolSelection when filter_tools is off", func() {
+		off := false
+
+		cfg := phaseConfig(geminiNoSelection)
+		cfg.Evidence.ToolPhase.FilterTools = &off
+
+		result := check(cfg)
+		Expect(result.Status).To(Equal(doctor.StatusPass))
+		Expect(result.FixID).To(BeEmpty())
+
+		cfg = phaseConfig(geminiNarrow)
+		cfg.Evidence.ToolPhase.FilterTools = &off
+
+		result = check(cfg)
+		Expect(result.Status).To(Equal(doctor.StatusFail))
+		Expect(result.Severity).To(Equal(doctor.SeverityWarning))
+		Expect(result.Message).To(ContainSubstring("write_file, replace, run_shell_command"))
+
+		cfg = phaseConfig(geminiSelection)
+		cfg.Evidence.ToolPhase.FilterTools = &off
+
+		result = check(cfg)
+		Expect(result.Status).To(Equal(doctor.StatusPass))
+		Expect(result.Details).To(ContainElement(ContainSubstring("Not withheld")))
+	})
+
 	It("warns when the governed tools reach no klaudiush BeforeTool hook", func() {
 		result := check(phaseConfig(geminiNarrow))
 		Expect(result.Status).To(Equal(doctor.StatusFail))

@@ -607,11 +607,22 @@ var _ = Describe("Install", func() {
 				},
 			}
 
+			off := false
+			cfg.Evidence.ToolPhase.FilterTools = &off
+
+			Expect(performConfiguredInstall("", fakeBinary, cfg)).To(Succeed())
+
+			data, err := os.ReadFile(geminiSettingsPath)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(data)).NotTo(ContainSubstring("BeforeToolSelection"))
+
+			cfg.Evidence.ToolPhase.FilterTools = nil
+
 			for range 2 {
 				Expect(performConfiguredInstall("", fakeBinary, cfg)).To(Succeed())
 			}
 
-			data, err := os.ReadFile(geminiSettingsPath)
+			data, err = os.ReadFile(geminiSettingsPath)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(strings.Count(string(data), "--event BeforeToolSelection")).To(Equal(1))
 		})
