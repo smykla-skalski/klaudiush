@@ -76,11 +76,12 @@ func combinedTakesValue(arg, sub string) bool {
 	return flagTakesValue("-"+arg[len(arg)-1:], sub)
 }
 
-// storedArgs removes the marks from cmd's arguments. An argument that was
-// all substitution is dropped, as the parser always did, unless it is the
-// value of a git global option or of a flag: keeping it empty there stops
-// the flag from taking the next argument (git -C "$(pwd)" push). The second
-// result marks, per stored argument, whether it was substituted.
+// storedArgs removes the marks from cmd's arguments. A quoted empty word
+// stays, as in the shell. An argument that was all substitution is dropped,
+// as the parser always did, unless it is the value of a git global option
+// or of a flag: keeping it empty there stops the flag from taking the next
+// argument (git -C "$(pwd)" push). The second result marks, per stored
+// argument, whether it was substituted.
 func storedArgs(cmd Command) ([]string, []bool) {
 	if !slices.ContainsFunc(cmd.Args, marked) {
 		return cmd.Args, nil
@@ -105,7 +106,7 @@ func storedArgs(cmd Command) ([]string, []bool) {
 			continue
 		}
 
-		if value != "" || (marked(arg) && keepsEmpty(cmd, i, idx, sub)) {
+		if value != "" || !marked(arg) || keepsEmpty(cmd, i, idx, sub) {
 			args = append(args, value)
 			substituted = append(substituted, marked(arg))
 		}

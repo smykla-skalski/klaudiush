@@ -411,8 +411,9 @@ func (w *astWalker) lineGHAlias(name string) (string, bool) {
 // alias or function, or a git or gh shell alias. The name keeps the
 // definition from being expanded inside itself.
 type nestedScript struct {
-	name string
-	text string
+	name      string
+	text      string
+	splitArgs bool
 }
 
 // programBehind returns git or gh for a program invoked with one of their
@@ -760,31 +761,59 @@ func (w *astWalker) definitionScripts(cmd Command) []nestedScript {
 			return scripts
 		}
 
-		scripts = append(
-			scripts,
-			nestedScript{name: cmd.Invoked, text: substitutePositional(body, cmd.Args)},
-		)
+		text, split := substitutePositional(body, cmd.Args)
+		scripts = append(scripts, nestedScript{name: cmd.Invoked, text: text, splitArgs: split})
 	}
 
 	return scripts
 }
 
 // substitutePositional puts a call's arguments in place of the positional
-// parameters a function body uses.
-func substitutePositional(body string, args []string) string {
-	return positionalParam.ReplaceAllStringFunc(body, func(ref string) string {
+// parameters a function body uses. An unquoted reference splits its value
+// into words and an empty one leaves none, so f() { $1 git push; }; f ""
+// runs git push. It also reports whether an unquoted reference split a
+// value, which only holds while IFS keeps its default.
+func substitutePositional(body string, args []string) (string, bool) {
+	split := false
+
+	text := positionalParam.ReplaceAllStringFunc(body, func(ref string) string {
 		param := strings.Trim(ref, `"${}`)
+		quoted := strings.HasPrefix(ref, `"`) || strings.HasSuffix(ref, `"`)
 
-		if param == "@" || param == "*" {
-			return quoteArgs(args)
+		var values []string
+
+		switch n := int(param[0] - '0'); {
+		case param == "@" || param == "*":
+			values = args
+		case n <= len(args):
+			values = args[n-1 : n]
+		case quoted:
+			return "''"
+		default:
+			return ""
 		}
 
-		if n := int(param[0] - '0'); n <= len(args) {
-			return shellQuote(args[n-1])
+		if quoted {
+			return quoteArgs(values)
 		}
 
-		return "''"
+		split = split || slices.ContainsFunc(values, func(v string) bool { return v != "" })
+
+		return quoteArgs(splitFields(values))
 	})
+
+	return text, split
+}
+
+// splitFields splits values into the words an unquoted expansion gives.
+func splitFields(values []string) []string {
+	fields := make([]string, 0, len(values))
+
+	for _, value := range values {
+		fields = append(fields, strings.Fields(value)...)
+	}
+
+	return fields
 }
 
 // follow records everything a command launches. A shell, or a script run
@@ -1027,7 +1056,7 @@ func (w *astWalker) argStrings(words []*syntax.Word) []string {
 			continue
 		}
 
-		if s := markSubstituted(word, argWord(word)); s != "" {
+		if s := markSubstituted(word, argWord(word)); s != "" || keepsEmptyWord(word) {
 			args = append(args, s)
 		}
 	}
