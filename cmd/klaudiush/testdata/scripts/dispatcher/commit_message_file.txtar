@@ -1,0 +1,141 @@
+exec git init --initial-branch=main
+exec git config user.email "test@test.com"
+exec git config user.name "Test User"
+
+cp file.go staged.go
+exec git add staged.go
+
+stdin proc-subst.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+stdout 'process substitution or file descriptor'
+stdout 'quoted heredoc'
+
+stdin proc-subst-output.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+stdout 'command or process substitution'
+
+stdin stdin-unseen.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+stdout 'reads stdin'
+
+stdin missing-file.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+stdout 'does not exist'
+
+stdin good-file.json
+exec klaudiush --hook-type PreToolUse
+! stdout .
+
+stdin good-file-long.json
+exec klaudiush --hook-type PreToolUse
+! stdout .
+
+stdin bad-file.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'GIT013'
+! stdout 'SHELL002'
+
+stdin good-heredoc.json
+exec klaudiush --hook-type PreToolUse
+! stdout .
+
+stdin bad-heredoc.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'GIT013'
+! stdout 'SHELL002'
+
+stdin message-flag.json
+exec klaudiush --hook-type PreToolUse
+! stdout .
+
+-- file.go --
+package main
+
+func main() {}
+
+-- good.txt --
+fix(git): block opaque message files
+
+-- bad.txt --
+not a conventional message
+
+-- proc-subst.json --
+{
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "git commit -sS -F <(echo 'fix(git): looks fine')"
+  }
+}
+-- proc-subst-output.json --
+{
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "git commit -sS -F <(git log -1 --format=%B) good.txt"
+  }
+}
+-- stdin-unseen.json --
+{
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "git log -1 --format=%B | git commit -sS -F -"
+  }
+}
+-- missing-file.json --
+{
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "git commit -sS -F missing.txt"
+  }
+}
+-- good-file.json --
+{
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "git commit -sS -F good.txt"
+  }
+}
+-- good-file-long.json --
+{
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "git commit -sS --file=good.txt"
+  }
+}
+-- bad-file.json --
+{
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "git commit -sS -F bad.txt"
+  }
+}
+-- good-heredoc.json --
+{
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "git commit -sS -F - <<'EOF'\nfix(git): block opaque message files\nEOF"
+  }
+}
+-- bad-heredoc.json --
+{
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "git commit -sS -F - <<'EOF'\nnot a conventional message\nEOF"
+  }
+}
+-- message-flag.json --
+{
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "git commit -sS -m 'fix(git): block opaque message files'"
+  }
+}

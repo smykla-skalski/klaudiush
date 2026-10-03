@@ -3,6 +3,7 @@ package exec
 import (
 	"context"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -70,6 +71,32 @@ var _ = Describe("CommandRunner", func() {
 
 			Expect(result.Err).ToNot(HaveOccurred())
 			Expect(result.Stdout).To(Equal("test input"))
+		})
+	})
+
+	Describe("RunWithOptions", func() {
+		It("reports the pid of a command started in a new session", func() {
+			var started int
+
+			result := NewCommandRunner(0).RunWithOptions(context.Background(), RunOptions{
+				NewSession: true,
+				Started:    func(pid int) { started = pid },
+			}, "sh", "-c", "echo $$")
+
+			Expect(result.Err).NotTo(HaveOccurred())
+			Expect(started).NotTo(BeZero())
+			Expect(strings.TrimSpace(result.Stdout)).To(Equal(strconv.Itoa(started)))
+		})
+
+		It("does not report a command that failed to start", func() {
+			called := false
+
+			result := NewCommandRunner(0).RunWithOptions(context.Background(), RunOptions{
+				Started: func(int) { called = true },
+			}, "/nonexistent/klaudiush-missing")
+
+			Expect(result.Err).To(HaveOccurred())
+			Expect(called).To(BeFalse())
 		})
 	})
 

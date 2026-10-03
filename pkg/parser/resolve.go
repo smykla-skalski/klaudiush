@@ -27,8 +27,9 @@ const (
 	// be known. No program has this name, so it resolves as missing.
 	unresolvedProgram = "$(...)"
 	// procSubstPrefix names the files process substitutions stand for.
-	procSubstPrefix = "/dev/fd/klaudiush-"
-	devStdin        = "/dev/stdin"
+	procSubstPrefix  = "/dev/fd/klaudiush-"
+	substitutedInput = procSubstPrefix + "substituted"
+	devStdin         = "/dev/stdin"
 	// lookupWords is a lookup command plus the operand it names.
 	lookupWords = 2
 )
@@ -59,11 +60,13 @@ func newAstWalker(resolver Resolver) *astWalker {
 		assignments:     make(map[string]string),
 		unknownVars:     make(map[string]bool),
 		safeAssigns:     make(map[*syntax.Assign]bool),
+		certain:         make(map[*syntax.Stmt]certainty),
 		loopCalls:       make(map[*syntax.CallExpr]bool),
 		resolver:        resolver,
 		aliases:         make(map[string]string),
 		funcs:           make(map[string]string),
 		scriptFiles:     make(map[string]string),
+		startupUnset:    make(map[string]bool),
 		state: &parseState{
 			work:     maxParseWork,
 			distinct: make(map[string]bool),
@@ -91,6 +94,9 @@ func (w *astWalker) child(dir string, depth int) *astWalker {
 	maps.Copy(child.unknownVars, w.unknownVars)
 
 	child.outerLoop = w.inLoop
+	child.loopStartup = maps.Clone(w.loopStartup)
+	child.startupUnset = maps.Clone(w.startupUnset)
+	child.startupDeferred = maps.Clone(w.startupDeferred)
 	maps.Copy(child.aliases, w.aliases)
 	maps.Copy(child.funcs, w.funcs)
 	maps.Copy(child.expanding, w.expanding)
@@ -742,30 +748,58 @@ func substitutePositional(body string, args []string) string {
 	})
 }
 
-// follow records everything a command launches.
-func (w *astWalker) follow(cmd Command, l launch, depth int) {
+// follow records everything a command launches. A shell, or a script run
+// by path, runs its startup files first in the shell that then runs its
+// script; any other program may start bash, which reads them on its own.
+func (w *astWalker) follow(cmd Command, l launch, depth int, startup []startupScript) {
+	var prelude []startupScript
+	if shells[cmd.Name] {
+		prelude = startup
+	}
+
 	for _, launchedCmd := range l.commands {
 		w.recordCommand(launchedCmd, depth)
 	}
 
 	for _, script := range l.scripts {
-		w.walkScript(script, cmd, depth, scriptWalk{})
+		w.walkScript(script, cmd, depth, scriptWalk{prelude: prelude})
 	}
 
+	ranStartup := len(prelude) > 0 && len(l.scripts) > 0
+
 	for _, file := range l.files {
-		w.followFile(cmd, file, depth)
+		ranStartup = w.followFile(cmd, file, depth, startup) || ranStartup
 	}
 
 	for _, code := range l.code {
 		w.followCode(cmd, code, depth, scriptWalk{literal: true})
 	}
+
+	if !ranStartup {
+		w.walkStartup(cmd, startup, depth)
+	}
 }
 
-// followFile records the commands of a script file a command runs. A file
-// handed to a shell that cannot be read (too large, written on the line but
-// not captured, under an unknown directory) fails closed; a compiled program
-// is an accepted limit.
-func (w *astWalker) followFile(cmd Command, file scriptFile, depth int) {
+// walkStartup records the commands of the startup files a program's own
+// shells read. Each run is walked on its own, since the directory and
+// variables it sees may differ; the work budget bounds repetition.
+func (w *astWalker) walkStartup(cmd Command, startup []startupScript, depth int) {
+	for _, script := range startup {
+		w.walkScript("", cmd, depth, scriptWalk{prelude: []startupScript{script}})
+	}
+}
+
+// followFile records the commands of a script file a command runs, after the
+// startup files the shell running it reads, and reports whether it ran them.
+// A file handed to a shell that cannot be read (too large, written on the
+// line but not captured, under an unknown directory) fails closed; a
+// compiled program is an accepted limit.
+func (w *astWalker) followFile(
+	cmd Command,
+	file scriptFile,
+	depth int,
+	startup []startupScript,
+) bool {
 	text, status, detail := w.scriptSource(file.path, cmd)
 
 	switch status {
@@ -776,21 +810,29 @@ func (w *astWalker) followFile(cmd Command, file scriptFile, depth int) {
 		if w.followingKey(key) {
 			w.state.repeated[key] = true
 
-			return
+			return false
 		}
 
 		src := scriptSourceText{path: file.path, text: text, literal: literal}
+		if !literal {
+			src.prelude = startup
+		}
+
 		w.walkSource(cmd, src, depth, key)
 
 		if w.state.repeated[key] && !w.followingKey(key) {
 			w.confirmRepeat(cmd, src, depth, key)
 		}
+
+		return len(src.prelude) > 0
 	case ScriptOpaque:
 		if file.explicit {
 			w.opaque(OpacityUnreadableScript, scriptName(file.path), detail)
 		}
 	case ScriptMissing, ScriptBinary:
 	}
+
+	return false
 }
 
 // followCode records the command lines found in program source, walking
@@ -845,7 +887,8 @@ func (w *astWalker) scriptSource(path string, cmd Command) (string, ScriptStatus
 	return text, status, ""
 }
 
-// scriptWalk says how walkScript treats a script.
+// scriptWalk says how walkScript treats a script. prelude holds the startup
+// files the shell runs before it.
 type scriptWalk struct {
 	// name is the definition being expanded, kept from expanding in itself.
 	name string
@@ -856,6 +899,8 @@ type scriptWalk struct {
 	// source is the state a script file is followed in, kept from being
 	// followed inside itself in the same state.
 	source string
+
+	prelude []startupScript
 }
 
 // walkScript records the commands of a script that parent runs. A cd inside
@@ -873,6 +918,8 @@ func (w *astWalker) walkScript(script string, parent Command, depth int, sw scri
 	child := w.child(parent.WorkingDirectory, depth)
 	child.literal = sw.literal
 	child.distrust = w.distrust || !runsInShell(parent, sw)
+	child.seedStartup(parent)
+	child.walkPrelude(sw.prelude)
 
 	if sw.name != "" {
 		child.expanding[sw.name] = true
@@ -910,6 +957,7 @@ func (w *astWalker) walkScript(script string, parent Command, depth int, sw scri
 
 	w.fileWrites = append(w.fileWrites, child.fileWrites...)
 	w.dynamicWrites += child.dynamicWrites
+	w.dynamicWriteLocs = append(w.dynamicWriteLocs, child.dynamicWriteLocs...)
 }
 
 // argStrings converts argument words to strings. A process substitution fed

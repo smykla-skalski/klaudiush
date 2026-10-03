@@ -187,12 +187,17 @@ func (d *CodexDriver) listHooks(ctx context.Context, sb *Sandbox) ([]codexHook, 
 
 	reply := &hookListReply{done: make(chan struct{})}
 
-	result := execpkg.NewCommandRunner(0).RunWithOptions(ctx, execpkg.RunOptions{
+	opts := execpkg.RunOptions{
 		Dir:    sb.Work,
 		Env:    sb.Env(),
 		Stdin:  &gatedReader{stop: ctx.Done(), data: &input, done: reply.done},
 		Stdout: reply,
-	}, d.resolve(ctx), "app-server")
+	}
+	sb.track(&opts)
+
+	result := execpkg.NewCommandRunner(0).RunWithOptions(ctx, opts, d.resolve(ctx), "app-server")
+
+	_, _ = sb.Processes()
 
 	if hooks, ok, err := reply.result(); ok {
 		return hooks, err

@@ -370,6 +370,32 @@ EOF
 		})
 	})
 
+	DescribeTable("HasDynamicValue",
+		func(command, flag string, dynamic bool, value string) {
+			result, err := p.Parse(command)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.GitOperations).NotTo(BeEmpty())
+
+			gitCmd, err := parser.ParseGitCommand(result.GitOperations[0])
+			Expect(err).NotTo(HaveOccurred())
+			Expect(gitCmd.HasDynamicValue(flag)).To(Equal(dynamic))
+			Expect(gitCmd.GetFlagValue(flag)).To(Equal(value))
+		},
+		Entry("literal value", "git commit -F msg.txt", "-F", false, "msg.txt"),
+		Entry("literal value, substitution elsewhere",
+			`git commit -F msg.txt --date "$(date)"`, "-F", false, "msg.txt"),
+		Entry("process substitution keeps its slot",
+			"git commit -F <(git log -1) a.txt", "-F", true, ""),
+		Entry("partial command substitution",
+			"git commit -F $(echo sub/)msg.txt", "-F", true, "msg.txt"),
+		Entry("glued long value", `git commit --file="$(mktemp)"`, "--file", true, ""),
+		Entry("glued short value", "git commit -Fx$(echo y)", "-F", true, "x"),
+		Entry("combined flags", "git commit -sSF $(mktemp)", "-F", true, ""),
+		Entry("combined flags before a path", "git commit -sSF $(mktemp) a.txt", "-F", true, ""),
+		Entry("arithmetic expansion", "git commit -F msg$((1))", "-F", true, "msg"),
+		Entry("variable is not a substitution", `git commit -F "$MSG"`, "-F", false, "${MSG}"),
+	)
+
 	Describe("Global Options", func() {
 		Context("with -C option", func() {
 			It("parses git command with -C path before subcommand", func() {

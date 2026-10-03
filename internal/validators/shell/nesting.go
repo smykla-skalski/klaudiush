@@ -170,7 +170,9 @@ func causeSummary(cause parser.OpacityCause) string {
 	case parser.OpacityUnresolvedArgs:
 		return "it calls a function whose arguments klaudiush cannot follow"
 	case parser.OpacityUnresolvedWord:
-		return "it runs eval, git or gh with a word klaudiush cannot resolve"
+		return "it runs eval, git, gh or a container entrypoint with a word klaudiush cannot resolve"
+	case parser.OpacityStartupFile:
+		return "it starts a shell whose startup file klaudiush cannot read"
 	case parser.OpacityZshGlobQualifier:
 		return "it uses a glob that runs code klaudiush cannot inspect"
 	default:
@@ -234,6 +236,10 @@ func opacityFinding(o parser.Opacity) validator.Finding {
 			`arguments with plain "$@"`
 	case parser.OpacityUnresolvedWord:
 		f.Message, f.Required, f.Repair = unresolvedWordFinding(o)
+	case parser.OpacityStartupFile:
+		f.Message = "the startup file " + o.Operation + " names cannot be inspected: " + o.Detail
+		f.Required = "a literal path to a readable file, or no startup file"
+		f.Repair = startupFileRepair(o)
 	case parser.OpacityZshGlobQualifier:
 		f.Message, f.Required, f.Repair = globCodeFinding(o)
 	default:
@@ -256,6 +262,24 @@ func unresolvedWordFinding(o parser.Opacity) (message, required, repair string) 
 			message = "eval runs the shell setup " + o.Tool + " prints, which klaudiush cannot see"
 			repair = setup + "; or, if your exception policy allows it, add " +
 				"# EXC:SHELL002:<reason> to the command"
+		}
+
+		return message, required, repair
+	}
+
+	if o.Operation == parser.EntrypointOperation {
+		message = "the container --entrypoint or a word before it " + strings.TrimPrefix(
+			o.Detail,
+			"it ",
+		)
+		required = "a literal --entrypoint, options and image, or ones from variables " +
+			"assigned literally on the same line"
+		repair = "Write the entrypoint, options and image literally"
+
+		if o.Detail == parser.DetailEntrypointOptions {
+			required = "container options klaudiush can read up to the image"
+			repair = "Attach option values with = (--opt=value), or drop options " +
+				"before the image"
 		}
 
 		return message, required, repair
@@ -294,6 +318,29 @@ var evalSetupRepairs = map[string]string{
 	"zoxide": "Drop the eval: run zoxide query <keywords> to print the directory, " +
 		"then cd to that path literally",
 	"fnm": "Run the command with fnm's Node instead: fnm exec --using=<version> <command>",
+}
+
+func startupFileRepair(o parser.Opacity) string {
+	unknownValue := o.Detail == parser.DetailStartupValue ||
+		o.Detail == parser.DetailScriptVariable || o.Detail == parser.DetailStartupExpansion
+
+	switch {
+	case unknownValue && o.Operation == parser.RCFileOption:
+		return "Pass --rcfile a literal path of a readable file, or drop the option"
+	case unknownValue:
+		return "Assign " + o.Operation + " a literal file path, or an empty value, " +
+			"earlier on the same line before starting the shell"
+	}
+
+	switch o.Detail {
+	case parser.DetailScriptDirectory:
+		return "Use an absolute path for " + o.Operation + ", or cd to a literal directory first"
+	case parser.DetailScriptWritten:
+		return "Write the startup file in a separate command before starting the shell"
+	default:
+		return "Keep the startup file a readable regular file within the size limit, " +
+			"or run its commands directly"
+	}
 }
 
 // globCodeFinding explains an extended glob that runs code: a command

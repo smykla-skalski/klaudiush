@@ -21,8 +21,8 @@ const globChars = "*?["
 // ghActionCommands take an action as their second word (gh pr create).
 var ghActionCommands = nameSet("issue pr")
 
-// markSubstituted appends unresolvedWord to an argument with a command
-// substitution in it.
+// markSubstituted appends unresolvedWord to an argument with a command or
+// process substitution in it.
 func markSubstituted(word *syntax.Word, rendered string) string {
 	if word != nil && hasCmdSubst(word.Parts) {
 		return rendered + unresolvedWord
@@ -34,7 +34,7 @@ func markSubstituted(word *syntax.Word, rendered string) string {
 func hasCmdSubst(parts []syntax.WordPart) bool {
 	for _, part := range parts {
 		switch p := part.(type) {
-		case *syntax.CmdSubst:
+		case *syntax.CmdSubst, *syntax.ProcSubst, *syntax.ArithmExp:
 			return true
 		case *syntax.DblQuoted:
 			if hasCmdSubst(p.Parts) {
@@ -66,13 +66,24 @@ func gluedToFlag(arg, value string) bool {
 		!strings.HasPrefix(value, "--")
 }
 
+// combinedTakesValue reports combined short flags (-sSF) whose last flag
+// takes the next argument as its value.
+func combinedTakesValue(arg, sub string) bool {
+	if len(arg) < len("-sF") || arg[0] != '-' || arg[1] == '-' {
+		return false
+	}
+
+	return flagTakesValue("-"+arg[len(arg)-1:], sub)
+}
+
 // storedArgs removes the marks from cmd's arguments. An argument that was
 // all substitution is dropped, as the parser always did, unless it is the
 // value of a git global option or of a flag: keeping it empty there stops
-// the flag from taking the next argument (git -C "$(pwd)" push).
-func storedArgs(cmd Command) []string {
+// the flag from taking the next argument (git -C "$(pwd)" push). The second
+// result marks, per stored argument, whether it was substituted.
+func storedArgs(cmd Command) ([]string, []bool) {
 	if !slices.ContainsFunc(cmd.Args, marked) {
-		return cmd.Args
+		return cmd.Args, nil
 	}
 
 	sub, idx := "", -1
@@ -83,21 +94,24 @@ func storedArgs(cmd Command) []string {
 	}
 
 	args := make([]string, 0, len(cmd.Args))
+	substituted := make([]bool, 0, len(cmd.Args))
 
 	for i, arg := range cmd.Args {
 		value := strings.ReplaceAll(arg, unresolvedWord, "")
 		if gluedToFlag(arg, value) {
 			args = append(args, value, "")
+			substituted = append(substituted, true, true)
 
 			continue
 		}
 
 		if value != "" || (marked(arg) && keepsEmpty(cmd, i, idx, sub)) {
 			args = append(args, value)
+			substituted = append(substituted, marked(arg))
 		}
 	}
 
-	return args
+	return args, substituted
 }
 
 // keepsEmpty reports whether the substituted argument at i fills a value
@@ -109,7 +123,7 @@ func keepsEmpty(cmd Command, i, idx int, sub string) bool {
 	case i == 0:
 		return false
 	case cmd.Name == gitProgram:
-		return flagTakesValue(cmd.Args[i-1], sub)
+		return flagTakesValue(cmd.Args[i-1], sub) || combinedTakesValue(cmd.Args[i-1], sub)
 	case cmd.Name == ghCLI:
 		return strings.HasPrefix(cmd.Args[i-1], "-") && cmd.Args[i-1] != endOfOptions
 	default:
@@ -125,11 +139,14 @@ func keepsEmpty(cmd Command, i, idx int, sub string) bool {
 // change, so they resolve none.
 func (w *astWalker) prepare(stmt *syntax.Stmt) {
 	markSafeAssigns(stmt, w.safeAssigns)
+	markCertainStmts(stmt, w.certain)
 
 	syntax.Walk(stmt, func(node syntax.Node) bool {
 		switch n := node.(type) {
 		case *syntax.WhileClause, *syntax.ForClause:
 			syntax.Walk(n, func(inner syntax.Node) bool {
+				w.noteLoopStartup(inner)
+
 				if call, ok := inner.(*syntax.CallExpr); ok {
 					w.loopCalls[call] = true
 				}
@@ -370,13 +387,16 @@ func (w *astWalker) resolveEval(cmd Command) (string, bool) {
 
 // launchedFrom returns what cmd runs. The commands it launches keep the
 // stand-ins of followed, so env git $(...) is still seen; scripts and files
-// are found as before. Eval runs its line with known variables substituted.
+// are found as before. Eval runs its line with known variables substituted,
+// and a container runner runs its --entrypoint.
 func (w *astWalker) launchedFrom(cmd, followed Command) launch {
 	l := launched(cmd)
 
 	if slices.ContainsFunc(followed.Args, marked) {
 		l.commands = launched(followed).commands
 	}
+
+	l.commands = append(l.commands, w.entrypointCommands(followed)...)
 
 	if cmd.Name == evalBuiltin {
 		if line, ok := w.resolveEval(followed); ok {
@@ -394,6 +414,7 @@ func (w *astWalker) launchedFrom(cmd, followed Command) launch {
 func (w *astWalker) forget(name string) {
 	for p := w; p != nil; p = p.parent {
 		p.unknownVars[name] = true
+		delete(p.startupUnset, name)
 	}
 }
 
@@ -446,7 +467,7 @@ func (w *astWalker) forgetDeclared(cmd Command) {
 	for _, arg := range cmd.Args {
 		if strings.HasPrefix(arg, "-") || strings.HasPrefix(arg, "+") {
 			if strings.ContainsAny(arg[1:], "lucn") {
-				w.state.untrusted = true
+				w.distrustOption(arg)
 			}
 
 			continue
@@ -454,7 +475,7 @@ func (w *astWalker) forgetDeclared(cmd Command) {
 
 		name, _, _ := strings.Cut(arg, "=")
 		if !variableName.MatchString(name) {
-			w.state.untrusted = true
+			w.distrustNames()
 
 			continue
 		}
@@ -468,11 +489,15 @@ var defaultVars = map[string]string{"read": "REPLY", "mapfile": "MAPFILE", "read
 
 // forgetWritten forgets the variables cmd sets other than by assignment.
 func (w *astWalker) forgetWritten(cmd Command) {
-	if HasUnresolvedVars(cmd.Invoked) || strings.Contains(cmd.Invoked, unresolvedProgram) ||
-		assignmentPattern.MatchString(
-			cmd.Invoked,
-		) || cmd.Name == sourceBuiltin || cmd.Name == dotBuiltin ||
+	if assignmentPattern.MatchString(cmd.Invoked) ||
 		(mapfiles[cmd.Name] && slices.ContainsFunc(cmd.Args, callbackFlag)) {
+		w.distrustNames()
+
+		return
+	}
+
+	if HasUnresolvedVars(cmd.Invoked) || strings.Contains(cmd.Invoked, unresolvedProgram) ||
+		cmd.Name == sourceBuiltin || cmd.Name == dotBuiltin {
 		w.state.untrusted = true
 
 		return
@@ -480,6 +505,7 @@ func (w *astWalker) forgetWritten(cmd Command) {
 
 	if declWriters[cmd.Name] {
 		w.forgetDeclared(cmd)
+		w.caseChanged = false
 
 		return
 	}
@@ -497,9 +523,16 @@ func (w *astWalker) forgetWritten(cmd Command) {
 		names = []string{defaultVars[cmd.Name]}
 	}
 
+	wasUnknown := make(map[string]bool, len(startupVars))
+	for name := range startupVars {
+		wasUnknown[name] = w.startupUnknown(name)
+	}
+
 	for _, name := range names {
 		w.forgetName(name)
 	}
+
+	w.noteUnset(cmd, wasUnknown)
 }
 
 // forgetName forgets a written variable. A target built from an expansion
@@ -510,7 +543,7 @@ func (w *astWalker) forgetName(name string) {
 	case variableName.MatchString(name):
 		w.forget(name)
 	case strings.ContainsAny(name, "$[") || marked(name):
-		w.state.untrusted = true
+		w.distrustNames()
 	}
 }
 
@@ -527,10 +560,7 @@ func (w *astWalker) distrustDecl(decl *syntax.DeclClause) {
 		}
 
 		option := wordToString(a.Value)
-		if !strings.HasPrefix(option, "-") && !strings.HasPrefix(option, "+") ||
-			strings.ContainsAny(option, "lucn") {
-			w.state.untrusted = true
-		}
+		w.distrustOption(option)
 	}
 }
 

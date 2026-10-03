@@ -58,9 +58,21 @@ func FuzzBashParse(f *testing.F) {
 	f.Add(`git {commit,-m,x}; git c?mmit; git 'push '; git $'push\n'`)
 	f.Add(`X=status; git $X; Y="commit -m x"; git $Y; eval "$Y"; eval 'git $X'`)
 	f.Add(`f() { git "$1"; }; f $(echo commit); alias g=git; g $(echo push)`)
+	f.Add(`BASH_ENV=./x.sh bash -c true; env BASH_ENV=/x sh; ENV=/x dash -ic true`)
+	f.Add(`export BASH_ENV=$(mktemp); bash --rcfile "$RC" -i; BASH_ENV='$(id)' git status`)
+	f.Add(`for i in 1 2; do bash -c true; BASH_ENV=/x; done; unset BASH_ENV; read ENV`)
 	f.Add(`x=status; printf -v x commit; read -a x; for x in a; do :; done; git $x`)
 	f.Add(`x=status; f(){ x=commit; }; f; eval x=push; . <(echo x=add); git $x`)
 	f.Add(`docker run img git $X; mise exec -- gh $Y; mise exec -- git-$Z`)
+	f.Add(`docker run -it -e A=1 --entrypoint git a push -f; podman run --entrypoint=$X i`)
+	f.Add(`podman run --entrypoint '["git","push"]' i; docker compose run --entrypoint "sh -c" s x`)
+	f.Add(
+		`nerdctl run --entrypoint sh --entrypoint -c i 'git push'; docker run --entrypoint "$(w)" i`,
+	)
+	f.Add(`docker --context run container create --name "" --entrypoint= -- i --entrypoint git`)
+	f.Add(`docker run --entrypoint '' --hosts-file /x --name -w --entrypoint git i push`)
+	f.Add(`docker run $OPTS {--entrypoint,git} "$IMG"; podman-compose run --ent=git s; "$D" run`)
+	f.Add(`docker run --entrypoint docker run --entrypoint docker run --entrypoint docker run x`)
 
 	f.Fuzz(func(t *testing.T, command string) {
 		p := parser.NewBashParser()

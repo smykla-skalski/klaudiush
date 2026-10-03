@@ -81,6 +81,8 @@ type FileWrite struct {
 	// a literal echo or a printf using only %s/%% directives and known escapes;
 	// otherwise the output cannot be reproduced.
 	RedirectContentCaptured bool
+	Unconditional           bool
+	CertainUntil            Location
 	// Vars are the variables as they stood when the write happened.
 	Vars *VarScope
 }
