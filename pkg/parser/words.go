@@ -21,8 +21,8 @@ const globChars = "*?["
 // ghActionCommands take an action as their second word (gh pr create).
 var ghActionCommands = nameSet("issue pr")
 
-// markSubstituted appends unresolvedWord to an argument with a command
-// substitution in it.
+// markSubstituted appends unresolvedWord to an argument with a command or
+// process substitution in it.
 func markSubstituted(word *syntax.Word, rendered string) string {
 	if word != nil && hasCmdSubst(word.Parts) {
 		return rendered + unresolvedWord
@@ -34,7 +34,7 @@ func markSubstituted(word *syntax.Word, rendered string) string {
 func hasCmdSubst(parts []syntax.WordPart) bool {
 	for _, part := range parts {
 		switch p := part.(type) {
-		case *syntax.CmdSubst:
+		case *syntax.CmdSubst, *syntax.ProcSubst:
 			return true
 		case *syntax.DblQuoted:
 			if hasCmdSubst(p.Parts) {
@@ -66,13 +66,24 @@ func gluedToFlag(arg, value string) bool {
 		!strings.HasPrefix(value, "--")
 }
 
+// combinedTakesValue reports combined short flags (-sSF) whose last flag
+// takes the next argument as its value.
+func combinedTakesValue(arg, sub string) bool {
+	if len(arg) < len("-sF") || arg[0] != '-' || arg[1] == '-' {
+		return false
+	}
+
+	return flagTakesValue("-"+arg[len(arg)-1:], sub)
+}
+
 // storedArgs removes the marks from cmd's arguments. An argument that was
 // all substitution is dropped, as the parser always did, unless it is the
 // value of a git global option or of a flag: keeping it empty there stops
-// the flag from taking the next argument (git -C "$(pwd)" push).
-func storedArgs(cmd Command) []string {
+// the flag from taking the next argument (git -C "$(pwd)" push). The second
+// result marks, per stored argument, whether it was substituted.
+func storedArgs(cmd Command) ([]string, []bool) {
 	if !slices.ContainsFunc(cmd.Args, marked) {
-		return cmd.Args
+		return cmd.Args, nil
 	}
 
 	sub, idx := "", -1
@@ -83,21 +94,24 @@ func storedArgs(cmd Command) []string {
 	}
 
 	args := make([]string, 0, len(cmd.Args))
+	substituted := make([]bool, 0, len(cmd.Args))
 
 	for i, arg := range cmd.Args {
 		value := strings.ReplaceAll(arg, unresolvedWord, "")
 		if gluedToFlag(arg, value) {
 			args = append(args, value, "")
+			substituted = append(substituted, true, true)
 
 			continue
 		}
 
 		if value != "" || (marked(arg) && keepsEmpty(cmd, i, idx, sub)) {
 			args = append(args, value)
+			substituted = append(substituted, marked(arg))
 		}
 	}
 
-	return args
+	return args, substituted
 }
 
 // keepsEmpty reports whether the substituted argument at i fills a value
@@ -109,7 +123,7 @@ func keepsEmpty(cmd Command, i, idx int, sub string) bool {
 	case i == 0:
 		return false
 	case cmd.Name == gitProgram:
-		return flagTakesValue(cmd.Args[i-1], sub)
+		return flagTakesValue(cmd.Args[i-1], sub) || combinedTakesValue(cmd.Args[i-1], sub)
 	case cmd.Name == ghCLI:
 		return strings.HasPrefix(cmd.Args[i-1], "-") && cmd.Args[i-1] != endOfOptions
 	default:

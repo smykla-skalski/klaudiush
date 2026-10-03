@@ -16,7 +16,7 @@ stdin proc-subst-output.json
 exec klaudiush --hook-type PreToolUse
 stdout '"permissionDecision":"deny"'
 stdout 'SHELL002'
-stdout 'comes from command output'
+stdout 'command or process substitution'
 
 stdin stdin-unseen.json
 exec klaudiush --hook-type PreToolUse
@@ -28,7 +28,7 @@ stdin missing-file.json
 exec klaudiush --hook-type PreToolUse
 stdout '"permissionDecision":"deny"'
 stdout 'SHELL002'
-stdout 'cannot be read'
+stdout 'does not exist'
 
 stdin good-file.json
 exec klaudiush --hook-type PreToolUse

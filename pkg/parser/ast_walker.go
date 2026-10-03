@@ -545,7 +545,7 @@ func (w *astWalker) recordCommand(cmd Command, depth int) {
 
 	cmd, nested := w.resolveProgram(cmd)
 	followed := cmd
-	cmd.Args = storedArgs(cmd)
+	cmd.Args, cmd.SubstitutedArgs = storedArgs(cmd)
 
 	w.defineAliases(cmd)
 

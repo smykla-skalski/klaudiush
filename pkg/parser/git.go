@@ -37,6 +37,8 @@ var (
 
 // GitCommand represents a parsed git command.
 type GitCommand struct {
+	DynamicValues    map[string]bool
+	substituted      []bool
 	Subcommand       string            // Git subcommand (e.g., "commit", "push", "add")
 	Flags            []string          // Command flags
 	Args             []string          // Positional arguments
@@ -135,6 +137,8 @@ func ParseGitCommand(cmd Command) (*GitCommand, error) {
 		Flags:            make([]string, 0),
 		Args:             make([]string, 0),
 		FlagMap:          make(map[string]string),
+		DynamicValues:    make(map[string]bool),
+		substituted:      cmd.SubstitutedArgs,
 		GlobalOptions:    make(map[string]string),
 		WorkingDirectory: cmd.WorkingDirectory,
 		Stdin:            cmd.Stdin,
@@ -167,13 +171,13 @@ func ParseGitCommand(cmd Command) (*GitCommand, error) {
 		switch {
 		case strings.HasPrefix(arg, "--"):
 			// Long flag: --message, --signoff, etc.
-			i = parseLongFlag(arg, cmd.Args, i, gitCmd)
+			i = gitCmd.tracked(i, parseLongFlag, arg, cmd.Args)
 		case len(arg) == 2: //nolint:mnd // Trivial check for single short flag format
 			// Single short flag: -m, -s, etc.
-			i = parseShortFlag(arg, cmd.Args, i, gitCmd)
+			i = gitCmd.tracked(i, parseShortFlag, arg, cmd.Args)
 		default:
 			// Combined short flags: -sS, -sSm, etc.
-			i = parseCombinedFlags(arg, cmd.Args, i, gitCmd)
+			i = gitCmd.tracked(i, parseCombinedFlags, arg, cmd.Args)
 		}
 	}
 
@@ -325,6 +329,47 @@ func (g *GitCommand) HasFlag(flag string) bool {
 // GetFlagValue returns the value for a flag, or empty string if not found.
 func (g *GitCommand) GetFlagValue(flag string) string {
 	return g.FlagMap[flag]
+}
+
+// HasDynamicValue reports whether any value given to flag takes part of it
+// from a command or process substitution, which the stored value renders
+// partially or as empty.
+func (g *GitCommand) HasDynamicValue(flag string) bool {
+	return g.DynamicValues[flag]
+}
+
+// tracked runs one flag parser and records, in DynamicValues, the
+// value-taking flags it added when an argument it consumed was substituted.
+func (g *GitCommand) tracked(
+	idx int,
+	parse func(string, []string, int, *GitCommand) int,
+	arg string,
+	args []string,
+) int {
+	added := len(g.Flags)
+	next := parse(arg, args, idx, g)
+
+	if !slices.Contains(g.substitutedRange(idx, next), true) {
+		return next
+	}
+
+	_, glued := strings.CutPrefix(arg, "--")
+	for _, flag := range g.Flags[added:] {
+		if flagTakesValue(flag, g.Subcommand) || (glued && strings.Contains(arg, "=")) {
+			g.DynamicValues[flag] = true
+		}
+	}
+
+	return next
+}
+
+func (g *GitCommand) substitutedRange(from, to int) []bool {
+	to = min(to, len(g.substituted))
+	if from >= to {
+		return nil
+	}
+
+	return g.substituted[from:to]
 }
 
 // ExtractCommitMessage extracts commit message from -m flag or returns empty.
