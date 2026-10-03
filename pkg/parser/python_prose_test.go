@@ -13,9 +13,10 @@ import (
 var _ = Describe("Git words in interpreter prose", func() {
 	resolver := fakeResolver{
 		files: map[string]string{
-			"./tool.py": "#!/usr/bin/env python3\nfail(\"git zz is not set up\")\n",
-			"helper.py": "print(\"git zz is not set up\")\n",
-			"awk.py":    "#!/usr/bin/env python3\nBEGIN { print(\"git zz\") }\n",
+			"tool.py":     "#!/usr/bin/env python3\nfail(\"git zz is not set up\")\n",
+			"helper.py":   "print(\"git zz is not set up\")\n",
+			"awk.py":      "#!/usr/bin/env python3\nBEGIN { print(\"git zz\") }\n",
+			"python-tool": "#!/usr/bin/env perl\nprint(\"git zz\");\n",
 			"hotspots.py": `#!/usr/bin/env python3
 """Rank hotspots from git history.
 
@@ -204,6 +205,8 @@ def fail(message):
 		},
 		Entry("a message call", `python3 -c 'fail("git zz is not set up")'`),
 		Entry("an f-string message", `python3 -c 'fail(f"git zz failed: {err}")'`),
+		Entry("a raw f-string message", `python3 -c 'fail(rf"git zz failed: {err}")'`),
+		Entry("a raw bytes message", `python3 -c 'print(Rb"git zz failed")'`),
 		Entry("a raised error", `python3 -c 'raise RuntimeError("git zz is not set up")'`),
 		Entry("a function docstring", "python3 -c 'def f():\n    \"\"\"git zz helper.\"\"\"\n'"),
 		Entry(
@@ -374,17 +377,26 @@ with contextlib.redirect_stdout(b): print("git zz")'`),
 		Expect(parse(command).Truncated).To(BeFalse())
 	})
 
+	const raceSlowdown = 5
+
 	DescribeTable("keeps large scripts cheap to scan",
 		func(line string) {
 			big := fakeResolver{files: map[string]string{
 				"big.py": strings.Repeat(line, parser.MaxScriptBytes/len(line)-1),
 			}}
 
+			// The race detector slows regexp-heavy scanning several times over;
+			// the budget still catches work that grows with literals times size.
+			budget := 2 * time.Second
+			if raceEnabled {
+				budget *= raceSlowdown
+			}
+
 			start := time.Now()
 			_, err := parser.NewBashParserWithResolver(big).Parse("python3 big.py")
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(time.Since(start)).To(BeNumerically("<", 2*time.Second))
+			Expect(time.Since(start)).To(BeNumerically("<", budget))
 		},
 		Entry("long comment blocks", "# print(\"git zz\")\n"),
 		Entry("many message calls", "print(\"see gh\")\n"),
@@ -411,6 +423,17 @@ with contextlib.redirect_stdout(b): print("git zz")'`),
 		Entry("console.log rebound to execSync",
 			`node -e 'console.log = require("child_process").execSync; console.log("git zz")'`),
 		Entry("a python shebang run by awk", "awk -f awk.py"),
+		Entry("a perl script named like python", "./python-tool"),
+		Entry(
+			"an annotated rebinding",
+			"python3 -c 'import subprocess\ndef run_cmd(c):\n    subprocess.run(c.split())\n"+
+				"fail: object = run_cmd\nfail(\"git zz\")'",
+		),
+		Entry(
+			"an annotated rebinding on one line",
+			`python3 -c 'import subprocess; run = lambda c: subprocess.run(c.split()); `+
+				`log: Callable[[str], None] = run; log("git zz")'`,
+		),
 		Entry("an exec function imported under a message name",
 			`python3 -c 'from os import system as echo; echo("git zz")'`),
 		Entry("a message-named function that runs commands",

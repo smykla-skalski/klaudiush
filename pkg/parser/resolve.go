@@ -961,15 +961,12 @@ func (w *astWalker) followCode(cmd Command, code string, depth int, sw scriptWal
 
 // proseLanguage reports whether program source is Python or JavaScript, by
 // the interpreter running it or, for a script run by path, its shebang. A
-// named interpreter (awk -f x.py) ignores the shebang.
+// named interpreter (awk -f x.py) ignores the shebang, and a script's own
+// name (./python-tool) says nothing about its language.
 func proseLanguage(cmd Command, code string) bool {
 	name := commandName(cmd.Name)
-	if proseInterpreter(name) {
-		return true
-	}
-
 	if _, named := interpreters[name]; named {
-		return false
+		return proseInterpreter(name)
 	}
 
 	line, _, _ := strings.Cut(code, "\n")

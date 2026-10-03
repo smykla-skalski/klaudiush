@@ -4,6 +4,8 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
+	"unicode/utf8"
 )
 
 var (
@@ -59,6 +61,144 @@ var proseUnsafe = regexp.MustCompile(
 		`(?-i:\b(?:HOME|PATH)\b["'\]]*\s*[:=][^=]|\.PATH\s*=[^=]|\{PATH\})`,
 )
 
+// unsafeWords are the plain proseUnsafe alternatives, lower case.
+var unsafeWords = strings.Fields(
+	"os.system os.popen getoutput execsync os.exec shlex spawn setattr builtins __dict__ " +
+		"__import__ importlib putenv environ.setdefault create_subprocess_shell alias. [alias " +
+		"[include include. includeif. gitconfig git/config git_config git_dir git_common_dir " +
+		"git_work_tree git_exec_path xdg_config_home chdir open3 dup2 fdopen redirect_std " +
+		"stringio bytesio",
+)
+
+// unsafePattern is a proseUnsafe alternative with a literal prefix, so the
+// regexp engine jumps between occurrences of it. wordStart stands in for a
+// leading \b, which would hide that prefix from the engine.
+type unsafePattern struct {
+	re        *regexp.Regexp
+	wordStart bool
+	exactCase bool
+}
+
+// unsafePatterns are the remaining proseUnsafe alternatives. Unless exactCase
+// is set they run on lowered code.
+var unsafePatterns = []unsafePattern{
+	{re: regexp.MustCompile(`shell\s*[=:]\s*true`)},
+	{re: regexp.MustCompile(`exec\s*\(`), wordStart: true},
+	{re: regexp.MustCompile(`eval\s*\(`), wordStart: true},
+	{re: regexp.MustCompile(`globals\s*\(`)},
+	{re: regexp.MustCompile(`locals\s*\(`)},
+	{re: regexp.MustCompile(`vars\s*\(`), wordStart: true},
+	{re: regexp.MustCompile(`\$stdout\s*=`)},
+	{re: regexp.MustCompile(`sys\.stdout\s*=[^=]`), wordStart: true},
+	{re: regexp.MustCompile(`std(?:out|err)\.write\s*=[^=]`), wordStart: true},
+	{re: regexp.MustCompile(`fork\b`), wordStart: true},
+	{re: regexp.MustCompile(`pipe\s*\(`), wordStart: true},
+	{re: regexp.MustCompile(`file\s*=\s*(?:[^s\s]|s[^ty]|sy[^s]|st[^d])`), wordStart: true},
+	{re: regexp.MustCompile(`stream\s*=\s*(?:[^s\s]|s[^ty]|sy[^s]|st[^d])`), wordStart: true},
+	{re: regexp.MustCompile(`HOME\b["'\]]*\s*[:=][^=]`), wordStart: true, exactCase: true},
+	{re: regexp.MustCompile(`PATH\b["'\]]*\s*[:=][^=]`), wordStart: true, exactCase: true},
+	{re: regexp.MustCompile(`\.PATH\s*=[^=]`), exactCase: true},
+	{re: regexp.MustCompile(`\{PATH\}`), exactCase: true},
+}
+
+// codeUnsafe reports whether proseUnsafe matches code. One regexp with this
+// many case-folded alternatives costs about a microsecond per byte, so ASCII
+// code is checked by substring search and prefixed patterns instead, giving
+// the same answer far faster on a large script. Other code, where case
+// folding reaches beyond ASCII, keeps the regexp.
+func codeUnsafe(code string) bool {
+	if !isASCII(code) {
+		return proseUnsafe.MatchString(code)
+	}
+
+	lower := strings.ToLower(code)
+
+	for _, word := range unsafeWords {
+		if strings.Contains(lower, word) {
+			return true
+		}
+	}
+
+	for _, p := range unsafePatterns {
+		text := lower
+		if p.exactCase {
+			text = code
+		}
+
+		if patternAt(text, p) {
+			return true
+		}
+	}
+
+	return quotePipe(code)
+}
+
+// patternAt reports whether p matches text, at a word start when p asks.
+func patternAt(text string, p unsafePattern) bool {
+	if !p.wordStart {
+		return p.re.MatchString(text)
+	}
+
+	for start := 0; start < len(text); {
+		loc := p.re.FindStringIndex(text[start:])
+		if loc == nil {
+			return false
+		}
+
+		at := start + loc[0]
+		if at == 0 || !isWordByte(text[at-1]) {
+			return true
+		}
+
+		// A rejected match may overlap the next one (0PATH=PATH=x).
+		start = at + 1
+	}
+
+	return false
+}
+
+// quotePipe reports whether a pipe character sits next to a quote, with only
+// whitespace between: a shell pipeline built in a string.
+func quotePipe(code string) bool {
+	for i := range len(code) {
+		if code[i] != '|' {
+			continue
+		}
+
+		before := strings.TrimRight(code[:i], regexSpace)
+		after := strings.TrimLeft(code[i+1:], regexSpace)
+
+		if before != "" && strings.ContainsRune(quoteBytes, rune(before[len(before)-1])) ||
+			after != "" && strings.ContainsRune(quoteBytes, rune(after[0])) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// regexSpace is what \s matches in a Go regexp.
+const regexSpace = "\t\n\f\r "
+
+// quoteBytes are the quote characters a string literal opens with.
+const quoteBytes = "\"'`"
+
+// isASCII reports whether s holds only ASCII bytes.
+func isASCII(s string) bool {
+	for i := range len(s) {
+		if s[i] >= utf8.RuneSelf {
+			return false
+		}
+	}
+
+	return true
+}
+
+// isWordByte reports whether b is an ASCII word character, as \w matches.
+func isWordByte(b byte) bool {
+	return b == '_' || b >= '0' && b <= '9' || b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z'
+}
+
 // messageCallNames name calls that show their argument to a person: printing,
 // logging, failing and exiting. Any other call may run it, so the list is
 // closed: an exec function or wrapper missing from it fails closed.
@@ -73,12 +213,12 @@ var messageAlternation = `\b(` + strings.ReplaceAll(messageCallNames, " ", "|") 
 
 // messageRebound matches code that gives a message-call name another meaning:
 // an import (from os import system as echo), an assignment (print =
-// os.system), a JavaScript function or binding, or a destructured name
-// ({execSync: log}).
+// os.system, fail: object = run, warn := os.system), a JavaScript function
+// or binding, or a destructured name ({execSync: log}).
 var messageRebound = regexp.MustCompile(
 	`(?:\bimport\b[^\n;]*|\bas\s+|\bfunction\s*\*?\s*|\b(?:const|let|var)\s+|[{,][ \t]*|` +
 		`\{[^{}]*:[ \t]*|\blambda\b[^:\n]*|\bfor\b[^\n:]*)` + messageAlternation + `|` +
-		messageAlternation + `\s*:?=[^=>]`,
+		messageAlternation + `\s*(?::[^=\n;]*)?=[^=>]`,
 )
 
 // pythonDef matches a Python def line, capturing its indent and name.
@@ -164,6 +304,9 @@ var docstringOwner = regexp.MustCompile(`^\s*(?:async\s+)?(?:def|class)\b`)
 // maxStringPrefix is the longest string prefix before a quote (rb, f, u).
 const maxStringPrefix = 2
 
+// stringPrefixes are the letters a string prefix is made of.
+const stringPrefixes = "rRbBuUfF"
+
 // docRead matches code that reads docstrings back as values.
 var docRead = regexp.MustCompile(`__doc__|getdoc|get_docstring`)
 
@@ -175,11 +318,21 @@ var errorCaught = regexp.MustCompile(
 )
 
 // textReuse says which kinds of prose the code reads back as values, and
-// which message-call names it gave another meaning.
+// which message-call names it gave another meaning. Each scans the whole
+// source, so it runs on first use: most literals are ruled out before.
 type textReuse struct {
-	docs      bool
-	errors    bool
-	untrusted map[string]bool
+	docs      func() bool
+	errors    func() bool
+	untrusted func() map[string]bool
+}
+
+// newTextReuse returns the textReuse of code.
+func newTextReuse(code string) textReuse {
+	return textReuse{
+		docs:      sync.OnceValue(func() bool { return docRead.MatchString(code) }),
+		errors:    sync.OnceValue(func() bool { return errorCaught.MatchString(code) }),
+		untrusted: sync.OnceValue(func() map[string]bool { return untrustedMessages(code) }),
+	}
 }
 
 // proseLiteral reports whether the string literal opening at start in code is
@@ -204,21 +357,21 @@ func proseLiteral(code string, start, end int, reuse textReuse) bool {
 	}
 
 	for range maxStringPrefix {
-		if trimmed := strings.TrimRight(before, "rRbBuUfF"); len(before)-len(trimmed) <= 1 {
-			before = trimmed
+		if before != "" && strings.IndexByte(stringPrefixes, before[len(before)-1]) >= 0 {
+			before = before[:len(before)-1]
 		}
 	}
 
 	prev := significantCode(before)
 
 	if triple && prev == "" {
-		return !reuse.docs
+		return !reuse.docs()
 	}
 
 	if triple && strings.HasSuffix(prev, ":") {
 		header := prev[strings.LastIndexByte(prev, '\n')+1:]
 
-		return !reuse.docs && docstringOwner.MatchString(header) && bracketsClosed(header) &&
+		return !reuse.docs() && docstringOwner.MatchString(header) && bracketsClosed(header) &&
 			strings.Contains(before[len(prev):], "\n")
 	}
 
@@ -233,9 +386,9 @@ func proseLiteral(code string, start, end int, reuse textReuse) bool {
 	receiver := messageReceiver.FindStringSubmatch(callee)
 	trustedCall := receiver == nil || trustedReceivers[receiver[1]]
 
-	return messageCalls[name] && !reuse.untrusted[name] && trustedCall ||
+	return messageCalls[name] && !reuse.untrusted()[name] && trustedCall ||
 		streamWrite.MatchString(callee) ||
-		!reuse.errors && raisedError.MatchString(callee)
+		!reuse.errors() && raisedError.MatchString(callee)
 }
 
 // bracketsClosed reports whether every bracket opened in line is closed in
@@ -287,12 +440,8 @@ func commandLines(code string) []codeLine {
 	calls := programThenList.FindAllStringSubmatch(code, -1)
 	execs := quotedExec.FindAllStringSubmatch(code, -1)
 	lines := make([]codeLine, 0, len(literals)+len(lists)+len(calls)+len(execs))
-	unsafe := proseUnsafe.MatchString(code)
-	reuse := textReuse{
-		docs:      docRead.MatchString(code),
-		errors:    errorCaught.MatchString(code),
-		untrusted: untrustedMessages(code),
-	}
+	unsafe := sync.OnceValue(func() bool { return codeUnsafe(code) })
+	reuse := newTextReuse(code)
 
 	for _, m := range literals {
 		text := literalEscapes.Replace(submatchText(code, m))
@@ -302,7 +451,7 @@ func commandLines(code string) []codeLine {
 
 		lines = append(lines, codeLine{
 			text:  text,
-			prose: !unsafe && proseLiteral(code, m[0], m[1], reuse),
+			prose: proseLiteral(code, m[0], m[1], reuse) && !unsafe(),
 		})
 	}
 
