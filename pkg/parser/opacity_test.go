@@ -187,6 +187,11 @@ var _ = Describe("Opacity explanations", func() {
 			`q='*(e:git push:)'; ls $~q`, parser.GlobSubst),
 		Entry("a glob-subst variable inside a word", `ls a$~q`, parser.GlobSubst),
 		Entry("a non-ASCII function name", `ls *(+é)`, "(+func)"),
+		Entry("an e qualifier in a default value", `ls ${x:-*(e:'git push':)}`, "(e)"),
+		Entry("a function qualifier in a default value", `ls ${x-*(+fn)}`, "(+func)"),
+		Entry("a qualifier in an alternate value", `ls ${x:+*(.e:x:)}`, "(e)"),
+		Entry("a qualifier in a replacement", `ls ${x/y/*(+fn)}`, "(+func)"),
+		Entry("a qualifier in a nested default", `ls ${x:-${y:-*(#qe:x:)}}`, "(e)"),
 		Entry("a subscript naming a variable",
 			`x='path[$(git push)]'; ls *([x])`, "([...])"),
 		Entry("a subscript range naming a variable", `ls *(.[1,x])`, "([...])"),
@@ -233,6 +238,8 @@ var _ = Describe("Opacity explanations", func() {
 		Entry("a numeric subscript", `ls *([1,3])`),
 		Entry("a bracket inside a word", `ls @([a-z]*).go`),
 		Entry("a digit range", `ls +([0-9]).txt`),
+		Entry("an alternation in a default value", `ls ${x:-@(a|b)}`),
+		Entry("parentheses in a default value", `echo ${x:-f(a)}`),
 	)
 
 	It("explains an exhausted budget once", func() {

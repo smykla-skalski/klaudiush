@@ -303,20 +303,100 @@ func codeQualifier(word *syntax.Word) string {
 			continue
 		}
 
-		if hasCommandSubst(glob.Pattern.Value) {
-			return GlobCommandSubst
+		if form := globForm(glob.Pattern.Value, i == len(word.Parts)-1); form != "" {
+			return form
+		}
+	}
+
+	if hasLiteralParen(word) {
+		return literalGlobForm(word)
+	}
+
+	return ""
+}
+
+// globForm returns the code-running form of one extended glob pattern, or
+// "". Trailing reports that the glob ends its word.
+func globForm(pattern string, trailing bool) string {
+	switch {
+	case hasCommandSubst(pattern):
+		return GlobCommandSubst
+	case strings.Contains(pattern, "$"):
+		return GlobVariable
+	default:
+		return qualifierCode(pattern, trailing)
+	}
+}
+
+// hasLiteralParen reports a literal ( in word, which bash keeps as text only
+// where it does not parse extended globs, such as the word of ${x:-word}.
+func hasLiteralParen(word *syntax.Word) bool {
+	for _, part := range word.Parts {
+		if lit, ok := part.(*syntax.Lit); ok && strings.Contains(lit.Value, "(") {
+			return true
+		}
+	}
+
+	return false
+}
+
+// literalGlobForm checks the extended glob shapes in the text of a word the
+// parser kept as literals. zsh still globs such a word, as in
+// ${x:-*(e:cmd:)}, so it is read the way an extended glob would be.
+func literalGlobForm(word *syntax.Word) string {
+	var sb strings.Builder
+	if err := syntax.NewPrinter().Print(&sb, word); err != nil {
+		return GlobVariable
+	}
+
+	text := sb.String()
+	for i := 0; i+1 < len(text); i++ {
+		if strings.IndexByte(extGlobOps, text[i]) < 0 || text[i+1] != '(' {
+			continue
 		}
 
-		if strings.Contains(glob.Pattern.Value, "$") {
-			return GlobVariable
-		}
-
-		if form := qualifierCode(glob.Pattern.Value, i == len(word.Parts)-1); form != "" {
+		end := closingParen(text, i+1)
+		if form := globForm(text[i+2:end], end >= len(text)-1); form != "" {
 			return form
 		}
 	}
 
 	return ""
+}
+
+// extGlobOps are the characters that open an extended glob before a (.
+const extGlobOps = "*?+@!"
+
+// closingParen returns the offset of the ) closing the ( at text[open],
+// skipping quoted text and escapes, or len(text) when none closes it.
+func closingParen(text string, open int) int {
+	depth := 0
+
+	var quote byte
+
+	for i := open; i < len(text); i++ {
+		c := text[i]
+
+		switch {
+		case quote != 0:
+			if c == quote {
+				quote = 0
+			}
+		case c == '\\':
+			i++
+		case c == '\'' || c == '"':
+			quote = c
+		case c == '(':
+			depth++
+		case c == ')':
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+
+	return len(text)
 }
 
 // hasCommandSubst reports a $(...) or backtick command substitution in an
