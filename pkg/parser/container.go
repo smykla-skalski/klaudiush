@@ -35,6 +35,10 @@ const maxContainerRunWords = 8
 // long list of them cannot slow the hook.
 const maxEntrypoints = 8
 
+// maxSplitChoices bounds how many substituted arguments holding several
+// words are each read both whole and split, in every combination.
+const maxSplitChoices = 4
+
 // argsPerWorkUnit is how many container arguments read or copied cost one
 // unit of the parse's work budget.
 const argsPerWorkUnit = 64
@@ -104,18 +108,22 @@ func (run containerRun) equal(other containerRun) bool {
 // maxContainerReadings it stops and reports exhausted. A word in the place
 // of an option or the image that comes from a variable, command output or a
 // brace expansion may stand for any options, so it is reported as dynamic.
+// lastImage is the furthest image position any reading reached.
 type runReader struct {
 	args      []string
 	runs      []containerRun
 	readings  int
+	lastImage int
 	exhausted bool
 	dynamic   string
 }
 
 // containerRuns reads the --entrypoint runs among a container runner's
-// arguments. Every run or create word is tried as the subcommand, so global
-// options before it (docker --context x run, docker compose -f y run) need
-// no list of their own.
+// arguments. A run or create word is tried as the subcommand until one is
+// read up to its image: what follows the furthest image is the container's
+// own command line, whose run words docker never reads. Words before it are
+// all tried, so global options before the subcommand (docker --context x
+// run, docker compose -f y run) need no list of their own.
 func containerRuns(args []string) *runReader {
 	r := &runReader{}
 
@@ -123,9 +131,13 @@ func containerRuns(args []string) *runReader {
 		return r
 	}
 
-	starts := 0
+	starts, limit := 0, -1
 
 	for i, arg := range args {
+		if limit >= 0 && i > limit {
+			break
+		}
+
 		if !containerRunWords[arg] {
 			continue
 		}
@@ -136,8 +148,12 @@ func containerRuns(args []string) *runReader {
 			break
 		}
 
-		r.args = args[i+1:]
+		r.args, r.lastImage = args[i+1:], -1
 		r.fork(0, nil)
+
+		if r.lastImage >= 0 {
+			limit = max(limit, i+1+r.lastImage)
+		}
 	}
 
 	return r
@@ -284,7 +300,13 @@ func (r *runReader) fork(i int, entrypoints []string) {
 
 // image records a run whose image is args[idx].
 func (r *runReader) image(idx int, entrypoints []string) {
-	if idx >= len(r.args) || len(entrypoints) == 0 {
+	if idx >= len(r.args) {
+		return
+	}
+
+	r.lastImage = max(r.lastImage, idx)
+
+	if len(entrypoints) == 0 {
 		return
 	}
 
@@ -355,7 +377,8 @@ func entrypointForms(value string) [][]string {
 		forms = append(forms, array)
 	}
 
-	if words := shellWords(value); len(words) > 1 {
+	if words := shellWords(value); len(words) > 0 && words[0] != "" &&
+		!slices.Equal(words, forms[0]) {
 		forms = append(forms, words)
 	}
 
@@ -406,7 +429,12 @@ func (w *astWalker) entrypointCommands(cmd Command) []Command {
 
 	r := &runReader{}
 
-	for _, args := range w.expandedArgs(cmd.Args) {
+	readings, complete := w.expandedArgs(cmd.Args)
+	if !complete && slices.ContainsFunc(readings[1], mentionsEntrypoint) {
+		r.exhausted = true
+	}
+
+	for _, args := range readings {
 		read := containerRuns(args)
 		if !w.spendArgs(cmd, read.readings*len(args)) {
 			return nil
@@ -489,32 +517,72 @@ func (c Command) sameCall(other Command) bool {
 }
 
 // expandedArgs substitutes the variables it can resolve in args. Whether an
-// argument was quoted is not known, so it returns both readings: each
-// substituted argument kept whole, and split into words.
-func (w *astWalker) expandedArgs(args []string) [][]string {
+// argument was quoted is not known, so each substituted argument that holds
+// several words is read both whole and split, in every combination. Past
+// maxSplitChoices such arguments it returns only the all-whole and all-split
+// readings and reports false.
+func (w *astWalker) expandedArgs(args []string) ([][]string, bool) {
 	if !slices.ContainsFunc(args, HasUnresolvedVars) {
-		return [][]string{args}
+		return [][]string{args}, true
 	}
 
-	whole := make([]string, 0, len(args))
-	split := make([]string, 0, len(args))
+	choices := make([][][]string, 0, len(args))
+	splits := 0
 
 	for _, arg := range args {
 		expanded, ok := w.resolveWord(arg)
 		if !HasUnresolvedVars(arg) || !ok || marked(expanded) {
-			whole, split = append(whole, arg), append(split, arg)
+			choices = append(choices, [][]string{{arg}})
 
 			continue
 		}
 
-		whole, split = append(whole, expanded), append(split, strings.Fields(expanded)...)
+		fields := strings.Fields(expanded)
+		if len(fields) == 1 && fields[0] == expanded {
+			choices = append(choices, [][]string{fields})
+
+			continue
+		}
+
+		choices = append(choices, [][]string{{expanded}, fields})
+		splits++
 	}
 
-	if slices.Equal(whole, split) {
-		return [][]string{whole}
+	if splits > maxSplitChoices {
+		return [][]string{pickChoices(choices, 0, false), pickChoices(choices, 0, true)}, false
 	}
 
-	return [][]string{whole, split}
+	readings := make([][]string, 0, 1<<splits)
+	for mask := range 1 << splits {
+		readings = append(readings, pickChoices(choices, mask, false))
+	}
+
+	return readings, true
+}
+
+// pickChoices builds one reading of args: bit n of mask, or allSplit, picks
+// the split form of the nth argument that has one.
+func pickChoices(choices [][][]string, mask int, allSplit bool) []string {
+	var (
+		out []string
+		bit int
+	)
+
+	for _, options := range choices {
+		pick := options[0]
+
+		if len(options) > 1 {
+			if allSplit || mask&(1<<bit) != 0 {
+				pick = options[1]
+			}
+
+			bit++
+		}
+
+		out = append(out, pick...)
+	}
+
+	return out
 }
 
 // resolveEntrypoint checks an entrypoint value, recording as opaque one from
