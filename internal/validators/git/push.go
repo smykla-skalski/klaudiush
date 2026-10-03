@@ -2,6 +2,7 @@ package git
 
 import (
 	"context"
+	"path"
 	"slices"
 	"strings"
 
@@ -98,10 +99,8 @@ func (v *PushValidator) validatePushCommand(
 		return result
 	}
 
-	// Check if branch is blocked
 	if v.config != nil && len(v.config.BlockedBranches) > 0 {
-		branch := v.extractBranch(gitCmd, runner)
-		if result := v.validateNotBlockedBranch(branch); !result.Passed {
+		if result := v.validateBlockedBranches(gitCmd, runner); !result.Passed {
 			return result
 		}
 	}
@@ -135,6 +134,10 @@ func (v *PushValidator) getRunnerForCommand(gitCmd *parser.GitCommand) GitRunner
 // extractRemote extracts the remote name from a git push command
 func (*PushValidator) extractRemote(gitCmd *parser.GitCommand, runner GitRunner) string {
 	if len(gitCmd.Args) == 0 {
+		if repo := pushRepo(gitCmd); repo != "" {
+			return repo
+		}
+
 		branch, err := runner.GetCurrentBranch()
 		if err != nil {
 			return defaultRemote
@@ -243,68 +246,127 @@ func (v *PushValidator) validateNotBlockedRemote(
 	return result
 }
 
-// parseBranchFromRefspec extracts and normalizes the target branch from a refspec.
-func parseBranchFromRefspec(refspec string) string {
-	branch := refspec
-	if _, dst, ok := strings.Cut(refspec, ":"); ok {
-		branch = dst
-	}
-
-	return strings.TrimPrefix(branch, "refs/heads/")
+// pushRepo returns the repository --repo names, which git pushes to when no
+// repository argument is given.
+func pushRepo(gitCmd *parser.GitCommand) string {
+	return gitCmd.FlagMap["--repo"]
 }
 
-// extractBranch extracts the target branch name from a git push command.
-// When multiple refspecs are provided, returns a blocked branch first
-// so downstream validation can deny the push.
-func (v *PushValidator) extractBranch(gitCmd *parser.GitCommand, runner GitRunner) string {
+// allBranchFlags push every local branch, so any blocked branch that exists
+// locally is pushed too.
+var allBranchFlags = []string{"--all", "--branches", "--mirror"}
+
+// validateBlockedBranches checks every branch a push updates against the
+// blocked list. A target it cannot name (HEAD on a detached or unreadable
+// repository, a matching ":" refspec, --all) fails closed.
+func (v *PushValidator) validateBlockedBranches(
+	gitCmd *parser.GitCommand,
+	runner GitRunner,
+) *validator.Result {
+	for _, flag := range allBranchFlags {
+		if gitCmd.HasFlag(flag) {
+			return v.uncheckedBranch(flag + " (every local branch)")
+		}
+	}
+
 	if len(gitCmd.Args) <= 1 {
 		branch, err := runner.GetCurrentBranch()
 		if err != nil {
-			return ""
+			return validator.Pass()
 		}
 
-		return branch
+		return v.validateNotBlockedBranch(branch)
 	}
-
-	var firstBranch string
 
 	for _, refspec := range gitCmd.Args[1:] {
-		branch := parseBranchFromRefspec(refspec)
-		if branch == "" {
-			continue
+		branch, known := refspecBranch(refspec, runner)
+		if !known {
+			return v.uncheckedBranch("'" + refspec + "'")
 		}
 
-		if firstBranch == "" {
-			firstBranch = branch
-		}
-
-		if v.config != nil && slices.Contains(v.config.BlockedBranches, branch) {
-			return branch
+		if result := v.validateNotBlockedBranch(branch); !result.Passed {
+			return result
 		}
 	}
 
-	return firstBranch
+	return validator.Pass()
 }
 
-// validateNotBlockedBranch checks if the branch is blocked
+// refspecBranch returns the branch a refspec updates: its destination, or
+// its source when it has none, with a force + and refs/heads/ removed and
+// HEAD or @ resolved to the current branch. It returns "" for a ref that is
+// not a branch (a tag), and false when the branch cannot be known.
+func refspecBranch(refspec string, runner GitRunner) (string, bool) {
+	spec := strings.TrimPrefix(refspec, "+")
+	if spec == "" || spec == ":" {
+		return "", false
+	}
+
+	target := spec
+	if src, dst, found := strings.Cut(spec, ":"); found {
+		target = dst
+		if dst == "" {
+			target = src
+		}
+	}
+
+	if target == "HEAD" || target == "@" {
+		branch, err := runner.GetCurrentBranch()
+		if err != nil || branch == "" || branch == "HEAD" {
+			return "", false
+		}
+
+		return branch, true
+	}
+
+	if branch, ok := strings.CutPrefix(target, "refs/heads/"); ok {
+		return branch, true
+	}
+
+	if strings.HasPrefix(target, "refs/") {
+		return "", true
+	}
+
+	return target, true
+}
+
+// validateNotBlockedBranch checks if the branch is blocked. A branch pattern
+// such as * in a wildcard refspec counts when it matches a blocked branch.
 func (v *PushValidator) validateNotBlockedBranch(branch string) *validator.Result {
 	if v.config == nil || len(v.config.BlockedBranches) == 0 || branch == "" {
 		return validator.Pass()
 	}
 
-	if !slices.Contains(v.config.BlockedBranches, branch) {
+	blocked := slices.IndexFunc(v.config.BlockedBranches, func(name string) bool {
+		matched, err := path.Match(branch, name)
+
+		return name == branch || err == nil && matched
+	})
+	if blocked < 0 {
 		return validator.Pass()
 	}
-
-	blockedBranchesStr := strings.Join(v.config.BlockedBranches, ", ")
 
 	return validator.FailWithRef(
 		validator.RefGitBlockedBranch,
 		templates.MustExecute(
 			templates.PushBlockedBranchTemplate,
 			templates.PushBlockedBranchData{
-				Branch:             branch,
-				BlockedBranchesStr: blockedBranchesStr,
+				Branch:             v.config.BlockedBranches[blocked],
+				BlockedBranchesStr: strings.Join(v.config.BlockedBranches, ", "),
+			},
+		),
+	)
+}
+
+// uncheckedBranch blocks a push whose target branches cannot be named.
+func (v *PushValidator) uncheckedBranch(target string) *validator.Result {
+	return validator.FailWithRef(
+		validator.RefGitBlockedBranch,
+		templates.MustExecute(
+			templates.PushUncheckedBranchTemplate,
+			templates.PushBlockedBranchData{
+				Branch:             target,
+				BlockedBranchesStr: strings.Join(v.config.BlockedBranches, ", "),
 			},
 		),
 	)

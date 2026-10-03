@@ -118,6 +118,10 @@ func flagTakesValue(flag, subcommand string) bool {
 		if slices.Contains(commitReuseFlags, flag) {
 			return true
 		}
+	case subcmdPush:
+		if argValueFlags[subcmdPush][flag] {
+			return true
+		}
 	}
 
 	return flagsWithValues[flag]
