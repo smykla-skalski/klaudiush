@@ -131,7 +131,10 @@ func (s *Sandbox) AddPath(dir string) {
 func (s *Sandbox) Env() []string {
 	path := append([]string{s.Bin}, s.pathDirs...)
 	path = append(path, systemPath...)
+	tmp := filepath.Join(s.Root, "tmp")
 
+	// Claude Code keeps per-project task files under /tmp/claude-<uid>
+	// whatever TMPDIR says, unless CLAUDE_CODE_TMPDIR moves them.
 	env := map[string]string{
 		"PATH":                strings.Join(path, string(os.PathListSeparator)),
 		"HOME":                s.Home,
@@ -141,7 +144,8 @@ func (s *Sandbox) Env() []string {
 		"XDG_CACHE_HOME":      s.CacheHome(),
 		"CODEX_HOME":          s.CodexHome(),
 		"CLAUDE_CONFIG_DIR":   s.ClaudeHome(),
-		"TMPDIR":              filepath.Join(s.Root, "tmp"),
+		"TMPDIR":              tmp,
+		"CLAUDE_CODE_TMPDIR":  tmp,
 		"LANG":                "en_US.UTF-8",
 		"TERM":                "dumb",
 		"NO_COLOR":            "1",

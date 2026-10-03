@@ -50,7 +50,9 @@ var _ = Describe("Sandbox", func() {
 		Expect(env["CODEX_HOME"]).To(Equal(sb.CodexHome()))
 		Expect(env["CLAUDE_CONFIG_DIR"]).To(Equal(sb.ClaudeHome()))
 
-		for _, key := range []string{"XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME", "TMPDIR"} {
+		for _, key := range []string{
+			"XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME", "TMPDIR", "CLAUDE_CODE_TMPDIR",
+		} {
 			Expect(env[key]).To(HavePrefix(sb.Root), key)
 		}
 
