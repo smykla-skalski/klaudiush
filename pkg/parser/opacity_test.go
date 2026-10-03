@@ -127,6 +127,99 @@ var _ = Describe("Opacity explanations", func() {
 		),
 	)
 
+	DescribeTable("flags zsh glob qualifiers that run code",
+		func(command, form string) {
+			Expect(only(command)).To(Equal(parser.Opacity{
+				Cause:     parser.OpacityZshGlobQualifier,
+				Operation: form,
+			}))
+		},
+		Entry("an e qualifier", `ls *(e:'git push':)`, "(e)"),
+		Entry("an e qualifier with braces", `ls *(e{'git push'})`, "(e)"),
+		Entry("an e qualifier after other qualifiers", `ls *(.Ne,git push,)`, "(e)"),
+		Entry("a negated e qualifier", `ls ?(^e:'git push':)`, "(e)"),
+		Entry("an e qualifier after an owner", `ls *(u:root:e:'git push':)`, "(e)"),
+		Entry("an e qualifier after a subscript", `ls *([1]e:'git push':)`, "(e)"),
+		Entry("an e qualifier after a size", `ls *(Lk+1e:'git push':)`, "(e)"),
+		Entry("an e qualifier holding a pipe", `ls *(e:'git push || true':)`, "(e)"),
+		Entry("an e qualifier under a directory", `ls "$D"/*(e:'git push':)`, "(e)"),
+		Entry("a function qualifier", `ls *(+fn)`, "(+func)"),
+		Entry("a function qualifier with modifiers", `ls x*(+fn:t)`, "(+func)"),
+		Entry("a sort by code", `ls *(oe:'git push':)`, "(e)"),
+		Entry("a reverse sort by a function", `ls *(O+fn)`, "(+func)"),
+		Entry("a function after a sort by time", `ls *(om+uname)`, "(+func)"),
+		Entry("a function after a reverse sort by size", `ls *(OL+fn)`, "(+func)"),
+		Entry("a function after a time unit and a flag", `ls *(amM+fn)`, "(+func)"),
+		Entry("a function after a group delimited by letters", `ls *(gdwheeld+fn)`, "(+func)"),
+		Entry("a numeric function after a group", `ls *(gdwheeld+3)`, "(+func)"),
+		Entry("a function after an owner", `ls *(udrootd+pwd)`, "(+func)"),
+		Entry("a digit function after a sort", `ls *(om+3)`, "(+func)"),
+		Entry("a digit function after a unit and a flag", `ls *(mmM+3)`, "(+func)"),
+		Entry("a plus in a symbolic mode", `ls *(f:u+x:)`, "(+func)"),
+		Entry("a common word holding an e qualifier", `ls !(tests)`, "(e)"),
+		Entry("a function after a sort and a flag", `ls *(oLM+fn)`, "(+func)"),
+		Entry("the #q form", `ls *(#qe:'git push':)`, "(e)"),
+		Entry("the #q form with a pipe", `ls *(#q+fn|x)`, "(+func)"),
+		Entry("a qualifier in an array", `a=(*(e:'git push':))`, "(e)"),
+		Entry("an e qualifier after an octal mode", `ls *(f-0e:"git push":)`, "(e)"),
+		Entry("an e qualifier after an exact mode", `ls *(f=644e:"git push":)`, "(e)"),
+		Entry("an e qualifier after a wildcard mode", `ls *(f?44e:"git push":)`, "(e)"),
+		Entry("an e qualifier holding a command substitution",
+			`ls *(e:"git push"$(true):)`, parser.GlobCommandSubst),
+		Entry("an e qualifier holding backticks",
+			"ls *(e:\"git push\"`true|true`:)", parser.GlobCommandSubst),
+		Entry("a command substitution in an alternation",
+			"ls @(a|`git push`)", parser.GlobCommandSubst),
+		Entry("a command substitution in a repeat", `ls *(a$(git push))`, parser.GlobCommandSubst),
+		Entry("a quoted e", `ls *('e':"git push":)`, "(e)"),
+		Entry("an ANSI-C quoted argument", `ls *(e$':git push:')`, "(e)"),
+		Entry("an ANSI-C quoted pipe delimiter", `ls *(e$'|git push|')`, "(e)"),
+		Entry("a function name starting with a digit", `ls *(+1x)`, "(+func)"),
+		Entry("a sort by a function starting with a digit", `ls *(O+1x)`, "(+func)"),
+		Entry("a quoted brace in a parameter expansion",
+			`ls *(e:'git push #'${x:-"}|"}:)`, "(e)"),
+		Entry("a delimiter from a variable", `ls *(e${d}git push${d})`, "(e)"),
+		Entry("a quoted pipe", `ls *(e:'git push|x':)`, "(e)"),
+		Entry("an escaped e", `ls *(\e:"git push":)`, "(e)"),
+		Entry("a quoted plus", `ls *("+"fn)`, "(+func)"),
+		Entry("an escaped delimiter", `ls *(e\:"git push"\:)`, "(e)"),
+		Entry("an e qualifier holding a parameter expansion",
+			`ls *(e:"git push ${x:-a|b}":)`, "(e)"),
+		Entry("an e qualifier after a qualifier it cannot read",
+			`ls *(f<u+x>Ze:"git push":)`, "(+func)"),
+	)
+
+	It("flags a glob qualifier inside an inline script", func() {
+		Expect(only(`zsh -c "ls *(e:'git push':)"`)).To(Equal(parser.Opacity{
+			Cause:     parser.OpacityZshGlobQualifier,
+			Operation: "(e)",
+			Origin:    []string{"zsh"},
+		}))
+	})
+
+	DescribeTable("leaves extended globs that run no code alone",
+		func(command string) {
+			result := parse(command)
+
+			Expect(result.Truncated).To(BeFalse(), "truncated: %q", command)
+			Expect(result.Opacities).To(BeEmpty())
+		},
+		Entry("an alternation", `ls @(a|b).go`),
+		Entry("a plain repeat", `ls *(foo)`),
+		Entry("a group with e and a pipe", `ls *(e:x:|y)`),
+		Entry("an e without a closing delimiter", `ls *(seen)`),
+		Entry("an e at the end", `ls ?(ee)`),
+		Entry("a mode with e in it", `ls *(feature)`),
+		Entry("an owner named e", `ls *(u:e:)`),
+		Entry("a prefix holding e", `ls *(P:e:)`),
+		Entry("a size with a sign", `ls *(m+3)`),
+		Entry("a history modifier", `ls *(N:e)`),
+		Entry("a size with a unit and a sign", `ls *(Lk+1)`),
+		Entry("a time with a unit and a sign", `ls *(mm+3)`),
+		Entry("a sort by name", `ls *(on)`),
+		Entry("a nested group", `ls *(e:(x):)`),
+	)
+
 	It("explains an exhausted budget once", func() {
 		calls := func(name string) string {
 			return strings.Repeat(name+"; ", 60)

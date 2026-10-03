@@ -202,6 +202,27 @@ var _ = Describe("NestingValidator", func() {
 			"the gh command word comes from command output",
 			"Write the subcommand literally instead of computing it",
 		),
+		Entry("a zsh glob qualifier that runs code",
+			`ls *(e:'git push --no-verify':)`,
+			"it uses a glob that runs code klaudiush cannot inspect",
+			"command",
+			"glob qualifier (e) runs shell code for every file",
+			"Select the files another way",
+		),
+		Entry("a zsh glob qualifier that calls a function",
+			`ls *(+fn)`,
+			"it uses a glob that runs code klaudiush cannot inspect",
+			"command",
+			"glob qualifier (+func) runs shell code",
+			"quote the word if it is meant literally",
+		),
+		Entry("a command substitution inside an extended glob",
+			"ls *(a$(git push))",
+			"it uses a glob that runs code klaudiush cannot inspect",
+			"command",
+			"an extended glob holds a command substitution",
+			"Run the command separately",
+		),
 		Entry("eval of an unknown variable",
 			`eval "$KLAUDIUSH_TEST_UNSET_LINE"`,
 			"runs eval, git or gh with a word klaudiush cannot resolve",
@@ -256,6 +277,13 @@ var _ = Describe("NestingValidator", func() {
 		}
 
 		Expect(result.Message).NotTo(ContainSubstring("SECRET-VALUE"))
+	})
+
+	It("passes plain extended globs", func() {
+		for _, command := range []string{`ls @(a|b).go`, `ls *(foo)`, `ls !(x).go`} {
+			Expect(v.Validate(context.Background(), bash(command)).Passed).
+				To(BeTrue(), "blocked: %q", command)
+		}
 	})
 
 	It("passes eval and git words it can resolve", func() {

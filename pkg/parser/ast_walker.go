@@ -151,6 +151,10 @@ func (w *astWalker) visit(node syntax.Node) bool {
 		}
 	case *syntax.Stmt:
 		w.extractRedirect(n)
+	case *syntax.Word:
+		if form := codeQualifier(n); form != "" {
+			w.opaque(OpacityZshGlobQualifier, form, "")
+		}
 	case *syntax.Subshell:
 		// Subshells are handled recursively by syntax.Walk
 		return true

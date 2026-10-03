@@ -171,6 +171,8 @@ func causeSummary(cause parser.OpacityCause) string {
 		return "it calls a function whose arguments klaudiush cannot follow"
 	case parser.OpacityUnresolvedWord:
 		return "it runs eval, git or gh with a word klaudiush cannot resolve"
+	case parser.OpacityZshGlobQualifier:
+		return "it uses a glob that runs code klaudiush cannot inspect"
 	default:
 		return "part of it is opaque"
 	}
@@ -232,6 +234,8 @@ func opacityFinding(o parser.Opacity) validator.Finding {
 			`arguments with plain "$@"`
 	case parser.OpacityUnresolvedWord:
 		f.Message, f.Required, f.Repair = unresolvedWordFinding(o)
+	case parser.OpacityZshGlobQualifier:
+		f.Message, f.Required, f.Repair = globCodeFinding(o)
 	default:
 		f.Message = o.Operation + " cannot be inspected"
 		f.Repair = validator.GetSuggestion(validator.RefShellNesting)
@@ -290,6 +294,27 @@ var evalSetupRepairs = map[string]string{
 	"zoxide": "Drop the eval: run zoxide query <keywords> to print the directory, " +
 		"then cd to that path literally",
 	"fnm": "Run the command with fnm's Node instead: fnm exec --using=<version> <command>",
+}
+
+// globCodeFinding explains an extended glob that runs code: a command
+// substitution, or a zsh glob qualifier bash reads as an extended glob.
+func globCodeFinding(o parser.Opacity) (message, required, repair string) {
+	if o.Operation == parser.GlobCommandSubst {
+		message = "an extended glob holds a command substitution, which the shell runs " +
+			"but klaudiush does not inspect"
+		required = "no command substitutions inside extended globs such as *(...) or @(...)"
+		repair = "Run the command separately, or store its output in a variable first"
+
+		return message, required, repair
+	}
+
+	message = "glob qualifier " + o.Operation + " runs shell code for every file " +
+		"it matches when the login shell is zsh, and bash reads it as an extended glob"
+	required = "no zsh glob qualifiers that run code: (e:...:), (+func), (oe:...:), (o+func)"
+	repair = "Select the files another way (find, a plain glob or a loop) and run " +
+		"the command directly, or quote the word if it is meant literally"
+
+	return message, required, repair
 }
 
 func unreadableScriptRepair(detail string) string {
