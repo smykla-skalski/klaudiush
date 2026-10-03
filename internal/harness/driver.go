@@ -99,17 +99,24 @@ func MajorVersion(version string) int {
 }
 
 // RunIn runs a command in the sandbox environment with stdin closed and
-// returns its combined output.
+// returns its combined output. The command runs in a session the sandbox
+// tracks, so StopProcesses finds what it leaves running; the session is
+// dropped again once nothing runs in it.
 func RunIn(ctx context.Context, sb *Sandbox, dir, name string, args ...string) ([]byte, error) {
 	var out bytes.Buffer
 
-	result := execpkg.NewCommandRunner(0).RunWithOptions(ctx, execpkg.RunOptions{
+	opts := execpkg.RunOptions{
 		Dir:    dir,
 		Env:    sb.Env(),
 		Stdin:  strings.NewReader(""),
 		Stdout: &out,
 		Stderr: &out,
-	}, name, args...)
+	}
+	sb.track(&opts)
+
+	result := execpkg.NewCommandRunner(0).RunWithOptions(ctx, opts, name, args...)
+
+	_, _ = sb.Processes()
 
 	return out.Bytes(), errors.Wrapf(
 		result.Err,

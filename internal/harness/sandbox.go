@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -57,6 +58,9 @@ type Sandbox struct {
 	extraEnv map[string]string
 	aliases  []string
 	redact   map[string]string
+
+	mu       sync.Mutex
+	sessions map[int]struct{}
 }
 
 // NewSandbox creates the sandbox directories under base (the system temp
@@ -74,6 +78,7 @@ func NewSandbox(base string) (*Sandbox, error) {
 		Bin:      filepath.Join(root, "bin"),
 		Captures: filepath.Join(root, "captures"),
 		extraEnv: map[string]string{},
+		sessions: map[int]struct{}{},
 	}
 
 	dirs := []string{
@@ -154,11 +159,6 @@ func (s *Sandbox) Env() []string {
 	}
 
 	return out
-}
-
-// Close removes every sandbox file.
-func (s *Sandbox) Close() error {
-	return errors.Wrap(os.RemoveAll(s.Root), "removing sandbox")
 }
 
 // WriteFile writes a file below the sandbox root, creating parent directories.
