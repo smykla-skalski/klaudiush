@@ -72,9 +72,12 @@ const maxStringPrefix = 2
 // text rather than a command line: a docstring at the top of a module, def
 // or class, or the first argument of a message call (print, fail, raise
 // ValueError). A string anywhere else may run, and a backtick string runs in
-// Ruby and Perl, so neither is prose.
-func proseLiteral(code string, start int) bool {
-	if code[start] == '`' {
+// Ruby and Perl, so neither is prose; nor is one that interpolates a command
+// or expression (`...`, #{...}, @{[...]}, $(...)).
+func proseLiteral(code string, start, end int) bool {
+	if code[start] == '`' || strings.Contains(code[start+1:end], "`") ||
+		strings.Contains(code[start:end], "#{") || strings.Contains(code[start:end], "@{") ||
+		strings.Contains(code[start:end], "$(") {
 		return false
 	}
 
@@ -162,7 +165,7 @@ func commandLines(code string) []codeLine {
 	for _, m := range literals {
 		lines = append(lines, codeLine{
 			text:  literalEscapes.Replace(submatchText(code, m)),
-			prose: !unsafe && proseLiteral(code, m[0]),
+			prose: !unsafe && proseLiteral(code, m[0], m[1]),
 		})
 	}
 

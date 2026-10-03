@@ -202,6 +202,7 @@ func (w *astWalker) visit(node syntax.Node) bool {
 		}
 	case *syntax.Stmt:
 		w.extractRedirect(n)
+		w.markRedirectedOutput(n)
 
 		if form := numericGlobQualifier(n); form != "" {
 			w.opaque(OpacityZshGlobQualifier, form, "")
@@ -224,6 +225,31 @@ func (w *astWalker) visit(node syntax.Node) bool {
 // to the Command when that CallExpr is later extracted.
 func (w *astWalker) recordStdin(call *syntax.CallExpr, content string) {
 	w.stdinByCall[call] = content
+}
+
+// markRedirectedOutput treats output sent to a process substitution
+// (cmd > >(sh)) as captured. An exec doing so, or a coprocess, can hand any
+// later command's output to a program, so everything after it is captured.
+func (w *astWalker) markRedirectedOutput(stmt *syntax.Stmt) {
+	if _, coproc := stmt.Cmd.(*syntax.CoprocClause); coproc || stmt.Coprocess {
+		w.outputCaptured = true
+	}
+
+	if !slices.ContainsFunc(stmt.Redirs, func(r *syntax.Redirect) bool {
+		return r.Word != nil && slices.ContainsFunc(r.Word.Parts, func(part syntax.WordPart) bool {
+			_, ok := part.(*syntax.ProcSubst)
+
+			return ok
+		})
+	}) {
+		return
+	}
+
+	w.markCaptured(stmt)
+
+	if isCommand(callExprOf(stmt), "exec") {
+		w.outputCaptured = true
+	}
 }
 
 // markCaptured records the commands under node whose output another command

@@ -238,5 +238,17 @@ def run_git(args):
 			"cd printed into a shell",
 			`awk 'BEGIN { print("cd /tmp/e") | "sh"; print("git zz") | "sh" }'`,
 		),
+		Entry("ruby interpolating backticks", "ruby -e 'puts(\"x#{`git zz`}\")'"),
+		Entry("perl interpolating backticks", "perl -e 'print(\"@{[`git zz`]}\")'"),
+		Entry("a ruby docstring-like interpolation", "ruby -e '\"\"\"\nx#{`git zz`}\n\"\"\"'"),
+		Entry("output sent to a process substitution", `python3 -c 'print("git zz")' > >(sh)`),
+		Entry("output after exec to a process substitution",
+			`exec > >(sh); python3 -c 'print("git zz")'`),
+		Entry("output after exec of another descriptor",
+			`exec 3> >(sh); python3 -c 'print("git zz")' >&3`),
+		Entry(
+			"output after a coprocess",
+			`coproc sh; python3 -c 'print("git zz")' >&"${COPROC[1]}"`,
+		),
 	)
 })
