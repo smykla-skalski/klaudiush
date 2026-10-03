@@ -171,6 +171,17 @@ var _ = Describe("CommitValidator message sources", func() {
 			`dd if={bad} of={good} && git commit -sS -F {good}`,
 			"may change",
 		),
+		Entry("copy into the file's directory",
+			`cp /elsewhere/good.txt {dir} && git commit -sS -F {good}`, "may change"),
+		Entry("copy into the directory as .",
+			`cd {dir} && cp sub/good.txt . && git commit -sS -F good.txt`, "may change"),
+		Entry("move a parent directory",
+			`mv {dir} /elsewhere/old && git commit -sS -F {good}`, "may change"),
+		Entry(
+			"remove a parent directory",
+			`rm -rf {dir} && git commit -sS -F {good}`,
+			"may change",
+		),
 	)
 
 	It("blocks a write through a symlink to the message file", func() {
@@ -283,6 +294,10 @@ var _ = Describe("CommitValidator message sources", func() {
 		Entry("empty file", "git commit -sS -F {dir}/empty.txt", true),
 		Entry("read-only commands naming the file first",
 			"cat {good} && grep fix {good} && git add {good} && git commit -sS -F {good}", true),
+		Entry("cd and mkdir in the file's directory first",
+			"cd {dir} && mkdir -p {dir}/sub && git commit -sS -F good.txt", true),
+		Entry("copy into another directory first",
+			"cp {good} {dir}/other/ && git commit -sS -F {bad}", false),
 		Entry("sed without -i naming the file first",
 			"sed -n 1p {good} && git commit -sS -F {good}", true),
 		Entry(

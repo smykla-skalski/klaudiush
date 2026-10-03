@@ -85,6 +85,7 @@ var readOnlyPrograms = []string{
 	"cat", "head", "tail", "grep", "egrep", "fgrep", "rg", "wc", "test", "[",
 	"ls", "stat", "file", "less", "more", "diff", "cmp", "echo", "printf",
 	"realpath", "readlink", "basename", "dirname", "du", "md5", "md5sum",
+	"cd", "pushd", "popd", "mkdir", "touch", "alias",
 	"shasum", "sha1sum", "sha256sum", "sed", "perl",
 }
 
@@ -318,19 +319,29 @@ func (src messageSource) changedBefore(before parser.Location, readPath string) 
 			continue
 		}
 
-		for _, arg := range cmd.Args {
-			if _, value, found := strings.Cut(arg, "="); found {
-				arg = value
-			}
-
-			path, ok := src.absolute(cmd.Vars, arg, cmd.WorkingDirectory, cmd.DirUnknown)
-			if ok && sameFile(path, readPath) {
-				return opaqueSourceWith(reasonChanged, repairSeparate)
-			}
+		if src.namesFile(cmd, readPath) {
+			return opaqueSourceWith(reasonChanged, repairSeparate)
 		}
 	}
 
 	return nil
+}
+
+// namesFile reports a command argument that is the file at readPath or a
+// directory above it, also as the value of a key=value argument (dd of=).
+func (src messageSource) namesFile(cmd parser.Command, readPath string) bool {
+	for _, arg := range cmd.Args {
+		if _, value, found := strings.Cut(arg, "="); found {
+			arg = value
+		}
+
+		path, ok := src.absolute(cmd.Vars, arg, cmd.WorkingDirectory, cmd.DirUnknown)
+		if ok && (sameFile(path, readPath) || containsPath(path, readPath)) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // readOnlyCommand reports a command known to leave the files it names as
@@ -399,6 +410,20 @@ func sameFile(a, b string) bool {
 	infoB, errB := os.Stat(b)
 
 	return errA == nil && errB == nil && os.SameFile(infoA, infoB)
+}
+
+// containsPath reports whether dir is a directory above path, so copying
+// into it, moving it or removing it can replace the file without naming it.
+func containsPath(dir, path string) bool {
+	for parent := filepath.Dir(path); ; parent = filepath.Dir(parent) {
+		if sameFile(dir, parent) {
+			return true
+		}
+
+		if parent == filepath.Dir(parent) {
+			return false
+		}
+	}
 }
 
 // resolveMessagePath resolves a -F path the way the shell and git would:
