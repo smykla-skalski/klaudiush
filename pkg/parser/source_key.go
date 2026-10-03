@@ -13,10 +13,13 @@ import (
 const (
 	// fieldSeparator joins the parts of a recorded command's identity.
 	fieldSeparator = "\x00"
-	// maxKeyWrites caps the file writes a script's state covers. Past it no
-	// repeat is cut, and a script that names itself fails closed at the
-	// depth limit as any deep nesting does.
-	maxKeyWrites = 256
+	// maxKeyWrites and maxKeyWriteBytes cap the file writes a script's state
+	// covers, since hashing more on every followed script could outlast the
+	// hook timeout. Past them no repeat is cut, and a script that names
+	// itself fails closed at the depth limit as any deep nesting does.
+	maxKeyWrites     = 256
+	maxKeyWriteBytes = 64 << 10
+	ghAliasCommand   = "alias"
 )
 
 // scriptSourceText is a script file's text and how it is walked.
@@ -85,7 +88,7 @@ func (w *astWalker) lineWrites() (versions map[string][]string, ok bool) {
 		total += len(p.fileWrites)
 	}
 
-	if total > maxKeyWrites {
+	if total > maxKeyWrites || writtenBytes(chain) > maxKeyWriteBytes {
 		return nil, false
 	}
 
@@ -190,7 +193,7 @@ func (w *astWalker) confirmRepeat(cmd Command, src scriptSourceText, depth int, 
 	w.walkSource(cmd, src, depth, again)
 	delete(w.state.repeated, again)
 
-	if w.effects() != before || w.ambiguousWrites() {
+	if w.effects() != before || w.ambiguousWrites() || w.ambiguousAliases() {
 		w.opaque(OpacityDepthLimit, scriptName(src.path), "")
 	}
 }
@@ -266,7 +269,7 @@ func definesAlias(cmd Command) bool {
 	case gitProgram:
 		return slices.Contains(cmd.Args, "config")
 	case ghCLI:
-		return slices.Contains(cmd.Args, "alias")
+		return slices.Contains(cmd.Args, ghAliasCommand)
 	default:
 		return false
 	}
@@ -293,4 +296,58 @@ func commandIdentity(cmd Command) string {
 		),
 		fieldSeparator,
 	)
+}
+
+// writtenBytes counts the content the walkers' file writes hold, which a
+// script's state would have to hash on every followed script.
+func writtenBytes(chain []*astWalker) int {
+	size := 0
+
+	for _, p := range chain {
+		for _, fw := range p.fileWrites {
+			size += len(fw.Content) + len(fw.RedirectContent)
+		}
+	}
+
+	return size
+}
+
+// ambiguousAliases reports whether some git or gh alias was defined more
+// than one way on the line. A lookup sees only the latest definition, but a
+// pass that was cut may have run while an earlier one was in place.
+func (w *astWalker) ambiguousAliases() bool {
+	defs := make(map[string]string)
+
+	for cmd := range w.earlierCommands() {
+		if !definesAlias(cmd) {
+			continue
+		}
+
+		name, id := aliasName(cmd), commandIdentity(cmd)
+		if seen, ok := defs[name]; ok && seen != id {
+			return true
+		}
+
+		defs[name] = id
+	}
+
+	return false
+}
+
+// aliasName returns the alias a defining command touches, or "" when it
+// cannot tell, so every such command is grouped together and any two
+// different ones count as ambiguous.
+func aliasName(cmd Command) string {
+	for i, arg := range cmd.Args {
+		lower := strings.ToLower(arg)
+		if after, ok := strings.CutPrefix(lower, "alias."); ok && cmd.Name == gitProgram {
+			return gitProgram + fieldSeparator + after
+		}
+
+		if lower == ghAliasCommand && cmd.Name == ghCLI && i+2 < len(cmd.Args) {
+			return ghCLI + fieldSeparator + cmd.Args[i+2]
+		}
+	}
+
+	return ""
 }

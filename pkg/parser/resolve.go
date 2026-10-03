@@ -328,7 +328,7 @@ func (w *astWalker) expandGHAlias(cmd Command) (Command, []nestedScript) {
 // A --shell alias comes back with gh's own "!" prefix.
 func (w *astWalker) lineGHAlias(name string) (string, bool) {
 	for cmd := range w.earlierCommands() {
-		if cmd.Name != ghCLI || len(cmd.Args) < 2 || cmd.Args[0] != "alias" ||
+		if cmd.Name != ghCLI || len(cmd.Args) < 2 || cmd.Args[0] != ghAliasCommand ||
 			cmd.Args[1] != "set" {
 			continue
 		}

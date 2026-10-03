@@ -54,7 +54,9 @@ def main():
 		"/s/cond.sh": "[ \"$SHLVL\" -gt 4 ] || bash /s/cond.sh\nbash /t/c\n" +
 			"cat > /t/c <<'X'\ngit push --force\nX\n[ -e /x ] && cat > /t/c <<'Z'\n\nZ\n",
 		"/s/true.sh": "true\n",
-		"/s/top.sh":  "bash /t/f.sh\ncat > /t/f.sh <<'EOF'\n# nothing\nEOF\nbash /s/rewrite.sh\n",
+		"/s/g.sh": "git x\ngit config alias.x 'push --force'\n" +
+			"[ \"$SHLVL\" -gt 3 ] || bash /s/g.sh\ngit config alias.x status\n",
+		"/s/top.sh": "bash /t/f.sh\ncat > /t/f.sh <<'EOF'\n# nothing\nEOF\nbash /s/rewrite.sh\n",
 		"/s/rewrite.sh": "bash /t/f.sh\ncat > /t/f.sh <<'EOF'\ngit push --force\nEOF\n" +
 			"bash /s/rewrite.sh\n",
 	}
@@ -174,6 +176,12 @@ def main():
 
 		Expect(result.Truncated).To(BeTrue())
 		Expect(result.Opacities[0].Cause).To(Equal(parser.OpacityDepthLimit))
+	})
+
+	It("fails closed on a self-running script that redefines a git alias", func() {
+		result := parse("sh -c 'git config alias.x status; bash /s/g.sh'")
+
+		Expect(result.Truncated).To(BeTrue())
 	})
 
 	It("keeps following scripts cheap after many file writes", func() {
