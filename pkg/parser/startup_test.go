@@ -53,7 +53,8 @@ var _ = Describe("Shell startup files", func() {
 		return false
 	}
 
-	DescribeTable("follows a startup file the line sets",
+	DescribeTable(
+		"follows a startup file the line sets",
 		func(command string) {
 			result := parse(command)
 
@@ -88,6 +89,12 @@ var _ = Describe("Shell startup files", func() {
 		Entry("bash --rcfile", `bash --rcfile /abs/x.sh -i -c true`),
 		Entry("bash --init-file", `bash --init-file /abs/x.sh -i`),
 		Entry("relative path for a program", `BASH_ENV=./x.sh git commit -m x`),
+		Entry("env operand after --",
+			`env -- BASH_ENV=/abs/benign.sh bash -c 'git push --force'`),
+		Entry(
+			"env operand after -- with the startup file",
+			`env -- BASH_ENV=/abs/x.sh bash -c true`,
+		),
 		Entry("env operand beside a dynamic one",
 			`env FOO=$(id) BASH_ENV=/abs/x.sh bash -c true`),
 		Entry("literal export after declare -u as a command",
@@ -244,6 +251,13 @@ var _ = Describe("Shell startup files", func() {
 			"ENV", parser.DetailStartupValue),
 		Entry("unknown --rcfile", `bash --rcfile "$RC" -i -c true`,
 			"--rcfile", parser.DetailScriptVariable),
+		Entry("quoted --rcfile bash takes literally", `RC=/abs/x.sh; bash --rcfile '$RC' -ic true`,
+			"--rcfile", parser.DetailScriptVariable),
+		Entry("quoted braced --rcfile", `RC=/abs/x.sh; bash --rcfile '${RC}' -ic true`,
+			"--rcfile", parser.DetailScriptVariable),
+		Entry("stdin redirected from a descriptor",
+			`BASH_ENV=/dev/stdin bash -c true 3</abs/x.sh </dev/fd/3`,
+			"BASH_ENV", parser.DetailScriptRead),
 		Entry("--rcfile from command output", `bash --rcfile "$(mktemp)" -i -c true`,
 			"--rcfile", parser.DetailStartupValue),
 		Entry("inside a script", `bash -c 'BASH_ENV=$(mktemp) bash -c true'`,
@@ -276,6 +290,7 @@ var _ = Describe("Shell startup files", func() {
 		Entry("program after computed env operands", `env $(cat .env) npm start`),
 		Entry("literal env operand from command output", `env FOO=$(id -u) bash -c true`),
 		Entry("set without keyword mode", `set -euo pipefail; bash -c true`),
+		Entry("stdin redirected from /dev/null", `BASH_ENV=/dev/stdin bash -c true </dev/null`),
 		Entry("keyword flag as a positional parameter", `set -- -k; bash -c true BASH_ENV=/x`),
 		Entry("keyword turned off", `set +o keyword; bash -c true BASH_ENV=/x`),
 		Entry("--rcfile without -i", `bash --rcfile /opaque.sh -c true`),

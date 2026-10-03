@@ -488,7 +488,7 @@ func commandIndex(spec launcher, args []string) (int, bool) {
 
 		switch {
 		case arg == endOfOptions:
-			return i + 1, i+1 < len(args)
+			return operandsEnd(spec, args, i+1, operands)
 		case slices.Contains(spec.stopFlags, arg):
 			return 0, false
 		case slices.Contains(spec.valueFlags, arg), slices.Contains(spec.scriptFlags, arg):

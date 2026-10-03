@@ -43,6 +43,7 @@ type startupValue struct {
 	dynamic  bool
 	anyName  bool
 	deferred bool
+	literal  bool
 }
 
 // startupScript is a file a shell runs before anything else.
@@ -173,7 +174,7 @@ func (w *astWalker) startupScripts(cmd Command, args []string) []startupScript {
 	}
 
 	for _, rcfile := range rcfiles(args) {
-		add(rcfileLabel, startupValue{value: rcfile, dynamic: marked(rcfile)}, true)
+		add(rcfileLabel, literalRCFile(rcfile), true)
 	}
 
 	return scripts
@@ -293,6 +294,13 @@ func (w *astWalker) startupScript(
 		return startupScript{}, false
 	case clean == devStdin:
 		path, detail = startupStdin(cmd)
+		if detail == "" && path != devStdin {
+			path, detail = redirectedStdin(cmd, path)
+		}
+
+		if detail == "" && path == "" {
+			return startupScript{}, false
+		}
 	case specialPath(clean) || (!filepath.IsAbs(clean) && specialPath(filepath.Join("/", clean))):
 		detail = DetailScriptRead
 	}
@@ -326,6 +334,14 @@ func (w *astWalker) startupScript(
 func (w *astWalker) startupPath(v startupValue) (path, detail string) {
 	if v.deferred {
 		return "", DetailStartupExpansion
+	}
+
+	if v.literal && strings.ContainsAny(v.value, "$`") {
+		return "", DetailScriptVariable
+	}
+
+	if v.literal {
+		return v.value, ""
 	}
 
 	unknown := false

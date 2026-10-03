@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -10,6 +11,47 @@ import (
 // movedDir are the variables a cd on the line changes, which klaudiush
 // would otherwise read from its own process.
 var movedDir = nameSet("PWD OLDPWD")
+
+// operandsEnd skips the operands still due after a launcher's "--": its
+// fixed operands and, for env, NAME=value assignments, which env reads
+// after "--" too.
+func operandsEnd(spec launcher, args []string, i, operands int) (int, bool) {
+	for ; i < len(args); i++ {
+		switch {
+		case spec.assignments && (assignmentPattern.MatchString(args[i]) ||
+			args[i] == unresolvedWord):
+		case operands > 0:
+			operands--
+		default:
+			return i, true
+		}
+	}
+
+	return 0, false
+}
+
+// redirectedStdin checks the file redirected to stdin that a /dev/stdin
+// startup file reads: /dev/null gives nothing, and another device or
+// descriptor (< /dev/fd/3) is a stream klaudiush cannot read.
+func redirectedStdin(cmd Command, path string) (string, string) {
+	clean := resolvePath(cmd.WorkingDirectory, path)
+
+	switch {
+	case clean == devNull:
+		return "", ""
+	case specialPath(clean) || (!filepath.IsAbs(clean) && specialPath(filepath.Join("/", clean))):
+		return "", DetailScriptRead
+	default:
+		return path, ""
+	}
+}
+
+// literalRCFile reports an --rcfile path bash takes as written: the shell
+// already expanded the argument, so a $ or backquote left in it is either
+// part of the name or a variable klaudiush would resolve differently.
+func literalRCFile(path string) startupValue {
+	return startupValue{value: path, dynamic: marked(path), literal: true}
+}
 
 // RCFileOption is the Opacity.Operation of a startup file named by bash
 // --rcfile or --init-file, which takes a path rather than a variable.
