@@ -13,6 +13,7 @@ import (
 	"github.com/smykla-skalski/klaudiush/internal/validators/shell"
 	"github.com/smykla-skalski/klaudiush/pkg/hook"
 	"github.com/smykla-skalski/klaudiush/pkg/logger"
+	"github.com/smykla-skalski/klaudiush/pkg/parser"
 )
 
 var _ = Describe("NestingValidator", func() {
@@ -451,8 +452,15 @@ var _ = Describe("NestingValidator", func() {
 		parts = append(parts, "HOME=/nonexistent-klaudiush git zz")
 		result := blocked(strings.Join(parts, "; "))
 
+		tools := make([]string, 0, len(setups))
 		for _, setup := range setups {
-			tool := strings.Fields(setup)[0]
+			tools = append(tools, strings.Fields(setup)[0])
+		}
+
+		Expect(tools).To(ConsistOf(parser.EvalSetupTools()))
+		Expect(result.Findings[0].Message).To(ContainSubstring("git zz is not a git builtin"))
+
+		for _, tool := range tools {
 			Expect(result.Findings).To(ContainElement(
 				HaveField("Message", "eval runs the shell setup "+tool+
 					" prints, which klaudiush cannot see"),

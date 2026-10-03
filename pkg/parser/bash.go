@@ -29,7 +29,8 @@ type ParseResult struct {
 	// what it finally runs is unknown and it must fail closed.
 	Truncated bool
 	// Opacities explains what could not be inspected and why. It lists at
-	// most a few entries and may be empty only when Truncated is false.
+	// most MaxOpacities plus MaxSetupOpacities entries, and may be empty
+	// only when Truncated is false.
 	Opacities     []Opacity
 	MoreOpacities bool
 	// DynamicWrites counts output redirects whose target name comes from

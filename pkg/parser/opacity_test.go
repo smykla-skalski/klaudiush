@@ -1,6 +1,7 @@
 package parser_test
 
 import (
+	"slices"
 	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -354,24 +355,39 @@ var _ = Describe("Opacity explanations", func() {
 		Expect(result.MoreOpacities).To(BeTrue())
 	})
 
-	It("bounds repeats of one setup tool but still shows a new tool", func() {
-		shells := []string{"bash", "sh", "zsh", "dash", "ksh"}
-		evals := make([]string, 0, 2*len(shells)+2)
-
-		for _, shell := range shells {
-			evals = append(evals,
-				shell+` -c 'eval "$(mise activate bash)"'`,
-				"env "+shell+` -c 'eval "$(mise activate bash)"'`,
-			)
+	It("bounds repeats of one setup tool but still shows every tool", func() {
+		repeats := make([]string, 0, 2*parser.MaxOpacities)
+		for i := range 2 * parser.MaxOpacities {
+			name := "f" + strings.Repeat("x", i)
+			repeats = append(repeats, name+`() { eval "$(mise activate bash)"; }; `+name)
 		}
 
-		evals = append(evals, `eval "$(direnv export bash)"`, "git zz")
-		result := parse(strings.Join(evals, "; "))
+		result := parse(strings.Join(repeats, "; ") + "; " + allSetupEvals() + "; git zz")
+		tools := setupTools(result.Opacities)
 
-		Expect(setupTools(result.Opacities)).To(HaveLen(parser.MaxOpacities + 1))
-		Expect(setupTools(result.Opacities)).To(ContainElements("mise", "direnv"))
+		Expect(tools).To(HaveLen(parser.MaxOpacities + len(parser.EvalSetupTools()) - 1))
+		Expect(slices.Compact(slices.Sorted(slices.Values(tools)))).To(
+			Equal(parser.EvalSetupTools()),
+		)
 		Expect(result.Opacities).To(ContainElement(HaveField("Operation", "git zz")))
 		Expect(result.MoreOpacities).To(BeTrue())
+	})
+
+	It("leaves room for every setup tool after repeats of one", func() {
+		Expect(parser.MaxSetupOpacities).To(BeNumerically(">=",
+			parser.MaxOpacities-1+len(parser.EvalSetupTools())))
+	})
+
+	It("reports an exhausted budget past many setup evals", func() {
+		calls := strings.Repeat("g; ", 60)
+		result := parse(allSetupEvals() + "; " + manyUnknown(20) + "; f() { " + calls +
+			"}; g() { " + strings.Repeat("git status; ", 60) + "}; f")
+
+		Expect(setupTools(result.Opacities)).To(ConsistOf(parser.EvalSetupTools()))
+		Expect(result.Opacities).To(ContainElement(
+			HaveField("Cause", parser.OpacityWorkBudget),
+		))
+		Expect(result.Opacities).To(HaveLen(len(parser.EvalSetupTools()) + parser.MaxOpacities))
 	})
 
 	DescribeTable("names the scripts and aliases on the way",
