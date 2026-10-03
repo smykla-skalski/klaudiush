@@ -10,8 +10,14 @@ import (
 	"strings"
 )
 
-// fieldSeparator joins the parts of a recorded command's identity.
-const fieldSeparator = "\x00"
+const (
+	// fieldSeparator joins the parts of a recorded command's identity.
+	fieldSeparator = "\x00"
+	// maxKeyWrites caps the file writes a script's state covers. Past it no
+	// repeat is cut, and a script that names itself fails closed at the
+	// depth limit as any deep nesting does.
+	maxKeyWrites = 256
+)
 
 // scriptSourceText is a script file's text and how it is walked.
 type scriptSourceText struct {
@@ -41,7 +47,11 @@ func (w *astWalker) sourceKey(cmd Command, text string, literal bool) string {
 	writeParts(h, strconv.Itoa(len(w.dirStack)))
 	writeParts(h, w.dirStack...)
 
-	for _, m := range []map[string]string{w.assignments, w.aliases, w.funcs, w.latestWrites()} {
+	if !w.writeWrites(h) {
+		return w.uniqueKey()
+	}
+
+	for _, m := range []map[string]string{w.assignments, w.aliases, w.funcs} {
 		writeParts(h, strconv.Itoa(len(m)))
 
 		for _, k := range slices.Sorted(maps.Keys(m)) {
@@ -60,27 +70,78 @@ func (w *astWalker) sourceKey(cmd Command, text string, literal bool) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-// latestWrites returns what a script would read from each file written so
-// far on the line.
-func (w *astWalker) latestWrites() map[string]string {
-	writes := make(map[string]string)
+// lineWrites returns, for each file written so far on the line, every
+// version a later script could read from it, oldest first, each once. A
+// version is the captured content or a marker for content that cannot be
+// reconstructed. ok is false past maxKeyWrites writes, where summarizing them
+// on every followed script would cost more than the hook's timeout allows.
+func (w *astWalker) lineWrites() (versions map[string][]string, ok bool) {
+	var chain []*astWalker
+
+	total := 0
 
 	for p := w; p != nil; p = p.parent {
+		chain = append(chain, p)
+		total += len(p.fileWrites)
+	}
+
+	if total > maxKeyWrites {
+		return nil, false
+	}
+
+	versions = make(map[string][]string)
+
+	for _, p := range slices.Backward(chain) {
 		for _, fw := range p.fileWrites {
 			target := resolvePath(fw.WorkingDirectory, fw.Path)
-			if _, seen := writes[target]; seen {
-				continue
-			}
+			version := writeVersion(fw)
 
-			content, found, captured := w.lastLineWrite(target)
-			writes[target] = strings.Join(
-				[]string{content, strconv.FormatBool(found), strconv.FormatBool(captured)},
-				fieldSeparator,
-			)
+			if !slices.Contains(versions[target], version) {
+				versions[target] = append(versions[target], version)
+			}
 		}
 	}
 
-	return writes
+	return versions, true
+}
+
+// writeVersion is what a script reads from a file after fw, as lastWrite
+// sees it.
+func writeVersion(fw FileWrite) string {
+	switch fw.Operation {
+	case WriteOpRedirect, WriteOpHeredoc:
+		if content, captured := fw.CapturedOverwrite(); captured {
+			return "captured" + fieldSeparator + content
+		}
+	default:
+	}
+
+	return "unknown"
+}
+
+// writeWrites hashes the write versions, or reports false when they are
+// past the cap.
+func (w *astWalker) writeWrites(h hash.Hash) bool {
+	versions, ok := w.lineWrites()
+	if !ok {
+		return false
+	}
+
+	writeParts(h, strconv.Itoa(len(versions)))
+
+	for _, target := range slices.Sorted(maps.Keys(versions)) {
+		writeParts(h, target, strconv.Itoa(len(versions[target])))
+		writeParts(h, versions[target]...)
+	}
+
+	return true
+}
+
+// uniqueKey returns a key no other call returns, so nothing matches it.
+func (w *astWalker) uniqueKey() string {
+	w.state.uniqueKeys++
+
+	return "unique" + fieldSeparator + strconv.Itoa(w.state.uniqueKeys)
 }
 
 // writeParts hashes each part with its length, so parts cannot run together.
@@ -129,9 +190,28 @@ func (w *astWalker) confirmRepeat(cmd Command, src scriptSourceText, depth int, 
 	w.walkSource(cmd, src, depth, again)
 	delete(w.state.repeated, again)
 
-	if w.effects() != before {
+	if w.effects() != before || w.ambiguousWrites() {
 		w.opaque(OpacityDepthLimit, scriptName(src.path), "")
 	}
+}
+
+// ambiguousWrites reports whether some file was written more than one way on
+// the line. A script read from it sees only the last version, but a pass that
+// was cut may have run while an earlier one was in place, for instance when
+// the later write is conditional.
+func (w *astWalker) ambiguousWrites() bool {
+	versions, ok := w.lineWrites()
+	if !ok {
+		return true
+	}
+
+	for _, v := range versions {
+		if len(v) > 1 {
+			return true
+		}
+	}
+
+	return false
 }
 
 // effects summarizes what one walk can leave for the next: the distinct
@@ -147,11 +227,8 @@ func (w *astWalker) effects() string {
 		strconv.FormatBool(w.state.untrusted),
 	)
 
-	writes := w.latestWrites()
-	writeParts(h, strconv.Itoa(len(writes)))
-
-	for _, k := range slices.Sorted(maps.Keys(writes)) {
-		writeParts(h, k, writes[k])
+	if !w.writeWrites(h) {
+		return w.uniqueKey()
 	}
 
 	writeParts(h, slices.Sorted(maps.Keys(w.state.dynamicVars))...)

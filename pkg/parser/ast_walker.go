@@ -105,6 +105,8 @@ type parseState struct {
 	// repeated holds the states of scripts whose repeating pass was not
 	// followed and still has to be confirmed.
 	repeated map[string]bool
+	// uniqueKeys counts the script states given keys that match nothing.
+	uniqueKeys int
 }
 
 // spend takes one unit of work, reporting false once the budget is gone.

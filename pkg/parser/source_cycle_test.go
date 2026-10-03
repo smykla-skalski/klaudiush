@@ -3,6 +3,7 @@ package parser_test
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -10,7 +11,11 @@ import (
 	"github.com/smykla-skalski/klaudiush/pkg/parser"
 )
 
-const chainLength = 10
+const (
+	chainLength = 10
+	manyWrites  = 1500
+	manyCalls   = 20
+)
 
 var _ = Describe("Scripts that run themselves", func() {
 	files := map[string]string{
@@ -46,7 +51,10 @@ def main():
 			"    sh -c 'python3 q1.py'\n\"\"\"\nimport subprocess\n" +
 			"subprocess.run([\"gh\", \"issue\", \"list\"])\n",
 		"/s/sh2.sh": "gh issue list\nbash /s/sh2.sh\nsh -c 'bash /s/sh2.sh'\n",
-		"/s/top.sh": "bash /t/f.sh\ncat > /t/f.sh <<'EOF'\n# nothing\nEOF\nbash /s/rewrite.sh\n",
+		"/s/cond.sh": "[ \"$SHLVL\" -gt 4 ] || bash /s/cond.sh\nbash /t/c\n" +
+			"cat > /t/c <<'X'\ngit push --force\nX\n[ -e /x ] && cat > /t/c <<'Z'\n\nZ\n",
+		"/s/true.sh": "true\n",
+		"/s/top.sh":  "bash /t/f.sh\ncat > /t/f.sh <<'EOF'\n# nothing\nEOF\nbash /s/rewrite.sh\n",
 		"/s/rewrite.sh": "bash /t/f.sh\ncat > /t/f.sh <<'EOF'\ngit push --force\nEOF\n" +
 			"bash /s/rewrite.sh\n",
 	}
@@ -159,6 +167,31 @@ def main():
 
 		Expect(result.Truncated).To(BeTrue())
 		Expect(result.Opacities[0].Cause).To(Equal(parser.OpacityDepthLimit))
+	})
+
+	It("fails closed on a self-running script whose file writes are conditional", func() {
+		result := parse("bash /s/cond.sh")
+
+		Expect(result.Truncated).To(BeTrue())
+		Expect(result.Opacities[0].Cause).To(Equal(parser.OpacityDepthLimit))
+	})
+
+	It("keeps following scripts cheap after many file writes", func() {
+		var line strings.Builder
+
+		for i := range manyWrites {
+			fmt.Fprintf(&line, "echo x > /t/a%d; ", i)
+		}
+
+		for range manyCalls {
+			line.WriteString("bash /s/true.sh; ")
+		}
+
+		start := time.Now()
+		result := parse(line.String())
+
+		Expect(result.Truncated).To(BeFalse())
+		Expect(time.Since(start)).To(BeNumerically("<", 2*time.Second))
 	})
 
 	It("still fails closed on a chain of distinct scripts past the limit", func() {
