@@ -16,9 +16,9 @@ const EntrypointOperation = "--entrypoint"
 // or may not take a value.
 const DetailEntrypointOptions = "it follows more options of unknown arity than klaudiush reads"
 
-// minEntrypointAbbrev is the shortest prefix of --entrypoint (--ent) that
-// docker-compose v1 (docopt) and podman-compose (argparse) accept for it.
-const minEntrypointAbbrev = len("--ent")
+// minEntrypointAbbrev is the shortest prefix of --entrypoint (--e) that
+// docker-compose v1 (docopt, whose run has no --env) accepts for it.
+const minEntrypointAbbrev = len("--e")
 
 // optionWithValue is how many arguments an option and its value take.
 const optionWithValue = 2
@@ -30,6 +30,10 @@ const maxContainerReadings = 32
 // maxContainerRunWords bounds how many run or create words one runner's
 // arguments are read from.
 const maxContainerRunWords = 8
+
+// maxEntrypoints bounds the --entrypoint options one reading keeps, so a
+// long list of them cannot slow the hook.
+const maxEntrypoints = 8
 
 // argsPerWorkUnit is how many container arguments read or copied cost one
 // unit of the parse's work budget.
@@ -75,7 +79,8 @@ var containerBoolFlags = nameSet(`--build --detach --disable-content-trust --env
 	--http-proxy --init --interactive --no-TTY --no-deps --no-healthcheck --no-hosts
 	--oom-kill-disable --passwd --privileged --publish-all --quiet --quiet-build --quiet-pull
 	--read-only --read-only-tmpfs --remove-orphans --replace --rm --rmi --rootfs
-	--service-ports --sig-proxy --tls-verify --tty --use-aliases --use-api-socket`)
+	--service-ports --sig-proxy --tls-verify --tty --use-aliases --use-api-socket
+	--unsetenv-all --no-hostname --insecure-registry`)
 
 // containerShortValueFlags are the short run options that take a value
 // (-e, -v, -w, ...). The rest (-d, -i, -t, -P, -q, -T) are boolean.
@@ -143,6 +148,28 @@ func (r *runReader) tracked() bool {
 	return len(r.runs) > 0 || r.exhausted || r.dynamic != ""
 }
 
+// merge adds what another reading of the same arguments found.
+func (r *runReader) merge(other *runReader) {
+	for _, run := range other.runs {
+		if !slices.ContainsFunc(r.runs, run.equal) {
+			r.runs = append(r.runs, run)
+		}
+	}
+
+	r.exhausted = r.exhausted || other.exhausted
+
+	if other.dynamic != "" {
+		r.dynamic = other.dynamic
+	}
+}
+
+// mayHideEntrypoint reports a run or create among args next to a variable
+// that may hold an --entrypoint, which only the walker can resolve.
+func mayHideEntrypoint(args []string) bool {
+	return slices.ContainsFunc(args, HasUnresolvedVars) &&
+		slices.ContainsFunc(args, func(arg string) bool { return containerRunWords[arg] })
+}
+
 // entrypointOption splits an argument naming --entrypoint, or a prefix of
 // it at least as long as --ent, into its attached value, if any.
 func entrypointOption(arg string) (value string, attached, ok bool) {
@@ -157,7 +184,10 @@ func entrypointOption(arg string) (value string, attached, ok bool) {
 // mentionsEntrypoint reports an argument that is or may expand to an
 // --entrypoint option, so runs without one are not read at all.
 func mentionsEntrypoint(arg string) bool {
-	return strings.Contains(arg, EntrypointOperation[:minEntrypointAbbrev])
+	_, _, ok := entrypointOption(arg)
+
+	return ok || (dynamicWord(arg) != "" &&
+		strings.Contains(arg, EntrypointOperation[:minEntrypointAbbrev]))
 }
 
 // read continues a reading at i with the entrypoints found so far.
@@ -181,8 +211,8 @@ func (r *runReader) read(i int, entrypoints []string) {
 			i = r.skipValue(i, entrypoints, containerValueFlags[arg], unknown)
 		case strings.HasPrefix(arg, "-") && len(arg) > 1:
 			i = r.skipValue(i, entrypoints, shortClusterTakesNext(arg), false)
-		case dynamicWord(arg) != "":
-			r.dynamic = dynamicWord(arg)
+		case leadingExpansion(arg) != "":
+			r.dynamic = leadingExpansion(arg)
 
 			return
 		default:
@@ -198,6 +228,12 @@ func (r *runReader) read(i int, entrypoints []string) {
 // option after a value the parser dropped (--entrypoint ""), so both are
 // followed.
 func (r *runReader) entrypoint(i int, value string, attached bool, entrypoints *[]string) int {
+	if len(*entrypoints) >= maxEntrypoints {
+		r.exhausted = true
+
+		return len(r.args)
+	}
+
 	switch {
 	case attached:
 		*entrypoints = append(slices.Clone(*entrypoints), value)
@@ -252,7 +288,7 @@ func (r *runReader) image(idx int, entrypoints []string) {
 		return
 	}
 
-	if detail := dynamicWord(r.args[idx]); detail != "" {
+	if detail := leadingExpansion(r.args[idx]); detail != "" {
 		r.dynamic = detail
 
 		return
@@ -261,6 +297,21 @@ func (r *runReader) image(idx int, entrypoints []string) {
 	run := containerRun{entrypoints: entrypoints, args: r.args[idx+1:]}
 	if !slices.ContainsFunc(r.runs, run.equal) {
 		r.runs = append(r.runs, run)
+	}
+}
+
+// leadingExpansion says why a word in the place of an option or the image
+// may stand for options, or returns "". A word that starts with a literal
+// (img:$TAG) is an image whatever the variable holds; command output is
+// rendered after the literal text, so it is never trusted.
+func leadingExpansion(word string) string {
+	switch {
+	case strings.HasPrefix(word, "${"):
+		return DetailWordVariable
+	case marked(word) || bracesExpand(word):
+		return DetailWordOutput
+	default:
+		return ""
 	}
 }
 
@@ -353,11 +404,15 @@ func (w *astWalker) entrypointCommands(cmd Command) []Command {
 		return nil
 	}
 
-	args := w.expandedArgs(cmd.Args)
-	r := containerRuns(args)
+	r := &runReader{}
 
-	if !w.spendArgs(cmd, r.readings*len(args)) {
-		return nil
+	for _, args := range w.expandedArgs(cmd.Args) {
+		read := containerRuns(args)
+		if !w.spendArgs(cmd, read.readings*len(args)) {
+			return nil
+		}
+
+		r.merge(read)
 	}
 
 	switch {
@@ -433,40 +488,51 @@ func (c Command) sameCall(other Command) bool {
 	return c.Name == other.Name && slices.Equal(c.Args, other.Args)
 }
 
-// expandedArgs substitutes the variables it can resolve in args, splitting
-// each substituted argument into words.
-func (w *astWalker) expandedArgs(args []string) []string {
+// expandedArgs substitutes the variables it can resolve in args. Whether an
+// argument was quoted is not known, so it returns both readings: each
+// substituted argument kept whole, and split into words.
+func (w *astWalker) expandedArgs(args []string) [][]string {
 	if !slices.ContainsFunc(args, HasUnresolvedVars) {
-		return args
+		return [][]string{args}
 	}
 
-	out := make([]string, 0, len(args))
+	whole := make([]string, 0, len(args))
+	split := make([]string, 0, len(args))
 
 	for _, arg := range args {
-		if !HasUnresolvedVars(arg) {
-			out = append(out, arg)
+		expanded, ok := w.resolveWord(arg)
+		if !HasUnresolvedVars(arg) || !ok || marked(expanded) {
+			whole, split = append(whole, arg), append(split, arg)
 
 			continue
 		}
 
-		if expanded, ok := w.resolveWord(arg); ok && !marked(expanded) {
-			out = append(out, strings.Fields(expanded)...)
-		} else {
-			out = append(out, arg)
-		}
+		whole, split = append(whole, expanded), append(split, strings.Fields(expanded)...)
 	}
 
-	return out
+	if slices.Equal(whole, split) {
+		return [][]string{whole}
+	}
+
+	return [][]string{whole, split}
 }
 
 // resolveEntrypoint checks an entrypoint value, recording as opaque one from
-// an unknown variable, command output, a glob or a brace expansion.
+// an unknown variable, command output, a glob or a brace expansion. In a
+// JSON array only expansions count: its brackets are not a glob.
 func (w *astWalker) resolveEntrypoint(cmd Command, value string) (string, bool) {
-	if _, ok := jsonArray(value); ok {
-		return value, true
+	detail := commandWordDetail(value)
+
+	if array, ok := jsonArray(value); ok {
+		detail = ""
+
+		for _, element := range array {
+			if d := dynamicWord(element); d != "" {
+				detail = d
+			}
+		}
 	}
 
-	detail := commandWordDetail(value)
 	if detail == "" {
 		return value, true
 	}

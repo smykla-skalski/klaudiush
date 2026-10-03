@@ -84,12 +84,19 @@ var _ = Describe("Container --entrypoint", func() {
 			"nerdctl run --verify none --cosign-key k --entrypoint git img push --force"),
 		Entry("a dashed value after an entrypoint",
 			"docker run --entrypoint git --name -w img push --force"),
+		Entry("a compose v1 abbreviation", "docker-compose run --e git svc push --force"),
+		Entry("an attached compose v1 abbreviation",
+			"docker-compose run --en=git svc push --force"),
 		Entry("a compose abbreviation", "podman-compose run --entry git svc push --force"),
 		Entry("an attached compose abbreviation", "docker-compose run --ent=git svc push --force"),
 		Entry("a resolved variable holding options",
 			`X="--entrypoint git"; docker run $X img push --force`),
 		Entry("a resolved option before the entrypoint",
 			"OPTS=--rm; docker run $OPTS --entrypoint git img push --force"),
+		Entry("a quoted variable with spaces as an option value",
+			`V="A=1 B"; docker run -e "$V" --entrypoint git img push --force`),
+		Entry("an unknown runner with a line variable",
+			`X="--entrypoint git"; foo docker run $X img push --force`),
 		Entry("a runner from a variable", `"$DOCKER" run --entrypoint git img push --force`),
 		Entry("apple container", "container run --entrypoint git img push --force"),
 		Entry("docker.exe", "docker.exe run --entrypoint git img push --force"),
@@ -126,8 +133,17 @@ var _ = Describe("Container --entrypoint", func() {
 		},
 		Entry("nested runners", strings.Repeat("docker run --entrypoint docker run ", 1000)),
 		Entry("nested images", strings.Repeat("docker run --entrypoint docker img ", 1000)),
+		Entry("many entrypoints", "docker run"+strings.Repeat(" --entrypoint -a", 6000)+" i"),
+		Entry("many empty entrypoints",
+			"docker run"+strings.Repeat(` --entrypoint ""`, 6000)+" --entrypoint git i push"),
 		Entry("many run words", "docker "+strings.Repeat("run --a ", 3000)+"--entrypoint git i"),
 	)
+
+	It("reads a variable holding the entrypoint both quoted and split", func() {
+		command := `EP="git push"; docker run --entrypoint "$EP" img --force`
+
+		Expect(forcePushes(command)).NotTo(BeEmpty())
+	})
 
 	It("hands the arguments after the image to git", func() {
 		pushes := forcePushes("docker run --rm --entrypoint git alpine push --force origin main")
@@ -154,6 +170,10 @@ var _ = Describe("Container --entrypoint", func() {
 		Entry("a substituted option value",
 			`docker run -v "$(pwd)":/w -e "X=$HOME" --entrypoint python img app.py`),
 		Entry("an unknown image without an entrypoint", `docker run --rm "$IMG" push --force`),
+		Entry("an image tag from a variable",
+			"docker run --rm --entrypoint /app/server myrepo/app:$TAG --port 80"),
+		Entry("env options and an unknown image",
+			`docker run --env A=1 --expose 80 "$IMG" push --force`),
 		Entry("many unknown options without an entrypoint",
 			"docker run --a1 x --a2 x --a3 x --a4 x --a5 x --a6 x --a7 x img push --force"),
 		Entry(
@@ -205,6 +225,11 @@ var _ = Describe("Container --entrypoint", func() {
 			`docker run --entrypoint git "$IMG" push`,
 			parser.DetailWordVariable,
 		),
+		Entry("a JSON array naming an unknown variable",
+			`docker run --entrypoint "[\"$X\"]" img push`, parser.DetailWordVariable),
+		Entry("too many entrypoints",
+			"docker run"+strings.Repeat(" --entrypoint -a", 10)+" img push",
+			parser.DetailEntrypointOptions),
 		Entry("too many run words",
 			"docker run --name run --name run --name run --name run --name run "+
 				"--name run --name run --name run --entrypoint git img push",
