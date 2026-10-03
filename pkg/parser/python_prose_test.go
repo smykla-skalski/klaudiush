@@ -458,7 +458,8 @@ with contextlib.redirect_stdout(b): print("git zz")'`),
 		),
 	)
 
-	DescribeTable("reads prose in ordinary argv-list helpers",
+	DescribeTable(
+		"reads prose in ordinary argv-list helpers",
 		func(command string) {
 			Expect(parse(command).Truncated).To(BeFalse(), "truncated: %q", command)
 		},
@@ -476,6 +477,48 @@ with contextlib.redirect_stdout(b): print("git zz")'`),
 			"python3 -c 'from sys import stderr\nprint(\"git is required\", file=stderr)'"),
 		Entry("HOME read from the environment",
 			"python3 -c 'import os\nhome = os.environ[\"HOME\"]\nprint(\"git is required\")'"),
+		Entry(
+			"PATH read from the environment",
+			"python3 -c 'import os, shutil\nshutil.which(\"git\", path=os.environ[\"PATH\"])\nprint(\"git is required\")'",
+		),
+		Entry(
+			"an argv Popen",
+			"python3 -c 'import subprocess\np = subprocess.Popen([\"git\", \"log\"], stdout=subprocess.PIPE)\nprint(\"git is unavailable\")'",
+		),
+		Entry(
+			"asyncio argv exec",
+			"python3 -c 'import asyncio\nasyncio.create_subprocess_exec(\"git\", \"log\")\nprint(\"git is unavailable\")'",
+		),
+		Entry(
+			"js execFileSync",
+			`node -e 'const { execFileSync } = require("child_process"); execFileSync("git", ["status"]); console.error("git is unavailable")'`,
+		),
+		Entry(
+			"raise SystemExit",
+			`python3 -c 'raise SystemExit("git executable not found on PATH")'`,
+		),
+		Entry(
+			"sys.stderr.write",
+			`python3 -c 'import sys; sys.stderr.write("git executable not found on PATH")'`,
+		),
+		Entry("sys.exit", `python3 -c 'import sys; sys.exit("git executable not found on PATH")'`),
+		Entry(
+			"a logger method",
+			`python3 -c 'import logging; logging.error("git is unavailable")'`,
+		),
+		Entry("output saved with tee", `python3 -c 'print("git is unavailable")' | tee out.log`),
+	)
+
+	DescribeTable(
+		"distrusts message methods on other objects",
+		func(command string) {
+			Expect(parse(command).Truncated).To(BeTrue(), "not truncated: %q", command)
+		},
+		Entry(
+			"a helper module method",
+			`python3 -c 'import shellmsg; shellmsg.echo("git zz now")'`,
+		),
+		Entry("tee into a process substitution", `python3 -c 'print("git zz")' | tee >(sh)`),
 	)
 
 	It("keeps prose in a message function that only prints and exits", func() {

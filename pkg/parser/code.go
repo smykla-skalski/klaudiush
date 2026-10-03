@@ -35,27 +35,28 @@ var (
 // word may run something klaudiush cannot see: git config, config files, the
 // variables that move or extend the configuration git reads, a directory
 // change to another repository, a PATH that finds other git commands, or
-// output piped or redirected into a program (popen, a process's stdin, a
+// output piped or redirected into a program (print to a process's stdin, a
 // replaced stdout, dup2 onto a pipe after fork) or captured as a value (print
 // or a log stream into a buffer, redirect_stdout). Code that can run a shell
-// string at all (os.system, shell=True, execSync, exec, shlex) or rebind
-// names dynamically (setattr, builtins, globals) reads no prose: any message
-// it builds could reach that call. HOME and PATH count only as a key or
-// assignment, since code reads them and messages name them ("not found on
-// PATH"). Argv-list calls with cwd, stdout or stdin options, reading a
-// result's stdout, and printing to stderr do not count.
+// string at all (os.system, os.popen, shell=True, execSync, exec, shlex) or
+// rebind names dynamically (setattr, builtins, globals) reads no prose: any
+// message it builds could reach that call. HOME and PATH count only as a key
+// or assignment, since code reads them and messages name them ("not found on
+// PATH"). Argv-list calls (Popen, execFileSync, create_subprocess_exec) with
+// cwd, stdout or stdin options, reading a result's stdout, and printing to
+// stderr do not count.
 var proseUnsafe = regexp.MustCompile(
-	`(?i)os\.system|shell\s*=\s*true|getoutput|child_process|execsync|\bexec\w*\s*\(|` +
+	`(?i)os\.system|os\.popen|shell\s*[=:]\s*true|getoutput|execsync|os\.exec|\bexec\s*\(|` +
 		`\beval\s*\(|shlex|spawn|setattr|builtins|globals\s*\(|locals\s*\(|__dict__|` +
-		`\bvars\s*\(|__import__|importlib|putenv|create_subprocess|` +
+		`\bvars\s*\(|__import__|importlib|putenv|environ\.setdefault|create_subprocess_shell|` +
 		`alias\.|\[alias|\[include|include(?:if)?\.|gitconfig|git/config|` +
 		`GIT_CONFIG|GIT_DIR|GIT_COMMON_DIR|GIT_WORK_TREE|GIT_EXEC_PATH|XDG_CONFIG_HOME|` +
-		`chdir|popen|open3|\$stdout\s*=|\bsys\.stdout\s*=[^=]|` +
+		`chdir|open3|\$stdout\s*=|\bsys\.stdout\s*=[^=]|` +
 		`\bstd(?:out|err)\.write\s*=[^=]|` +
 		`dup2|\bfork\b|\bpipe\s*\(|fdopen|redirect_std|StringIO|BytesIO|` +
 		`\b(?:file|stream)\s*=\s*(?:[^s\s]|s[^ty]|sy[^s]|st[^d])|` +
 		`\|\s*["'\x60]|["'\x60]\s*\||` +
-		`(?-i:\bHOME\b["'\]]*\s*[:=][^=]|["']PATH["']|\bPATH\s*=|\.PATH\b|\{PATH\})`,
+		`(?-i:\b(?:HOME|PATH)\b["'\]]*\s*[:=][^=]|\.PATH\s*=[^=]|\{PATH\})`,
 )
 
 // messageCallNames name calls that show their argument to a person: printing,
@@ -138,8 +139,21 @@ func defBody(code string, headerEnd, indent int) string {
 // rather than handed on as a value.
 var raisedError = regexp.MustCompile(
 	`(?:^|[^\w.])(?:raise|throw\s+new|throw)\s+(?:[A-Za-z_$][\w$]*\.)*` +
-		`[\w$]*(?:Error|Exception|Warning)\s*$`,
+		`[\w$]*(?:Error|Exception|Warning|Exit)\s*$`,
 )
+
+// streamWrite matches a write to the process's own stderr or stdout
+// (sys.stderr.write, process.stderr.write), which shows its argument.
+var streamWrite = regexp.MustCompile(`(?:^|[^\w.])(?:sys|process)\.std(?:err|out)\.write$`)
+
+// trustedReceivers are the objects whose message-named methods show their
+// argument: loggers, the console and the stdlib. A method on another object,
+// such as a helper module klaudiush does not follow, may do anything.
+var trustedReceivers = nameSet("logging log logger LOGGER LOG console warnings sys self cls click")
+
+// messageReceiver matches the object a method call is made on (log in
+// log.info), when the call is a method call.
+var messageReceiver = regexp.MustCompile(`([A-Za-z_$][\w$]*)\.[A-Za-z_$][\w$]*$`)
 
 // trailingName matches the identifier that ends a piece of code.
 var trailingName = regexp.MustCompile(`([A-Za-z_$][\w$]*)$`)
@@ -216,8 +230,11 @@ func proseLiteral(code string, start, end int, reuse textReuse) bool {
 	}
 
 	name := trailingName.FindString(callee)
+	receiver := messageReceiver.FindStringSubmatch(callee)
+	trustedCall := receiver == nil || trustedReceivers[receiver[1]]
 
-	return messageCalls[name] && !reuse.untrusted[name] ||
+	return messageCalls[name] && !reuse.untrusted[name] && trustedCall ||
+		streamWrite.MatchString(callee) ||
 		!reuse.errors && raisedError.MatchString(callee)
 }
 

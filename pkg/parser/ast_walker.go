@@ -261,17 +261,19 @@ func (w *astWalker) noteOutputRoute() {
 	}
 }
 
-// pipeFilters only read and print their input; none runs any of it. sort
-// (--compress-program) and rg (--pre) are left out: they can.
-var pipeFilters = nameSet("head tail jq grep egrep fgrep wc uniq cut tr column nl cat")
+// pipeFilters only read and print or save their input; none runs any of it.
+// sort (--compress-program) and rg (--pre) are left out: they can.
+var pipeFilters = nameSet("head tail jq grep egrep fgrep wc uniq cut tr column nl cat tee")
 
 // pipeFilter reports whether a pipeline stage is one of pipeFilters, written
 // literally and not redefined on the line, so what flows into it is displayed
-// rather than run.
+// rather than run. A stage with a redirect or a substitution (tee >(sh)) may
+// hand its input on, and is walked only after the stage before it, so it is
+// not a filter.
 func (w *astWalker) pipeFilter(stmt *syntax.Stmt) bool {
 	call := callExprOf(stmt)
-	if call == nil || len(call.Assigns) > 0 || len(call.Args) == 0 ||
-		!isLiteralWord(call.Args[0]) {
+	if call == nil || len(stmt.Redirs) > 0 || len(call.Assigns) > 0 || len(call.Args) == 0 ||
+		!isLiteralWord(call.Args[0]) || anyWordDynamic(call.Args) {
 		return false
 	}
 
