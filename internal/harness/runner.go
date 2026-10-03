@@ -68,7 +68,7 @@ func (r Runner) Run(
 		model.Close()
 
 		if r.Keep {
-			return sb.StopProcesses()
+			return errors.CombineErrors(sb.StopProcesses(), sb.closeKeeper())
 		}
 
 		return sb.Close()
