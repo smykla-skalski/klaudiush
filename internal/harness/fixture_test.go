@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"syscall"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -113,6 +114,58 @@ var _ = Describe("Fixture", func() {
 		Expect(loaded).To(HaveLen(1))
 		Expect(loaded[0].Path()).To(Equal(path))
 		Expect(loaded[0].Validate()).To(Succeed())
+	})
+
+	It("replaces only the promoted provider's fixtures", func() {
+		dir := GinkgoT().TempDir()
+		stage := GinkgoT().TempDir()
+
+		stale := filepath.Join(dir, "claude", "stale-pretooluse.json")
+		Expect(os.MkdirAll(filepath.Dir(stale), 0o750)).To(Succeed())
+		Expect(os.WriteFile(stale, []byte("{}"), 0o600)).To(Succeed())
+
+		kept := filepath.Join(dir, "codex", "deny_shell-pretooluse.json")
+		Expect(os.MkdirAll(filepath.Dir(kept), 0o750)).To(Succeed())
+		Expect(os.WriteFile(kept, []byte("{}"), 0o600)).To(Succeed())
+
+		staged, err := harness.WriteFixture(stage, denyFixture())
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(harness.PromoteFixtures(stage, dir, hook.ProviderClaude)).To(Succeed())
+
+		Expect(stale).NotTo(BeAnExistingFile())
+		Expect(kept).To(BeAnExistingFile())
+		Expect(filepath.Join(dir, "claude", filepath.Base(staged))).To(BeAnExistingFile())
+		Expect(filepath.Join(dir, "claude.next")).NotTo(BeADirectory())
+	})
+
+	It("drops a provider's fixtures when its passing run recorded none", func() {
+		dir := GinkgoT().TempDir()
+		old := filepath.Join(dir, "opencode", "x.json")
+		Expect(os.MkdirAll(filepath.Dir(old), 0o750)).To(Succeed())
+		Expect(os.WriteFile(old, []byte("{}"), 0o600)).To(Succeed())
+
+		Expect(
+			harness.PromoteFixtures(GinkgoT().TempDir(), dir, hook.ProviderOpenCode),
+		).To(Succeed())
+		Expect(filepath.Join(dir, "opencode")).NotTo(BeADirectory())
+	})
+
+	It("keeps the old fixtures when the staged ones cannot be copied", func() {
+		dir := GinkgoT().TempDir()
+		stage := GinkgoT().TempDir()
+
+		old := filepath.Join(dir, "claude", "x.json")
+		Expect(os.MkdirAll(filepath.Dir(old), 0o750)).To(Succeed())
+		Expect(os.WriteFile(old, []byte("{}"), 0o600)).To(Succeed())
+
+		Expect(os.MkdirAll(filepath.Join(stage, "claude"), 0o750)).To(Succeed())
+		Expect(syscall.Mkfifo(filepath.Join(stage, "claude", "pipe"), 0o600)).To(Succeed())
+
+		err := harness.PromoteFixtures(stage, dir, hook.ProviderClaude)
+		Expect(err).To(MatchError(ContainSubstring("copying staged claude fixtures")))
+		Expect(old).To(BeAnExistingFile())
+		Expect(filepath.Join(dir, "claude.next")).NotTo(BeADirectory())
 	})
 
 	It("refuses fixtures with fields it does not know", func() {

@@ -95,7 +95,7 @@ The specs also mutate every recorded response with an extra field and rename Cod
 
 ## Updating fixtures
 
-Run `mise run test:harness:fixtures` after a harness upgrade or a response change. Fixtures are redacted before they are written: sandbox paths become `{{WORK}}`, `{{HOME}}` and `{{ROOT}}`, the klaudiush binary path becomes `klaudiush`, and a fixture that still contains a home or temp path, an API key or a token field is rejected. Gemini fixtures (`source: docs`) are written by hand from the published reference; they carry no recorded response and are checked by replay only.
+Run `mise run test:harness:fixtures` after a harness upgrade or a response change. Captures go to a staging directory first; a harness's fixtures are replaced only when every one of its scenarios ran and none failed, so a harness that is not installed, not selected, a known gap, or failing keeps the fixtures it had. Fixtures are redacted before they are written: sandbox paths become `{{WORK}}`, `{{HOME}}` and `{{ROOT}}`, the klaudiush binary path becomes `klaudiush`, and a fixture that still contains a home or temp path, an API key or a token field is rejected. Gemini fixtures (`source: docs`) are written by hand from the published reference; they carry no recorded response and are checked by replay only.
 
 ## Unsupported paths
 

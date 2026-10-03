@@ -173,15 +173,23 @@ func (r Runner) setup(ctx context.Context, d Driver, sc Scenario, result *Result
 	return err
 }
 
-// Problems runs the checks every scenario shares, then the scenario's own:
-// the harness finished in time, every hook exited cleanly, every payload
-// and response matches the provider contract, and every event klaudiush
-// registered is one the provider fires.
+// Problems runs the checks every scenario shares, then the scenario's own.
 func (res *Result) Problems() []string {
+	return append(res.HarnessProblems(), res.Scenario.Check(res)...)
+}
+
+// HarnessProblems runs the checks every scenario shares, known gap or not:
+// the harness finished in time and exited cleanly, every hook exited
+// cleanly, every payload and response matches the provider contract, and
+// every event klaudiush registered is one the provider fires.
+func (res *Result) HarnessProblems() []string {
 	var problems []string
 
-	if res.TimedOut {
+	switch {
+	case res.TimedOut:
 		problems = append(problems, "the harness did not finish before the run timeout")
+	case res.RunErr != nil:
+		problems = append(problems, "the harness exited with an error: "+res.RunErr.Error())
 	}
 
 	provider := res.Driver.Provider()
@@ -203,9 +211,7 @@ func (res *Result) Problems() []string {
 		}
 	}
 
-	problems = append(problems, res.checkRegisteredEvents()...)
-
-	return append(problems, res.Scenario.Check(res)...)
+	return append(problems, res.checkRegisteredEvents()...)
 }
 
 // checkRegisteredEvents checks the event names in the installed JSON hook

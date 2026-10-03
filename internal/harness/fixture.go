@@ -203,3 +203,40 @@ func WriteFixture(dir string, fixture Fixture) (string, error) {
 
 	return path, errors.Wrap(os.WriteFile(path, buf.Bytes(), filePerm), "writing fixture")
 }
+
+// PromoteFixtures replaces one provider's fixtures in dir with the ones
+// staged for it, so a provider is rewritten only after its whole live run
+// passed and the others keep their coverage. The staged set is copied next
+// to the old one first, so a failed copy leaves the old fixtures in place.
+func PromoteFixtures(stage, dir string, provider hook.Provider) error {
+	src := filepath.Join(stage, string(provider))
+	dst := filepath.Join(dir, string(provider))
+	next := dst + ".next"
+
+	if err := os.RemoveAll(next); err != nil {
+		return errors.Wrap(err, "clearing staged fixture copy")
+	}
+
+	_, statErr := os.Stat(src)
+
+	switch {
+	case statErr == nil:
+		if err := os.CopyFS(next, os.DirFS(src)); err != nil {
+			_ = os.RemoveAll(next)
+
+			return errors.Wrapf(err, "copying staged %s fixtures", provider)
+		}
+	case !errors.Is(statErr, fs.ErrNotExist):
+		return errors.Wrapf(statErr, "reading staged %s fixtures", provider)
+	}
+
+	if err := os.RemoveAll(dst); err != nil {
+		return errors.Wrapf(err, "removing old %s fixtures", provider)
+	}
+
+	if _, err := os.Stat(next); errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+
+	return errors.Wrapf(os.Rename(next, dst), "replacing %s fixtures", provider)
+}

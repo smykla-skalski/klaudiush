@@ -12,6 +12,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/smykla-skalski/klaudiush/internal/harness"
+	"github.com/smykla-skalski/klaudiush/pkg/hook"
 )
 
 // The live suite runs only with KLAUDIUSH_HARNESS_LIVE=1 (mise run
@@ -36,6 +37,12 @@ var (
 	runner harness.Runner
 	report *harness.Report
 	guard  *harness.HomeGuard
+
+	// fixtureStage collects captured fixtures during the run. A provider's
+	// fixtures are replaced from it only when every scenario of that harness
+	// ran and none failed, so a skipped or failing harness keeps its old ones.
+	fixtureStage string
+	cleanRun     = map[hook.Provider]bool{}
 )
 
 var _ = AfterSuite(func() {
@@ -52,6 +59,17 @@ var _ = AfterSuite(func() {
 
 	Expect(report.Write(path)).To(Succeed())
 	GinkgoWriter.Printf("harness report: %s\n", path)
+
+	if fixtureStage != "" {
+		for provider, clean := range cleanRun {
+			if clean {
+				Expect(harness.PromoteFixtures(fixtureStage, fixtureDir, provider)).To(Succeed())
+				GinkgoWriter.Printf("rewrote %s fixtures\n", provider)
+			}
+		}
+
+		Expect(os.RemoveAll(fixtureStage)).To(Succeed())
+	}
 
 	changed, err := guard.Changed()
 	Expect(err).NotTo(HaveOccurred())
@@ -80,6 +98,11 @@ var _ = Describe("Live harness enforcement", Ordered, ContinueOnFailure, Label("
 			Keep:   os.Getenv(envKeep) == "1",
 		}
 		report = harness.NewReport(klaudiushVersion(binary))
+
+		if os.Getenv(envFixtures) == "1" {
+			fixtureStage, err = os.MkdirTemp(os.Getenv(envBase), "klaudiush-harness-fixtures-")
+			Expect(err).NotTo(HaveOccurred())
+		}
 	})
 
 	for _, driver := range []harness.Driver{
@@ -123,6 +146,16 @@ var _ = Describe("Live harness enforcement", Ordered, ContinueOnFailure, Label("
 				if gap := driver.KnownGap(version); gap != "" {
 					entry.Status = harness.StatusKnownGap
 					entry.Reason = gap
+
+					return
+				}
+
+				cleanRun[driver.Provider()] = true
+			})
+
+			AfterEach(func() {
+				if CurrentSpecReport().Failed() {
+					cleanRun[driver.Provider()] = false
 				}
 			})
 
@@ -172,11 +205,16 @@ func runScenario(
 		Fail(err.Error())
 	}
 
-	problems := result.Problems()
-
 	if gap != "" {
+		if problems := result.HarnessProblems(); len(problems) > 0 {
+			detail := strings.Join(problems, "; ")
+			record(harness.StatusFailed, detail)
+			Fail(detail + "\nharness output:\n" + string(result.Output))
+		}
+
 		if !result.GapConfirmed() {
-			detail := "known gap did not reproduce as recorded: " + strings.Join(problems, "; ")
+			detail := "known gap did not reproduce as recorded: " +
+				strings.Join(result.Problems(), "; ")
 			record(harness.StatusFailed, detail)
 			Fail(driver.Name() + " " + version + ": " + detail)
 		}
@@ -185,20 +223,20 @@ func runScenario(
 		Skip("confirmed known gap: " + gap)
 	}
 
-	if len(problems) > 0 {
+	if problems := result.Problems(); len(problems) > 0 {
 		detail := strings.Join(problems, "; ")
 		record(harness.StatusFailed, detail)
 		Fail(detail + "\nharness output:\n" + string(result.Output))
 	}
 
-	if os.Getenv(envFixtures) == "1" {
+	if fixtureStage != "" {
 		fixtures, err := result.Fixtures()
 		Expect(err).NotTo(HaveOccurred())
 
 		for _, fixture := range fixtures {
 			Expect(fixture.Validate()).To(Succeed())
 
-			_, err := harness.WriteFixture(fixtureDir, fixture)
+			_, err := harness.WriteFixture(fixtureStage, fixture)
 			Expect(err).NotTo(HaveOccurred())
 		}
 	}

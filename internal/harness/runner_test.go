@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -33,8 +34,9 @@ esac
 // runs each through the klaudiush hook on the sandbox PATH, and executes the
 // calls the hook did not deny, the way a real harness does.
 type miniHarness struct {
-	model *harness.ScriptedModel
-	hooks string
+	model  *harness.ScriptedModel
+	hooks  string
+	runErr error
 }
 
 func (*miniHarness) Name() string            { return "mini" }
@@ -95,7 +97,7 @@ func (m *miniHarness) Run(
 	for range 5 {
 		reply := m.ask(messages)
 		if len(reply.ToolCalls) == 0 {
-			return []byte(reply.Content), nil
+			return []byte(reply.Content), m.runErr
 		}
 
 		messages = append(
@@ -281,12 +283,40 @@ var _ = Describe("Runner", func() {
 		Expect(run("deny_shell").GapConfirmed()).To(BeTrue())
 	})
 
+	It("reports a harness that exited with an error after making the expected calls", func() {
+		result, cleanup, err := runner.Run(
+			context.Background(),
+			&miniHarness{runErr: errors.New("exit status 2")},
+			"1.0.0",
+			scenarioNamed("deny_shell"),
+		)
+		DeferCleanup(cleanup)
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(result.HarnessProblems()).To(ConsistOf(ContainSubstring("exit status 2")))
+		Expect(result.Problems()).To(ContainElement(ContainSubstring("exited with an error")))
+	})
+
+	It("keeps harness failures apart from the findings a known gap expects", func() {
+		Expect(writeExecutable(
+			runner.Binary,
+			"#!/bin/sh\n[ \"$1\" = init ] && exit 0\ncat > /dev/null\nexit 3\n",
+		)).To(Succeed())
+
+		result := run("deny_shell")
+		Expect(result.GapConfirmed()).To(BeTrue())
+		Expect(result.HarnessProblems()).To(ContainElement(ContainSubstring("hook exited 3")))
+		Expect(result.HarnessProblems()).NotTo(ContainElement(ContainSubstring("side effect")))
+		Expect(result.Problems()).To(ContainElement(ContainSubstring("side effect")))
+	})
+
 	It("reports a harness that ran past the timeout", func() {
 		runner.Timeout = time.Nanosecond
 
 		result := run("deny_shell")
 		Expect(result.TimedOut).To(BeTrue())
 		Expect(result.Problems()).To(ContainElement(ContainSubstring("did not finish")))
+		Expect(result.Problems()).NotTo(ContainElement(ContainSubstring("exited with an error")))
 		Expect(result.GapConfirmed()).To(BeFalse())
 	})
 
