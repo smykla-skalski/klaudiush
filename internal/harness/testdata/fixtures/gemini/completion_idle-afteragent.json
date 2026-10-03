@@ -1,0 +1,27 @@
+{
+  "provider": "gemini",
+  "harness": "gemini-cli",
+  "harness_version": "docs-2026-10-03",
+  "source": "docs",
+  "reference": "https://geminicli.com/docs/hooks/reference/",
+  "scenario": "completion_idle",
+  "event": "AfterAgent",
+  "args": [
+    "--provider",
+    "gemini",
+    "--event",
+    "AfterAgent"
+  ],
+  "expect": "pass",
+  "config": "[protection]\nenabled = true\npaths = [\"guarded/**\"]\n\n[providers.claude]\nenabled = false\n\n[providers.gemini]\nenabled = true\n",
+  "payload": {
+    "session_id": "gemini-docs-session",
+    "transcript_path": "{{HOME}}/.gemini/tmp/project/chats/session-gemini-docs.json",
+    "cwd": "{{WORK}}",
+    "timestamp": "2026-10-03T10:00:00Z",
+    "hook_event_name": "AfterAgent",
+    "prompt": "Follow the klaudiush harness script.",
+    "prompt_response": "harness script finished",
+    "stop_hook_active": false
+  }
+}

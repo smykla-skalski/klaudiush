@@ -146,6 +146,31 @@ description = "Run testscript integration tests (verbose)"
 depends = ["build"]
 run = "go test -v ./cmd/klaudiush -run 'TestScript.*'"
 
+[tasks."test:harness"]
+description = "Run live harness checks against installed Claude Code, Codex and opencode (local only, never in CI)"
+depends = ["build"]
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+export KLAUDIUSH_HARNESS_LIVE=1
+export KLAUDIUSH_HARNESS_BINARY="$PWD/bin/klaudiush"
+go test -count=1 -v ./internal/harness -run TestHarness -ginkgo.label-filter=live -ginkgo.v
+"""
+
+[tasks."test:harness:fixtures"]
+description = "Run the live harness checks and rewrite the captured fixtures"
+depends = ["build"]
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+export KLAUDIUSH_HARNESS_LIVE=1
+export KLAUDIUSH_HARNESS_UPDATE_FIXTURES=1
+# Each provider's fixtures are replaced only after its whole run passed;
+# skipped or failing harnesses and Gemini docs fixtures are kept.
+export KLAUDIUSH_HARNESS_BINARY="$PWD/bin/klaudiush"
+go test -count=1 -v ./internal/harness -run TestHarness -ginkgo.label-filter=live -ginkgo.v
+"""
+
 [tasks."test:fuzz"]
 description = "Run all fuzz tests (short duration for CI)"
 run = """

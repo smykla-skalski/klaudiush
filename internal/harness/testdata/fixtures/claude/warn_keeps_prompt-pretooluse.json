@@ -1,0 +1,35 @@
+{
+  "provider": "claude",
+  "harness": "claude",
+  "harness_version": "2.1.288",
+  "source": "live",
+  "scenario": "warn_keeps_prompt",
+  "event": "PreToolUse",
+  "args": [
+    "--hook-type",
+    "PreToolUse"
+  ],
+  "expect": "advise",
+  "config": "[protection]\nenabled = true\npaths = [\"guarded/**\"]\n\n[validators.git.commit]\nseverity = \"warning\"\n\n[providers.claude]\nenabled = true\n",
+  "payload": {
+    "session_id": "4580fda0-5216-41f9-9ccb-1ae9944e21a1",
+    "transcript_path": "{{HOME}}/.claude/projects/{{WORK_SLUG}}/4580fda0-5216-41f9-9ccb-1ae9944e21a1.jsonl",
+    "cwd": "{{WORK}}",
+    "prompt_id": "55f65ead-039a-4652-b882-5eff86d91e82",
+    "permission_mode": "default",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "touch warned.txt && git commit --allow-empty -m \"feat(api): add smoke\"",
+      "description": "harness step"
+    },
+    "tool_use_id": "toolu_0001"
+  },
+  "response": {
+    "hookSpecificOutput": {
+      "hookEventName": "PreToolUse",
+      "additionalContext": "klaudiush warning: Not blocking. [GIT010] Git commit missing required flags: -s -S. Add -sS flags to your command, keeping ALL existing arguments. Example: git commit -sS -m \"your message\""
+    },
+    "systemMessage": "⚠️ Warning GIT010: Git commit missing required flags: -s -S\n  Fix: Add -sS flags to your command, keeping ALL existing arguments. Example: git commit -sS -m \"your message\"\n  Ref: https://klaudiu.sh/e/GIT010\n\nGit commit must use -sS flags (signoff + GPG sign)\n\nCurrent command: git commit \nExpected: git commit -sS -m \"message\"\n\n"
+  }
+}

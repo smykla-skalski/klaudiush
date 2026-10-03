@@ -1,0 +1,43 @@
+{
+  "provider": "codex",
+  "harness": "codex",
+  "harness_version": "0.160.0",
+  "source": "live",
+  "scenario": "failure_policy",
+  "event": "PreToolUse",
+  "args": [
+    "--provider",
+    "codex",
+    "--event",
+    "PreToolUse"
+  ],
+  "expect": "deny",
+  "config": "[validators.git.commit\nbroken\n",
+  "workspace": {
+    ".klaudiush/config.toml": "[validators.git.commit\nbroken\n",
+    "{{HOME}}/.config/klaudiush/config.toml": "[failure_policy]\nmode = \"block\"\n"
+  },
+  "payload": {
+    "session_id": "01a10167-95ec-7dd2-8e01-d415e3b219b9",
+    "turn_id": "01a10167-9606-77c3-af20-38fca099ef91",
+    "transcript_path": "{{HOME}}/.codex/sessions/2026/10/03/rollout-2026-10-03T12-55-28-01a10167-95ec-7dd2-8e01-d415e3b219b9.jsonl",
+    "cwd": "{{WORK}}",
+    "hook_event_name": "PreToolUse",
+    "model": "klaudiush-scripted",
+    "permission_mode": "bypassPermissions",
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "touch failpolicy.txt"
+    },
+    "tool_use_id": "call_0002"
+  },
+  "response": {
+    "hookSpecificOutput": {
+      "hookEventName": "PreToolUse",
+      "permissionDecision": "deny",
+      "permissionDecisionReason": "[HOOK001] Validation unavailable: klaudiush could not run (configuration error): failed to load configuration: failed to load config: failed to load project config: toml: expected ']' to close table name. Ask the user to run 'klaudiush doctor' and fix the cause this message names",
+      "additionalContext": "Automated klaudiush validation check. A required check could not run, so the action is blocked. Retrying will not help until the check works; tell the user what failed."
+    },
+    "systemMessage": "❌ Blocked, validation unavailable HOOK001: klaudiush could not run (configuration error): failed to load configuration: failed to load config: failed to load project config: toml: expected ']' to close table name\n  Fix: Ask the user to run 'klaudiush doctor' and fix the cause this message names\n  Ref: https://klaudiu.sh/e/HOOK001\n\n"
+  }
+}

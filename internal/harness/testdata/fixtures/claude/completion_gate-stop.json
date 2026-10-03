@@ -1,0 +1,38 @@
+{
+  "provider": "claude",
+  "harness": "claude",
+  "harness_version": "2.1.288",
+  "source": "live",
+  "scenario": "completion_gate",
+  "event": "Stop",
+  "args": [
+    "--provider",
+    "claude",
+    "--event",
+    "Stop"
+  ],
+  "expect": "block",
+  "config": "[protection]\nenabled = true\npaths = [\"guarded/**\"]\n\n[evidence]\nenabled = true\n\n[[evidence.checks]]\nname = \"tests\"\ncommands = [\"./check.sh\"]\npaths = [\"src/**\"]\n\n[providers.claude]\nenabled = true\n",
+  "replay_skip": "the gate compares against a baseline that earlier hooks of the session recorded",
+  "payload": {
+    "session_id": "50f241bf-fba1-41fb-a300-13ece7af8b22",
+    "transcript_path": "{{HOME}}/.claude/projects/{{WORK_SLUG}}/50f241bf-fba1-41fb-a300-13ece7af8b22.jsonl",
+    "cwd": "{{WORK}}",
+    "prompt_id": "4e86b8a4-23dc-47ef-8d70-ae419649b30f",
+    "permission_mode": "default",
+    "hook_event_name": "Stop",
+    "stop_hook_active": false,
+    "last_assistant_message": "harness script finished",
+    "background_tasks": [],
+    "session_crons": []
+  },
+  "response": {
+    "hookSpecificOutput": {
+      "hookEventName": "Stop",
+      "additionalContext": "Automated klaudiush validation check. Fix ALL reported errors at once and retry. Fixing one issue can introduce another (e.g., adding a type(scope): prefix can push the title over its length limit)."
+    },
+    "decision": "block",
+    "reason": "klaudiush completion check failed. Fix these findings before finishing: [EVID001] Required check \"tests\" (test) has no passing result for the files as they are now: it has not run since the files changed.\n  - check tests: it has not run since the files changed (actual: 'missing'; required: a passing result for sha256:a8b35a8d189d1b9d3abe6b9ae1f5264868111778fd0ee3926e8bb7e3d24e77b0). Repair: Run `./check.sh` from {{WORK}} as its own foreground command (no pipes, `;`, `||`, `\u0026` or variable prefixes), or run `klaudiush evidence run tests`",
+    "systemMessage": "❌ Blocked EVID001: Required check \"tests\" (test) has no passing result for the files as they are now: it has not run since the files changed.\n  - check tests: it has not run since the files changed. Fix: Run `./check.sh` from {{WORK}} as its own foreground command (no pipes, `;`, `||`, `\u0026` or variable prefixes), or run `klaudiush evidence run tests`\n  Ref: https://klaudiu.sh/e/EVID001\n\nRepository: {{WORK}}\n\n"
+  }
+}

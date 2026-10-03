@@ -488,3 +488,46 @@ func FiltersTools(provider Provider) bool {
 func ReportsCommandOutcome(provider Provider) bool {
 	return provider == ProviderClaude
 }
+
+// rawOnlyEvents are native events a provider fires that share a canonical
+// event with another native name, so the capability table keys them under
+// that other name or not at all.
+var rawOnlyEvents = map[Provider][]string{
+	ProviderClaude: {eventNamePermissionRequest, "PostToolUseFailure", "SubagentStart"},
+	ProviderCodex:  {eventNamePermissionRequest, "SubagentStart"},
+}
+
+// NativeEventNames lists, sorted, the event names a provider currently fires
+// that klaudiush has a response contract or raw-name handling for. A name
+// missing here is either stale (the provider renamed or dropped it) or one
+// klaudiush does not handle; NormalizeEventName still accepts many such
+// spellings, so hook configs and fixtures are checked against this list.
+func NativeEventNames(provider Provider) []string {
+	var table map[CanonicalEvent]EventCapability
+
+	switch provider {
+	case ProviderClaude:
+		table = claudeCapabilities
+	case ProviderCodex:
+		table = codexCapabilities
+	case ProviderGemini:
+		table = geminiCapabilities
+	case ProviderOpenCode:
+		return slices.Sorted(slices.Values(OpenCodeEventNames()))
+	case ProviderUnknown:
+		return nil
+	default:
+		return nil
+	}
+
+	names := make([]string, 0, len(table)+len(rawOnlyEvents[provider]))
+
+	for _, capability := range table {
+		names = append(names, capability.NativeName)
+	}
+
+	names = append(names, rawOnlyEvents[provider]...)
+	slices.Sort(names)
+
+	return slices.Compact(names)
+}

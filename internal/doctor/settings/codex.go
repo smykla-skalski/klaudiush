@@ -9,6 +9,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/pelletier/go-toml/v2"
+	"mvdan.cc/sh/v3/shell"
 )
 
 // CodexHooksParser parses Codex hooks.json files.
@@ -140,12 +141,156 @@ func isCodexDispatcherHook(hook CodexHookCommandConfig, dispatcherPath string) b
 		return false
 	}
 
-	program := commandProgram(hook.Command)
-
-	return program == dispatcherPath || filepath.Base(program) == filepath.Base(dispatcherPath)
+	return isDispatcherCommand(hook.Command, dispatcherPath)
 }
 
+// isDispatcherCommand reports whether a hook command runs the dispatcher
+// binary itself. Matching on the program, not a substring, keeps a user hook
+// whose path or arguments merely mention klaudiush from being taken for the
+// dispatcher, which made install skip registering it.
+func isDispatcherCommand(command, dispatcherPath string) bool {
+	program := commandProgram(command)
+
+	return program != "" &&
+		(program == dispatcherPath || filepath.Base(program) == filepath.Base(dispatcherPath))
+}
+
+// commandWrappers run the command that follows them; each maps to the
+// flags of the wrapper that take a separate argument.
+var commandWrappers = map[string][]string{
+	"env":          {"-u", "--unset", "-C", "--chdir", "-S", "--split-string"},
+	"exec":         {"-a"},
+	"nice":         {"-n", "--adjustment"},
+	"nohup":        nil,
+	wrapperCommand: nil,
+	"time":         nil,
+	wrapperTimeout: {"-s", "--signal", "-k", "--kill-after"},
+}
+
+const (
+	wrapperCommand = "command"
+	wrapperTimeout = "timeout"
+
+	// miseExecWords is the length of the `mise exec` prefix.
+	miseExecWords = 2
+)
+
+// shellPrograms run their -c argument as a script.
+var shellPrograms = map[string]bool{"sh": true, "bash": true, "zsh": true, "dash": true}
+
+// maxWrapperDepth bounds how many nested `sh -c` scripts are unwrapped.
+const maxWrapperDepth = 4
+
+// commandProgram returns the program a hook command finally runs, looking
+// through env assignments, wrappers such as env, nice, timeout and
+// `mise exec --`, and `sh -c` scripts.
 func commandProgram(command string) string {
+	return programOf(command, 0)
+}
+
+func programOf(command string, depth int) string {
+	words, err := shell.Fields(command, func(string) string { return "" })
+	if err != nil || depth > maxWrapperDepth {
+		return firstWord(command)
+	}
+
+	for i := 0; i < len(words); i++ {
+		word := words[i]
+
+		switch {
+		case strings.Contains(word, "=") && !strings.HasPrefix(word, "-"):
+			continue
+		case word == "mise" && i+1 < len(words) && words[i+1] == "exec":
+			i = skipPast(words, i+miseExecWords, "--")
+		case filepath.Base(word) == wrapperCommand && commandLooksUp(words[i+1:]):
+			return ""
+		case hasWrapper(filepath.Base(word)):
+			i = skipWrapperArgs(words, i+1, filepath.Base(word)) - 1
+		case shellPrograms[filepath.Base(word)]:
+			if script, ok := shellScript(words[i+1:]); ok {
+				return programOf(script, depth+1)
+			}
+
+			return word
+		default:
+			return word
+		}
+	}
+
+	return ""
+}
+
+// commandLooksUp reports whether `command` was given -v or -V, which only
+// print how a name resolves instead of running it.
+func commandLooksUp(args []string) bool {
+	for _, arg := range args {
+		if arg == "--" || !strings.HasPrefix(arg, "-") {
+			return false
+		}
+
+		if strings.ContainsAny(arg, "vV") {
+			return true
+		}
+	}
+
+	return false
+}
+
+func hasWrapper(name string) bool {
+	_, ok := commandWrappers[name]
+
+	return ok
+}
+
+// skipWrapperArgs returns the index of the first word after a wrapper's own
+// flags and, for timeout, its duration.
+func skipWrapperArgs(words []string, i int, wrapper string) int {
+	for i < len(words) && strings.HasPrefix(words[i], "-") {
+		if words[i] == "--" {
+			return i + 1
+		}
+
+		if slices.Contains(commandWrappers[wrapper], words[i]) {
+			i++
+		}
+
+		i++
+	}
+
+	if wrapper == wrapperTimeout && i < len(words) {
+		i++
+	}
+
+	return i
+}
+
+// skipPast returns the index of the word before the first one after sep,
+// or of the last word when sep is missing.
+func skipPast(words []string, i int, sep string) int {
+	for ; i < len(words); i++ {
+		if words[i] == sep {
+			return i
+		}
+	}
+
+	return len(words) - 1
+}
+
+func shellScript(args []string) (string, bool) {
+	for i, arg := range args {
+		if arg == "-c" && i+1 < len(args) {
+			return args[i+1], true
+		}
+
+		if !strings.HasPrefix(arg, "-") {
+			return "", false
+		}
+	}
+
+	return "", false
+}
+
+func firstWord(command string) string {
 	for token := range strings.FieldsSeq(command) {
 		token = strings.Trim(token, `"'`)
 		if token == "env" || strings.Contains(token, "=") {

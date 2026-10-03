@@ -1,0 +1,29 @@
+{
+  "provider": "claude",
+  "harness": "claude",
+  "harness_version": "2.1.288",
+  "source": "live",
+  "scenario": "control_unguarded",
+  "event": "PreToolUse",
+  "args": [
+    "--hook-type",
+    "PreToolUse"
+  ],
+  "expect": "pass",
+  "config": "[protection]\nenabled = false\n\n[providers.claude]\nenabled = true\n",
+  "payload": {
+    "session_id": "a10895ec-77cf-4c63-af90-d2a6e12bf430",
+    "transcript_path": "{{HOME}}/.claude/projects/{{WORK_SLUG}}/a10895ec-77cf-4c63-af90-d2a6e12bf430.jsonl",
+    "cwd": "{{WORK}}",
+    "prompt_id": "66b9c2ab-42cd-426b-b266-7e2153f55fb7",
+    "permission_mode": "default",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "touch guarded/shell.txt",
+      "description": "harness step"
+    },
+    "tool_use_id": "toolu_0001"
+  },
+  "response": null
+}

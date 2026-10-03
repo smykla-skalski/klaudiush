@@ -73,6 +73,8 @@ mise run test:integration             # integration tests only
 mise run test:fuzz                    # fuzz tests (10s each)
 mise run test:fuzz:git                # git parser fuzz (60s)
 FUZZ_TIME=5m mise run test:fuzz:git   # custom duration
+mise run test:harness                 # live harness checks (local only, never CI)
+mise run test:harness:fixtures        # same, and rewrite captured fixtures
 
 # Linting & Development
 mise run check                        # lint + auto-fix
@@ -386,6 +388,10 @@ Guide available in `docs/FAILURE_POLICY_GUIDE.md` with a commented example in `e
 Guide available in `docs/BYPASS_GUIDE.md` with a commented example in `examples/config/bypass-permissions.toml`.
 
 Inspect the current setting with: `klaudiush bypass status --all`
+
+## Harness Testing Documentation
+
+Live checks against installed Claude Code, Codex and opencode, plus the CI contract checks over captured fixtures, are in `internal/harness/` and documented in `docs/HARNESS_TESTING_GUIDE.md` (version matrix, isolation rules, unsupported paths, known gaps). The live suite builds the sandbox environment from scratch and drives a scripted local model, so it needs no credentials; never point it at the real HOME.
 
 ## Backup Documentation
 

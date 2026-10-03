@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 
 	"github.com/cockroachdb/errors"
 )
@@ -113,8 +112,6 @@ func (p *SettingsParser) IsDispatcherRegistered(dispatcherPath string) (bool, er
 		return false, nil
 	}
 
-	dispatcherName := filepath.Base(dispatcherPath)
-
 	for _, hookConfigs := range settings.Hooks {
 		for _, hookConfig := range hookConfigs {
 			for _, hook := range hookConfig.Hooks {
@@ -122,8 +119,7 @@ func (p *SettingsParser) IsDispatcherRegistered(dispatcherPath string) (bool, er
 					continue
 				}
 
-				if strings.Contains(hook.Command, dispatcherPath) ||
-					strings.Contains(hook.Command, dispatcherName) {
+				if isDispatcherCommand(hook.Command, dispatcherPath) {
 					return true, nil
 				}
 			}
@@ -160,16 +156,13 @@ func (p *SettingsParser) HasEventHookCommand(eventName, dispatcherPath string) (
 		return false, err
 	}
 
-	dispatcherName := filepath.Base(dispatcherPath)
-
 	for _, hookConfig := range settings.Hooks[eventName] {
 		for _, hookCmd := range hookConfig.Hooks {
 			if hookCmd.Type != commandHookType {
 				continue
 			}
 
-			if strings.Contains(hookCmd.Command, dispatcherPath) ||
-				strings.Contains(hookCmd.Command, dispatcherName) {
+			if isDispatcherCommand(hookCmd.Command, dispatcherPath) {
 				return true, nil
 			}
 		}

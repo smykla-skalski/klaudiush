@@ -303,6 +303,10 @@ klaudiush metrics report --since 7d
 
 Findings after a tool ran are advisory and never count as prevented. No command, message, path or session ID is stored, and nothing leaves the machine. Turn it off with `[metrics] enabled = false`. See the [metrics guide](docs/METRICS_GUIDE.md).
 
+### Checking real harnesses
+
+`mise run test:harness` runs the installed Claude Code, Codex and opencode binaries against a scripted local model in a disposable home directory and checks the file system: a denied call must leave no trace, a warning must leave the harness permission flow in charge, and the completion gate must keep the agent working. It records the exact harness versions and captures the hook payloads it saw as fixtures, which every `mise run test` checks against the provider capability table. It needs no credentials and never runs in CI. See the [harness testing guide](docs/HARNESS_TESTING_GUIDE.md) for the version matrix and the paths no hook can see.
+
 ## Performance
 
 End-to-end binary execution on Apple M3 Max (hyperfine, 30 runs, CLI git backend):

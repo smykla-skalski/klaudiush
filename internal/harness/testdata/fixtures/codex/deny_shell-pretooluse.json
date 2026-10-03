@@ -1,0 +1,39 @@
+{
+  "provider": "codex",
+  "harness": "codex",
+  "harness_version": "0.160.0",
+  "source": "live",
+  "scenario": "deny_shell",
+  "event": "PreToolUse",
+  "args": [
+    "--provider",
+    "codex",
+    "--event",
+    "PreToolUse"
+  ],
+  "expect": "deny",
+  "config": "[protection]\nenabled = true\npaths = [\"guarded/**\"]\n\n[providers.claude]\nenabled = false\n\n[providers.codex]\nenabled = true\nexperimental = true\nhooks_config_path = \"{{HOME}}/.codex/hooks.json\"\n",
+  "payload": {
+    "session_id": "01a10167-7af8-7070-a47b-f6b82e120a77",
+    "turn_id": "01a10167-7b14-7fc0-9f24-7c9e6b429b7b",
+    "transcript_path": "{{HOME}}/.codex/sessions/2026/10/03/rollout-2026-10-03T12-55-21-01a10167-7af8-7070-a47b-f6b82e120a77.jsonl",
+    "cwd": "{{WORK}}",
+    "hook_event_name": "PreToolUse",
+    "model": "klaudiush-scripted",
+    "permission_mode": "bypassPermissions",
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "touch guarded/shell.txt"
+    },
+    "tool_use_id": "call_0002"
+  },
+  "response": {
+    "hookSpecificOutput": {
+      "hookEventName": "PreToolUse",
+      "permissionDecision": "deny",
+      "permissionDecisionReason": "[POL001] Command would change protected policy files: {{WORK}}/guarded/shell.txt\n  - {{WORK}}/guarded/shell.txt: Protected protection.paths entry (actual: 'touch guarded/shell.txt'). Repair: Do not change this file. If the change is needed, ask the user to make it, or to list the path in protection.allow",
+      "additionalContext": "Automated klaudiush validation check. Fix ALL reported errors at once and retry. Fixing one issue can introduce another (e.g., adding a type(scope): prefix can push the title over its length limit)."
+    },
+    "systemMessage": "❌ Blocked POL001: Command would change protected policy files: {{WORK}}/guarded/shell.txt\n  - {{WORK}}/guarded/shell.txt: Protected protection.paths entry. Fix: Do not change this file. If the change is needed, ask the user to make it, or to list the path in protection.allow\n  Ref: https://klaudiu.sh/e/POL001\n\n"
+  }
+}

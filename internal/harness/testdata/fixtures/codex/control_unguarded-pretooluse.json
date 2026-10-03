@@ -1,0 +1,31 @@
+{
+  "provider": "codex",
+  "harness": "codex",
+  "harness_version": "0.160.0",
+  "source": "live",
+  "scenario": "control_unguarded",
+  "event": "PreToolUse",
+  "args": [
+    "--provider",
+    "codex",
+    "--event",
+    "PreToolUse"
+  ],
+  "expect": "pass",
+  "config": "[protection]\nenabled = false\n\n[providers.claude]\nenabled = false\n\n[providers.codex]\nenabled = true\nexperimental = true\nhooks_config_path = \"{{HOME}}/.codex/hooks.json\"\n",
+  "payload": {
+    "session_id": "01a10167-7627-7941-bbe4-a73f02bc6638",
+    "turn_id": "01a10167-764d-72d0-951d-a2025673d262",
+    "transcript_path": "{{HOME}}/.codex/sessions/2026/10/03/rollout-2026-10-03T12-55-20-01a10167-7627-7941-bbe4-a73f02bc6638.jsonl",
+    "cwd": "{{WORK}}",
+    "hook_event_name": "PreToolUse",
+    "model": "klaudiush-scripted",
+    "permission_mode": "bypassPermissions",
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "touch guarded/shell.txt"
+    },
+    "tool_use_id": "call_0002"
+  },
+  "response": null
+}
