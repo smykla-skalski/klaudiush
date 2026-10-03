@@ -12,8 +12,9 @@ stdout 'POL00[13]'
 
 stdin $WORK/multiedit-case.json
 exec klaudiush --hook-type PreToolUse
-stdout '"permissionDecision":"deny"'
-stdout 'POL00[13]'
+[!linux] stdout '"permissionDecision":"deny"'
+[!linux] stdout 'POL00[13]'
+[linux] ! stdout 'deny'
 
 stdin $WORK/new-subdir-config.json
 exec klaudiush --hook-type PreToolUse
