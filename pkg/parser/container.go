@@ -254,6 +254,10 @@ func (r *runReader) read(i int, entrypoints []string) {
 			r.image(i+1, entrypoints)
 
 			return
+		case r.all && strings.HasPrefix(arg, "-") && optionNameDetail(arg) != "":
+			r.dynamic = optionNameDetail(arg)
+
+			return
 		case globsOptions(arg):
 			r.dynamic = DetailWordOutput
 

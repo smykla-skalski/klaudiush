@@ -487,7 +487,10 @@ func launcherLaunch(cmd Command, spec launcher) launch {
 		switch {
 		case cmd.Stdin != "" && !fromFile:
 			l.commands = xargsCommands(child, cmd.Stdin, replace)
-		case replace != "" && replace != findPath:
+		case replace == "":
+			child.Args = append(slices.Clone(child.Args), findPath)
+			l.commands = []Command{child}
+		case replace != findPath:
 			l.commands = []Command{withUnknownInput(child, replace)}
 		}
 	}
@@ -611,7 +614,7 @@ func hasAttachedValue(arg string, flags []string) bool {
 
 // xargsShortValues are the short xargs options that take a value: the
 // rest of their cluster, or the next argument when they end it.
-const xargsShortValues = "adEILnPs"
+const xargsShortValues = "adEIJLnPRsS"
 
 // xargsShortOptional are the short xargs options that take a value only
 // when it is attached (-i{}, -e, -l1).
@@ -662,7 +665,7 @@ func xargsInput(args []string) (replace string, fromFile bool) {
 			}
 
 			switch letter {
-			case 'I', 'i':
+			case 'I', 'i', 'J':
 				replace = value
 				if replace == "" {
 					replace = findPath
@@ -969,10 +972,20 @@ func launchesTracked(arg string, rest []string) bool {
 		return ok
 	case isContainerRunner(name):
 		return containerRuns(rest).tracked() || mayHideEntrypoint(rest) ||
-			containerExecSubcommand(rest) >= 0 || slices.ContainsFunc(rest, mayBeDynamic)
+			containerExecSubcommand(rest) >= 0 || runsDynamicWords(rest)
 	default:
 		return isInterpreter || isLauncher || name == evalBuiltin || name == sourceBuiltin
 	}
+}
+
+// runsDynamicWords reports a literal run or create subcommand followed by a
+// word that is not literal, which only the walker can read. A dynamic word
+// next to a runner name among another program's arguments is far more often
+// data (systemctl restart docker "$X").
+func runsDynamicWords(rest []string) bool {
+	at, _ := runSubcommand(rest, mayBeDynamic)
+
+	return at >= 0 && slices.ContainsFunc(rest[at:], mayBeDynamic)
 }
 
 // runsScriptPath reports whether arg is a shell script path that an unknown

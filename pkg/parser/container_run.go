@@ -56,6 +56,8 @@ func runSubcommand(args []string, shifts func(string) bool) (int, string) {
 			return -1, leadingExpansion(arg)
 		case !strings.HasPrefix(arg, "-") || arg == "-":
 			return -1, ""
+		case optionNameDetail(arg) != "":
+			return -1, optionNameDetail(arg)
 		case shifts(arg):
 			return -1, DetailWordSplit
 		}
@@ -79,6 +81,15 @@ func runSubcommand(args []string, shifts func(string) bool) (int, string) {
 	}
 
 	return -1, ""
+}
+
+// optionNameDetail says why an option's name, the part before any =, is
+// not literal, or returns "". Even quoted ("--$X") it may name any option,
+// --entrypoint included; only a value after = may be an expansion.
+func optionNameDetail(arg string) string {
+	name, _, _ := strings.Cut(arg, "=")
+
+	return dynamicWord(name)
 }
 
 // globalOption reports whether a global option takes, or may take, the next

@@ -260,7 +260,7 @@ var _ = Describe("Unresolved eval and command words", func() {
 		} {
 			result := parse(command)
 			Expect(result.GitOperations).NotTo(BeEmpty(), command)
-			Expect(result.GitOperations[0].Args).To(Equal([]string{"push", "--force"}), command)
+			Expect(result.GitOperations[0].Args[:2]).To(Equal([]string{"push", "--force"}), command)
 		}
 	})
 

@@ -500,10 +500,9 @@ func (w *astWalker) launchedFrom(cmd, followed Command) launch {
 		}
 	}
 
-	if cmd.Name == parallelProgram {
-		scripts, code := w.parallelScripts(followed)
-		l.scripts = append(l.scripts, scripts...)
-		l.code = append(l.code, code...)
+	if parallelPrograms[cmd.Name] {
+		l.commands, l.scripts = nil, nil
+		l.scripts, l.code = w.parallelScripts(followed)
 	}
 
 	if cmd.Name == evalBuiltin {

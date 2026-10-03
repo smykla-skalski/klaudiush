@@ -17,9 +17,14 @@ const ParallelOperation = "parallel"
 // parallel runs command lines read from input klaudiush cannot see.
 const DetailParallelInput = "it is read from stdin or a file klaudiush cannot see"
 
-// parallelProgram is GNU parallel, which joins its command words and each
-// input into a command line and runs it with the shell.
-const parallelProgram = "parallel"
+// parallelPrograms are GNU parallel and the programs that run it (sem is
+// parallel --semaphore, env_parallel and parset wrap it), each joining its
+// command words and an input into a command line run by the shell.
+var parallelPrograms = nameSet("parallel sem env_parallel parset")
+
+// parsetProgram takes the names of the variables it sets before
+// parallel's options.
+const parsetProgram = "parset"
 
 // unknownInput stands in for an input klaudiush cannot see. It is the path
 // find -exec fills in, which a program or git word may not be.
@@ -69,6 +74,10 @@ var parallelCodeFlags = nameSet("--rpl --filter")
 
 // parallelInputFlags read the inputs from a file or a database.
 var parallelInputFlags = nameSet("-a --arg-file --sqlworker --sqlandworker")
+
+// parallelColumnFlags split each input into columns ({1}, {2}), which
+// klaudiush does not model, so the inputs are taken as unknown.
+var parallelColumnFlags = nameSet("-C --colsep --csv")
 
 // parallelTagFlags take a string that may hold {= perl =}.
 var parallelTagFlags = nameSet("--tagstring --tag-string --ctagstring")
@@ -133,6 +142,7 @@ type parallelOptions struct {
 	pipe      bool
 	plus      bool
 	argFile   bool
+	columns   bool
 	stop      bool
 	exhausted bool
 }
@@ -146,6 +156,10 @@ type parallelOptions struct {
 // which is opaque where a program or git word is expected. Perl code in
 // {= =}, --rpl and --filter is returned to be scanned like an interpreter's.
 func (w *astWalker) parallelScripts(cmd Command) (scripts, code []string) {
+	if cmd.Name == parsetProgram && len(cmd.Args) > 0 {
+		cmd.Args = cmd.Args[1:]
+	}
+
 	opts := readParallelOptions(cmd.Args, cmd.mayShift)
 	if opts.stop {
 		return nil, nil
@@ -228,6 +242,10 @@ func (o *parallelOptions) commandAt(args []string, at int, shifts func(string) b
 		return at + 1, true
 	case o.separator(arg) || !strings.HasPrefix(arg, "-") || arg == "-":
 		return at, true
+	case optionNameDetail(arg) != "":
+		o.dynamic = optionNameDetail(arg)
+
+		return 0, true
 	case shifts(arg):
 		o.dynamic = DetailWordSplit
 
@@ -324,6 +342,8 @@ func (o *parallelOptions) apply(name, value string, attached bool) {
 		o.pipe = true
 	case parallelInputFlags[name]:
 		o.argFile = true
+	case parallelColumnFlags[name]:
+		o.columns = true
 	case name == "--arg-sep" && attached:
 		o.argSep = value
 	case name == "--arg-file-sep" && attached:
@@ -439,7 +459,7 @@ func (w *astWalker) parallelSources(cmd Command, opts *parallelOptions, at int) 
 
 		source := make([]parallelInput, 0, end-at-1)
 		for _, arg := range cmd.Args[at+1 : end] {
-			source = append(source, w.parallelInput(arg, files))
+			source = append(source, w.parallelInput(arg, files || opts.columns))
 		}
 
 		sources = append(sources, source)
@@ -450,7 +470,7 @@ func (w *astWalker) parallelSources(cmd Command, opts *parallelOptions, at int) 
 		return sources
 	}
 
-	if cmd.Stdin == "" {
+	if cmd.Stdin == "" || opts.columns {
 		return [][]parallelInput{{{}}}
 	}
 
@@ -605,9 +625,13 @@ func (o *parallelOptions) replaceToken(
 		return job[n-1].quoted("{" + m[2] + "}")
 	}
 
+	if token == o.token(findPath) {
+		return whole.value
+	}
+
 	for _, role := range pathRoles {
-		if token == o.token(role) {
-			return whole.quoted(role)
+		if token == o.token(role) && len(job) == 1 {
+			return job[0].quoted(role)
 		}
 	}
 
@@ -615,7 +639,7 @@ func (o *parallelOptions) replaceToken(
 		return "1"
 	}
 
-	return whole.quoted(findPath)
+	return unknownInput
 }
 
 // quoted returns the input as parallel puts it in a command line, with the
@@ -642,17 +666,16 @@ func (in parallelInput) quoted(role string) string {
 	return shellQuote(value)
 }
 
-// joinInputs is the whole input of a job, as {} stands for it.
+// joinInputs is what {} stands for in a job: every input, each quoted on
+// its own, joined by spaces.
 func joinInputs(job []parallelInput) parallelInput {
 	values := make([]string, 0, len(job))
-	known := true
 
 	for _, input := range job {
-		values = append(values, input.value)
-		known = known && input.known
+		values = append(values, input.quoted(findPath))
 	}
 
-	return parallelInput{value: strings.Join(values, " "), known: known}
+	return parallelInput{value: strings.Join(values, " "), known: true}
 }
 
 // perlCode returns the Perl expressions in {= =} replacement strings.

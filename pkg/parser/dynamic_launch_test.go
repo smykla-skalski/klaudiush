@@ -76,8 +76,12 @@ var _ = Describe("Dynamic launch words", func() {
 			"docker -H $H run img ls", parser.ContainerRunOperation, parser.DetailWordSplit),
 		Entry("an unquoted global option",
 			"docker --context=$C run img ls", parser.ContainerRunOperation, parser.DetailWordSplit),
-		Entry("an array",
-			`docker run "${opts[@]}" img ls`, parser.ContainerRunOperation, parser.DetailWordVariable),
+		Entry(
+			"an array",
+			`docker run "${opts[@]}" img ls`,
+			parser.ContainerRunOperation,
+			parser.DetailWordVariable,
+		),
 		Entry("an image from a variable",
 			`docker run --rm "$IMG" ls`, parser.ContainerRunOperation, parser.DetailWordVariable),
 		Entry("an unquoted image tag",
@@ -114,6 +118,16 @@ var _ = Describe("Dynamic launch words", func() {
 	It("follows docker found among another program's arguments", func() {
 		failsClosed("ssh host docker run img $X push",
 			parser.ProgramWordOperation, parser.DetailWordVariable, "docker")
+	})
+
+	It("passes unseen xargs input to git add as {}", func() {
+		result := parse("ls -m | xargs git add")
+
+		Expect(result.Truncated).To(BeFalse())
+		Expect(result.GitOperations).To(ConsistOf(SatisfyAll(
+			HaveField("Name", "git"),
+			HaveField("Args", Equal([]string{"add", "{}"})),
+		)))
 	})
 
 	It("reports an opaque --entrypoint once", func() {
@@ -191,6 +205,25 @@ var _ = Describe("Dynamic launch words", func() {
 		Entry("parallel positional input past the inputs", "parallel 'git {2}' ::: push"),
 		Entry("parallel input from an unknown variable", "parallel git ::: $UNSET"),
 		Entry("parallel without separators and stdin", "parallel git"),
+		Entry("a quoted container option name", `docker run "--$X" img push`),
+		Entry("a quoted container option name after another", `docker run -e A=1 --"$X" img push`),
+		Entry("a quoted short container option name", `docker run "-$X" img push`),
+		Entry("a quoted global option name", `docker "--$X" run img ls`),
+
+		Entry("parallel --colsep positional", `parallel --colsep , {1} {2} ::: "git,push"`),
+		Entry("parallel -C positional", `parallel -C , {1} {2} ::: "git,push"`),
+		Entry("parallel --colsep without command", `parallel --colsep , ::: "git,push"`),
+		Entry("parallel --plus suffix removal", "parallel --plus {%.x} push ::: git.x"),
+		Entry("parallel --plus prefix removal", "parallel --plus {#x} push ::: xgit"),
+		Entry("parallel path part of several inputs", "parallel {/} push ::: a/git ::: b"),
+		Entry("a quoted parallel option name", `parallel --"$O" echo ::: a`),
+		Entry("a quoted short parallel option name", `parallel "-$O" echo ::: a`),
+		Entry("sem with a variable", "sem $X"),
+		Entry("env_parallel with a variable", "env_parallel $X ::: a"),
+		Entry("parset with a variable", "parset out $X ::: a"),
+		Entry("xargs appending unseen stdin to git", "cat f | xargs git"),
+		Entry("xargs appending an arg file to git", "xargs -a f git"),
+		Entry("BSD xargs -J", "ls | xargs -J % git %"),
 		Entry("xargs --replace", "xargs --replace sh -c {}"),
 		Entry("xargs -I with sh -c", "xargs -I % sh -c %"),
 		Entry("xargs -i with an attached string", "xargs -i% sh -c %"),
@@ -227,7 +260,9 @@ var _ = Describe("Dynamic launch words", func() {
 		Entry("a job number beside the input", "parallel 'git {} {#} {%}' ::: push"),
 		Entry("a positional path part", "parallel 'git {1.} {2/}' ::: push.x ::: a/o"),
 		Entry("an extension replacement string", "parallel --er @ 'git @' ::: push.x"),
-		Entry("--plus strings", "parallel --plus 'git {+/} {}' ::: push"),
+		Entry("--plus strings", "parallel --plus 'git {}' ::: push"),
+		Entry("{} with several inputs", "parallel {} ::: git ::: push"),
+		Entry("-X {} with several inputs", "parallel -X {} ::: git ::: push"),
 		Entry("a custom separator", "parallel --arg-sep ,, git ,, push"),
 		Entry("a custom file separator", "parallel --arg-file-sep ,,, git ::: push"),
 		Entry("the end of options", "parallel -j2 -- git ::: push"),
@@ -236,6 +271,8 @@ var _ = Describe("Dynamic launch words", func() {
 		Entry("perl in a tag string", `parallel --tagstring '{= system("git push") =}' echo ::: a`),
 		Entry("an --ssh command", "parallel --ssh='git push' -S h echo ::: a"),
 		Entry("an input from a variable on the line", "X=push; parallel git ::: $X"),
+		Entry("parset", "parset out git ::: push"),
+		Entry("BSD xargs -J with literal stdin", "echo push | xargs -J % git %"),
 		Entry("xargs -I with literal stdin", "echo push | xargs -I % git %"),
 		Entry("xargs -I in a cluster with literal stdin", "echo push | xargs -tI % git %"),
 	)
@@ -254,6 +291,11 @@ var _ = Describe("Dynamic launch words", func() {
 		Entry("the version", "parallel --version"),
 		Entry("many literal inputs", "parallel echo ::: a b c d e f g h i j k l m n o p q r s"),
 		Entry("xargs -I with an untracked program", "ls | xargs -I % mv % %.bak"),
+		Entry("docker as a unit name", `journalctl -u docker --since "$SINCE"`),
+		Entry("docker as a service", `sudo systemctl restart docker "$X"`),
+		Entry("docker as a package", `brew upgrade docker "$X"`),
+		Entry("parallel without raw command words",
+			"parallel -j 4 echo push origin ::: main dev"),
 		Entry("xargs -I {} with an untracked program", "find . | xargs -I {} gofmt -l {}"),
 	)
 })
