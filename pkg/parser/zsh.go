@@ -4,6 +4,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/cockroachdb/errors"
@@ -249,6 +250,8 @@ const OpacityZshGlobQualifier OpacityCause = "zsh-glob-qualifier"
 const (
 	qualifierEval = "(e)"
 	qualifierFunc = "(+func)"
+	// qualifierSubscript is a [...] subscript naming a variable.
+	qualifierSubscript = "([...])"
 )
 
 // GlobCommandSubst is the Opacity.Operation of an extended glob holding a
@@ -284,7 +287,8 @@ const (
 )
 
 // codeQualifier returns the code-running form in the extended globs of word,
-// or "". Bash reads *(e:'cmd':) as an extended glob, but zsh runs cmd for
+// or "". A [...] subscript only counts in an extended glob ending the word,
+// the only place zsh reads one as a qualifier. Bash reads *(e:'cmd':) as an extended glob, but zsh runs cmd for
 // every file the glob matches. Every extended glob is checked wherever it
 // sits in the word and whatever runs the word, which may flag a bash-only
 // command such as bash -c 'ls *(e:x:)'.
@@ -293,7 +297,7 @@ func codeQualifier(word *syntax.Word) string {
 		return GlobSubst
 	}
 
-	for _, part := range word.Parts {
+	for i, part := range word.Parts {
 		glob, ok := part.(*syntax.ExtGlob)
 		if !ok || glob.Pattern == nil {
 			continue
@@ -307,7 +311,7 @@ func codeQualifier(word *syntax.Word) string {
 			return GlobVariable
 		}
 
-		if form := qualifierCode(glob.Pattern.Value); form != "" {
+		if form := qualifierCode(glob.Pattern.Value, i == len(word.Parts)-1); form != "" {
 			return form
 		}
 	}
@@ -327,8 +331,9 @@ func hasCommandSubst(pattern string) bool {
 // offset instead of parsing the list. Only a plain pattern, free of quotes,
 // backslashes and $, holding | or ( is let through as a zsh pattern group,
 // as in @(a|b).
-func qualifierCode(pattern string) string {
+func qualifierCode(pattern string, trailing bool) string {
 	list, hashQ := strings.CutPrefix(pattern, zshQualifierPrefix)
+	qualifierPlace := trailing || hashQ
 
 	quoted := strings.ContainsAny(list, shellQuoting)
 	if !hashQ && !quoted && strings.ContainsAny(list, "|(") {
@@ -343,10 +348,25 @@ func qualifierCode(pattern string) string {
 			return qualifierEval
 		case list[i] == '+' && i+1 < len(list) && isNameChar(list[i+1]) && !isSign(list, i):
 			return qualifierFunc
+		case list[i] == '[' && qualifierPlace && subscriptHasName(list[i+1:]):
+			return qualifierSubscript
 		}
 	}
 
 	return ""
+}
+
+// subscriptHasName reports whether the [...] subscript qualifier starting
+// at text names a variable. zsh evaluates the subscript as arithmetic, which
+// expands a variable's value, command substitutions included.
+func subscriptHasName(text string) bool {
+	if end := strings.IndexByte(text, ']'); end >= 0 {
+		text = text[:end]
+	}
+
+	return strings.ContainsFunc(text, func(r rune) bool {
+		return r == '_' || r >= utf8.RuneSelf || unicode.IsLetter(r)
+	})
 }
 
 // closesLater reports whether the character at list[open] appears again

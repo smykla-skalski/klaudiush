@@ -187,6 +187,10 @@ var _ = Describe("Opacity explanations", func() {
 			`q='*(e:git push:)'; ls $~q`, parser.GlobSubst),
 		Entry("a glob-subst variable inside a word", `ls a$~q`, parser.GlobSubst),
 		Entry("a non-ASCII function name", `ls *(+é)`, "(+func)"),
+		Entry("a subscript naming a variable",
+			`x='path[$(git push)]'; ls *([x])`, "([...])"),
+		Entry("a subscript range naming a variable", `ls *(.[1,x])`, "([...])"),
+		Entry("a subscript in the #q form", `ls *(#q[x]).go`, "([...])"),
 		Entry("a quoted pipe", `ls *(e:'git push|x':)`, "(e)"),
 		Entry("an escaped e", `ls *(\e:"git push":)`, "(e)"),
 		Entry("a quoted plus", `ls *("+"fn)`, "(+func)"),
@@ -226,6 +230,9 @@ var _ = Describe("Opacity explanations", func() {
 		Entry("a time with a unit and a sign", `ls *(mm+3)`),
 		Entry("a sort by name", `ls *(on)`),
 		Entry("a nested group", `ls *(e:(x):)`),
+		Entry("a numeric subscript", `ls *([1,3])`),
+		Entry("a bracket inside a word", `ls @([a-z]*).go`),
+		Entry("a digit range", `ls +([0-9]).txt`),
 	)
 
 	It("explains an exhausted budget once", func() {

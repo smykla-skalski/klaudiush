@@ -326,7 +326,8 @@ func globCodeFinding(o parser.Opacity) (message, required, repair string) {
 
 	message = "glob qualifier " + o.Operation + " runs shell code for every file " +
 		"it matches when the login shell is zsh, and bash reads it as an extended glob"
-	required = "no zsh glob qualifiers that run code: (e:...:), (+func), (oe:...:), (o+func)"
+	required = "no zsh glob qualifiers that run code: (e:...:), (+func), (oe:...:), " +
+		"(o+func), or a [...] subscript naming a variable"
 	repair = "Select the files another way (find, a plain glob or a loop) and run " +
 		"the command directly, or quote the word if it is meant literally"
 
