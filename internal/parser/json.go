@@ -82,6 +82,7 @@ type JSONInput struct {
 // may include another concurrent command's changes.
 type claudeToolResponse struct {
 	Interrupted      bool   `json:"interrupted,omitempty"`
+	ReturnCodeNote   string `json:"returnCodeInterpretation,omitempty"`
 	BackgroundTaskID string `json:"backgroundTaskId,omitempty"`
 	BashEditDiff     *struct {
 		ChangedFiles []string `json:"changedFiles,omitempty"`
@@ -613,6 +614,7 @@ func populateClaudeAfterToolFields(ctx *hook.Context, input JSONInput) {
 
 	ctx.ToolInterrupted = ctx.ToolInterrupted || response.Interrupted
 	ctx.ToolBackground = ctx.ToolBackground || response.BackgroundTaskID != ""
+	ctx.ToolExitNote = response.ReturnCodeNote
 
 	if response.BashEditDiff != nil && !response.BashEditDiff.Shared {
 		ctx.ChangedFiles = dedupePaths(response.BashEditDiff.ChangedFiles)

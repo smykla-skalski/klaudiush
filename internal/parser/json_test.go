@@ -452,6 +452,19 @@ var _ = Describe("JSONParser", func() {
 			Expect(ctx.ChangedFiles).To(BeEmpty())
 		})
 
+		It("keeps Claude's interpretation of a non-zero exit", func() {
+			input := `{"hook_event_name": "PostToolUse", "tool_name": "Bash",
+				"tool_input": {"command": "git diff --exit-code"},
+				"tool_response": {"stdout": "", "returnCodeInterpretation": "Files differ"}}`
+
+			p := parser.NewJSONParser(bytes.NewReader([]byte(input)))
+			ctx, err := p.ParseWithOptions(parser.ParseOptions{Provider: hook.ProviderClaude})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ctx.ToolSucceeded).To(BeTrue())
+			Expect(ctx.ToolExitNote).To(Equal("Files differ"))
+		})
+
 		It("records interrupted and background Claude shell runs", func() {
 			cases := map[string][2]bool{
 				`{"hook_event_name": "PostToolUseFailure", "tool_name": "Bash",

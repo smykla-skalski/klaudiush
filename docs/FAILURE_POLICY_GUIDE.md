@@ -38,6 +38,7 @@ klaudiush answers every failure it can catch with exit code 0 and a response the
 | klaudiush itself panicked | `panic` | Warning, crash dump written |
 | The whole hook ran past its deadline | `timeout` | Warning |
 | Session state could not be read or written | `state` | Warning, never blocks |
+| The [evidence gate](EVIDENCE_GUIDE.md) cannot fingerprint the files a required check covers | `state` | Blocks at the completion gate |
 
 A check that passed only after its deadline or a cancellation is not trusted: it is reported as unavailable, never recorded as a clean pass, and never resolves earlier findings.
 

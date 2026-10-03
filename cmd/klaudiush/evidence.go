@@ -55,6 +55,7 @@ cannot finish until that check passed against the files as they are now.
 Examples:
   klaudiush evidence status        # Show each check and whether it is satisfied
   klaudiush evidence run tests     # Run the "tests" check and record the result`,
+	Args: cobra.NoArgs,
 	RunE: runEvidenceStatus,
 }
 
@@ -72,8 +73,9 @@ var evidenceRunCmd = &cobra.Command{
 
 klaudiush runs the check's first configured command itself, records its exit
 status, and ties the result to a digest of the files the check covers. The
-result counts only while those files stay unchanged. Running in the
-background is fine: the completion gate waits for the result.`,
+result counts only while those files stay unchanged. It can run in the
+background: until it records a result the completion gate reports the
+check as running and blocks, within its usual limit of 3 blocks a turn.`,
 	Args: cobra.ExactArgs(1),
 	RunE: runEvidenceRun,
 }
@@ -118,6 +120,8 @@ func loadEvidenceSetup(ctx context.Context, log logger.Logger) (*evidenceSetup, 
 }
 
 func runEvidenceRun(cmd *cobra.Command, args []string) error {
+	cmd.SilenceUsage = true
+
 	setup, err := loadEvidenceSetup(cmd.Context(), loggerFromCmd(cmd))
 	if err != nil {
 		return err
@@ -302,10 +306,15 @@ func runEvidenceStatus(cmd *cobra.Command, _ []string) error {
 
 	fmt.Printf("Evidence gate: %s\n", state)
 	fmt.Printf("Repository: %s\n", setup.repo)
-	fmt.Println("Coverage:")
 
-	for _, line := range evidence.CoverageLines() {
-		fmt.Println("  " + line)
+	if setup.cfg.Evidence.IsEnabled() {
+		fmt.Println("Coverage:")
+
+		for _, line := range evidence.CoverageLines() {
+			fmt.Println("  " + line)
+		}
+	} else {
+		fmt.Println("Coverage: none, nothing is gated while the gate is disabled")
 	}
 
 	if len(setup.checks) == 0 {

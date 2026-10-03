@@ -71,6 +71,11 @@ type sessionEntry struct {
 	// each required check covered when the session first touched the
 	// repository.
 	Baselines map[string]map[string]string `json:"evidence_baselines,omitempty"`
+
+	// Touched lists the repositories in which the session used a tool that
+	// can change files. Changes in a repository the session only read are
+	// someone else's and require nothing of it.
+	Touched map[string]bool `json:"evidence_touched,omitempty"`
 }
 
 type finding struct {

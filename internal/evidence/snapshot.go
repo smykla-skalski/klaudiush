@@ -20,7 +20,13 @@ import (
 // ErrNotRepository marks a directory outside any git work tree.
 var ErrNotRepository = errors.New("not a git repository")
 
-const deletedMarker = "deleted"
+// ErrUnreadable marks a work tree klaudiush cannot fully read.
+var ErrUnreadable = errors.New("work tree not fully readable")
+
+const (
+	deletedMarker   = "deleted"
+	submoduleMarker = "submodule"
+)
 
 // RepoRoot returns the top-level directory of the git work tree holding dir.
 func RepoRoot(ctx context.Context, dir string) (string, error) {
@@ -43,23 +49,64 @@ func RepoRoot(ctx context.Context, dir string) (string, error) {
 
 // Snapshot is the state of a work tree at one moment: its files and, on
 // demand, their content hashes.
+// excludes digests the repository's own ignore list, .git/info/exclude:
+// unlike .gitignore it is not a tracked file, so a change to it would
+// otherwise hide new files without changing any digest.
 type Snapshot struct {
-	root   string
-	files  []string
-	hashes map[string]string
+	root     string
+	files    []string
+	hashes   map[string]string
+	excludes string
 }
 
 // TakeSnapshot lists the tracked and untracked, not ignored, files of the
 // work tree rooted at root.
 func TakeSnapshot(ctx context.Context, root string) (*Snapshot, error) {
-	out, err := runGit(ctx, root, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
+	out, err := listFiles(ctx, root, "--cached", "--others")
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to list repository files")
+		return nil, err
 	}
 
 	files := splitPaths(out, func(string) bool { return true })
 
-	return &Snapshot{root: root, files: files, hashes: make(map[string]string)}, nil
+	excludes, err := excludesDigest(ctx, root)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Snapshot{
+		root:     root,
+		files:    files,
+		hashes:   make(map[string]string),
+		excludes: excludes,
+	}, nil
+}
+
+func excludesDigest(ctx context.Context, root string) (string, error) {
+	out, err := runGit(
+		ctx,
+		root,
+		"rev-parse",
+		"--path-format=absolute",
+		"--git-path",
+		"info/exclude",
+	)
+	if err != nil {
+		return "", errors.Wrap(err, "failed to locate the repository exclude file")
+	}
+
+	data, err := os.ReadFile(strings.TrimSpace(string(out)))
+	if errors.Is(err, fs.ErrNotExist) {
+		return deletedMarker, nil
+	}
+
+	if err != nil {
+		return "", errors.Wrap(err, "failed to read the repository exclude file")
+	}
+
+	sum := sha256.Sum256(data)
+
+	return hex.EncodeToString(sum[:]), nil
 }
 
 // splitPaths returns the sorted, distinct NUL-separated paths keep accepts.
@@ -115,6 +162,8 @@ func (s *Snapshot) ContentDigest(ctx context.Context, check *Check) (string, int
 		writeEntry(hash, path, sum)
 	}
 
+	writeEntry(hash, "\x00info/exclude", s.excludes)
+
 	return digestOf(hash), count, nil
 }
 
@@ -142,9 +191,9 @@ func (s *Snapshot) ReviewDiff(ctx context.Context, check *Check) (Diff, error) {
 		return Diff{}, errors.Wrap(err, "failed to list changed files")
 	}
 
-	untrackedOut, err := runGit(ctx, s.root, "ls-files", "-z", "--others", "--exclude-standard")
+	untrackedOut, err := listFiles(ctx, s.root, "--others")
 	if err != nil {
-		return Diff{}, errors.Wrap(err, "failed to list untracked files")
+		return Diff{}, err
 	}
 
 	changed := splitPaths(append(append(changedOut, 0), untrackedOut...), check.Covers)
@@ -191,9 +240,41 @@ func (s *Snapshot) hash(ctx context.Context, path string) (string, error) {
 		return "", err
 	}
 
+	if sum == submoduleMarker {
+		sum, err = s.submoduleState(ctx, path)
+		if err != nil {
+			return "", err
+		}
+	}
+
 	s.hashes[path] = sum
 
 	return sum, nil
+}
+
+// submoduleState identifies a submodule by its checked-out commit and its
+// uncommitted changes. An uninitialized submodule is an empty directory,
+// where git would answer for the parent repository instead.
+func (s *Snapshot) submoduleState(ctx context.Context, path string) (string, error) {
+	dir := filepath.Join(s.root, filepath.FromSlash(path))
+
+	if _, err := os.Lstat(filepath.Join(dir, ".git")); errors.Is(err, fs.ErrNotExist) {
+		return submoduleMarker + ":uninitialized", nil
+	}
+
+	head, err := runGit(ctx, dir, "rev-parse", "HEAD")
+	if err != nil {
+		return "", errors.Wrapf(err, "failed to read submodule %s", path)
+	}
+
+	status, err := runGit(ctx, dir, "status", "--porcelain", "--untracked-files=all")
+	if err != nil {
+		return "", errors.Wrapf(err, "failed to read submodule %s", path)
+	}
+
+	sum := sha256.Sum256(append(head, status...))
+
+	return submoduleMarker + ":" + hex.EncodeToString(sum[:]), nil
 }
 
 // hashFile hashes a file's content and permissions. A symlink hashes its
@@ -228,7 +309,7 @@ func hashFile(root, path string) (string, error) {
 
 		_, _ = io.WriteString(hash, "link:"+target)
 	case info.IsDir():
-		_, _ = io.WriteString(hash, "dir")
+		return submoduleMarker, nil
 	default:
 		if err := copyFile(hash, tree, path); err != nil {
 			return "", err
@@ -266,7 +347,37 @@ func copyFile(dst io.Writer, tree *os.Root, path string) error {
 // work tree on disk.
 var gitRunner = kexec.NewCommandRunner(0)
 
+// listFiles lists work tree files with git ls-files. A directory git could
+// not read would hide the files in it, so any complaint git prints fails
+// the listing instead of leaving those files out of the fingerprint.
+func listFiles(ctx context.Context, root string, which ...string) ([]byte, error) {
+	args := append([]string{"ls-files", "-z", "--exclude-standard"}, which...)
+
+	out, stderr, err := runGitStderr(ctx, root, args...)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to list repository files")
+	}
+
+	if complaint := strings.TrimSpace(stderr); complaint != "" {
+		return nil, errors.Wrapf(ErrUnreadable, "git ls-files: %s", firstLine(complaint))
+	}
+
+	return out, nil
+}
+
+func firstLine(text string) string {
+	line, _, _ := strings.Cut(text, "\n")
+
+	return line
+}
+
 func runGit(ctx context.Context, dir string, args ...string) ([]byte, error) {
+	out, _, err := runGitStderr(ctx, dir, args...)
+
+	return out, err
+}
+
+func runGitStderr(ctx context.Context, dir string, args ...string) ([]byte, string, error) {
 	env := append(gitEnv(os.Environ()), "GIT_OPTIONAL_LOCKS=0", "LC_ALL=C")
 
 	result := gitRunner.RunWithOptions(ctx, kexec.RunOptions{
@@ -274,7 +385,7 @@ func runGit(ctx context.Context, dir string, args ...string) ([]byte, error) {
 		Env: env,
 	}, "git", args...)
 	if result.Err != nil {
-		return nil, errors.Wrapf(
+		return nil, result.Stderr, errors.Wrapf(
 			result.Err,
 			"git %s: %s",
 			args[0],
@@ -282,7 +393,7 @@ func runGit(ctx context.Context, dir string, args ...string) ([]byte, error) {
 		)
 	}
 
-	return []byte(result.Stdout), nil
+	return []byte(result.Stdout), result.Stderr, nil
 }
 
 func gitEnv(environ []string) []string {

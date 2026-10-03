@@ -209,6 +209,10 @@ type Context struct {
 	// run_in_background, tool_response.backgroundTaskId).
 	ToolBackground bool
 
+	// ToolExitNote is Claude's tool_response.returnCodeInterpretation: set
+	// when Claude treated a non-zero exit (grep, diff, test) as success.
+	ToolExitNote string
+
 	// Derived marks a context the dispatcher built from another tool call:
 	// a file a shell command wrote, or one file of a multi-file patch.
 	Derived bool

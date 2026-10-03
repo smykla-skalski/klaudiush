@@ -2,6 +2,7 @@ package hooksession
 
 import (
 	"maps"
+	"slices"
 	"time"
 
 	"github.com/smykla-skalski/klaudiush/internal/evidence"
@@ -16,9 +17,13 @@ const BaselineUnknown = "unknown"
 // repoEvidence holds the latest receipt of each check in one repository.
 // Receipts are tied to content, not to a session: a check that passed on
 // exactly this content passed, whoever ran it.
+// Passed keeps each check's latest pass, so a later run that never finished
+// (denied, interrupted, still running) does not hide it. A failure on the
+// same content drops it.
 type repoEvidence struct {
 	UpdatedAt time.Time                    `json:"updated_at"`
 	Receipts  map[string]*evidence.Receipt `json:"receipts,omitempty"`
+	Passed    map[string]*evidence.Receipt `json:"passed,omitempty"`
 }
 
 // EvidenceBaselines returns, by check ID, the content digests the session
@@ -37,6 +42,19 @@ func (s *Store) EvidenceBaselines(
 	})
 
 	return baselines, err
+}
+
+// EvidenceRepos returns the repositories the session recorded baselines for.
+func (s *Store) EvidenceRepos(provider hook.Provider, sessionID string) ([]string, error) {
+	var repos []string
+
+	err := s.updateEntry(provider, sessionID, false, func(entry *sessionEntry) bool {
+		repos = slices.Sorted(maps.Keys(entry.Baselines))
+
+		return false
+	})
+
+	return repos, err
 }
 
 // AddEvidenceBaselines records baselines for checks that have none yet in
@@ -73,6 +91,73 @@ func (s *Store) AddEvidenceBaselines(
 
 		return changed
 	})
+}
+
+// Passes returns the latest pass of each check in a repository.
+func (s *Store) Passes(repo string) (map[string]*evidence.Receipt, error) {
+	var passes map[string]*evidence.Receipt
+
+	err := s.update(func(st *state) bool {
+		if repoState := st.Evidence[repo]; repoState != nil {
+			passes = maps.Clone(repoState.Passed)
+		}
+
+		return false
+	})
+
+	return passes, err
+}
+
+// MarkTouched records that the session used a tool that can change files in
+// a repository.
+func (s *Store) MarkTouched(provider hook.Provider, sessionID, repo string) error {
+	return s.updateEntry(provider, sessionID, true, func(entry *sessionEntry) bool {
+		if entry.Touched[repo] {
+			return false
+		}
+
+		if entry.Touched == nil {
+			entry.Touched = make(map[string]bool)
+		}
+
+		entry.Touched[repo] = true
+
+		return true
+	})
+}
+
+// Touched reports whether the session used a tool that can change files in
+// a repository.
+func (s *Store) Touched(provider hook.Provider, sessionID, repo string) (bool, error) {
+	touched := false
+
+	err := s.updateEntry(provider, sessionID, false, func(entry *sessionEntry) bool {
+		touched = entry.Touched[repo]
+
+		return false
+	})
+
+	return touched, err
+}
+
+// keepPass records a finished pass, and drops the kept pass when the same
+// content has since failed.
+func (r *repoEvidence) keepPass(receipt *evidence.Receipt) {
+	if receipt.Status == evidence.StatusPassed {
+		if r.Passed == nil {
+			r.Passed = make(map[string]*evidence.Receipt)
+		}
+
+		kept := *receipt
+		r.Passed[receipt.Check] = &kept
+
+		return
+	}
+
+	kept := r.Passed[receipt.Check]
+	if receipt.Status == evidence.StatusFailed && kept != nil && kept.Digest == receipt.Digest {
+		delete(r.Passed, receipt.Check)
+	}
 }
 
 // Receipts returns the latest receipt of each check in a repository.
@@ -124,6 +209,7 @@ func (s *Store) FinishReceipt(
 		}
 
 		finish(receipt)
+		repoState.keepPass(receipt)
 
 		repoState.UpdatedAt = s.now()
 		found = true

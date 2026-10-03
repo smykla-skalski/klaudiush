@@ -141,6 +141,24 @@ var _ = Describe("evidenceGate", func() {
 		Expect(receipts).To(BeEmpty())
 	})
 
+	It("ignores a result for another command under the same tool use ID", func() {
+		gate := newEvidenceGate(evidenceConfig(check), store, nil, log)
+		gate.apply(
+			context.Background(),
+			evidenceCtx(hook.CanonicalEventBeforeTool, "PreToolUse", repo),
+			nil,
+		)
+
+		post := evidenceCtx(hook.CanonicalEventAfterTool, "PostToolUse", repo)
+		post.ToolInput.Command = "echo PASS"
+		post.ToolSucceeded = true
+		gate.apply(context.Background(), post, nil)
+
+		receipts, err := store.Receipts(repo)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(receipts["tests"].Status).To(Equal(evidence.StatusRunning))
+	})
+
 	It("leaves a run alone when the check definition changed", func() {
 		gate := newEvidenceGate(evidenceConfig(check), store, nil, log)
 		gate.apply(
@@ -189,18 +207,167 @@ var _ = Describe("evidenceGate", func() {
 		Expect(gate.apply(context.Background(), stop, nil)).To(BeEmpty())
 	})
 
+	It("gates every repository the session edited, not only the one it stops in", func() {
+		other := evidenceRepo()
+		gate := newEvidenceGate(evidenceConfig(check), store, nil, log)
+		gate.loadChecks = func(string) []*evidence.Check { return gate.checks }
+
+		write := evidenceCtx(hook.CanonicalEventBeforeTool, "PreToolUse", repo)
+		write.ToolName, write.ToolFamily = hook.ToolTypeWrite, hook.ToolFamilyWrite
+		write.AffectedPaths = []string{filepath.Join(other, "a.go")}
+		gate.apply(context.Background(), write, nil)
+
+		Expect(os.WriteFile(filepath.Join(other, "a.go"), []byte("package b\n"), 0o600)).
+			To(Succeed())
+
+		errs := gate.apply(
+			context.Background(),
+			evidenceCtx(hook.CanonicalEventTurnStop, "Stop", repo),
+			nil,
+		)
+		Expect(errs).To(HaveLen(1))
+		Expect(errs[0].Details[evidenceValidator]).To(ContainSubstring(other))
+
+		gate.loadChecks = func(string) []*evidence.Check { return nil }
+		Expect(
+			gate.apply(
+				context.Background(),
+				evidenceCtx(hook.CanonicalEventTurnStop, "Stop", repo),
+				nil,
+			),
+		).
+			To(BeEmpty())
+	})
+
+	It("counts a non-zero exit Claude interpreted as success as a failure", func() {
+		gate := newEvidenceGate(evidenceConfig(check), store, nil, log)
+		gate.apply(
+			context.Background(),
+			evidenceCtx(hook.CanonicalEventBeforeTool, "PreToolUse", repo),
+			nil,
+		)
+
+		post := evidenceCtx(hook.CanonicalEventAfterTool, "PostToolUse", repo)
+		post.ToolSucceeded, post.ToolExitNote = true, "Files differ"
+		gate.apply(context.Background(), post, nil)
+
+		receipts, err := store.Receipts(repo)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(receipts["tests"].Status).To(Equal(evidence.StatusFailed))
+		Expect(receipts["tests"].Detail).To(ContainSubstring("Files differ"))
+	})
+
+	It("keeps a pass when a later run of the same content never finishes", func() {
+		gate := newEvidenceGate(evidenceConfig(check), store, nil, log)
+		gate.apply(
+			context.Background(),
+			evidenceCtx(hook.CanonicalEventBeforeTool, "PreToolUse", repo),
+			nil,
+		)
+
+		Expect(os.WriteFile(filepath.Join(repo, "a.go"), []byte("package b\n"), 0o600)).
+			To(Succeed())
+
+		run := func(id string, finish func(*hook.Context)) {
+			pre := evidenceCtx(hook.CanonicalEventBeforeTool, "PreToolUse", repo)
+			pre.ToolUseID = id
+			gate.apply(context.Background(), pre, nil)
+
+			if finish != nil {
+				post := evidenceCtx(hook.CanonicalEventAfterTool, "PostToolUse", repo)
+				post.ToolUseID = id
+				finish(post)
+				gate.apply(context.Background(), post, nil)
+			}
+		}
+
+		stop := evidenceCtx(hook.CanonicalEventTurnStop, "Stop", repo)
+
+		run("t1", func(post *hook.Context) { post.ToolSucceeded = true })
+		run("t2", nil)
+		Expect(gate.apply(context.Background(), stop, nil)).To(BeEmpty())
+
+		run("t3", func(post *hook.Context) { post.ToolSucceeded = false })
+		Expect(gate.apply(context.Background(), stop, nil)).To(HaveLen(1))
+	})
+
+	It("does not gate a read-only session on someone else's edits", func() {
+		gate := newEvidenceGate(evidenceConfig(check), store, nil, log)
+
+		read := evidenceCtx(hook.CanonicalEventBeforeTool, "PreToolUse", repo)
+		read.ToolName, read.ToolFamily = hook.ToolTypeRead, hook.ToolFamilyRead
+		gate.apply(context.Background(), read, nil)
+
+		Expect(os.WriteFile(filepath.Join(repo, "a.go"), []byte("package b\n"), 0o600)).
+			To(Succeed())
+
+		stop := evidenceCtx(hook.CanonicalEventTurnStop, "Stop", repo)
+		Expect(gate.apply(context.Background(), stop, nil)).To(BeEmpty())
+
+		gate.apply(
+			context.Background(),
+			evidenceCtx(hook.CanonicalEventBeforeTool, "PreToolUse", repo),
+			nil,
+		)
+		Expect(gate.apply(context.Background(), stop, nil)).To(HaveLen(1))
+	})
+
+	It("requires a check whose baseline it could not fingerprint", func() {
+		gate := newEvidenceGate(evidenceConfig(check), store, nil, log)
+		hookCtx := evidenceCtx(hook.CanonicalEventBeforeTool, "PreToolUse", repo)
+		scope := &repoScope{
+			root:   repo,
+			checks: gate.checks,
+			snap:   &lazySnapshot{root: GinkgoT().TempDir()},
+		}
+
+		baselines, err := gate.ensureBaselines(context.Background(), hookCtx, scope)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(baselines[gate.checks[0].ID()]).To(Equal(hooksession.BaselineUnknown))
+	})
+
+	It("requires a check whose definition changed during the session", func() {
+		gate := newEvidenceGate(evidenceConfig(check), store, nil, log)
+		gate.apply(
+			context.Background(),
+			evidenceCtx(hook.CanonicalEventBeforeTool, "PreToolUse", repo),
+			nil,
+		)
+
+		Expect(os.WriteFile(filepath.Join(repo, "a.go"), []byte("package b\n"), 0o600)).
+			To(Succeed())
+
+		changed := newEvidenceGate(evidenceConfig(&config.EvidenceCheckConfig{
+			Name:     "tests",
+			Commands: []string{"make test"},
+			Exclude:  []string{"nothing/**"},
+		}), store, nil, log)
+
+		errs := changed.apply(
+			context.Background(),
+			evidenceCtx(hook.CanonicalEventTurnStop, "Stop", repo),
+			nil,
+		)
+		Expect(errs).To(HaveLen(1))
+		Expect(errs[0].Reference).To(Equal(validator.RefEvidenceMissing))
+	})
+
 	It("reports evidence it cannot read according to the failure policy", func() {
 		gate := newEvidenceGate(evidenceConfig(check), store, nil, log)
 		err := os.ErrDeadlineExceeded
 
-		warn := gate.unavailable("read things", err)
+		warn := gate.unavailable("read things", err, false)
 		Expect(warn.ShouldBlock).To(BeFalse())
+		Expect(gate.unavailable("read things", err, true).ShouldBlock).To(BeTrue())
 		Expect(warn.Unavailable).To(BeTrue())
 		Expect(warn.Reference).To(Equal(validator.RefValidationUnavailable))
 		Expect(warn.Message).To(ContainSubstring("could not read things"))
 
 		gate.policy = failpolicy.New(&config.FailurePolicyConfig{Critical: []string{"evidence"}})
-		Expect(gate.unavailable("read things", err).ShouldBlock).To(BeTrue())
+		Expect(gate.unavailable("read things", err, false).ShouldBlock).To(BeTrue())
+
+		gate.policy = failpolicy.New(&config.FailurePolicyConfig{Mode: config.FailureModeWarn})
+		Expect(gate.unavailable("read things", err, true).ShouldBlock).To(BeFalse())
 	})
 
 	It("reports a fingerprint failure at the gate", func() {
@@ -228,15 +395,20 @@ var _ = Describe("evidenceGate", func() {
 		)
 		Expect(errs).To(HaveLen(1))
 		Expect(errs[0].Unavailable).To(BeTrue())
+		Expect(errs[0].ShouldBlock).To(BeTrue())
 		Expect(errs[0].Message).To(ContainSubstring("no-such-base"))
 	})
 
 	It("reports a work tree it cannot list at the gate", func() {
 		gate := newEvidenceGate(evidenceConfig(check), store, nil, log)
 		stop := evidenceCtx(hook.CanonicalEventTurnStop, "Stop", repo)
-		snap := &lazySnapshot{root: GinkgoT().TempDir()}
+		scope := &repoScope{
+			root:   repo,
+			checks: gate.checks,
+			snap:   &lazySnapshot{root: GinkgoT().TempDir()},
+		}
 
-		errs := gate.verdicts(context.Background(), stop, repo, snap,
+		errs := gate.verdicts(context.Background(), stop, scope,
 			map[string]string{gate.checks[0].ID(): hooksession.BaselineUnknown})
 		Expect(errs).To(HaveLen(1))
 		Expect(errs[0].Unavailable).To(BeTrue())

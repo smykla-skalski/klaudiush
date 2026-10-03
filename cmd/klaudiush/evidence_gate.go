@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -31,14 +32,17 @@ const backgroundDetail = "it ran in the background, and hooks never learn " +
 // passing result for the files as they are now. It records the content each
 // session started from, ties every observed check run to the content it ran
 // against, and judges those results at the turn's completion gate.
+// loadChecks returns the checks configured for another repository the
+// session touched, or nil when its gate is off.
 type evidenceGate struct {
-	checks []*evidence.Check
-	store  *hooksession.Store
-	policy *failpolicy.Policy
-	binary string
-	now    func() time.Time
-	alive  func(pid int) bool
-	log    logger.Logger
+	checks     []*evidence.Check
+	loadChecks func(repo string) []*evidence.Check
+	store      *hooksession.Store
+	policy     *failpolicy.Policy
+	binary     string
+	now        func() time.Time
+	alive      func(pid int) bool
+	log        logger.Logger
 }
 
 // newEvidenceGate returns nil unless evidence is enabled with valid checks.
@@ -65,6 +69,9 @@ func newEvidenceGate(
 
 	return &evidenceGate{
 		checks: checks,
+		loadChecks: func(repo string) []*evidence.Check {
+			return repoChecks(log, repo)
+		},
 		store:  store,
 		policy: policy,
 		binary: klaudiushBinary(),
@@ -72,6 +79,22 @@ func newEvidenceGate(
 		alive:  evidence.ProcessAlive,
 		log:    log,
 	}
+}
+
+// repoChecks loads the checks configured for a repository, or nil when its
+// configuration cannot be loaded or keeps the gate off.
+func repoChecks(log logger.Logger, repo string) []*evidence.Check {
+	cfg, err := loadConfig(log, repo)
+	if err != nil || !cfg.Evidence.IsEnabled() {
+		return nil
+	}
+
+	checks, err := evidence.Compile(cfg.Evidence)
+	if err != nil {
+		return nil
+	}
+
+	return checks
 }
 
 func klaudiushBinary() string {
@@ -100,9 +123,18 @@ func (l *lazySnapshot) get(ctx context.Context) (*evidence.Snapshot, error) {
 	return l.snap, l.err
 }
 
+// repoScope is one repository a hook concerns, with the checks configured
+// for it and a snapshot of its work tree.
+type repoScope struct {
+	root   string
+	checks []*evidence.Check
+	snap   *lazySnapshot
+}
+
 // apply records baselines and check runs for this hook and, at the turn's
 // completion gate, adds a blocking finding for every required check without
-// a passing result on the current content.
+// a passing result on the current content of every repository the session
+// touched.
 func (g *evidenceGate) apply(
 	ctx context.Context,
 	hookCtx *hook.Context,
@@ -114,33 +146,149 @@ func (g *evidenceGate) apply(
 	}
 
 	workDir := evidenceWorkDir(hookCtx)
+	scopes := newScopeSet(g)
 
-	repo, err := evidence.RepoRoot(ctx, workDir)
-	if err != nil {
-		g.log.Debug("evidence gate skipped outside a git repository", "dir", workDir)
+	primary, primaryErr := evidence.RepoRoot(ctx, workDir)
+	if primaryErr == nil {
+		scopes.add(primary, g.checks)
+	}
 
+	for _, dir := range touchedDirs(hookCtx, workDir) {
+		if repo, err := evidence.RepoRoot(ctx, dir); err == nil {
+			scopes.add(repo, nil)
+		}
+	}
+
+	if hookCtx.Event == hook.CanonicalEventTurnStop {
+		return append(errs, g.stop(ctx, hookCtx, scopes)...)
+	}
+
+	mutating := hookCtx.Event == hook.CanonicalEventBeforeTool ||
+		hookCtx.Event == hook.CanonicalEventAfterTool
+
+	for _, scope := range scopes.list {
+		_, _ = g.ensureBaselines(ctx, hookCtx, scope)
+
+		if mutating && !readOnlyTool(hookCtx) {
+			if err := g.store.MarkTouched(
+				hookCtx.Provider,
+				hookCtx.SessionID,
+				scope.root,
+			); err != nil {
+				g.log.Info("failed to record the session's edits", "error", err)
+			}
+		}
+	}
+
+	if primaryErr != nil {
 		return errs
 	}
 
-	snap := &lazySnapshot{root: repo}
-
-	baselines, baselineErr := g.ensureBaselines(ctx, hookCtx, repo, snap)
-
 	switch hookCtx.Event {
 	case hook.CanonicalEventBeforeTool:
-		g.startRun(ctx, hookCtx, workDir, repo, snap, errs)
+		g.startRun(ctx, hookCtx, workDir, scopes.byRoot[primary], errs)
 	case hook.CanonicalEventAfterTool:
-		g.finishRun(ctx, hookCtx, repo, snap)
-	case hook.CanonicalEventTurnStop:
-		if baselineErr != nil {
-			return append(errs, g.unavailable("read the session's evidence baselines", baselineErr))
-		}
-
-		return append(errs, g.verdicts(ctx, hookCtx, repo, snap, baselines)...)
+		g.finishRun(ctx, hookCtx, scopes.byRoot[primary])
 	default:
 	}
 
 	return errs
+}
+
+// stop judges every repository the session recorded baselines for, plus the
+// one the agent stops in.
+func (g *evidenceGate) stop(
+	ctx context.Context,
+	hookCtx *hook.Context,
+	scopes *scopeSet,
+) []*dispatcher.ValidationError {
+	repos, err := g.store.EvidenceRepos(hookCtx.Provider, hookCtx.SessionID)
+	if err != nil {
+		return []*dispatcher.ValidationError{
+			g.unavailable("read the session's evidence baselines", err, false),
+		}
+	}
+
+	for _, repo := range repos {
+		scopes.add(repo, nil)
+	}
+
+	var findings []*dispatcher.ValidationError
+
+	for _, scope := range scopes.list {
+		baselines, err := g.ensureBaselines(ctx, hookCtx, scope)
+		if err != nil {
+			findings = append(findings,
+				g.unavailable("read the session's evidence baselines", err, false))
+
+			continue
+		}
+
+		findings = append(findings, g.verdicts(ctx, hookCtx, scope, baselines)...)
+	}
+
+	return findings
+}
+
+// scopeSet collects the repositories a hook concerns, loading each one's
+// checks once.
+type scopeSet struct {
+	gate   *evidenceGate
+	byRoot map[string]*repoScope
+	list   []*repoScope
+}
+
+func newScopeSet(gate *evidenceGate) *scopeSet {
+	return &scopeSet{gate: gate, byRoot: make(map[string]*repoScope)}
+}
+
+// add registers a repository. checks are the ones the hook's configuration
+// holds; nil loads the repository's own.
+func (s *scopeSet) add(root string, checks []*evidence.Check) {
+	if _, ok := s.byRoot[root]; ok {
+		return
+	}
+
+	if checks == nil && s.gate.loadChecks != nil {
+		checks = s.gate.loadChecks(root)
+	}
+
+	scope := &repoScope{root: root, checks: checks, snap: &lazySnapshot{root: root}}
+	s.byRoot[root] = scope
+
+	if len(checks) > 0 {
+		s.list = append(s.list, scope)
+	}
+}
+
+// touchedDirs lists the existing directories holding files a file tool
+// names, so an edit in a repository other than the working directory's
+// still gets a baseline.
+func touchedDirs(hookCtx *hook.Context, workDir string) []string {
+	if !hookCtx.IsFileTool() && len(hookCtx.PatchFiles) == 0 {
+		return nil
+	}
+
+	dirs := make([]string, 0, len(hookCtx.AffectedPaths))
+
+	for _, path := range hookCtx.AffectedPaths {
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(workDir, path)
+		}
+
+		dir := filepath.Dir(path)
+		for dir != filepath.Dir(dir) {
+			if info, err := os.Stat(dir); err == nil && info.IsDir() {
+				break
+			}
+
+			dir = filepath.Dir(dir)
+		}
+
+		dirs = append(dirs, dir)
+	}
+
+	return dirs
 }
 
 func evidenceWorkDir(hookCtx *hook.Context) string {
@@ -163,9 +311,10 @@ func evidenceWorkDir(hookCtx *hook.Context) string {
 func (g *evidenceGate) ensureBaselines(
 	ctx context.Context,
 	hookCtx *hook.Context,
-	repo string,
-	snap *lazySnapshot,
+	scope *repoScope,
 ) (map[string]string, error) {
+	repo := scope.root
+
 	baselines, err := g.store.EvidenceBaselines(hookCtx.Provider, hookCtx.SessionID, repo)
 	if err != nil {
 		g.log.Info("failed to read evidence baselines", "error", err)
@@ -180,20 +329,20 @@ func (g *evidenceGate) ensureBaselines(
 	added := make(map[string]string)
 	unknown := hookCtx.IsAfterTool() && !readOnlyTool(hookCtx)
 
-	for _, check := range g.checks {
+	for _, check := range scope.checks {
 		if _, ok := baselines[check.ID()]; ok {
 			continue
 		}
 
 		digest := hooksession.BaselineUnknown
 
-		if !unknown {
-			digest, err = contentDigest(ctx, snap, check)
+		if !unknown && !redefined(baselines, check) {
+			digest, err = contentDigest(ctx, scope.snap, check)
 			if err != nil {
 				g.log.Info("failed to fingerprint evidence baseline",
 					"check", check.Name, "error", err)
 
-				continue
+				digest = hooksession.BaselineUnknown
 			}
 		}
 
@@ -208,6 +357,21 @@ func (g *evidenceGate) ensureBaselines(
 	}
 
 	return baselines, nil
+}
+
+// redefined reports a check the session already had a baseline for under
+// an earlier definition. Its new baseline would include whatever the
+// session changed before the definition changed, so the check is required.
+func redefined(baselines map[string]string, check *evidence.Check) bool {
+	prefix := check.Name + "@"
+
+	for id := range baselines {
+		if strings.HasPrefix(id, prefix) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func readOnlyTool(hookCtx *hook.Context) bool {
@@ -269,17 +433,19 @@ func checkFingerprint(
 func (g *evidenceGate) startRun(
 	ctx context.Context,
 	hookCtx *hook.Context,
-	workDir, repo string,
-	snap *lazySnapshot,
+	workDir string,
+	scope *repoScope,
 	errs []*dispatcher.ValidationError,
 ) {
+	repo, snap := scope.root, scope.snap
+
 	if !hook.ReportsCommandOutcome(hookCtx.Provider) || !hookCtx.IsBashTool() ||
 		hookCtx.IsPermissionRequest() || hookCtx.ToolUseID == "" ||
 		dispatcher.ShouldBlock(errs) {
 		return
 	}
 
-	check := evidence.MatchCommand(g.checks, hookCtx.GetCommand(), workDir, repo)
+	check := evidence.MatchCommand(scope.checks, hookCtx.GetCommand(), workDir, repo)
 	if check == nil {
 		return
 	}
@@ -325,9 +491,10 @@ func (g *evidenceGate) startRun(
 func (g *evidenceGate) finishRun(
 	ctx context.Context,
 	hookCtx *hook.Context,
-	repo string,
-	snap *lazySnapshot,
+	scope *repoScope,
 ) {
+	repo, snap := scope.root, scope.snap
+
 	if !hook.ReportsCommandOutcome(hookCtx.Provider) || !hookCtx.IsBashTool() ||
 		hookCtx.ToolUseID == "" {
 		return
@@ -336,6 +503,7 @@ func (g *evidenceGate) finishRun(
 	sameRun := func(receipt *evidence.Receipt) bool {
 		return receipt.ToolUseID == hookCtx.ToolUseID &&
 			receipt.SessionID == hookCtx.SessionID &&
+			receipt.Command == hookCtx.GetCommand() &&
 			receipt.Status == evidence.StatusRunning
 	}
 
@@ -344,7 +512,7 @@ func (g *evidenceGate) finishRun(
 		return
 	}
 
-	check := evidence.Find(g.checks, started.Check)
+	check := evidence.Find(scope.checks, started.Check)
 	if check == nil || check.ID() != started.CheckID {
 		return
 	}
@@ -372,6 +540,8 @@ func runOutcome(hookCtx *hook.Context) (evidence.Status, string) {
 		return evidence.StatusUnverified, backgroundDetail
 	case hookCtx.ToolInterrupted:
 		return evidence.StatusCanceled, "the command was interrupted"
+	case hookCtx.ToolExitNote != "":
+		return evidence.StatusFailed, "it exited non-zero (" + hookCtx.ToolExitNote + ")"
 	case hookCtx.ToolSucceeded:
 		return evidence.StatusPassed, ""
 	default:
@@ -385,18 +555,31 @@ func runOutcome(hookCtx *hook.Context) (evidence.Status, string) {
 func (g *evidenceGate) verdicts(
 	ctx context.Context,
 	hookCtx *hook.Context,
-	repo string,
-	snap *lazySnapshot,
+	scope *repoScope,
 	baselines map[string]string,
 ) []*dispatcher.ValidationError {
+	repo, snap := scope.root, scope.snap
+
 	receipts, err := g.store.Receipts(repo)
 	if err != nil {
-		return []*dispatcher.ValidationError{g.unavailable("read the check results", err)}
+		return []*dispatcher.ValidationError{g.unavailable("read the check results", err, false)}
+	}
+
+	passes, err := g.store.Passes(repo)
+	if err != nil {
+		return []*dispatcher.ValidationError{g.unavailable("read the check results", err, false)}
+	}
+
+	touched, err := g.store.Touched(hookCtx.Provider, hookCtx.SessionID, repo)
+	if err != nil {
+		return []*dispatcher.ValidationError{
+			g.unavailable("read the session's evidence baselines", err, false),
+		}
 	}
 
 	var findings []*dispatcher.ValidationError
 
-	for _, check := range g.checks {
+	for _, check := range scope.checks {
 		baseline, ok := baselines[check.ID()]
 		if !ok {
 			continue
@@ -405,34 +588,74 @@ func (g *evidenceGate) verdicts(
 		current, err := contentDigest(ctx, snap, check)
 		if err != nil {
 			findings = append(findings,
-				g.unavailable("fingerprint the files of check "+check.Name, err))
+				g.unavailable("fingerprint the files of check "+check.Name, err, true))
 
 			continue
 		}
 
-		if baseline == current {
+		if baseline == current || (!touched && baseline != hooksession.BaselineUnknown) {
 			continue
 		}
 
-		fp, err := checkFingerprint(ctx, snap, check)
-		if err != nil {
-			findings = append(findings,
-				g.unavailable("fingerprint the files of check "+check.Name, err))
-
-			continue
+		if finding := g.judge(ctx, hookCtx, scope, check, receipts, passes); finding != nil {
+			findings = append(findings, finding)
 		}
-
-		verdict := evidence.Judge(check, receipts[check.Name], fp.digest, g.now(), g.alive)
-		if verdict.Satisfied() {
-			g.log.Info("evidence check satisfied", "check", check.Name, "digest", fp.digest)
-
-			continue
-		}
-
-		findings = append(findings, g.missing(hookCtx, repo, check, verdict, fp))
 	}
 
 	return findings
+}
+
+// judge returns the finding for a required check, or nil when its latest
+// result, or else its kept pass, passed against the current content. A kept
+// pass never outweighs a later failure.
+func (g *evidenceGate) judge(
+	ctx context.Context,
+	hookCtx *hook.Context,
+	scope *repoScope,
+	check *evidence.Check,
+	receipts, passes map[string]*evidence.Receipt,
+) *dispatcher.ValidationError {
+	fp, err := checkFingerprint(ctx, scope.snap, check)
+	if err != nil {
+		return g.unavailable("fingerprint the files of check "+check.Name, err, true)
+	}
+
+	verdict := abandonedRun(
+		hookCtx,
+		evidence.Judge(check, receipts[check.Name], fp.digest, g.now(), g.alive),
+	)
+	if !verdict.Satisfied() && verdict.Status != evidence.StatusFailed {
+		kept := evidence.Judge(check, passes[check.Name], fp.digest, g.now(), g.alive)
+		if kept.Satisfied() {
+			verdict = kept
+		}
+	}
+
+	if verdict.Satisfied() {
+		g.log.Info("evidence check satisfied", "check", check.Name, "digest", fp.digest)
+
+		return nil
+	}
+
+	return g.missing(hookCtx, scope.root, check, verdict, fp)
+}
+
+// abandonedRun turns a shell run the stopping agent itself started and never
+// finished into a canceled one. A provider runs an agent's foreground tool
+// calls before that agent's turn ends, so the run was denied or interrupted
+// before it reported anything.
+func abandonedRun(hookCtx *hook.Context, verdict evidence.Verdict) evidence.Verdict {
+	receipt := verdict.Receipt
+	if verdict.Status != evidence.StatusRunning || receipt == nil ||
+		receipt.Source == evidence.SourceVerifier ||
+		receipt.SessionID != hookCtx.SessionID || receipt.AgentID != hookCtx.AgentID {
+		return verdict
+	}
+
+	verdict.Status = evidence.StatusCanceled
+	verdict.Reason = "it started but never reported a result, so it was denied or interrupted"
+
+	return verdict
 }
 
 func (g *evidenceGate) missing(
@@ -552,11 +775,18 @@ func listFiles(files []string) string {
 		strings.Join(files[:maxListedFiles], ", "), len(files)-maxListedFiles)
 }
 
-// unavailable reports evidence klaudiush could not establish. The failure
-// policy decides whether that blocks; by default it warns, like other state
-// klaudiush cannot read.
-func (g *evidenceGate) unavailable(what string, err error) *dispatcher.ValidationError {
-	action := g.policy.Resolve(evidenceValidator, validator.ReasonState, false)
+// unavailable reports evidence klaudiush could not establish, and the
+// failure policy decides whether that blocks. Files klaudiush cannot
+// fingerprint block by default: an agent can make a file unreadable, and
+// unknown content must not count as checked. Unreadable session state warns
+// by default, since a held lock is transient. The completion gate's block
+// limit keeps either from holding the agent forever.
+func (g *evidenceGate) unavailable(
+	what string,
+	err error,
+	blocks bool,
+) *dispatcher.ValidationError {
+	action := g.policy.Resolve(evidenceValidator, validator.ReasonState, blocks)
 
 	return &dispatcher.ValidationError{
 		Validator: evidenceValidator,

@@ -61,6 +61,12 @@ stdin $WORK/pre-run3.json
 exec klaudiush --hook-type PreToolUse
 stdin $WORK/stop.json
 exec klaudiush --event Stop
+stdout 'it started but never reported a result'
+
+stdin $WORK/pre-subagent.json
+exec klaudiush --hook-type PreToolUse
+stdin $WORK/stop.json
+exec klaudiush --event Stop
 stdout 'still running since'
 stdout 'Wait for the running check to finish'
 
@@ -159,6 +165,9 @@ changed readme
 
 -- pre-run3.json --
 {"session_id":"s1","hook_event_name":"PreToolUse","tool_name":"Bash","tool_use_id":"t3","tool_input":{"command":"sh check.sh"}}
+
+-- pre-subagent.json --
+{"session_id":"s1","agent_id":"sub1","hook_event_name":"PreToolUse","tool_name":"Bash","tool_use_id":"t5","tool_input":{"command":"sh check.sh"}}
 
 -- pre-background.json --
 {"session_id":"s1","hook_event_name":"PreToolUse","tool_name":"Bash","tool_use_id":"bg","tool_input":{"command":"sh check.sh","run_in_background":true}}

@@ -237,6 +237,66 @@ var _ = Describe("Snapshot", func() {
 		Expect(err).To(MatchError(context.Canceled))
 	})
 
+	It("changes when the repository exclude file changes", func() {
+		before, _ := digest(tests)
+
+		write(repo, ".git/info/exclude", "hack.go\n")
+
+		after, _ := digest(tests)
+		Expect(after).NotTo(Equal(before))
+	})
+
+	It("tracks a submodule by its commit and uncommitted changes", func() {
+		sub := filepath.Join(repo, "sub")
+		write(repo, "sub/s.go", "package s\n")
+		git(sub, "init", "-q")
+		git(sub, "add", "-A")
+		git(sub, "commit", "-qm", "sub")
+		git(repo, "add", "sub")
+
+		checks, err := evidence.Compile(&config.EvidenceConfig{
+			Checks: []*config.EvidenceCheckConfig{{Name: "all", Commands: []string{"t"}}},
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		all := checks[0]
+		clean, _ := digest(all)
+
+		write(repo, "sub/s.go", "package s\n\nvar Z = 1\n")
+
+		dirty, _ := digest(all)
+		Expect(dirty).NotTo(Equal(clean))
+
+		Expect(os.RemoveAll(sub)).To(Succeed())
+		Expect(os.Mkdir(sub, 0o755)).To(Succeed())
+
+		uninitialized, _ := digest(all)
+		Expect(uninitialized).NotTo(Equal(clean))
+	})
+
+	It("fails when git cannot read part of the work tree", func() {
+		if os.Geteuid() == 0 {
+			Skip("root reads every directory")
+		}
+
+		hidden := filepath.Join(repo, "hidden")
+		write(repo, "hidden/new.go", "package hidden\n")
+		Expect(os.Chmod(hidden, 0o000)).To(Succeed())
+		DeferCleanup(os.Chmod, hidden, os.FileMode(0o755))
+
+		_, err := evidence.TakeSnapshot(ctx, repo)
+		Expect(err).To(MatchError(evidence.ErrUnreadable))
+
+		Expect(os.Chmod(hidden, 0o755)).To(Succeed())
+
+		snap, err := evidence.TakeSnapshot(ctx, repo)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(os.Chmod(hidden, 0o000)).To(Succeed())
+
+		_, err = snap.ReviewDiff(ctx, review)
+		Expect(err).To(MatchError(evidence.ErrUnreadable))
+	})
+
 	It("fails to list a directory that is not a repository", func() {
 		_, err := evidence.TakeSnapshot(ctx, GinkgoT().TempDir())
 		Expect(err).To(HaveOccurred())

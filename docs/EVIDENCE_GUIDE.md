@@ -65,6 +65,11 @@ On the first hook of a session in a repository, klaudiush records a digest of th
 - Nothing covered changed (read-only work, or only files the check does not cover): the check is not required and the gate does not block.
 - A covered file changed, was added or was removed: the check is required.
 - An edit that was later undone: not required, because the content is back to the baseline.
+- Only changes made while the session used a tool that can change files there count. A session that only read files (Read, Grep, Glob) is never gated by edits someone else made in the meantime. Shell commands count as tools that can change files.
+
+Every repository the session records a baseline for is judged at the completion gate, not only the one the agent stops in. A repository gets a baseline when a hook runs in it, or when a file tool (Write, Edit, a patch) edits a file in it; each repository is judged with the checks its own configuration defines. Shell commands that edit files in a repository no hook ran in are not seen.
+
+If a check's definition changes during a session, the check is required, since its new baseline would include whatever the session changed before.
 
 If the first hook klaudiush sees in a session comes after a tool already ran (for example because only `PostToolUse` is registered), klaudiush cannot tell what the session changed, so every check is required for that session.
 
@@ -74,10 +79,10 @@ Baselines live in the session state and are dropped when the session ends. Resul
 
 | Status | Meaning | Satisfies the gate |
 |:--|:--|:--|
-| `passed` | The check succeeded and covered files did not change while it ran | Only if the digest matches the current files |
+| `passed` | The check succeeded and covered files did not change while it ran. The latest pass is kept when a later run never finishes; a failure on the same content drops it | Only if the digest matches the current files |
 | `failed` | The check exited non-zero | No |
 | `running` | The check started and has not reported yet | No |
-| `canceled` | The check was interrupted, timed out, or the verifier died | No |
+| `canceled` | The check was interrupted or denied, timed out, or the verifier died. A Claude shell run the stopping agent started but never finished counts as canceled | No |
 | `stale` | The result is for content that has changed since, or the files changed while the check ran | No |
 | `unverified` | The check ran but klaudiush cannot know how it ended (background run, fingerprint failure) | No |
 | `missing` | The check has not run on this definition | No |
@@ -86,7 +91,7 @@ Only the latest result of each check counts. Starting a new run replaces the pre
 
 ### Claude shell runs
 
-Claude fires `PostToolUse` only after a command succeeded and `PostToolUseFailure` after it failed or was interrupted. klaudiush records a run when the `PreToolUse` it allowed is one of the check's commands, word for word, run from the repository root (optionally after `cd <dir> &&` steps that end there). It fingerprints the files when the command starts and again when Claude reports the outcome. Anything chained, piped, backgrounded or prefixed with variables does not count, because its exit status may not be the check's.
+Claude fires `PostToolUse` only after a command succeeded and `PostToolUseFailure` after it failed or was interrupted. For a few commands (`grep`, `diff`, `test`, `git diff`) Claude treats exit status 1 as success and says so in `returnCodeInterpretation`; klaudiush counts those as failed. klaudiush records a run when the `PreToolUse` it allowed is one of the check's commands, word for word, run from the repository root (optionally after `cd <dir> &&` steps that end there). It fingerprints the files when the command starts and again when Claude reports the outcome. Anything chained, piped, backgrounded or prefixed with variables does not count, because its exit status may not be the check's.
 
 A command started with `run_in_background` never counts: Claude does not report a background command's exit status to hooks. Run it in the foreground, or use the verifier.
 
@@ -98,7 +103,7 @@ klaudiush evidence run tests
 
 The verifier runs the check's first command from the repository root, streams its output, records its exit status, and exits with it. It fingerprints the covered files before and after the run. It is the only way to produce results in Codex and Gemini, and it works in Claude too.
 
-Running the verifier in the background is fine: the gate reports the check as running until the verifier records the result. A verifier killed before it could record anything is reported as canceled.
+The verifier can run in the background. Until it records a result the gate reports the check as running and blocks, so the agent has to wait for it; the completion gate's limit of 3 blocks a turn still applies. A verifier killed before it could record anything is reported as canceled.
 
 ## Review receipts
 
@@ -142,6 +147,8 @@ The gate stops an agent from claiming a check passed without one. It does not st
 - The configuration, the check scripts, and the state file (`$XDG_STATE_HOME/klaudiush/hook_sessions/state.json`) are ordinary files the agent can edit. Cover check scripts and build files with `paths` so editing them invalidates results.
 - A check passes if its command exits 0. A test suite with tests removed or skipped still passes.
 - A program earlier on `PATH` with the same name as the check's command runs instead of it.
+- The verifier runs the check with the caller's environment, so a variable the check honours (`GOFLAGS`, a skip switch) changes what it runs.
+- A requirement belongs to the session that made the change. Once the completion gate's block limit lets a session stop, a new session starts from the changed files as its baseline. A `.git/info/exclude` entry hides a new file from the fingerprint.
 
 ## Inspecting results
 
@@ -170,4 +177,4 @@ tests (test): mise run test
 
 **The gate never blocks.** Check that `[evidence] enabled = true`, that the project is a git repository, that the changed files match `paths`, and that your provider runs klaudiush on its completion event (`klaudiush doctor --category evidence`).
 
-**"klaudiush could not fingerprint ..."** klaudiush could not list or read the covered files, or resolve the merge base of a review's `base` and `HEAD`. This is reported as [HOOK001](errors/HOOK001.md) and follows the [failure policy](FAILURE_POLICY_GUIDE.md): it warns unless `mode = "block"` or `critical` includes `evidence`.
+**"klaudiush could not fingerprint ..."** klaudiush could not list or read the covered files, or resolve the merge base of a review's `base` and `HEAD`. A directory git cannot read counts too, since files in it would be left out. This is reported as [HOOK001](errors/HOOK001.md) and blocks by default, because unknown content must not count as checked; `failure_policy.mode = "warn"` turns it into a warning. Session state klaudiush cannot read warns unless `mode = "block"` or `critical` includes `evidence`.
