@@ -1115,6 +1115,34 @@ EOF`
 			Entry("none", `echo x > out.txt; git commit -F m`, false),
 		)
 
+		DescribeTable(
+			"FileWrite.Certain says whether a write has run by the commit",
+			func(cmd string, certain bool) {
+				result, err := p.Parse(cmd)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result.GitOperations).NotTo(BeEmpty())
+				Expect(result.FileWrites).NotTo(BeEmpty())
+
+				commit := result.GitOperations[0].Location
+				Expect(result.FileWrites[0].Certain(commit)).To(Equal(certain))
+			},
+			Entry("plain statement", "echo x > m; git commit -F m", true),
+			Entry("earlier link of the commit's && chain", "echo x > m && git commit -F m", true),
+			Entry(
+				"middle link of the commit's && chain",
+				"cd d && echo x > m && git commit -F m",
+				true,
+			),
+			Entry("skipped by && before ;", "false && echo x > m; git commit -F m", false),
+			Entry("skipped by ||", "true || echo x > m; git commit -F m", false),
+			Entry("if body", "if false; then echo x > m; fi; git commit -F m", false),
+			Entry("same if body", "if true; then echo x > m; git commit -F m; fi", true),
+			Entry("background", "echo x > m & git commit -F m", false),
+			Entry("loop body", "for i in a; do echo x > m; done; git commit -F m", false),
+			Entry("function body run by a call", "f() { echo x > m; }; f; git commit -F m", false),
+			Entry("pipeline", "echo x > m | git commit -F m", false),
+		)
+
 		DescribeTable("commit context the validator relies on",
 			func(cmd string, check func(parser.Command)) {
 				result, err := p.Parse(cmd)

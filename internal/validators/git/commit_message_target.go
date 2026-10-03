@@ -1,13 +1,10 @@
 package git
 
 import (
-	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
-
-	"github.com/cockroachdb/errors"
 
 	"github.com/smykla-skalski/klaudiush/pkg/parser"
 )
@@ -39,7 +36,7 @@ func (src messageSource) shellDir() knownDir {
 func (src messageSource) gitDir(gitCmd *parser.GitCommand) knownDir {
 	dir := src.shellDir()
 
-	cDir, hasC := gitCmd.GlobalOptions["-C"]
+	cDir, hasC := gitCmd.GlobalOptions[gitDirFlag]
 	if !hasC {
 		return dir
 	}
@@ -48,7 +45,7 @@ func (src messageSource) gitDir(gitCmd *parser.GitCommand) knownDir {
 
 	switch {
 	case cDir == "", parser.HasUnresolvedVars(expanded), usesDynamicVar(src.cmd.Vars, cDir),
-		src.substitutedBeforeSubcommand(gitCmd):
+		src.substitutedBeforeSubcommand(gitCmd), src.repeatedC(gitCmd):
 		return knownDir{}
 	case filepath.IsAbs(expandTilde(expanded)):
 		return knownDir{path: expandTilde(expanded), known: true}
@@ -64,6 +61,25 @@ func (src messageSource) substitutedBeforeSubcommand(gitCmd *parser.GitCommand) 
 
 	return idx > 0 &&
 		slices.Contains(src.cmd.SubstitutedArgs[:min(idx, len(src.cmd.SubstitutedArgs))], true)
+}
+
+// repeatedC reports more than one git -C, which git applies in order, each
+// relative to the one before.
+func (src messageSource) repeatedC(gitCmd *parser.GitCommand) bool {
+	idx := slices.Index(src.cmd.Args, gitCmd.Subcommand)
+	if idx < 0 {
+		return false
+	}
+
+	count := 0
+
+	for _, arg := range src.cmd.Args[:idx] {
+		if arg == gitDirFlag {
+			count++
+		}
+	}
+
+	return count > 1
 }
 
 // expandVars substitutes the line's variables into s, then HOME from the
@@ -166,11 +182,7 @@ func (v *CommitValidator) readMessagePath(
 	if err != nil {
 		v.Logger().Debug("Commit message file is unreadable", "error", err)
 
-		if errors.Is(err, fs.ErrNotExist) {
-			return "", opaqueSourceWith(reasonMissing, repairMissing)
-		}
-
-		return "", opaqueSource(reasonNotRegular)
+		return "", opaqueSourceWith(readFailureReason(err))
 	}
 
 	return strings.TrimSpace(disk), nil
@@ -202,6 +214,10 @@ func (src messageSource) capturedWrite(
 	content, ok := last.CapturedOverwrite()
 	if !ok || last.Dynamic {
 		return "", parser.Location{}, false, opaqueSourceWith(reasonRewritten, repairSeparate)
+	}
+
+	if !last.Certain(before) {
+		return "", parser.Location{}, false, opaqueSourceWith(reasonMaybeRun, repairSeparate)
 	}
 
 	return content, last.Location, true, nil
@@ -261,25 +277,28 @@ func (src messageSource) namesFile(cmd parser.Command, t messageTarget) bool {
 	}
 
 	for _, arg := range cmd.Args {
-		if _, value, found := strings.Cut(arg, "="); found {
-			arg = value
+		if src.argNamesFile(cmd, arg, t) {
+			return true
 		}
 
-		if t.abs == "" {
-			if strings.Contains(arg, t.token) {
-				return true
-			}
-
-			continue
-		}
-
-		path, ok := src.absolute(cmd.Vars, arg, cmd.WorkingDirectory, cmd.DirUnknown)
-		if ok && (sameFile(path, t.abs) || containsPath(path, t.abs)) {
+		if _, value, found := strings.Cut(arg, "="); found && src.argNamesFile(cmd, value, t) {
 			return true
 		}
 	}
 
 	return false
+}
+
+// argNamesFile reports one operand that is the message file or a directory
+// above it.
+func (src messageSource) argNamesFile(cmd parser.Command, arg string, t messageTarget) bool {
+	if t.abs == "" {
+		return strings.Contains(arg, t.token)
+	}
+
+	path, ok := src.absolute(cmd.Vars, arg, cmd.WorkingDirectory, cmd.DirUnknown)
+
+	return ok && (sameFile(path, t.abs) || containsPath(path, t.abs))
 }
 
 // unresolvedArg reports an argument the shell expands to paths klaudiush

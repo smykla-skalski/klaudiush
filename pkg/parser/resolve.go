@@ -60,6 +60,7 @@ func newAstWalker(resolver Resolver) *astWalker {
 		assignments:     make(map[string]string),
 		unknownVars:     make(map[string]bool),
 		safeAssigns:     make(map[*syntax.Assign]bool),
+		certain:         make(map[*syntax.Stmt]certainty),
 		loopCalls:       make(map[*syntax.CallExpr]bool),
 		resolver:        resolver,
 		aliases:         make(map[string]string),

@@ -215,7 +215,7 @@ var _ = Describe("CommitValidator message sources", func() {
 		Entry("partly substituted git -C",
 			`git -C "$(printf sub/)repo" commit -sS -a -F msg.txt`, "directory"),
 		Entry("partly substituted cd",
-			`cd "$(printf sub/)repo" && git commit -sS -F msg.txt`, "directory"),
+			`cd "$(printf sub/)repo" && git commit -sS -a -F msg.txt`, "directory"),
 		Entry(
 			"arithmetic in the -F path",
 			"git commit -sS -F {dir}/good$((1)).txt",
@@ -224,7 +224,58 @@ var _ = Describe("CommitValidator message sources", func() {
 		Entry("perl writing a named file",
 			`perl -e 'open my $f, ">", $ARGV[0]' {good}; git commit -sS -F {good}`, "may change"),
 		Entry("sed naming the file", "sed -n 1p {good} && git commit -sS -F {good}", "may change"),
+		Entry(
+			"repeated git -C",
+			"git -C {dir} -C sub commit -sS -a -F good.txt",
+			"repeated git -C",
+		),
+		Entry("captured write skipped by &&",
+			"false && echo '"+goodMessage+"' > {bad}; git commit -sS -F {bad}", "may not run"),
+		Entry("captured write skipped by ||",
+			"true || echo '"+goodMessage+"' > {bad}; git commit -sS -F {bad}", "may not run"),
+		Entry(
+			"captured write inside if",
+			"if false; then echo '"+goodMessage+"' > {bad}; fi; git commit -sS -F {bad}",
+			"may not run",
+		),
+		Entry("captured write in the background",
+			"echo '"+goodMessage+"' > {bad} & git commit -sS -F {bad}", "may not run"),
+		Entry(
+			"captured write in a loop",
+			"for i in; do echo '"+goodMessage+"' > {bad}; done; git commit -sS -F {bad}",
+			"may not run",
+		),
+		Entry("captured write in a nested script",
+			"bash -c \"echo '"+goodMessage+"' > {bad}\"; git commit -sS -F {bad}", "may not run"),
+		Entry(
+			"copy onto a file whose name has =",
+			"touch {dir}/msg=x && chmod 600 {dir}/msg=x && git commit -sS -F {dir}/msg=x",
+			"may change",
+		),
 	)
+
+	It("validates the last write through a dangling symlink", func() {
+		link := filepath.Join(dir, "link.txt")
+		target := filepath.Join(dir, "new.txt")
+		Expect(os.Symlink(target, link)).To(Succeed())
+
+		result := validate("echo '" + goodMessage + "' > " + target + "; echo '" + badMessage +
+			"' > " + link + "; git commit -sS -F " + target)
+
+		Expect(result.ShouldBlock).To(BeTrue())
+		Expect(result.Reference).To(Equal(validator.RefGitConventionalCommit))
+	})
+
+	It("names a permission error instead of the file type", func() {
+		if os.Geteuid() == 0 {
+			Skip("root reads files regardless of mode")
+		}
+
+		locked := writeFile("locked.txt", goodMessage)
+		Expect(os.Chmod(locked, 0)).To(Succeed())
+
+		expectOpaqueMessage(validate("git commit -sS -F "+locked), "permission or I/O error")
+	})
 
 	It("blocks a write through a symlink to the message file", func() {
 		link := filepath.Join(dir, "link.txt")
@@ -274,7 +325,7 @@ var _ = Describe("CommitValidator message sources", func() {
 	It("blocks a message file over 1 MiB", func() {
 		big := writeFile("big.txt", goodMessage+"\n\n"+strings.Repeat("a\n", 1<<20))
 
-		expectOpaqueMessage(validate("git commit -sS -F "+big), "not a regular file")
+		expectOpaqueMessage(validate("git commit -sS -F "+big), "larger than 1 MiB")
 	})
 
 	It("keeps attribution findings next to the opaque source", func() {
@@ -334,8 +385,13 @@ var _ = Describe("CommitValidator message sources", func() {
 		Entry("-m message", "git commit -sS -m '"+badMessage+"'", false),
 		Entry("-m heredoc", "git commit -sS -m \"$(cat <<'EOF'\n"+goodMessage+"\nEOF\n)\"", true),
 		Entry("empty file", "git commit -sS -F {dir}/empty.txt", true),
+		Entry("captured write earlier in the commit's && chain",
+			"cd {dir} && echo '"+goodMessage+"' > m.txt && git commit -sS -F m.txt", true),
+		Entry("captured write in the if condition branch the commit is in",
+			"if true; then echo '"+badMessage+"' > {dir}/m.txt; git commit -sS -F {dir}/m.txt; fi",
+			false),
 		Entry("git -C with a variable set on the line",
-			`D={dir}; git -C "$D" commit -sS -F bad.txt`, false),
+			`D={dir}; git -C "$D" commit -sS -a -F bad.txt`, false),
 		Entry("stdin redirect read from the shell's directory, not -C",
 			"cd {dir} && git -C sub commit -sS -a -F - < bad.txt", false),
 		Entry("substituted write after the commit",

@@ -2,6 +2,7 @@ package git
 
 import (
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -20,6 +21,7 @@ import (
 const maxMessageFileBytes = 1 << 20
 
 const (
+	gitDirFlag      = "-C"
 	stdinPath       = "/dev/stdin"
 	fdDir           = "/dev/fd/"
 	procDir         = "/proc/"
@@ -43,16 +45,20 @@ const (
 	reasonTwoStdins = "-F reads stdin fed by both a redirect and a pipe, heredoc or " +
 		"here-string, so which one git reads is unclear"
 	reasonDirectory = "the -F path is relative to a directory klaudiush cannot resolve " +
-		"(cd or git -C with a variable or command output)"
+		"(cd or git -C with a variable or command output, or repeated git -C)"
 	reasonRewritten = "the message file is written earlier in the command " +
 		"with content klaudiush cannot see"
 	reasonChanged      = "a command earlier on the line may change the message file"
 	reasonUnknownWrite = "the command writes to a file whose name klaudiush cannot see " +
 		"before the commit, which may be the message file"
 	reasonMissing    = "the message file does not exist"
-	reasonNotRegular = "the message file is not a regular file under 1 MiB"
-	reasonRepeated   = "the commit has more than one -F/--file, and git reads only the last"
-	reasonAbbrev     = "the commit abbreviates --file or --message, which klaudiush does " +
+	reasonNotRegular = "the message file is not a regular file"
+	reasonTooLarge   = "the message file is larger than 1 MiB"
+	reasonUnreadable = "the message file cannot be read (permission or I/O error)"
+	reasonMaybeRun   = "the message file is written earlier only on a branch or in a " +
+		"background job that may not run before the commit"
+	reasonRepeated = "the commit has more than one -F/--file, and git reads only the last"
+	reasonAbbrev   = "the commit abbreviates --file or --message, which klaudiush does " +
 		"not expand"
 )
 
@@ -71,6 +77,28 @@ const (
 
 // varRef matches a variable reference as the parser renders it.
 var varRef = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
+
+// maxLinkHops bounds symlink following, as the kernel does.
+const maxLinkHops = 40
+
+var (
+	errNotRegular = errors.New("not a regular file")
+	errTooLarge   = errors.New("larger than 1 MiB")
+)
+
+// readFailureReason names why a message file on disk could not be read.
+func readFailureReason(err error) (reason, repair string) {
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return reasonMissing, repairMissing
+	case errors.Is(err, errNotRegular):
+		return reasonNotRegular, repairInline
+	case errors.Is(err, errTooLarge):
+		return reasonTooLarge, repairInline
+	default:
+		return reasonUnreadable, repairMissing
+	}
+}
 
 // homeAssignment matches command text that may set HOME, so the hook's own
 // HOME is not what the shell expands.
@@ -270,7 +298,42 @@ func sameFile(a, b string) bool {
 	infoA, errA := os.Stat(a)
 	infoB, errB := os.Stat(b)
 
-	return errA == nil && errB == nil && os.SameFile(infoA, infoB)
+	if errA == nil && errB == nil && os.SameFile(infoA, infoB) {
+		return true
+	}
+
+	return canonicalPath(a) == canonicalPath(b)
+}
+
+// canonicalPath follows symlinks in path, including a final link whose
+// target does not exist yet: writing through it creates that target.
+func canonicalPath(path string) string {
+	for range maxLinkHops {
+		dir, base := filepath.Split(path)
+		if resolved, err := filepath.EvalSymlinks(dir); err == nil {
+			dir = resolved
+		}
+
+		path = filepath.Join(dir, base)
+
+		info, err := os.Lstat(path)
+		if err != nil || info.Mode()&os.ModeSymlink == 0 {
+			return path
+		}
+
+		link, err := os.Readlink(path)
+		if err != nil {
+			return path
+		}
+
+		if !filepath.IsAbs(link) {
+			link = filepath.Join(dir, link)
+		}
+
+		path = filepath.Clean(link)
+	}
+
+	return path
 }
 
 // containsPath reports whether dir is a directory above path, so copying
@@ -314,7 +377,7 @@ func readRegularFile(path string) (string, error) {
 	}
 
 	if !info.Mode().IsRegular() {
-		return "", errors.Newf("commit message file %s is not a regular file", path)
+		return "", errors.Wrapf(errNotRegular, "commit message file %s", path)
 	}
 
 	content, err := io.ReadAll(io.LimitReader(file, maxMessageFileBytes+1))
@@ -323,7 +386,7 @@ func readRegularFile(path string) (string, error) {
 	}
 
 	if len(content) > maxMessageFileBytes {
-		return "", errors.Newf("commit message file %s is larger than 1 MiB", path)
+		return "", errors.Wrapf(errTooLarge, "commit message file %s", path)
 	}
 
 	return string(content), nil

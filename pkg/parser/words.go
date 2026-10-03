@@ -139,6 +139,7 @@ func keepsEmpty(cmd Command, i, idx int, sub string) bool {
 // change, so they resolve none.
 func (w *astWalker) prepare(stmt *syntax.Stmt) {
 	markSafeAssigns(stmt, w.safeAssigns)
+	markCertainStmts(stmt, w.certain)
 
 	syntax.Walk(stmt, func(node syntax.Node) bool {
 		switch n := node.(type) {

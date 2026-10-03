@@ -37,6 +37,7 @@ type astWalker struct {
 	assignments map[string]string
 	unknownVars map[string]bool
 	safeAssigns map[*syntax.Assign]bool
+	certain     map[*syntax.Stmt]certainty
 	loopCalls   map[*syntax.CallExpr]bool
 	inLoop      bool
 	outerLoop   bool
@@ -901,6 +902,8 @@ func (w *astWalker) extractRedirect(stmt *syntax.Stmt) {
 	if stmt.Redirs == nil {
 		return
 	}
+
+	defer w.markCertainty(stmt, len(w.fileWrites))
 
 	info := collectRedirs(stmt)
 	w.dynamicWrites += info.dynamicWrites
