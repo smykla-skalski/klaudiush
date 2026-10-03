@@ -43,13 +43,22 @@ mise run test:harness:fixtures   # run and rewrite the captured fixtures
 
 | Variable | Effect |
 |:--|:--|
-| `KLAUDIUSH_HARNESS_CLAUDE`, `KLAUDIUSH_HARNESS_CODEX`, `KLAUDIUSH_HARNESS_OPENCODE` | Harness binary to use instead of the one on `PATH`. Point these at the real binary when `PATH` has a version-manager shim, which cannot run in the empty sandbox environment |
+| `KLAUDIUSH_HARNESS_CLAUDE`, `KLAUDIUSH_HARNESS_CODEX`, `KLAUDIUSH_HARNESS_OPENCODE` | Harness binary to use instead of the one on `PATH`. Takes precedence over `PATH`; a shim named here is resolved the same way. Use an absolute path: a relative one is taken from `internal/harness`, where `go test` runs |
 | `KLAUDIUSH_HARNESS_ONLY` | Comma-separated harness names to run, such as `claude,codex` |
 | `KLAUDIUSH_HARNESS_TMPDIR` | Where sandboxes are created (default: the system temp directory) |
 | `KLAUDIUSH_HARNESS_KEEP=1` | Keep sandboxes on disk for debugging |
 | `KLAUDIUSH_HARNESS_REPORT` | Report path |
 
-A harness that is not installed, or whose `--version` does not run in the sandbox, is skipped and the report says why. A scenario that needs a feature the harness lacks is skipped as unsupported.
+Each harness binary is resolved before the sandbox is built, because version-manager shims cannot run in the empty sandbox environment:
+
+- Symlinks are followed to the real file.
+- A mise shim (a link to the `mise` binary) is resolved with `mise which <tool>`, and an asdf shim (a script running `asdf exec`) with `asdf which <tool>`. Both run in the caller's environment and directory, the same place the shim would run, and never inside the sandbox.
+- A mise shim whose tool is not active for the directory is skipped, the way the shim itself falls through to the next `PATH` entry. Any other shim error (a broken or untrusted mise config, a missing asdf version) is not skipped.
+- A script whose interpreter is not on the sandbox `PATH` (for example an npm `#!/usr/bin/env node` launcher when node comes from a version manager) is rejected, since it cannot start in the sandbox.
+- Resolution happens on first use, so `mise run test` does not call the version managers.
+- When a shim or the override variable does not resolve to something the sandbox can run, the harness fails with the reason and the variable to set.
+
+A harness that is not installed, or whose `--version` does not run in the sandbox, is skipped and the report says why. The report records the resolved binary path. A scenario that needs a feature the harness lacks is skipped as unsupported.
 
 ## What each scenario proves
 

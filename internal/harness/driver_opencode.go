@@ -27,18 +27,19 @@ const openCode2Gap = "opencode 2.x rejects the klaudiush bridge plugin (1.x plug
 
 // OpenCodeDriver runs `opencode run` with a private server.
 type OpenCodeDriver struct {
-	binary  string
+	*harnessBinary
 	version string
 }
 
 // NewOpenCodeDriver resolves opencode from KLAUDIUSH_HARNESS_OPENCODE or PATH.
 func NewOpenCodeDriver() *OpenCodeDriver {
-	return &OpenCodeDriver{binary: ResolveBinary("KLAUDIUSH_HARNESS_OPENCODE", "opencode")}
+	return &OpenCodeDriver{
+		harnessBinary: newHarnessBinary("KLAUDIUSH_HARNESS_OPENCODE", "opencode"),
+	}
 }
 
 func (*OpenCodeDriver) Name() string            { return "opencode" }
 func (*OpenCodeDriver) Provider() hook.Provider { return hook.ProviderOpenCode }
-func (d *OpenCodeDriver) Binary() string        { return d.binary }
 
 // SetVersion selects the tool names of the opencode major version.
 func (d *OpenCodeDriver) SetVersion(version string) { d.version = version }
@@ -105,7 +106,7 @@ func (d *OpenCodeDriver) Run(
 	prompt string,
 	_ RunOptions,
 ) ([]byte, error) {
-	return RunIn(ctx, sb, sb.Work, d.binary,
+	return RunIn(ctx, sb, sb.Work, d.resolve(ctx),
 		"run", "--standalone", "--auto", "--model", openCodeModel, prompt)
 }
 
