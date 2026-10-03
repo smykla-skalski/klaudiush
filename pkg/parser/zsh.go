@@ -116,7 +116,7 @@ func hasZshCall(file *syntax.File, name string) bool {
 // name. Earlier constructs parsed as bash, so they are not what bash
 // rejected. It returns "" when it finds none it knows.
 func zshConstruct(file *syntax.File, bashOffset int) string {
-	construct := ""
+	construct, disown := "", false
 
 	syntax.Walk(file, func(node syntax.Node) bool {
 		if construct != "" || node == nil {
@@ -127,20 +127,26 @@ func zshConstruct(file *syntax.File, bashOffset int) string {
 			return false
 		}
 
+		// A statement's disown marker trails its words, so name it only
+		// when nothing inside the statement is zsh syntax.
+		if stmt, ok := node.(*syntax.Stmt); ok && stmt.Disown {
+			disown = true
+		}
+
 		construct = zshNodeConstruct(node)
 
 		return construct == ""
 	})
+
+	if construct == "" && disown {
+		return "`&|` and `&!` disowning"
+	}
 
 	return construct
 }
 
 func zshNodeConstruct(node syntax.Node) string {
 	switch n := node.(type) {
-	case *syntax.Stmt:
-		if n.Disown {
-			return "`&|` and `&!` disowning"
-		}
 	case *syntax.CallExpr:
 		// The zsh grammar of mvdan.cc/sh reads a foreach loop as a call.
 		if len(n.Args) > 0 && n.Args[0].Lit() == "foreach" {

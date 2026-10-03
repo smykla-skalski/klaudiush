@@ -128,7 +128,9 @@ var _ = Describe("NestingValidator", func() {
 		Expect(result.Findings).To(ConsistOf(SatisfyAll(
 			HaveField("Location", MatchRegexp(`^line 1, column \d+$`)),
 			HaveField("Message", ContainSubstring("short for loops are zsh syntax")),
-			HaveField("Repair", ContainSubstring("Fix the shell syntax at that position")),
+			HaveField("Repair", ContainSubstring(
+				"Rewrite short for loops in bash, and fix the syntax at that position if it is broken",
+			)),
 		)))
 	})
 

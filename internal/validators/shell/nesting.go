@@ -116,8 +116,8 @@ func zshSyntaxFinding(err error, zshErr *parser.ZshSyntaxError) validator.Findin
 	if zshErr.Possible {
 		f.Message = "command does not parse as bash; " + zshErr.Construct +
 			" are zsh syntax klaudiush cannot inspect"
-		f.Repair = "Fix the shell syntax at that position, and rewrite " +
-			zshErr.Construct + " in bash; klaudiush parses every command as bash"
+		f.Repair = "Rewrite " + zshErr.Construct + " in bash, and fix the syntax at " +
+			"that position if it is broken; klaudiush parses every command as bash"
 
 		return f
 	}
