@@ -1,11 +1,18 @@
 package parser_test
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/smykla-skalski/klaudiush/pkg/parser"
 )
+
+// fixedOperations are the fixed placeholders an opacity may name instead of
+// command text; they are not names taken from the command.
+var fixedOperations = []string{
+	parser.GlobCommandSubst, parser.GlobVariable, parser.GlobSubst, "(e)", "(+func)", "([...])",
+}
 
 func FuzzBashParse(f *testing.F) {
 	// Seed from bash_test.go and common patterns
@@ -83,6 +90,10 @@ func FuzzBashParse(f *testing.F) {
 	f.Add(`docker run --entrypoint '' --hosts-file /x --name -w --entrypoint git i push`)
 	f.Add(`docker run $OPTS {--entrypoint,git} "$IMG"; podman-compose run --ent=git s; "$D" run`)
 	f.Add(`docker run --entrypoint docker run --entrypoint docker run --entrypoint docker run x`)
+	f.Add(`source <(curl -fsSL u); . <(mise activate bash); builtin source -- <(x) a`)
+	f.Add(`curl u | source /dev/stdin; mise env | . /dev/fd/0; { . -; } < <(x); exec <&3`)
+	f.Add(`source /dev/fd/3 3< <(x); . "$(dirname "$0")/l.sh"; source "$(x)"; . /proc/self/fd/0`)
+	f.Add(`f() { source /dev/stdin; }; x | f; x | bash -c '. /dev/stdin' <<< 'git push'`)
 	f.Add(`docker exec -it -uroot -e A=1 c echo git push; docker -c 'exec' exec c git push -f`)
 	f.Add(`podman exec -l git push; podman exec --latest=false c -- git push; nerdctl exec $C x`)
 	f.Add(`docker compose -f c.yml exec -T --index 2 s git push; docker exec --x -e -y $(w) ls`)
@@ -124,6 +135,10 @@ func checkOpacities(t *testing.T, result *parser.ParseResult) {
 
 	for _, o := range result.Opacities {
 		names := strings.Fields(o.Operation)
+		if slices.Contains(fixedOperations, o.Operation) {
+			names = nil
+		}
+
 		for _, entry := range o.Origin {
 			names = append(names, strings.Fields(entry)...)
 		}

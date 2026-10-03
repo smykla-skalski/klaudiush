@@ -60,6 +60,7 @@ func (w *astWalker) sourceKey(cmd Command, src scriptSourceText) string {
 	writeParts(
 		h,
 		src.run.zero,
+		src.run.file,
 		strconv.FormatBool(src.run.withArgs),
 		strconv.Itoa(len(src.run.args)),
 	)
