@@ -130,6 +130,7 @@ type execReader struct {
 	args      []string
 	programs  []int
 	started   map[execStart]bool
+	exec      int
 	readings  int
 	exhausted bool
 	dynamic   string
@@ -150,7 +151,7 @@ func containerExecs(args []string) (*execReader, bool) {
 		return nil, false
 	}
 
-	r := &execReader{args: args, started: make(map[execStart]bool)}
+	r := &execReader{args: args, started: make(map[execStart]bool), exec: at}
 	r.fork(at+1, false)
 
 	return r, true
@@ -185,8 +186,8 @@ func (r *execReader) read(i int, latest bool) {
 			r.operands(i+1, latest)
 
 			return
-		case globsOptions(arg):
-			r.dynamic = DetailWordOutput
+		case splitRisk(arg) != "":
+			r.dynamic = splitRisk(arg)
 
 			return
 		case strings.HasPrefix(arg, "--"):
@@ -243,6 +244,12 @@ func (r *execReader) skipValue(i int, latest, takes, unknown bool) int {
 		return i
 	}
 
+	if detail := splitRisk(r.args[i+1]); detail != "" {
+		r.dynamic = detail
+
+		return len(r.args)
+	}
+
 	if takes && !strings.HasPrefix(r.args[i+1], "-") {
 		return i + 1
 	}
@@ -265,13 +272,50 @@ func (r *execReader) operands(i int, latest bool) {
 		return
 	}
 
-	if detail := leadingExpansion(r.args[i]); detail != "" {
+	if detail := splitRisk(r.args[i]); detail != "" {
 		r.dynamic = detail
 
 		return
 	}
 
+	// The parser drops a quoted empty value (-u ""), which makes the
+	// program look like the option's value and the container.
+	if r.afterSeparateValue(i) && launchesTracked(r.args[i], r.args[i+1:]) {
+		r.program(i)
+	}
+
 	r.program(i + 1)
+}
+
+// afterSeparateValue reports a word at i read as the container right after
+// an option that took the word before it as its value.
+func (r *execReader) afterSeparateValue(i int) bool {
+	if i-2 <= r.exec || strings.HasPrefix(r.args[i-1], "-") {
+		return false
+	}
+
+	option := r.args[i-2]
+	if strings.HasPrefix(option, "--") {
+		return containerExecValueFlags[option]
+	}
+
+	takes, _, _ := execShortCluster(option)
+
+	return strings.HasPrefix(option, "-") && takes
+}
+
+// splitRisk says why a word before the program may split into several
+// words or match files, moving the container and the program, or returns "".
+func splitRisk(word string) string {
+	if detail := dynamicWord(word); detail != "" {
+		return detail
+	}
+
+	if strings.ContainsAny(word, globChars) {
+		return DetailWordOutput
+	}
+
+	return ""
 }
 
 // program records the program at p. A -- there is taken to end options,

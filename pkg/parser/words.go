@@ -489,9 +489,8 @@ func (w *astWalker) launchedFrom(cmd, followed Command) launch {
 		l.commands, l.scripts = cmds, nil
 	} else {
 		l.commands = append(l.commands, cmds...)
+		l.entrypoints = w.entrypointCommands(followed)
 	}
-
-	l.entrypoints = w.entrypointCommands(followed)
 
 	if cmd.Name == evalBuiltin {
 		l.scripts = nil

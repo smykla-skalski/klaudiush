@@ -90,7 +90,9 @@ var _ = Describe("Container exec", func() {
 		Entry("options from the line", `X="-u root"; docker exec $X c git push`, "git push"),
 		Entry("a variable splitting into container and program", "docker exec $SPLIT push",
 			"git push"),
-		Entry("a substituted option value", "docker exec -u $(id -u) c git push", "git push"),
+		Entry("an empty option value the parser drops", `docker exec -e "" c git push`,
+			"git push"),
+		Entry("an empty user the parser drops", `docker exec -u '' root git push`, "git push"),
 	)
 
 	DescribeTable("follows only the program exec runs",
@@ -103,6 +105,9 @@ var _ = Describe("Container exec", func() {
 		},
 		Entry("echo", "docker exec c echo git commit -m x", "echo"),
 		Entry("echo after options", "docker exec -it -uroot -e A=1 c echo git push", "echo"),
+		Entry("echo after a separate value", "docker exec -u root c echo git push", "echo"),
+		Entry("a run word in the payload",
+			"docker exec c echo run --entrypoint git img push", "echo"),
 		Entry("compose", "docker compose exec svc echo git push", "echo"),
 		Entry("docker-compose", "docker-compose exec -T svc printf git push", "printf"),
 		Entry("podman --latest", "podman exec --latest echo git push", "echo"),
@@ -114,7 +119,7 @@ var _ = Describe("Container exec", func() {
 	)
 
 	It("records no command for a bare exec", func() {
-		for _, command := range []string{"docker exec", "docker exec c", "docker exec -it"} {
+		for _, command := range []string{"docker exec", "docker exec c", "docker exec -it", "docker exec --"} {
 			result := parse(command)
 
 			Expect(result.Truncated).To(BeFalse(), command)
@@ -142,6 +147,25 @@ var _ = Describe("Container exec", func() {
 			parser.DetailWordOutput),
 		Entry("brace expansion", "docker exec {a,b} ls", parser.DetailWordOutput),
 		Entry("an unknown variable as an option", "docker exec -u root ${OPTS} c ls",
+			parser.DetailWordVariable),
+		Entry("an unknown variable as an option value", "docker exec -u $NOPE git push",
+			parser.DetailWordVariable),
+		Entry("an unknown variable inside an option value",
+			"docker exec -e A=$NOPE c echo git push", parser.DetailWordVariable),
+		Entry("command output as an option value", "docker exec -u $(id -u) c git push",
+			parser.DetailWordOutput),
+		Entry("command output in an attached value",
+			"docker exec --user=$(printf 'root c') git push", parser.DetailWordOutput),
+		Entry("command output in a short attached value",
+			"docker exec -uroot$(printf ' c') git push", parser.DetailWordOutput),
+		Entry("a variable after a literal container prefix", "docker exec c$NOPE push",
+			parser.DetailWordVariable),
+		Entry("a glob after a literal container prefix", "docker exec g* push",
+			parser.DetailWordOutput),
+		Entry("a bracket glob container", "docker exec c[12] push", parser.DetailWordOutput),
+		Entry("a variable after an unknown option", "docker exec --future $NOPE ls",
+			parser.DetailWordVariable),
+		Entry("a variable after end of options", "docker exec -- $NOPE ls",
 			parser.DetailWordVariable),
 	)
 

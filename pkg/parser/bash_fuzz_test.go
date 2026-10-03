@@ -83,6 +83,7 @@ func FuzzBashParse(f *testing.F) {
 	f.Add(`podman exec -l git push; podman exec --latest=false c -- git push; nerdctl exec $C x`)
 	f.Add(`docker compose -f c.yml exec -T --index 2 s git push; docker exec --x -e -y $(w) ls`)
 	f.Add(`X="-u root"; docker exec $X c git push; foo docker exec * echo; docker exec {a,b} x`)
+	f.Add(`docker exec -e "" c git push; docker exec -u=$(w) c$N g* push; docker exec -- $N`)
 
 	f.Fuzz(func(t *testing.T, command string) {
 		p := parser.NewBashParser()
