@@ -848,7 +848,7 @@ func launchesTracked(arg string, rest []string) bool {
 
 		return ok
 	case mayRunContainers(name):
-		return containerRuns(rest).tracked()
+		return containerRuns(rest).tracked() || mayHideEntrypoint(rest)
 	default:
 		return isInterpreter || isLauncher || name == evalBuiltin || name == sourceBuiltin
 	}
