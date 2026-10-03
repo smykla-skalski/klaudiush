@@ -171,6 +171,14 @@ var _ = Describe("CommitValidator message origins", func() {
 				"command output"),
 			Entry("unset variable in a later -m",
 				`git commit -sS -m '`+goodMessage+`' -m "$BODY"`, "$BODY"),
+			Entry("heredoc variable the prefix assignment sets",
+				"T='"+goodMessage+"'; T=bad git commit -sS -F - <<EOF\n$T\nEOF", "$T"),
+			Entry("here-string variable the prefix assignment sets",
+				`T='`+goodMessage+`'; T=bad git commit -sS -F - <<< "$T"`, "$T"),
+			Entry("let assignment", `T='`+goodMessage+`'; let T=1; git commit -sS -m "$T"`, "$T"),
+			Entry("arithmetic command",
+				`T='`+goodMessage+`'; (( T = 1 )); git commit -sS -m "$T"`, "$T"),
+			Entry("array subscript", `T='`+goodMessage+`'; x[T=1]=2; git commit -sS -m "$T"`, "$T"),
 			Entry("unset variable in a -F - heredoc",
 				"git commit -sS -F - <<EOF\n$TITLE\nEOF", "$TITLE"),
 			Entry("cat defined on the line",
@@ -196,12 +204,16 @@ var _ = Describe("CommitValidator message origins", func() {
 			Entry("--dry-run", "", "git commit -sS --dry-run"),
 			Entry("-m with no -e", "vim", "git commit -sS -m '"+goodMessage+"'"),
 			Entry("-e then --no-edit", "vim", "git commit -sS -m '"+goodMessage+"' -e --no-edit"),
-			Entry(
-				"--fixup=reword with GIT_EDITOR=true",
-				"true",
-				"git commit -sS --fixup=reword:HEAD",
-			),
+			Entry("system true from the environment", "true", "git commit -sS --amend"),
 		)
+
+		It("ignores a GIT_EDITOR the line sets without exporting", func() {
+			setEditorEnv("")
+			expectOpaqueMessage(
+				validate(`GIT_EDITOR=true; git -c "core.editor=cp /tmp/bad" commit -sS --amend`),
+				`"cp /tmp/bad"`,
+			)
+		})
 
 		DescribeTable("blocks an editor that may write the message",
 			func(env, command, reason string) {
@@ -227,6 +239,10 @@ var _ = Describe("CommitValidator message origins", func() {
 			Entry("amend", "vim", "git commit -sS --amend", `"vim"`),
 			Entry("through a launcher", "true", "env git commit -sS --amend", "VISUAL, EDITOR"),
 			Entry("abbreviated --no-edit", "true", "git commit -sS --amend --no-ed", "abbreviates"),
+			Entry("include.path after core.editor", "",
+				"git -c core.editor=true -c include.path=/x commit -sS --amend", "VISUAL, EDITOR"),
+			Entry("true from a changed PATH", "",
+				"PATH=/tmp/evil:$PATH GIT_EDITOR=true git commit -sS --amend", `"true"`),
 		)
 	})
 
@@ -239,6 +255,18 @@ var _ = Describe("CommitValidator message origins", func() {
 			expectRuleBlock(validate("cd " + bad + " && git commit -sS -C HEAD"))
 			expectRuleBlock(validate("git -C " + bad + " commit -sS --reuse-message=HEAD"))
 			expectRuleBlock(validate("cd " + bad + " && git commit -sS -c HEAD"))
+			expectRuleBlock(validate("cd " + bad + " && git commit -sS --fixup=reword:HEAD"))
+			expectRuleBlock(validate("cd " + bad + " && git commit -sS --fixup amend:HEAD"))
+			Expect(
+				validate("cd " + good + " && git commit -sS --fixup=reword:HEAD").Passed,
+			).To(BeTrue())
+		})
+
+		It("keeps # lines when git keeps them", func() {
+			commented, _ := commitRepo("# note\n\n" + goodMessage)
+
+			expectRuleBlock(validate("cd " + commented + " && git commit -sS -c HEAD --no-edit"))
+			Expect(validate("cd " + commented + " && git commit -sS -c HEAD").Passed).To(BeTrue())
 		})
 
 		It("reads a full object name after a commit earlier on the line", func() {
@@ -268,7 +296,15 @@ var _ = Describe("CommitValidator message origins", func() {
 				"cd {repo} && git commit -sS -C --x",
 				"cannot be read",
 			),
-			Entry("unknown directory", `cd "$WORK" && git commit -sS -C HEAD`, "directory"),
+			Entry("unknown directory", `cd "$WORK" && git commit -sS -C HEAD`, "repository"),
+			Entry("--git-dir", "cd {repo} && git --git-dir=/x/.git commit -sS -C HEAD",
+				"repository"),
+			Entry("GIT_DIR prefix", "cd {repo} && GIT_DIR=/x/.git git commit -sS -C HEAD",
+				"repository"),
+			Entry("file write earlier on the line",
+				"cd {repo} && echo x > .git/refs/heads/main && git commit -sS -C HEAD", "may move"),
+			Entry("script earlier on the line",
+				"cd {repo} && make && git commit -sS -C HEAD", "may move"),
 			Entry("abbreviated --reuse-message", "cd {repo} && git commit -sS --reuse HEAD",
 				"abbreviates"),
 		)
@@ -292,6 +328,26 @@ var _ = Describe("CommitValidator message origins", func() {
 				validate("git commit -sS -m '" + goodMessage + "' -t " + bad).Passed,
 			).To(BeTrue())
 			Expect(validate("git commit -sS --amend -t " + bad).Passed).To(BeTrue())
+		})
+
+		It("validates a template committed without an editor", func() {
+			setEditorEnv("vim")
+
+			bad := write("bad.txt", badMessage+"\n")
+
+			expectRuleBlock(validate("git commit -sS --no-edit --allow-empty-message -t " + bad))
+			expectOpaqueMessage(
+				validate("git commit -sS --no-edit --allow-empty-message"),
+				"commit.template",
+			)
+		})
+
+		It("keeps # lines when the cleanup keeps them", func() {
+			tpl := write("c.txt", "# not a title\n"+goodMessage+"\n")
+
+			expectRuleBlock(validate("git commit -sS --cleanup=verbatim -t " + tpl))
+			expectRuleBlock(validate("git -c core.commentChar=% commit -sS -t " + tpl))
+			Expect(validate("git commit -sS --cleanup strip -t " + tpl).Passed).To(BeTrue())
 		})
 
 		DescribeTable("blocks a template it cannot read",

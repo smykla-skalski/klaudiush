@@ -71,8 +71,10 @@ A `git commit` is blocked with `Commit message cannot be inspected` when klaudiu
 
 - `-m` values, all of them joined as git joins them, with variables assigned a literal earlier on the line or set in klaudiush's environment expanded. A single-quoted `'${X}'` and a quoted heredoc stay literal. `-m "$(cat <<'EOF' ... EOF)"` is read as the heredoc; `<<EOF` expands its variables first.
 - A heredoc, here-string, literal `echo`/`printf` or readable file on `-F -`, with the same expansion, and a readable `-F` file.
-- `-C <rev>` and `-c <rev>`: the reused commit's message, read with `git log`.
-- `-t <file>`: the template, when the editor leaves it unchanged.
+- `-C <rev>`, `-c <rev>` and `--fixup=amend:<rev>`/`reword:<rev>`: the reused commit's message, read with `git log`. It is blocked when the rev is not a literal, git is pointed at another repository (`--git-dir`, `--work-tree`, `GIT_DIR`), or a command or file write earlier on the line may move it (a full commit hash is never moved).
+- `-t <file>`: the template, when no other source gives the message.
+
+After an editor, `#` lines are dropped as git's default cleanup drops them; with `--cleanup` other than `strip`, or `-c core.commentChar` or `commit.cleanup`, they are kept. A variable is unknown after arithmetic anywhere on the line (`let`, `((...))`, `$((...))`, a computed array subscript), and a heredoc or here-string variable that the command's own prefix assignment sets is unknown too, since bash and zsh expand it differently.
 
 These are blocked:
 
@@ -88,7 +90,7 @@ These are blocked:
 | Ref moved earlier on the line               | `git commit -m x && git commit --amend -C HEAD`  | Run the commands separately, or use the full commit hash       |
 | `--allow-empty-message` with no `-t`        | `git commit --allow-empty-message`               | Pass the message, or name the template with `-t`               |
 
-git opens an editor unless the message comes from `-m`, `-F` or `-C` (or `--no-edit`, `--dry-run`, or a plain `--fixup`); `-e`, `-c`, `--fixup=amend:`/`reword:`, `--squash` and `--amend` open one. The editor is allowed only when klaudiush knows it leaves the prepared message as it is: `GIT_EDITOR` (on the line or in its environment), else `core.editor` from `git -c`, set to `true` or `:`. Any other editor, or one from git config, `VISUAL` or `EDITOR`, may write any message (`vim` reads keystrokes from a pipe), so the commit is blocked.
+git opens an editor unless the message comes from `-m`, `-F` or `-C` (or `--no-edit`, `--dry-run`, or a plain `--fixup`); `-e`, `-c`, `--fixup=amend:`/`reword:`, `--squash` and `--amend` open one. The editor is allowed only when klaudiush knows it leaves the prepared message as it is: `GIT_EDITOR` (on the line or in its environment), else `core.editor` from `git -c`, set to `:`, `/usr/bin/true` or `/bin/true`, or to `true` when it resolves to one of those and the line leaves `PATH` alone. A `GIT_EDITOR` assigned on the line counts only when it is exported (`export`, `declare -x`, `set -a`, a prefix assignment, or already in the environment); git never sees a plain shell variable. Any other editor, or one from git config, `VISUAL` or `EDITOR`, may write any message (`vim` reads keystrokes from a pipe), so the commit is blocked.
 
 ## How to fix
 

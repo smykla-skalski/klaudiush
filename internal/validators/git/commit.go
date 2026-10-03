@@ -413,17 +413,23 @@ func (v *CommitValidator) extractCommitMessage(
 		}
 	}
 
+	strip := edits && src.cleanupStrips(gitCmd)
 	reuse, reuses := lastValue(gitCmd, reuseFlags)
+	fixupRev, fixupGap, fixupReuses := src.fixupRev(gitCmd)
 
 	switch {
 	case hasFileFlag(gitCmd):
 		return v.readMessageFile(gitCmd, src, v.getFlagValue(gitCmd, commitFileFlags))
 	case reuses:
-		return v.reusedMessage(ctx, gitCmd, src, reuse)
+		rev, gap := src.flagText(gitCmd, reuse)
+
+		return v.reusedMessage(ctx, gitCmd, src, rev, gap, strip)
+	case fixupReuses:
+		return v.reusedMessage(ctx, gitCmd, src, fixupRev, fixupGap, strip)
 	case slices.ContainsFunc(commitMessageFlags, gitCmd.HasFlag):
 		return src.inlineMessage(gitCmd)
-	case edits && usesTemplate(gitCmd):
-		return v.templateMessage(gitCmd, src)
+	case usesTemplate(gitCmd):
+		return v.templateMessage(gitCmd, src, strip)
 	default:
 		return "", nil
 	}

@@ -95,7 +95,7 @@ const flagTemplate = "-t"
 
 // commitSourceFlags name a template, fixup or squash source for "git commit"
 // and consume the file or commit that follows.
-var commitSourceFlags = []string{flagTemplate, "--template", "--fixup", "--squash"}
+var commitSourceFlags = []string{flagTemplate, "--template", "--fixup", "--squash", "--cleanup"}
 
 // checkoutCreationFlags and switchCreationFlags consume the following token as
 // the new branch name for their own subcommand ("git checkout -b feat/x",

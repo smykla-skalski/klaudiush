@@ -131,6 +131,9 @@ type parseState struct {
 	uniqueKeys int
 
 	namesUnknown bool
+	arithmetic   bool
+	allExport    bool
+	exported     map[string]bool
 }
 
 // spend takes one unit of work, reporting false once the budget is gone.
@@ -584,7 +587,7 @@ func (w *astWalker) extractCommand(call *syntax.CallExpr) {
 		startup:          prefixStartup(call),
 		dynamicWords:     dynamicArgs(call.Args[1:]),
 		argTexts:         argTexts,
-		stdinText:        w.stdinTextByCall[call],
+		stdinText:        prefixGaps(w.stdinTextByCall[call], call),
 		env:              env,
 	}, w.depth, view)
 }
@@ -726,6 +729,7 @@ func (w *astWalker) trackShellState(cmd Command) {
 		w.state.pathChanged = true
 	case setBuiltin:
 		w.trackPositional(cmd)
+		w.noteAllExport(cmd.Args)
 		w.noteKeywordMode(cmd.Args)
 	}
 }
@@ -782,6 +786,7 @@ func (w *astWalker) gitEnvScripts(cmd Command) []string {
 // extractDecl records assignments made by export, declare, local and
 // readonly, and notes a changed PATH.
 func (w *astWalker) extractDecl(decl *syntax.DeclClause) {
+	w.noteExports(decl)
 	w.distrustDecl(decl)
 
 	for _, assign := range decl.Args {

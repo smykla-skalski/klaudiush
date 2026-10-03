@@ -142,6 +142,8 @@ func (w *astWalker) prepare(stmt *syntax.Stmt) {
 	markCertainStmts(stmt, w.certain)
 
 	syntax.Walk(stmt, func(node syntax.Node) bool {
+		w.noteArithmetic(node)
+
 		switch n := node.(type) {
 		case *syntax.WhileClause, *syntax.ForClause:
 			syntax.Walk(n, func(inner syntax.Node) bool {

@@ -58,8 +58,8 @@ const (
 	reasonMaybeRun   = "the message file is written earlier only on a branch or in a " +
 		"background job that may not run before the commit"
 	reasonRepeated = "the commit has more than one -F/--file, and git reads only the last"
-	reasonAbbrev   = "the commit abbreviates a message option (--file, --message, --edit, ...), which klaudiush does " +
-		"not expand"
+	reasonAbbrev   = "the commit abbreviates a message option (--file, --message, " +
+		"--edit, ...), which klaudiush does not expand"
 )
 
 const (

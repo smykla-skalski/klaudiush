@@ -369,7 +369,7 @@ func (w *astWalker) resolveVar(part TextPart) TextPart {
 	value, set, trusted := w.trustedValue(part.Var)
 
 	switch {
-	case !trusted:
+	case !trusted || w.state.arithmetic:
 		part.Gap = fmt.Sprintf(gapUntrustedFmt, part.Var)
 	case !set:
 		part.Gap = fmt.Sprintf(gapUnsetFormat, part.Var)
@@ -409,7 +409,10 @@ func (w *astWalker) argTexts(words []*syntax.Word) map[string]ShellText {
 
 // envNames are the variables a command records as they stand when it runs,
 // for validators that need git's environment.
-var envNames = []string{"GIT_EDITOR", "GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT"}
+var envNames = []string{
+	"GIT_EDITOR", "GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT",
+	"GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", pathVar,
+}
 
 // EnvValue is a variable as a command sees it. Known reports that the parser
 // can tell its value; when false, Value and Set mean nothing.
@@ -426,8 +429,7 @@ func (w *astWalker) envSnapshot(call *syntax.CallExpr) map[string]EnvValue {
 	env := make(map[string]EnvValue, len(envNames))
 
 	for _, name := range envNames {
-		value, set, trusted := w.trustedValue(name)
-		env[name] = EnvValue{Value: value, Set: set, Known: trusted}
+		env[name] = w.exportedValue(name)
 	}
 
 	for _, assign := range call.Assigns {
@@ -446,6 +448,126 @@ func (w *astWalker) envSnapshot(call *syntax.CallExpr) map[string]EnvValue {
 	}
 
 	return env
+}
+
+// exportedValue returns name as a program the line starts sees it. A value
+// assigned on the line reaches the program only when the name is exported:
+// by export or declare -x, set -a, or because it came from the environment.
+// PATH is unknown once the line changes it or the command table.
+func (w *astWalker) exportedValue(name string) EnvValue {
+	value, set, trusted := w.trustedValue(name)
+
+	_, assigned := w.assignments[name]
+	_, inEnv := w.resolver.LookupEnv(name)
+
+	switch {
+	case name == pathVar && w.state.pathChanged:
+		return EnvValue{}
+	case set && assigned && !inEnv && !w.state.allExport && !w.state.exported[name]:
+		return EnvValue{Known: trusted}
+	default:
+		return EnvValue{Value: value, Set: set, Known: trusted}
+	}
+}
+
+// noteExports records the names export, declare -x and typeset -x export.
+func (w *astWalker) noteExports(decl *syntax.DeclClause) {
+	exports := decl.Variant != nil && decl.Variant.Value == "export"
+
+	for _, arg := range decl.Args {
+		if arg.Name == nil && arg.Value != nil {
+			option := wordToString(arg.Value)
+			exports = exports || strings.HasPrefix(option, "-") && strings.Contains(option, "x")
+		}
+	}
+
+	if !exports {
+		return
+	}
+
+	if w.state.exported == nil {
+		w.state.exported = make(map[string]bool)
+	}
+
+	for _, arg := range decl.Args {
+		if arg.Name != nil {
+			w.state.exported[arg.Name.Value] = true
+		}
+	}
+}
+
+// noteAllExport records set -a and set -o allexport, which export every
+// variable assigned after them.
+func (w *astWalker) noteAllExport(args []string) {
+	for i, arg := range args {
+		short := strings.HasPrefix(arg, "-") && !strings.HasPrefix(arg, "--") &&
+			strings.Contains(arg, "a")
+		long := arg == setOption && i+1 < len(args) && args[i+1] == "allexport"
+
+		if short || long {
+			w.state.allExport = true
+		}
+	}
+}
+
+// noteArithmetic records arithmetic anywhere on the line. It can assign
+// any variable ((T=1)), let, $[T=1], a[T=1]=x, declare -i) and evaluates
+// values as more arithmetic, so no variable value is trusted after it.
+func (w *astWalker) noteArithmetic(node syntax.Node) {
+	switch n := node.(type) {
+	case *syntax.ArithmCmd, *syntax.ArithmExp, *syntax.LetClause:
+		w.state.arithmetic = true
+	case *syntax.ParamExp:
+		w.state.arithmetic = w.state.arithmetic || !literalIndex(n.Index) || n.Slice != nil
+	case *syntax.Assign:
+		w.state.arithmetic = w.state.arithmetic || !literalIndex(n.Index)
+	case *syntax.DeclClause:
+		for _, arg := range n.Args {
+			if arg.Name == nil && arg.Value != nil {
+				option := wordToString(arg.Value)
+				w.state.arithmetic = w.state.arithmetic ||
+					strings.HasPrefix(option, "-") && strings.Contains(option, "i")
+			}
+		}
+	}
+}
+
+// prefixGaps turns into gaps the variables of a heredoc or here-string that
+// the call's own prefix assignments set: bash expands them with the new
+// value and zsh with the old one.
+func prefixGaps(text *ShellText, call *syntax.CallExpr) *ShellText {
+	if text == nil || len(call.Assigns) == 0 {
+		return text
+	}
+
+	out := ShellText{Parts: slices.Clone(text.Parts)}
+
+	for i, part := range out.Parts {
+		for _, assign := range call.Assigns {
+			if part.Var != "" && assign.Name != nil && assign.Name.Value == part.Var {
+				out.Parts[i] = TextPart{Var: part.Var, Gap: fmt.Sprintf(gapUntrustedFmt, part.Var)}
+			}
+		}
+	}
+
+	return &out
+}
+
+// literalIndex reports no subscript, or one of digits, @ or *, which assigns
+// nothing.
+func literalIndex(index syntax.ArithmExpr) bool {
+	if index == nil {
+		return true
+	}
+
+	word, ok := index.(*syntax.Word)
+	if !ok {
+		return false
+	}
+
+	lit := word.Lit()
+
+	return lit != "" && strings.Trim(lit, "0123456789@*") == ""
 }
 
 // ArgText returns how the shell builds the argument recorded as arg, with

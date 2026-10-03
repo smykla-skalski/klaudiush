@@ -178,6 +178,29 @@ var _ = Describe("ShellText", func() {
 		Entry("through a launcher", "env GIT_EDITOR=true git commit", parser.EnvValue{}),
 	)
 
+	DescribeTable("passes a line assignment to git only when exported",
+		func(command string, want parser.EnvValue) {
+			result, err := parser.NewBashParserWithResolver(fakeResolver{}).Parse(command)
+			Expect(err).NotTo(HaveOccurred())
+
+			cmd := result.GitOperations[len(result.GitOperations)-1]
+			Expect(cmd.Env("GIT_EDITOR")).To(Equal(want))
+		},
+		Entry("plain assignment", "GIT_EDITOR=true; git commit", parser.EnvValue{Known: true}),
+		Entry("export", "GIT_EDITOR=true; export GIT_EDITOR; git commit",
+			parser.EnvValue{Value: "true", Set: true, Known: true}),
+		Entry("declare -x", "declare -x GIT_EDITOR=true; git commit",
+			parser.EnvValue{Value: "true", Set: true, Known: true}),
+		Entry("set -a", "set -a; GIT_EDITOR=true; git commit",
+			parser.EnvValue{Value: "true", Set: true, Known: true}),
+		Entry("unset", "git commit", parser.EnvValue{Known: true}),
+	)
+
+	It("marks PATH unknown once the line changes it", func() {
+		cmd := lastGit("PATH=/x:$PATH; git commit")
+		Expect(cmd.Env("PATH").Known).To(BeFalse())
+	})
+
 	It("records every flag value with the argument it came from", func() {
 		gitCmd, err := parser.ParseGitCommand(lastGit(
 			`git commit -m a --message=b -sSmc -t tpl --fixup=reword:HEAD --squash x -C HEAD`,
