@@ -717,7 +717,8 @@ func (w *astWalker) noteDynamic(assign *syntax.Assign) {
 
 	w.state.dynamicVersion++
 
-	if assign.Append || (assign.Value != nil && wordDynamic(assign.Value)) {
+	if assign.Append || (assign.Value != nil && wordDynamic(assign.Value)) ||
+		dynamicElements(assign.Array) {
 		w.state.dynamicVars[assign.Name.Value] = true
 
 		return

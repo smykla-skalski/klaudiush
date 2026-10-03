@@ -162,6 +162,17 @@ func elementAssign(assign *syntax.Assign) bool {
 	)
 }
 
+// allElements matches ${NAME[@]} or ${NAME[*]}, which eval cannot take as
+// text: quoted, it still splits into one word per element.
+var allElements = regexp.MustCompile(`\$\{[A-Za-z_][A-Za-z0-9_]*\[[@*]\]\}`)
+
+// dynamicElements reports an array with an element from command output.
+func dynamicElements(array *syntax.ArrayExpr) bool {
+	return array != nil && slices.ContainsFunc(array.Elems, func(e *syntax.ArrayElem) bool {
+		return e.Value != nil && wordDynamic(e.Value)
+	})
+}
+
 // markArray records that name holds an array: $name is then only its first
 // element, which the joined value kept for it does not show.
 func (w *astWalker) markArray(name string) {
@@ -431,7 +442,7 @@ func (w *astWalker) resolveEval(cmd Command) (string, bool) {
 	}
 
 	expanded, ok := w.resolveWord(line)
-	if !ok {
+	if !ok || allElements.MatchString(line) {
 		w.opaque(OpacityUnresolvedWord, cmd.Name, DetailWordVariable)
 
 		return line, false

@@ -92,6 +92,10 @@ var _ = Describe("Unresolved program words", func() {
 			program(parser.DetailWordVariable)),
 		Entry("array given a scalar", `a=(git status); a=ls; "${a[@]}"`,
 			program(parser.DetailWordVariable)),
+		Entry("array element from command output", `a=($(echo git) push); "${a[@]}"`,
+			program(parser.DetailWordVariable)),
+		Entry("quoted array element from output", `a=("$(echo git)" push); ${a[*]}`,
+			program(parser.DetailWordVariable)),
 		Entry("custom IFS", `IFS=,; X=git,push; $X origin main`,
 			program(parser.DetailWordVariable)),
 		Entry("IFS set by read", `read IFS <<< ","; X=git,push; $X`,
@@ -156,6 +160,13 @@ var _ = Describe("Unresolved program words", func() {
 		Entry("home path", `"$HOME/bin/tool" --x`, "tool", "--x"),
 		Entry("lookup of a variable", `command -v $X`, "command", "-v", "${X}"),
 	)
+
+	It("fails closed on eval of every element of an array", func() {
+		result := parse(`a=(git push); eval '"${a[@]}"'`)
+
+		Expect(result.Truncated).To(BeTrue())
+		Expect(result.Opacities).To(ConsistOf(HaveField("Operation", "eval")))
+	})
 
 	It("still checks a validated git subcommand behind an opaque program", func() {
 		result := parse(`$(echo git) push --force`)
