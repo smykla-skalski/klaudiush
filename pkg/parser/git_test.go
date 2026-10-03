@@ -44,6 +44,17 @@ var _ = Describe("GitCommand", func() {
 			Entry("after -C value", []string{"-C", "/repo", " "}),
 		)
 
+		DescribeTable("with whitespace-padded program name",
+			func(name string) {
+				_, err := parser.ParseGitCommand(
+					parser.Command{Name: name, Args: []string{"commit"}},
+				)
+				Expect(err).To(MatchError(parser.ErrNotGitCommand))
+			},
+			Entry("trailing space", "git "),
+			Entry("trailing newline", "git\n"),
+		)
+
 		Context("with git commit command", func() {
 			It("parses basic commit", func() {
 				cmd := parser.Command{
