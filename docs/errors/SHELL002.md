@@ -19,7 +19,7 @@ Each finding names the operation klaudiush could not see through, the programs t
 | Cause                                 | Example                                         | Repair                                                    |
 |:--------------------------------------|:------------------------------------------------|:----------------------------------------------------------|
 | Command does not parse                | `git commit -m "x" && (`                        | Fix the syntax at the reported line and column            |
-| zsh-only syntax                       | `for x in ${(s:,:)list}; do echo $x; done`      | Rewrite it in bash syntax                                 |
+| zsh syntax bash does not parse        | `for x in ${(s:,:)list}; do echo $x; done`      | Rewrite it in bash syntax                                 |
 | Nesting past eight levels             | nine `env` wrappers around `git commit`         | Run the inner command directly                            |
 | Inspection budget spent               | a function fanning out to thousands of calls    | Split the work, call programs directly                    |
 | Script path from a variable           | `bash "$DIR/run.sh"`                            | Use a literal script path                                 |
@@ -35,7 +35,7 @@ Each finding names the operation klaudiush could not see through, the programs t
 
 A variable assigned a literal value earlier on the same line, or set in the environment klaudiush runs in, is resolved: `X=status; git $X` is checked as `git status`. Only a plain assignment statement counts. A variable also assigned in a subshell, pipeline, condition, loop, function or background job, or as a command prefix, or set by `read`, `printf -v`, `mapfile`, `getopts`, a `for` loop, `eval` or a sourced script, is treated as unknown, and so is every variable used inside a loop. After a write to a name klaudiush cannot read (`declare "$v"`, `printf -v "$v"`) a `declare -l`, `-u` or `-n`, a `source`, a `mapfile -C` callback, or a program named by a variable or command output, no variable is resolved. Inside a new shell (`bash -c`, a script file), which sees only exported variables and may source `BASH_ENV` first, no variable is resolved either. A subcommand that is not a valid git command name, such as `'push '` or `$'push\n'`, is checked as the builtin git autocorrect would run, or blocked as an unknown subcommand.
 
-Klaudiush parses every command as bash, even when the login shell is zsh. A command that parses only as zsh (parameter expansion flags such as `${(s:,:)var}`, `=(...)` process substitutions, anonymous functions, `foreach`) is blocked as zsh-only syntax and the message names the construct when bash's parser reports it. Constructs like these can run code klaudiush cannot follow, such as the `(e)` flag re-evaluating a variable's value.
+Klaudiush parses every command as bash, even when the login shell is zsh. A command bash cannot parse but the zsh grammar accepts (parameter expansion flags such as `${(s:,:)var}`, `=(...)` process substitutions, anonymous functions, `foreach`, short `for x (a b) cmd` loops) is blocked as zsh syntax, and the message names the construct when bash's parser reports it. Constructs like these can run code klaudiush cannot follow, such as the `(e)` flag re-evaluating a variable's value.
 
 ## How to fix
 

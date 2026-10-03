@@ -109,11 +109,12 @@ func (p *BashParser) Parse(command string) (*ParseResult, error) {
 	}, nil
 }
 
-// ZshSyntaxError reports a command that does not parse as bash but parses as
-// zsh. Commands are inspected as bash, so zsh-only syntax stays opaque even
-// though a zsh login shell runs it. errors.Is matches it as ErrParseFailed.
+// ZshSyntaxError reports a command that does not parse as bash but that the
+// zsh grammar accepts. Commands are inspected as bash, so zsh syntax stays
+// opaque even though a zsh login shell may run it. errors.Is matches it as
+// ErrParseFailed.
 type ZshSyntaxError struct {
-	// Construct names the zsh-only syntax bash rejected, such as "parameter
+	// Construct names the zsh syntax bash rejected, such as "parameter
 	// expansion flags". It is empty when the bash error does not name it.
 	Construct string
 	cause     error
@@ -133,11 +134,15 @@ func (e *ZshSyntaxError) Unwrap() error {
 	return e.cause
 }
 
-// parseFailure wraps a bash syntax error, telling zsh-only syntax apart from
+// parseFailure wraps a bash syntax error, telling zsh syntax apart from
 // a command no shell klaudiush knows can parse.
 func parseFailure(command string, err error) error {
 	zshParser := syntax.NewParser(syntax.Variant(syntax.LangZsh))
 	if _, zshErr := zshParser.Parse(strings.NewReader(command), ""); zshErr != nil {
+		if construct := unparsedZshForm(command, zshErr); construct != "" {
+			return &ZshSyntaxError{Construct: construct, cause: err}
+		}
+
 		return errors.Wrap(ErrParseFailed, err.Error())
 	}
 
@@ -149,6 +154,33 @@ func parseFailure(command string, err error) error {
 	}
 
 	return zerr
+}
+
+// zshShortFor matches the zsh short loop form "for x (a b) cmd" at the start
+// of the text.
+var zshShortFor = regexp.MustCompile(`^for\s+[A-Za-z_][A-Za-z0-9_]*\s*\(`)
+
+// zshBraceFor is the feature mvdan names when it rejects "for x in a; { }"
+// in zsh mode, a loop form zsh itself accepts.
+const zshBraceFor = "for loops with braces"
+
+// unparsedZshForm names valid zsh loop forms the zsh grammar of mvdan.cc/sh
+// rejects, so they are not reported as broken syntax either.
+func unparsedZshForm(command string, zshErr error) string {
+	var langErr syntax.LangError
+	if errors.As(zshErr, &langErr) && langErr.Feature == zshBraceFor {
+		return zshBraceFor
+	}
+
+	var parseErr syntax.ParseError
+	if errors.As(zshErr, &parseErr) {
+		offset := int(parseErr.Pos.Offset())
+		if offset < len(command) && zshShortFor.MatchString(command[offset:]) {
+			return "short for loops"
+		}
+	}
+
+	return ""
 }
 
 // maxExpandPasses bounds variable expansion so a self-referential assignment

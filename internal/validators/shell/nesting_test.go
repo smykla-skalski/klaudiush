@@ -61,29 +61,32 @@ var _ = Describe("NestingValidator", func() {
 		Expect(result.Findings).To(ConsistOf(SatisfyAll(
 			HaveField("Location", MatchRegexp(`^line 1, column \d+$`)),
 			HaveField("Repair", ContainSubstring("Fix the shell syntax")),
+			HaveField("Repair", ContainSubstring("rewrite zsh-only syntax in bash")),
 		)))
 	})
 
-	It("names zsh-only syntax instead of calling valid zsh broken", func() {
+	It("names zsh syntax instead of calling it broken shell", func() {
 		result := blocked(
 			`typeset -A NUM; NUM[a]=1; list=a,b; for x in ${(s:,:)list}; do echo $x; done`,
 		)
 
-		Expect(result.Message).To(ContainSubstring("zsh-only syntax (parameter expansion flags)"))
-		Expect(result.Message).NotTo(ContainSubstring("does not parse"))
+		Expect(result.Message).To(ContainSubstring("zsh syntax (parameter expansion flags)"))
+		Expect(result.Message).NotTo(ContainSubstring("does not parse as shell"))
 		Expect(result.Findings).To(ConsistOf(SatisfyAll(
 			HaveField("Location", "line 1, column 46"),
-			HaveField("Message", ContainSubstring("parses only as zsh")),
+			HaveField("Message", ContainSubstring("is zsh syntax bash does not parse")),
 			HaveField("Required", "bash syntax"),
 			HaveField("Repair", ContainSubstring("Rewrite the command in bash syntax")),
 		)))
 	})
 
-	It("reports zsh-only syntax bash cannot name without a construct", func() {
+	It("reports zsh syntax bash cannot name without a construct", func() {
 		result := blocked(`foreach x (a b) git push; end`)
 
 		Expect(result.Message).To(
-			Equal("Command uses zsh-only syntax, which klaudiush cannot inspect"),
+			Equal(
+				"Command uses zsh syntax that bash does not parse, so klaudiush cannot inspect it",
+			),
 		)
 	})
 

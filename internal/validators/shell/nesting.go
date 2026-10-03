@@ -88,18 +88,20 @@ func parseFailedFinding(err error) validator.Finding {
 		Location:  location,
 		Message:   "command does not parse as shell",
 		Required:  "valid shell syntax",
-		Repair:    "Fix the shell syntax at that position (unclosed quote, bracket or heredoc)",
+		Repair: "Fix the shell syntax at that position (unclosed quote, bracket or heredoc). " +
+			"Commands are parsed as bash, so rewrite zsh-only syntax in bash",
 	}
 }
 
-// zshSummary names the zsh-only construct, so valid zsh is not reported as
+// zshSummary names the zsh construct, so zsh syntax is not reported as
 // broken syntax.
 func zshSummary(construct string) string {
 	if construct == "" {
-		return "Command uses zsh-only syntax, which klaudiush cannot inspect"
+		return "Command uses zsh syntax that bash does not parse, so klaudiush cannot inspect it"
 	}
 
-	return "Command uses zsh-only syntax (" + construct + "), which klaudiush cannot inspect"
+	return "Command uses zsh syntax (" + construct + ") that bash does not parse, " +
+		"so klaudiush cannot inspect it"
 }
 
 func zshSyntaxFinding(err error, construct string) validator.Finding {
@@ -109,7 +111,8 @@ func zshSyntaxFinding(err error, construct string) validator.Finding {
 		construct = "this syntax"
 	}
 
-	f.Message = construct + " parses only as zsh, and klaudiush inspects commands as bash"
+	f.Message = construct + " is zsh syntax bash does not parse, and klaudiush " +
+		"inspects commands as bash"
 	f.Required = "bash syntax"
 	f.Repair = "Rewrite the command in bash syntax; klaudiush parses every command " +
 		"as bash, whatever the login shell"

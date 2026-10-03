@@ -28,8 +28,9 @@ var _ = Describe("BashParser", func() {
 			})
 		})
 
-		Context("with zsh-only syntax", func() {
-			DescribeTable("reports the construct bash rejects",
+		Context("with zsh syntax", func() {
+			DescribeTable(
+				"reports the construct bash rejects",
 				func(command, construct string) {
 					_, err := p.Parse(command)
 
@@ -44,15 +45,30 @@ var _ = Describe("BashParser", func() {
 				Entry("anonymous function", `() { git push }`, "anonymous functions"),
 				Entry("=( process substitution", `diff =(git log) f`, "`=(` process substitutions"),
 				Entry("foreach loop, unnamed by bash", `foreach x (a b) echo $x; end`, ""),
+				Entry("short for loop", `for x (a b) git push`, "short for loops"),
+				Entry("short for loop after another command",
+					`echo hi; for x (a b) echo $x`, "short for loops"),
+				Entry(
+					"for loop with braces",
+					`for x in a b; { git push }`,
+					"for loops with braces",
+				),
+				Entry("flags zsh itself rejects, still bash-unparseable", `echo ${(Y)x}`,
+					"parameter expansion flags"),
 			)
 
-			It("keeps a command no shell parses a plain parse failure", func() {
-				_, err := p.Parse(`git commit -m "x" && (`)
+			DescribeTable("keeps a command no shell parses a plain parse failure",
+				func(command string) {
+					_, err := p.Parse(command)
 
-				var zshErr *parser.ZshSyntaxError
-				Expect(errors.As(err, &zshErr)).To(BeFalse())
-				Expect(err).To(MatchError(parser.ErrParseFailed))
-			})
+					var zshErr *parser.ZshSyntaxError
+					Expect(errors.As(err, &zshErr)).To(BeFalse(), "error: %v", err)
+					Expect(err).To(MatchError(parser.ErrParseFailed))
+				},
+				Entry("unclosed subshell", `git commit -m "x" && (`),
+				Entry("for without a list", `for x y`),
+				Entry("for with a stray paren later", `for x in a; do echo (; done`),
+			)
 		})
 
 		Context("with simple commands", func() {
