@@ -1,0 +1,116 @@
+env KLAUDIUSH_TEST_PROGRAM=hunter2value
+env KLAUDIUSH_TEST_GIT=git
+
+exec git init --initial-branch=main
+exec git config user.email "test@test.com"
+exec git config user.name "Test User"
+
+stdin unset-variable.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+stdout 'program name comes from a variable klaudiush cannot resolve'
+! stdout 'KLAUDIUSH_TEST_UNSET'
+
+stdin output.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+stdout 'program name comes from command output'
+
+stdin loop-variable.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+! stdout 'hunter2value'
+! stdout 'KLAUDIUSH_TEST_PROGRAM'
+
+stdin under-xargs.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+
+stdin assigned.json
+exec klaudiush --hook-type PreToolUse
+! stdout .
+
+stdin environment.json
+exec klaudiush --hook-type PreToolUse
+! stdout .
+
+stdin which.json
+exec klaudiush --hook-type PreToolUse
+! stdout .
+
+stdin toplevel.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'GIT010'
+! stdout 'SHELL002'
+
+stdin toplevel-after-init.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+
+stdin script-dir.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'GIT010'
+! stdout 'SHELL002'
+
+stdin wrapper.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'GIT010'
+! stdout 'SHELL002'
+
+stdin wrapper-xargs.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+
+-- scripts/x.sh --
+git commit -m 'bad title'
+
+-- scripts/run.sh --
+"$(dirname "$0")/x.sh"
+
+-- scripts/wrap.sh --
+exec "$@"
+
+-- toplevel.json --
+{"tool_name": "Bash", "tool_input": {"command": "\"$(git rev-parse --show-toplevel)/scripts/x.sh\""}}
+
+-- toplevel-after-init.json --
+{"tool_name": "Bash", "tool_input": {"command": "git init -q sub && cd sub && \"$(git rev-parse --show-toplevel)/scripts/x.sh\""}}
+
+-- script-dir.json --
+{"tool_name": "Bash", "tool_input": {"command": "bash scripts/run.sh"}}
+
+-- wrapper.json --
+{"tool_name": "Bash", "tool_input": {"command": "bash scripts/wrap.sh git commit -m 'bad title'"}}
+
+-- wrapper-xargs.json --
+{"tool_name": "Bash", "tool_input": {"command": "echo git status | xargs bash scripts/wrap.sh"}}
+
+-- unset-variable.json --
+{"tool_name": "Bash", "tool_input": {"command": "$KLAUDIUSH_TEST_UNSET origin main"}}
+
+-- output.json --
+{"tool_name": "Bash", "tool_input": {"command": "$(echo git) status"}}
+
+-- loop-variable.json --
+{"tool_name": "Bash", "tool_input": {"command": "for f in a; do $KLAUDIUSH_TEST_PROGRAM $f; done"}}
+
+-- under-xargs.json --
+{"tool_name": "Bash", "tool_input": {"command": "echo status | xargs $KLAUDIUSH_TEST_UNSET"}}
+
+-- assigned.json --
+{"tool_name": "Bash", "tool_input": {"command": "G=git; $G status"}}
+
+-- environment.json --
+{"tool_name": "Bash", "tool_input": {"command": "$KLAUDIUSH_TEST_GIT status"}}
+
+-- which.json --
+{"tool_name": "Bash", "tool_input": {"command": "$(which git) status"}}

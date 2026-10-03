@@ -116,7 +116,8 @@ var _ = Describe("Container --entrypoint", func() {
 			"a compose project named run with a file option",
 			"docker compose --project-name run -f compose.yml run --entrypoint=git svc push --force",
 		),
-		Entry("a runner from a variable", `"$DOCKER" run --entrypoint git img push --force`),
+		Entry("a runner from a variable on the line",
+			`DOCKER=docker; "$DOCKER" run --entrypoint git img push --force`),
 		Entry("apple container", "container run --entrypoint git img push --force"),
 		Entry("docker.exe", "docker.exe run --entrypoint git img push --force"),
 		Entry("env as the entrypoint", "docker run --entrypoint env img git push --force"),
@@ -199,6 +200,17 @@ var _ = Describe("Container --entrypoint", func() {
 	It("reads a variable holding the entrypoint both quoted and split", func() {
 		command := `EP="git push"; docker run --entrypoint "$EP" img --force`
 
+		Expect(forcePushes(command)).NotTo(BeEmpty())
+	})
+
+	It("fails closed on a runner from an unknown variable, still finding its entrypoint", func() {
+		command := `"$DOCKER" run --entrypoint git img push --force`
+		result := parse(command)
+
+		Expect(result.Truncated).To(BeTrue())
+		Expect(result.Opacities).To(ContainElement(
+			HaveField("Operation", parser.ProgramWordOperation),
+		))
 		Expect(forcePushes(command)).NotTo(BeEmpty())
 	})
 

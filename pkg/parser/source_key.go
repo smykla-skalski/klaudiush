@@ -28,6 +28,7 @@ type scriptSourceText struct {
 	path    string
 	text    string
 	literal bool // interpreter code rather than shell
+	run     scriptRun
 	prelude []startupScript
 }
 
@@ -39,7 +40,7 @@ type scriptSourceText struct {
 // reads and writes there cannot be told apart, so its repeats are never cut.
 // So does one with more definitions in scope than maxKeyScopeBytes, which
 // would cost too much to hash on every followed script.
-func (w *astWalker) sourceKey(cmd Command, text string, literal bool) string {
+func (w *astWalker) sourceKey(cmd Command, src scriptSourceText) string {
 	if w.dirUnknown || w.dirComputed || cmd.DirUnknown || w.scopeBytes() > maxKeyScopeBytes {
 		return w.uniqueKey()
 	}
@@ -47,15 +48,22 @@ func (w *astWalker) sourceKey(cmd Command, text string, literal bool) string {
 	h := sha256.New()
 
 	writeParts(h,
-		text,
+		src.text,
 		cmd.Name,
 		cmd.WorkingDirectory,
-		strconv.FormatBool(literal),
+		strconv.FormatBool(src.literal),
 		strconv.FormatBool(w.distrust),
 		strconv.FormatBool(w.inLoop || w.outerLoop),
 		strconv.FormatBool(w.state.pathChanged),
 		strconv.FormatBool(w.state.untrusted),
 	)
+	writeParts(
+		h,
+		src.run.zero,
+		strconv.FormatBool(src.run.withArgs),
+		strconv.Itoa(len(src.run.args)),
+	)
+	writeParts(h, src.run.args...)
 	writeParts(h, strconv.Itoa(len(w.dirStack)))
 	writeParts(h, w.dirStack...)
 
@@ -177,6 +185,8 @@ func (w *astWalker) walkSource(cmd Command, src scriptSourceText, depth int, key
 		label:   scriptName(src.path),
 		source:  key,
 		prelude: src.prelude,
+		run:     src.run,
+		file:    !src.literal,
 	}
 	text := src.text
 
@@ -208,7 +218,7 @@ func (w *astWalker) confirmRepeat(cmd Command, src scriptSourceText, depth int, 
 	delete(w.state.repeated, key)
 
 	before := w.effects()
-	again := w.sourceKey(cmd, src.text, src.literal)
+	again := w.sourceKey(cmd, src)
 
 	w.walkSource(cmd, src, depth, again)
 	delete(w.state.repeated, again)

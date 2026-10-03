@@ -146,13 +146,27 @@ func truncatedSummary(opacities []parser.Opacity, more bool) string {
 	case len(opacities) == 0:
 		return truncatedText
 	case len(opacities) == 1:
-		return "Command cannot be inspected: " + causeSummary(opacities[0].Cause)
+		return "Command cannot be inspected: " + opacitySummary(opacities[0])
 	default:
 		return fmt.Sprintf(
 			"Command cannot be fully inspected: %d parts are opaque",
 			len(opacities),
 		)
 	}
+}
+
+// opacitySummary is causeSummary, naming a program word apart from the
+// eval, git and gh words that share its cause.
+func opacitySummary(o parser.Opacity) string {
+	if programWord(o) {
+		return "it runs a program whose name klaudiush cannot resolve"
+	}
+
+	return causeSummary(o.Cause)
+}
+
+func programWord(o parser.Opacity) bool {
+	return o.Cause == parser.OpacityUnresolvedWord && o.Operation == parser.ProgramWordOperation
 }
 
 func causeSummary(cause parser.OpacityCause) string {
@@ -233,7 +247,11 @@ func opacityFinding(o parser.Opacity) validator.Finding {
 		f.Repair = "Run the command inside the function directly, or forward " +
 			`arguments with plain "$@"`
 	case parser.OpacityUnresolvedWord:
-		f.Message, f.Required, f.Repair = unresolvedWordFinding(o)
+		if programWord(o) {
+			f.Message, f.Required, f.Repair = programWordFinding(o)
+		} else {
+			f.Message, f.Required, f.Repair = unresolvedWordFinding(o)
+		}
 	case parser.OpacityStartupFile:
 		f.Message = "the startup file " + o.Operation + " names cannot be inspected: " + o.Detail
 		f.Required = "a literal path to a readable file, or no startup file"
@@ -293,6 +311,38 @@ func unresolvedWordFinding(o parser.Opacity) (message, required, repair string) 
 	}
 
 	return message, required, repair
+}
+
+// programWordFinding explains a program name that comes from a variable,
+// command output or a glob.
+func programWordFinding(o parser.Opacity) (message, required, repair string) {
+	message = "the program name " + strings.TrimPrefix(o.Detail, "it ")
+
+	required = "a literal program name or path"
+	if o.Detail == parser.DetailWordVariable {
+		required += ", or one from a variable assigned literally on the same line " +
+			"or set in the environment"
+	}
+
+	repair = programWordRepairs[o.Detail]
+	if repair == "" {
+		repair = "Write the program name or path literally instead of computing it"
+	}
+
+	return message, required, repair
+}
+
+// programWordRepairs match the reason a program word's variable was not
+// trusted: inside a loop or a new shell no assignment would help.
+var programWordRepairs = map[string]string{
+	parser.DetailWordVariable: "Write the program name or path literally, or assign the " +
+		"variable a literal value earlier on the same line",
+	parser.DetailWordLoop: "Write the program name literally inside the loop, or run the " +
+		"command outside the loop",
+	parser.DetailWordNewShell: "Write the program name literally inside the nested shell " +
+		"or script, or run the command directly",
+	parser.DetailWordUntrusted: "Write the program name literally, or run it in a separate " +
+		"command from the one that changed IFS, sourced a file or redeclared variables",
 }
 
 // evalSetupRepairs replace eval of a tool's printed shell setup with a form

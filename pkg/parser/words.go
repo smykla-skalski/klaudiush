@@ -155,10 +155,86 @@ func (w *astWalker) prepare(stmt *syntax.Stmt) {
 			})
 
 			return false
+		case *syntax.ParamExp:
+			w.forgetAssigned(n)
+
+			return true
 		default:
 			return true
 		}
 	})
+}
+
+// elementAssign reports an assignment to one element (a[1]=x) or an array
+// with indexed elements (a=([1]=x)), whose joined value the parser does not
+// model, so the variable is unknown after it.
+func elementAssign(assign *syntax.Assign) bool {
+	if assign.Index != nil {
+		return true
+	}
+
+	return assign.Array != nil && slices.ContainsFunc(
+		assign.Array.Elems,
+		func(e *syntax.ArrayElem) bool { return e.Index != nil },
+	)
+}
+
+// allElements matches ${NAME[@]} or ${NAME[*]}, which eval cannot take as
+// text: quoted, it still splits into one word per element.
+var allElements = regexp.MustCompile(`\$\{[A-Za-z_][A-Za-z0-9_]*\[[@*]\]\}`)
+
+// dynamicElements reports an array with an element from command output.
+func dynamicElements(array *syntax.ArrayExpr) bool {
+	return array != nil && slices.ContainsFunc(array.Elems, func(e *syntax.ArrayElem) bool {
+		return e.Value != nil && wordDynamic(e.Value)
+	})
+}
+
+// markArray records that name holds an array: $name is then only its first
+// element, which the joined value kept for it does not show.
+func (w *astWalker) markArray(name string) {
+	if w.state.arrays == nil {
+		w.state.arrays = make(map[string]bool)
+	}
+
+	w.state.arrays[name] = true
+}
+
+// arrayDecl reports a declaration that makes its names arrays (-a, -A).
+func arrayDecl(decl *syntax.DeclClause) bool {
+	return slices.ContainsFunc(decl.Args, func(a *syntax.Assign) bool {
+		if a.Name != nil || a.Value == nil {
+			return false
+		}
+
+		option := wordToString(a.Value)
+
+		return (strings.HasPrefix(option, "-") || strings.HasPrefix(option, "+")) &&
+			strings.ContainsAny(option, "aA")
+	})
+}
+
+// plainArrayRef reports a $name or ${name} reference to an array in word.
+func (w *astWalker) plainArrayRef(word string) bool {
+	for _, m := range varRefPattern.FindAllStringSubmatch(word, -1) {
+		if w.state.arrays[m[1]] && !strings.HasSuffix(m[0], "]}") {
+			return true
+		}
+	}
+
+	return false
+}
+
+// forgetAssigned forgets a variable that ${NAME:=word} or ${NAME=word}
+// assigns as a side effect of being expanded.
+func (w *astWalker) forgetAssigned(exp *syntax.ParamExp) {
+	if exp.Param == nil || exp.Exp == nil {
+		return
+	}
+
+	if exp.Exp.Op == syntax.AssignUnset || exp.Exp.Op == syntax.AssignUnsetOrNull {
+		w.forget(exp.Param.Value)
+	}
 }
 
 // markSafeAssigns records the assignments stmt always makes in the current
@@ -219,26 +295,38 @@ func (w *astWalker) resolveWord(word string) (string, bool) {
 	known := true
 
 	expanded := expandVars(word, func(name string) (string, bool) {
-		if w.inLoop || w.distrust || w.state.untrusted || w.state.dynamicVars[name] ||
-			w.unknownVars[name] {
+		value, set, trusted := w.trustedValue(name)
+		if !trusted {
 			known = false
 
 			return "", false
 		}
 
-		value, ok := w.assignments[name]
-		if !ok {
-			value, ok = w.resolver.LookupEnv(name)
-		}
-
-		if ok {
+		if set {
 			w.noteExpanded(value)
 		}
 
-		return value, ok
+		return value, set
 	})
 
 	return expanded, known && !HasUnresolvedVars(expanded)
+}
+
+// trustedValue returns name's value from assignments made earlier on the
+// line, then the environment, and whether it is set. It reports untrusted
+// when the variable may hold something else by the time it is used.
+func (w *astWalker) trustedValue(name string) (value string, set, trusted bool) {
+	if w.inLoop || w.distrust || w.state.untrusted || w.state.dynamicVars[name] ||
+		w.unknownVars[name] {
+		return "", false, false
+	}
+
+	value, set = w.assignments[name]
+	if !set {
+		value, set = w.resolver.LookupEnv(name)
+	}
+
+	return value, set, true
 }
 
 // commandWordDetail says why a git or gh command word cannot be known, or
@@ -376,7 +464,7 @@ func (w *astWalker) resolveEval(cmd Command) (string, bool) {
 	}
 
 	expanded, ok := w.resolveWord(line)
-	if !ok {
+	if !ok || allElements.MatchString(line) {
 		w.opaque(OpacityUnresolvedWord, cmd.Name, DetailWordVariable)
 
 		return line, false
@@ -387,8 +475,9 @@ func (w *astWalker) resolveEval(cmd Command) (string, bool) {
 
 // launchedFrom returns what cmd runs. The commands it launches keep the
 // stand-ins of followed, so env git $(...) is still seen; scripts and files
-// are found as before. Eval runs its line with known variables substituted,
-// and a container runner runs its --entrypoint.
+// are found as before. Eval runs its line with known variables substituted
+// (a line it cannot know is already opaque and is not walked), and a
+// container runner runs its --entrypoint.
 func (w *astWalker) launchedFrom(cmd, followed Command) launch {
 	l := launched(cmd)
 
@@ -396,9 +485,11 @@ func (w *astWalker) launchedFrom(cmd, followed Command) launch {
 		l.commands = launched(followed).commands
 	}
 
-	l.commands = append(l.commands, w.entrypointCommands(followed)...)
+	l.entrypoints = w.entrypointCommands(followed)
 
 	if cmd.Name == evalBuiltin {
+		l.scripts = nil
+
 		if line, ok := w.resolveEval(followed); ok {
 			l.scripts = []string{line}
 		}
@@ -412,6 +503,8 @@ func (w *astWalker) launchedFrom(cmd, followed Command) launch {
 // script), so its literal value here and in the scripts that ran this one,
 // or its value in the environment, is stale.
 func (w *astWalker) forget(name string) {
+	w.distrustSplitting(name)
+
 	for p := w; p != nil; p = p.parent {
 		p.unknownVars[name] = true
 		delete(p.startupUnset, name)
@@ -591,4 +684,228 @@ func writtenVars(cmd Command) []string {
 	}
 
 	return names
+}
+
+// ProgramWordOperation is the Opacity.Operation of a program word that comes
+// from a variable, command output or a glob.
+const ProgramWordOperation = "program"
+
+// findPath is the found path find -exec and xargs -I{} substitute into the
+// command they run, so a program word holding it names an unknown file.
+const findPath = "{}"
+
+// programWord resolves the word that names cmd's program. Its expansion
+// splits into words, so x="git commit"; $x runs git, and an expansion to
+// nothing leaves the next argument as the program, so x=; $x git push runs
+// git. It also says why the word cannot be known, or returns "" when every
+// expansion in it resolves to literal text.
+func (w *astWalker) programWord(cmd Command, view string) (Command, string) {
+	detail := ""
+
+	for range len(cmd.Args) + 1 {
+		raw := w.applyDefaults(strings.ReplaceAll(cmd.Name, unresolvedWord, unresolvedProgram))
+		cmd.Invoked = w.expandName(raw)
+
+		if detail == "" {
+			detail = w.programWordDetail(raw, view)
+		}
+
+		view = ""
+
+		if !HasUnresolvedVars(raw) {
+			break
+		}
+
+		w.noteExpanded(cmd.Invoked)
+		w.noteExpanded(commandName(cmd.Invoked))
+
+		fields := strings.Fields(cmd.Invoked)
+		if len(fields) == 0 && len(cmd.Args) > 0 {
+			cmd.Name, cmd.Args = cmd.Args[0], cmd.Args[1:]
+
+			continue
+		}
+
+		if len(fields) > 1 {
+			cmd.Invoked, cmd.Args = fields[0], slices.Concat(fields[1:], cmd.Args)
+		}
+
+		break
+	}
+
+	cmd.Name = commandName(cmd.Invoked)
+
+	return cmd, detail
+}
+
+// programWordDetail says why a program word cannot be known: a variable the
+// rules of resolveWord do not trust, command output, or a glob. view is the
+// word with quoted glob characters neutralized, when the word came from the
+// command line; globs are looked for in it after expansion.
+func (w *astWalker) programWordDetail(word, view string) string {
+	expanded := word
+
+	if HasUnresolvedVars(word) {
+		resolved, ok := w.resolveWord(word)
+		if !ok || w.plainArrayRef(word) {
+			return w.variableDetail()
+		}
+
+		expanded = resolved
+	}
+
+	if strings.Contains(expanded, unresolvedProgram) || strings.Contains(expanded, findPath) {
+		return DetailWordOutput
+	}
+
+	globbed := expanded
+	if view != "" {
+		globbed = w.expandName(w.applyDefaults(view))
+	}
+
+	if slices.ContainsFunc(strings.Fields(globbed), globWord) {
+		return DetailWordOutput
+	}
+
+	return ""
+}
+
+// variableDetail says why a variable in a program word is not trusted, so
+// the repair can match: inside a loop or a new shell none is.
+func (w *astWalker) variableDetail() string {
+	switch {
+	case w.inLoop:
+		return DetailWordLoop
+	case w.distrust:
+		return DetailWordNewShell
+	case w.state.untrusted:
+		return DetailWordUntrusted
+	default:
+		return DetailWordVariable
+	}
+}
+
+// neutralGlob stands in for a quoted or escaped glob character, which
+// matches nothing.
+const neutralGlob = "\uE002"
+
+// neutralize replaces the glob characters in quoted text.
+func neutralize(text string) string {
+	return strings.NewReplacer("*", neutralGlob, "?", neutralGlob, "[", neutralGlob).Replace(text)
+}
+
+// globView renders a program word for finding globs: quoted and escaped
+// glob characters are neutralized, an unquoted plain variable stays a
+// reference whose value may glob, and a quoted one cannot.
+func globView(word *syntax.Word) string {
+	return globParts(word.Parts, false)
+}
+
+func globParts(parts []syntax.WordPart, quoted bool) string {
+	var b strings.Builder
+
+	for _, part := range parts {
+		switch p := part.(type) {
+		case *syntax.Lit:
+			if quoted {
+				b.WriteString(neutralize(p.Value))
+			} else {
+				b.WriteString(unescapedGlobs(p.Value))
+			}
+		case *syntax.SglQuoted:
+			b.WriteString(neutralize(p.Value))
+		case *syntax.DblQuoted:
+			b.WriteString(globParts(p.Parts, true))
+		case *syntax.ParamExp:
+			if quoted {
+				b.WriteString(neutralGlob)
+			} else {
+				b.WriteString(neutralize(paramExpToString(p)))
+			}
+		default:
+			b.WriteString(unresolvedProgram)
+		}
+	}
+
+	return b.String()
+}
+
+// unescapedGlobs neutralizes the glob characters a backslash escapes in
+// unquoted text, keeping the others.
+func unescapedGlobs(text string) string {
+	var b strings.Builder
+
+	escaped := false
+
+	for _, r := range text {
+		switch {
+		case escaped:
+			escaped = false
+
+			b.WriteString(neutralize(string(r)))
+		case r == '\\':
+			escaped = true
+		default:
+			b.WriteRune(r)
+		}
+	}
+
+	return b.String()
+}
+
+// globWord reports a word the shell expands against file names.
+func globWord(word string) bool {
+	if strings.ContainsAny(word, "*?") {
+		return true
+	}
+
+	_, after, found := strings.Cut(word, "[")
+
+	return found && strings.Contains(after, "]")
+}
+
+// defaultValue matches ${NAME:-word} and ${NAME-word} with a plain literal
+// word.
+var defaultValue = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)(:?)-([A-Za-z0-9_./+@%,-]*)\}`)
+
+// applyDefaults resolves the default-value forms in a program word, as in
+// ${EDITOR:-vi}, to a plain reference when the variable is set (and, for :-,
+// not empty) or to the default otherwise. A variable whose value is not
+// trusted keeps its form and stays unresolved.
+func (w *astWalker) applyDefaults(word string) string {
+	if !strings.Contains(word, "-") {
+		return word
+	}
+
+	return defaultValue.ReplaceAllStringFunc(word, func(ref string) string {
+		m := defaultValue.FindStringSubmatch(ref)
+
+		value, set, trusted := w.trustedValue(m[1])
+
+		switch {
+		case !trusted:
+			return ref
+		case set && (value != "" || m[2] == ""):
+			return "${" + m[1] + "}"
+		default:
+			return m[3]
+		}
+	})
+}
+
+// distrustSplitting stops trusting any variable once IFS changes: the shell
+// then splits expansions on other characters, so IFS=,; x=git,push; $x
+// runs git.
+func (w *astWalker) distrustSplitting(name string) {
+	if name == "IFS" {
+		w.state.untrusted = true
+	}
+}
+
+// withoutProgramFile drops the script file a program given by an opaque path
+// would run, which would otherwise be reported a second time.
+func withoutProgramFile(files []scriptFile, invoked string) []scriptFile {
+	return slices.DeleteFunc(files, func(f scriptFile) bool {
+		return f.path == invoked
+	})
 }

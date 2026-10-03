@@ -112,7 +112,7 @@ var _ = Describe("CheckCommand", func() {
 		Entry("git config file", `git config -f .klaudiush/config.toml a.b c`),
 		Entry("editor", `vim .claude/settings.json`),
 		Entry("unknown program", `my-tool --write .klaudiush/config.toml`),
-		Entry("program via variable", `$EDITOR .claude/settings.json`),
+		Entry("program via variable", `E=my-editor; $E .claude/settings.json`),
 		Entry("yq in place", `yq -i '.a = 1' .klaudiush/config.toml`),
 		Entry("sort output", `sort -o .klaudiush/config.toml main.go`),
 		Entry("awk redirect", `awk '{print > ".klaudiush/config.toml"}' main.go`),

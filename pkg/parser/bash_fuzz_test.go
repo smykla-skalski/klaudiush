@@ -64,6 +64,12 @@ func FuzzBashParse(f *testing.F) {
 	f.Add(`x=status; printf -v x commit; read -a x; for x in a; do :; done; git $x`)
 	f.Add(`x=status; f(){ x=commit; }; f; eval x=push; . <(echo x=add); git $x`)
 	f.Add(`docker run img git $X; mise exec -- gh $Y; mise exec -- git-$Z`)
+	f.Add(`$UNSET origin main; $(echo git) push; G=git; $G status; X=; $X git push`)
+	f.Add(`"${X:-git}" push; ${!x} push; ${arr[0]} push; "$@"; gi? push; @(git) push`)
+	f.Add(`env $X push; sudo $(echo git) push; echo a | xargs $X; find . -exec $X {} \;`)
+	f.Add(`$(go env GOPATH)/bin/tool run; $DIR/run.sh; bash -c '$EDITOR x'; [ -f x ]`)
+	f.Add(`"$(git rev-parse --show-toplevel)/x.sh" a; "$(dirname -- "$0")/y" "$@"; ${0%/*}/z "$1"`)
+	f.Add(`set -euo pipefail; shift; set -- a b; "$@"; $* "$*"; "tool?" tool\? 'gi[t]'`)
 	f.Add(`docker run -it -e A=1 --entrypoint git a push -f; podman run --entrypoint=$X i`)
 	f.Add(`podman run --entrypoint '["git","push"]' i; docker compose run --entrypoint "sh -c" s x`)
 	f.Add(

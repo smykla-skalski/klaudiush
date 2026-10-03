@@ -42,6 +42,8 @@ type astWalker struct {
 	inLoop      bool
 	outerLoop   bool
 	distrust    bool
+	scriptRun   scriptRun
+	launchSeq   int
 	// depth counts the launchers, scripts and aliases that led here.
 	depth int
 	// resolver answers what the command text cannot: environment, script
@@ -110,6 +112,7 @@ type parseState struct {
 	// table, so a bare name may no longer run what it runs outside it.
 	pathChanged   bool
 	untrusted     bool
+	arrays        map[string]bool
 	expandedWords map[string]bool
 	// evalSetups names the setup tool whose output an eval call runs, by
 	// the call's seq.
@@ -155,6 +158,8 @@ func (w *astWalker) visit(node syntax.Node) bool {
 		return false
 	case *syntax.DeclClause:
 		w.extractDecl(n)
+	case *syntax.ParamExp:
+		w.forgetAssigned(n)
 	case *syntax.ForClause:
 		if iter, ok := n.Loop.(*syntax.WordIter); ok {
 			w.forget(iter.Name.Value)
@@ -492,12 +497,16 @@ func (w *astWalker) extractCommand(call *syntax.CallExpr) {
 	}
 
 	// First word is the command name
-	name := commandWord(call.Args[0])
-	args := w.argStrings(call.Args[1:])
+	words := w.withoutEmptyPositional(call.Args)
+	if len(words) == 0 {
+		return
+	}
+
+	name, args, view := w.callWords(words)
 
 	// The shell expands {git,commit,-m,x} into words before running anything.
-	if words := braceWords(call.Args[0]); len(words) > 0 {
-		name, args = words[0], slices.Concat(words[1:], args)
+	if braced := braceWords(words[0]); len(braced) > 0 && !w.positionalWord(words[0]) {
+		name, args, view = braced[0], slices.Concat(braced[1:], args), braced[0]
 	}
 
 	if name == "" {
@@ -507,7 +516,7 @@ func (w *astWalker) extractCommand(call *syntax.CallExpr) {
 	seq := w.state.nextSeq()
 	w.noteEvalSetup(call, seq)
 
-	w.recordCommand(Command{
+	w.record(Command{
 		Name: name,
 		Args: args,
 		Location: Location{
@@ -524,7 +533,7 @@ func (w *astWalker) extractCommand(call *syntax.CallExpr) {
 		StdinFile:        w.stdinFileByCall[call],
 		startup:          prefixStartup(call),
 		dynamicWords:     dynamicArgs(call.Args[1:]),
-	}, w.depth)
+	}, w.depth, view)
 }
 
 // recordCommand stores cmd under the program it really runs, then follows
@@ -533,27 +542,27 @@ func (w *astWalker) extractCommand(call *syntax.CallExpr) {
 // git alias. Without this, /usr/bin/git, env git, bash -c "git ...", ./x.sh
 // or an alias would each hide a git command from every validator.
 func (w *astWalker) recordCommand(cmd Command, depth int) {
+	w.record(cmd, depth, "")
+}
+
+// record is recordCommand, with the glob view of a program word written on
+// the command line.
+func (w *astWalker) record(cmd Command, depth int, view string) {
 	if !w.state.spend() {
 		w.opaque(OpacityWorkBudget, safeName(commandName(cmd.Name)), "")
 
 		return
 	}
 
-	cmd.Name = strings.ReplaceAll(cmd.Name, unresolvedWord, unresolvedProgram)
-	cmd.Invoked = w.expandName(cmd.Name)
-
-	// An expansion splits into words, so x="git commit"; $x runs git.
-	if strings.Contains(cmd.Name, "${") {
-		if fields := strings.Fields(cmd.Invoked); len(fields) > 1 {
-			cmd.Invoked, cmd.Args = fields[0], slices.Concat(fields[1:], cmd.Args)
-		}
-	}
-
-	cmd.Name = commandName(cmd.Invoked)
+	cmd, detail := w.programWord(cmd, view)
 
 	// Prose in interpreter code ("hint: run git commit") runs nothing.
 	if w.literal && depth == w.depth && !literalCommand(cmd.Name) {
 		return
+	}
+
+	if detail != "" {
+		w.opaque(OpacityUnresolvedWord, ProgramWordOperation, detail)
 	}
 
 	cmd, nested := w.resolveProgram(cmd)
@@ -573,8 +582,13 @@ func (w *astWalker) recordCommand(cmd Command, depth int) {
 	w.extractFileWriteCommand(cmd)
 
 	l := w.launchedFrom(cmd, followed)
+	if detail != "" {
+		l.files = withoutProgramFile(l.files, cmd.Invoked)
+	}
+
 	l.scripts = append(l.scripts, w.gitEnvScripts(cmd)...)
 	l.files = append(l.files, w.pathScripts(cmd, l)...)
+	l.files = withoutPartialArgs(l.files, followed)
 	nested = append(nested, w.definitionScripts(followed)...)
 	startup := w.startupScripts(cmd, followed.Args)
 
@@ -585,7 +599,7 @@ func (w *astWalker) recordCommand(cmd Command, depth int) {
 	// Past the cap nothing more is followed, and the command fails closed:
 	// what it launches cannot be shown to be safe.
 	if depth >= maxLaunchDepth {
-		w.opaque(OpacityDepthLimit, safeName(cmd.Name), "")
+		w.opaque(OpacityDepthLimit, w.shownWord(cmd.Name), "")
 
 		return
 	}
@@ -618,7 +632,7 @@ func (w *astWalker) pathScripts(cmd Command, l launch) []scriptFile {
 		return nil
 	}
 
-	return []scriptFile{{path: path}}
+	return []scriptFile{{path: path, args: cmd.Args, withArgs: true}}
 }
 
 // literalCommand reports whether a name found in interpreter code runs
@@ -636,6 +650,8 @@ func literalCommand(name string) bool {
 // (cd, pushd, popd) and the programs bare names run (hash -p, enable).
 func (w *astWalker) trackShellState(cmd Command) {
 	switch cmd.Name {
+	case "shift":
+		w.trackPositional(cmd)
 	case "cd":
 		w.dirComputed = w.dirComputed || cmd.Dynamic
 		w.changeDir(firstOperand(cmd.Args))
@@ -656,6 +672,7 @@ func (w *astWalker) trackShellState(cmd Command) {
 	case "enable":
 		w.state.pathChanged = true
 	case setBuiltin:
+		w.trackPositional(cmd)
 		w.noteKeywordMode(cmd.Args)
 	}
 }
@@ -725,6 +742,14 @@ func (w *astWalker) extractDecl(decl *syntax.DeclClause) {
 
 		w.noteDynamic(assign)
 
+		if elementAssign(assign) || assign.Array != nil || arrayDecl(decl) ||
+			w.state.arrays[assign.Name.Value] {
+			w.markArray(assign.Name.Value)
+			w.forget(assign.Name.Value)
+
+			continue
+		}
+
 		if assign.Value != nil && !assign.Append {
 			w.assign(assign.Name.Value, wordToString(assign.Value))
 		}
@@ -742,6 +767,8 @@ func (w *astWalker) noteDynamic(assign *syntax.Assign) {
 		return
 	}
 
+	w.distrustSplitting(assign.Name.Value)
+
 	if w.state.dynamicVars == nil {
 		w.state.dynamicVars = make(map[string]bool)
 	}
@@ -749,7 +776,8 @@ func (w *astWalker) noteDynamic(assign *syntax.Assign) {
 	w.state.dynamicVersion++
 	w.noteStartupDeferred(assign)
 
-	if assign.Append || (assign.Value != nil && wordDynamic(assign.Value)) {
+	if assign.Append || (assign.Value != nil && wordDynamic(assign.Value)) ||
+		dynamicElements(assign.Array) {
 		w.state.dynamicVars[assign.Name.Value] = true
 		w.noteStartupPending(assign)
 
@@ -761,6 +789,7 @@ func (w *astWalker) noteDynamic(assign *syntax.Assign) {
 
 // assign records a literal assignment.
 func (w *astWalker) assign(name, value string) {
+	w.distrustSplitting(name)
 	w.assignments[name] = value
 	w.scope = nil
 
@@ -1042,7 +1071,7 @@ func copiesStdinVerbatim(call *syntax.CallExpr) bool {
 // (NAME+=value) and naked assignments carry no complete value, so they are
 // skipped rather than recorded with a partial one.
 func (w *astWalker) extractAssigns(call *syntax.CallExpr) {
-	commandOnly := len(call.Args) > 0 && !w.keepsPrefix(commandWord(call.Args[0]))
+	commandOnly := len(call.Args) > 0 && !w.keepsPrefix(w.commandWord(call.Args[0]))
 
 	for _, assign := range call.Assigns {
 		if commandOnly && assign.Name != nil && startupVars[assign.Name.Value] {
@@ -1059,8 +1088,15 @@ func (w *astWalker) extractAssigns(call *syntax.CallExpr) {
 			w.state.pathChanged = true
 		}
 
+		if elementAssign(assign) || (assign.Array == nil && w.state.arrays[assign.Name.Value]) {
+			w.markArray(assign.Name.Value)
+			w.forget(assign.Name.Value)
+
+			continue
+		}
+
 		switch {
-		case assign.Value != nil:
+		case assign.Value != nil || assign.Array == nil:
 			w.assign(assign.Name.Value, wordToString(assign.Value))
 		case assign.Array != nil:
 			// An array is kept as its elements joined by spaces, which is what
@@ -1071,6 +1107,7 @@ func (w *astWalker) extractAssigns(call *syntax.CallExpr) {
 			}
 
 			w.assign(assign.Name.Value, strings.Join(elems, " "))
+			w.markArray(assign.Name.Value)
 		}
 
 		w.forgetUnlessSafe(assign)

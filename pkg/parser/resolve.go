@@ -46,8 +46,10 @@ var (
 	)
 	// configParameter matches one 'key'='value' pair in GIT_CONFIG_PARAMETERS.
 	configParameter = regexp.MustCompile(`'([^'=]+)'?=?'([^']*)'`)
-	// lookupCommands print the program named by their last operand.
-	lookupCommands = nameSet("command echo printf readlink realpath type which whereis")
+	// lookupCommands print the path of the one program they name. echo,
+	// printf and command without -v print any text, so their output is
+	// unknown.
+	lookupCommands = nameSet("readlink realpath which")
 )
 
 // newAstWalker returns a walker ready to record commands.
@@ -148,21 +150,25 @@ func (w *astWalker) expandName(word string) string {
 
 // commandWord renders a command word, resolving a command substitution to
 // the program it prints, as in $(which git) or "$(command -v git)".
-func commandWord(word *syntax.Word) string {
-	return commandWordParts(word.Parts)
+func (w *astWalker) commandWord(word *syntax.Word) string {
+	return w.commandWordParts(word.Parts)
 }
 
 // commandWordParts renders the parts of a command word, looking inside
 // double quotes for substitutions too.
-func commandWordParts(parts []syntax.WordPart) string {
+func (w *astWalker) commandWordParts(parts []syntax.WordPart) string {
 	var b strings.Builder
 
 	for _, part := range parts {
 		switch p := part.(type) {
 		case *syntax.CmdSubst:
-			b.WriteString(substitutedProgram(p))
+			b.WriteString(w.substitutedProgram(p))
+		case *syntax.ParamExp:
+			b.WriteString(w.scriptDirParam(p))
+		case *syntax.ExtGlob, *syntax.ProcSubst, *syntax.ArithmExp:
+			b.WriteString(unresolvedProgram)
 		case *syntax.DblQuoted:
-			b.WriteString(commandWordParts(p.Parts))
+			b.WriteString(w.commandWordParts(p.Parts))
 		default:
 			b.WriteString(argWord(&syntax.Word{Parts: []syntax.WordPart{part}}))
 		}
@@ -199,8 +205,8 @@ func braceWords(word *syntax.Word) []string {
 	return words
 }
 
-// substitutedProgram returns the program a command substitution prints.
-func substitutedProgram(sub *syntax.CmdSubst) string {
+// lookupProgram returns the program a lookup command substitution prints.
+func lookupProgram(sub *syntax.CmdSubst) string {
 	if len(sub.Stmts) != 1 {
 		return unresolvedProgram
 	}
@@ -215,15 +221,48 @@ func substitutedProgram(sub *syntax.CmdSubst) string {
 		return unresolvedProgram
 	}
 
-	name, operand := commandName(args[0]), args[len(args)-1]
-
-	switch {
-	case lookupCommands[name] && !strings.HasPrefix(operand, "-"):
-		return operand
-	case name == gitProgram && slices.Contains(args[1:], "--exec-path"):
+	name := commandName(args[0])
+	if name == gitProgram && slices.Contains(args[1:], "--exec-path") {
 		return "/git-core"
-	default:
+	}
+
+	flags, operands := splitLookup(args[1:])
+	if len(operands) != 1 || !lookupFlags(name, flags) {
 		return unresolvedProgram
+	}
+
+	return operands[0]
+}
+
+// splitLookup separates a lookup's flags from its operands.
+func splitLookup(args []string) (flags, operands []string) {
+	for i, arg := range args {
+		if arg == endOfOptions {
+			return flags, append(operands, args[i+1:]...)
+		}
+
+		if strings.HasPrefix(arg, "-") {
+			flags = append(flags, arg)
+		} else {
+			operands = append(operands, arg)
+		}
+	}
+
+	return flags, operands
+}
+
+// lookupFlags reports whether name with flags prints only the path of the
+// program it names: command and type print other text without -v or -p.
+func lookupFlags(name string, flags []string) bool {
+	switch name {
+	case "command":
+		return slices.Contains(flags, "-v")
+	case "type":
+		return slices.ContainsFunc(flags, func(f string) bool {
+			return f == "-p" || f == "-P"
+		})
+	default:
+		return lookupCommands[name]
 	}
 }
 
@@ -716,7 +755,7 @@ func (w *astWalker) definitionScripts(cmd Command) []nestedScript {
 	if body, ok := w.funcs[cmd.Invoked]; ok {
 		// Positional forms that are not substituted leave the call unknown.
 		if unsupportedPositional.MatchString(body) {
-			w.opaque(OpacityUnresolvedArgs, safeName(cmd.Invoked), "")
+			w.opaque(OpacityUnresolvedArgs, w.shownWord(cmd.Invoked), "")
 
 			return scripts
 		}
@@ -759,6 +798,10 @@ func (w *astWalker) follow(cmd Command, l launch, depth int, startup []startupSc
 
 	for _, launchedCmd := range l.commands {
 		w.recordCommand(launchedCmd, depth)
+	}
+
+	for _, entrypoint := range l.entrypoints {
+		w.record(entrypoint, depth, neutralize(entrypoint.Name))
 	}
 
 	for _, script := range l.scripts {
@@ -806,16 +849,17 @@ func (w *astWalker) followFile(
 	case ScriptText:
 		literal := file.interpreter || interpreterShebang(text)
 
-		key := w.sourceKey(cmd, text, literal)
+		src := scriptSourceText{path: file.path, text: text, literal: literal}
+		if !literal {
+			src.run = w.fileRun(cmd, file, depth)
+			src.prelude = startup
+		}
+
+		key := w.sourceKey(cmd, src)
 		if w.followingKey(key) {
 			w.state.repeated[key] = true
 
 			return false
-		}
-
-		src := scriptSourceText{path: file.path, text: text, literal: literal}
-		if !literal {
-			src.prelude = startup
 		}
 
 		w.walkSource(cmd, src, depth, key)
@@ -896,6 +940,10 @@ type scriptWalk struct {
 	literal bool
 	// label names the script in diagnostics.
 	label string
+	// run is the $0 and positional parameters of a script file, set when
+	// file is.
+	run  scriptRun
+	file bool
 	// source is the state a script file is followed in, kept from being
 	// followed inside itself in the same state.
 	source string
@@ -918,6 +966,8 @@ func (w *astWalker) walkScript(script string, parent Command, depth int, sw scri
 	child := w.child(parent.WorkingDirectory, depth)
 	child.literal = sw.literal
 	child.distrust = w.distrust || !runsInShell(parent, sw)
+	child.scriptRun = w.childRun(parent, sw)
+	child.launchSeq = parent.Location.Seq
 	child.seedStartup(parent)
 	child.walkPrelude(sw.prelude)
 
