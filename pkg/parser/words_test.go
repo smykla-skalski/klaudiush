@@ -187,6 +187,23 @@ var _ = Describe("Unresolved eval and command words", func() {
 			opacity("git", parser.DetailWordVariable)),
 		Entry("reference to a literal name", `X=status; declare -n R=X; R=push; git $X`,
 			opacity("git", parser.DetailWordVariable)),
+		Entry("export through builtin", `X=status; builtin export X=push; git $X`,
+			opacity("git", parser.DetailWordVariable)),
+		Entry("declare through command", `X=status; command declare X=push; git $X`,
+			opacity("git", parser.DetailWordVariable)),
+		Entry("reference through builtin", `X=status; builtin declare -n R=X; R=push; git $X`,
+			opacity("git", parser.DetailWordVariable)),
+		Entry("readonly of a dynamic name through builtin",
+			`X=status; v=X; builtin readonly $v=push; git $X`,
+			opacity("git", parser.DetailWordVariable)),
+		Entry("declaration from a variable", `x=status; d=declare; $d x=commit; git $x`,
+			opacity("git", parser.DetailWordVariable)),
+		Entry("declaration from command output", `x=status; $(echo declare) x=commit; git $x`,
+			opacity("git", parser.DetailWordVariable)),
+		Entry("sourced dynamic text", `x=status; v=x; source /dev/stdin <<< "$v=commit"; git $x`,
+			opacity("git", parser.DetailWordVariable)),
+		Entry("mapfile callback", `x=status; mapfile -C 'x=commit;:' -c 1 a <<< z; git $x`,
+			opacity("git", parser.DetailWordVariable)),
 	)
 
 	DescribeTable("keeps a flag with a substituted value from taking the next argument",
@@ -197,10 +214,10 @@ var _ = Describe("Unresolved eval and command words", func() {
 			Expect(result.GitOperations[0].Args).To(Equal(args))
 		},
 		Entry("git -C", `git -C$(pwd) push --force o main`,
-			"-C$(...)", "push", "--force", "o", "main"),
-		Entry("git -c", `git -c$(echo a=b) push`, "-c$(...)", "push"),
+			"-C", "", "push", "--force", "o", "main"),
+		Entry("git -c", `git -c$(echo a=b) push`, "-c", "", "push"),
 		Entry("commit -m", `git commit -sS -m$(echo x) --no-verify`,
-			"commit", "-sS", "-m$(...)", "--no-verify"),
+			"commit", "-sS", "-m", "", "--no-verify"),
 	)
 
 	It("hides a value substituted into an eval line", func() {

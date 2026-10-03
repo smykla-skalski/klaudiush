@@ -59,8 +59,8 @@ func marked(arg string) bool {
 }
 
 // gluedToFlag reports a short flag whose attached value was all
-// substitution (-C$(pwd)). Without a stand-in for the value the bare flag
-// would take the next argument as its value.
+// substitution (-C$(pwd)). It is stored as the flag and an empty value, so
+// the bare flag does not take the next argument as its value.
 func gluedToFlag(arg, value string) bool {
 	return strings.HasSuffix(arg, unresolvedWord) && strings.HasPrefix(value, "-") &&
 		!strings.HasPrefix(value, "--")
@@ -87,7 +87,9 @@ func storedArgs(cmd Command) []string {
 	for i, arg := range cmd.Args {
 		value := strings.ReplaceAll(arg, unresolvedWord, "")
 		if gluedToFlag(arg, value) {
-			value += unresolvedProgram
+			args = append(args, value, "")
+
+			continue
 		}
 
 		if value != "" || (marked(arg) && keepsEmpty(cmd, i, idx, sub)) {
@@ -392,11 +394,60 @@ func (w *astWalker) forget(name string) {
 // varWriters are the builtins that set variables named in their arguments.
 var varWriters = nameSet("read mapfile readarray getopts unset " + printfBuiltin)
 
+// declWriters are the declaration builtins. Run through builtin or command
+// they are plain commands rather than declarations, so their assignments
+// are not followed.
+var declWriters = nameSet("declare export typeset readonly local")
+
+// mapfiles run the code given to -C as a callback, which may assign
+// anything. An unresolved program name may be a declaration too, and one
+// that expands to NAME=value is an assignment once source or eval reads the
+// text it came from.
+var mapfiles = nameSet("mapfile readarray")
+
+// forgetDeclared forgets every variable a declaration run as a command sets,
+// and stops trusting any after an option that changes values or makes
+// references, or an operand that is not literal.
+func (w *astWalker) forgetDeclared(cmd Command) {
+	for _, arg := range cmd.Args {
+		if strings.HasPrefix(arg, "-") || strings.HasPrefix(arg, "+") {
+			if strings.ContainsAny(arg[1:], "lucn") {
+				w.state.untrusted = true
+			}
+
+			continue
+		}
+
+		name, _, _ := strings.Cut(arg, "=")
+		if !variableName.MatchString(name) {
+			w.state.untrusted = true
+
+			continue
+		}
+
+		w.forget(name)
+	}
+}
+
 // defaultVars are the variables a writer sets when it names none.
 var defaultVars = map[string]string{"read": "REPLY", "mapfile": "MAPFILE", "readarray": "MAPFILE"}
 
 // forgetWritten forgets the variables cmd sets other than by assignment.
 func (w *astWalker) forgetWritten(cmd Command) {
+	if HasUnresolvedVars(cmd.Invoked) || strings.Contains(cmd.Invoked, unresolvedProgram) ||
+		assignmentPattern.MatchString(cmd.Invoked) ||
+		(mapfiles[cmd.Name] && slices.Contains(cmd.Args, "-C")) {
+		w.state.untrusted = true
+
+		return
+	}
+
+	if declWriters[cmd.Name] {
+		w.forgetDeclared(cmd)
+
+		return
+	}
+
 	if !varWriters[cmd.Name] {
 		return
 	}
