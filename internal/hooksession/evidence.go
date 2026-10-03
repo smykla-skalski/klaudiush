@@ -44,12 +44,21 @@ func (s *Store) EvidenceBaselines(
 	return baselines, err
 }
 
-// EvidenceRepos returns the repositories the session recorded baselines for.
+// EvidenceRepos returns the repositories the session recorded baselines for
+// or used a tool that can change files in.
 func (s *Store) EvidenceRepos(provider hook.Provider, sessionID string) ([]string, error) {
 	var repos []string
 
 	err := s.updateEntry(provider, sessionID, false, func(entry *sessionEntry) bool {
-		repos = slices.Sorted(maps.Keys(entry.Baselines))
+		repos = slices.Collect(maps.Keys(entry.Baselines))
+
+		for repo := range entry.Touched {
+			if _, ok := entry.Baselines[repo]; !ok {
+				repos = append(repos, repo)
+			}
+		}
+
+		slices.Sort(repos)
 
 		return false
 	})

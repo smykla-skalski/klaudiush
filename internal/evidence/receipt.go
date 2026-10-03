@@ -139,6 +139,28 @@ func Judge(
 	return verdict
 }
 
+// JudgeKept judges check by its latest receipt and, unless that one failed
+// on the current content, falls back to the kept pass. A later run that
+// never finished does not hide an earlier pass on the same content.
+func JudgeKept(
+	check *Check,
+	latest, kept *Receipt,
+	digest string,
+	now time.Time,
+	alive func(pid int) bool,
+) Verdict {
+	verdict := Judge(check, latest, digest, now, alive)
+	if verdict.Satisfied() || verdict.Status == StatusFailed {
+		return verdict
+	}
+
+	if fallback := Judge(check, kept, digest, now, alive); fallback.Satisfied() {
+		return fallback
+	}
+
+	return verdict
+}
+
 func runningReason(
 	check *Check,
 	receipt *Receipt,

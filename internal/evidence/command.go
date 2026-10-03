@@ -38,7 +38,9 @@ func literalArgv(line string) ([]string, error) {
 // counts only when its exit status is the check's own: it must be one of the
 // check's commands word for word, optionally preceded by "cd <dir> &&" steps
 // that end in the repository root, with nothing else chained, piped,
-// backgrounded, negated or substituted.
+// backgrounded, negated or substituted. Each cd target must be absolute or
+// start with "." or "..", since the shell looks any other up in CDPATH,
+// which klaudiush cannot see.
 func MatchCommand(checks []*Check, command, workDir, repoRoot string) *Check {
 	leaves, err := andChain(command)
 	if err != nil || len(leaves) == 0 {
@@ -48,7 +50,7 @@ func MatchCommand(checks []*Check, command, workDir, repoRoot string) *Check {
 	dir := workDir
 
 	for _, argv := range leaves[:len(leaves)-1] {
-		if len(argv) != 2 || argv[0] != cdCommand {
+		if len(argv) != 2 || argv[0] != cdCommand || searchesCDPath(argv[1]) {
 			return nil
 		}
 
@@ -70,6 +72,18 @@ func MatchCommand(checks []*Check, command, workDir, repoRoot string) *Check {
 	}
 
 	return nil
+}
+
+// searchesCDPath reports a cd target the shell resolves through CDPATH: one
+// that is relative and whose first component is neither "." nor "..".
+func searchesCDPath(target string) bool {
+	if filepath.IsAbs(target) {
+		return false
+	}
+
+	first, _, _ := strings.Cut(target, "/")
+
+	return first != "." && first != ".."
 }
 
 func joinDir(dir, target string) string {

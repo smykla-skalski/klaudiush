@@ -45,6 +45,27 @@ var _ = Describe("Compile", func() {
 		Expect(check.Covers(".klaudiush/patterns.json")).To(BeFalse())
 	})
 
+	DescribeTable("renders commands the shell splits back into the same words",
+		func(line, rendered string) {
+			check := compileOne(&config.EvidenceCheckConfig{
+				Name:     "tests",
+				Commands: []string{line},
+			})
+
+			Expect(check.RunCommand()).To(Equal(rendered))
+
+			dir := GinkgoT().TempDir()
+			Expect(evidence.MatchCommand([]*evidence.Check{check}, check.RunCommand(), dir, dir)).
+				To(BeIdenticalTo(check))
+		},
+		Entry("plain words", "go test ./...", "go test ./..."),
+		Entry("argument with a space", "tool --label 'a b'", "tool --label 'a b'"),
+		Entry("double-quoted space", `tool "a b"`, "tool 'a b'"),
+		Entry("single quote", `tool "it's"`, `tool "it's"`),
+		Entry("empty argument", `tool ''`, "tool ''"),
+		Entry("special characters", `tool '*.go' '$HOME'`, `tool '*.go' '$HOME'`),
+	)
+
 	It("compiles a review check with a base and timeout", func() {
 		check := compileOne(&config.EvidenceCheckConfig{
 			Name:     "review",

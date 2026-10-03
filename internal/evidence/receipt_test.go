@@ -151,6 +151,49 @@ var _ = Describe("Receipt", func() {
 	It("creates distinct run IDs", func() {
 		Expect(evidence.NewRunID()).NotTo(Equal(evidence.NewRunID()))
 	})
+
+	DescribeTable("JudgeKept falls back to the kept pass",
+		func(latestStatus evidence.Status, kept bool, status evidence.Status, fromKept bool) {
+			var latest, pass *evidence.Receipt
+			if latestStatus != "" {
+				latest = receipt(latestStatus)
+			}
+
+			if kept {
+				pass = receipt(evidence.StatusPassed)
+			}
+
+			verdict := evidence.JudgeKept(check, latest, pass, "sha256:current", now, alive(true))
+			Expect(verdict.Status).To(Equal(status))
+
+			if fromKept {
+				Expect(verdict.Receipt).To(BeIdenticalTo(pass))
+			} else {
+				Expect(verdict.Receipt).To(BeIdenticalTo(latest))
+			}
+		},
+		Entry("latest pass wins", evidence.StatusPassed, true, evidence.StatusPassed, false),
+		Entry("running run keeps the pass",
+			evidence.StatusRunning, true, evidence.StatusPassed, true),
+		Entry("canceled run keeps the pass",
+			evidence.StatusCanceled, true, evidence.StatusPassed, true),
+		Entry("no latest uses the pass", evidence.Status(""), true, evidence.StatusPassed, true),
+		Entry("failure on the same content wins",
+			evidence.StatusFailed, true, evidence.StatusFailed, false),
+		Entry("no kept pass reports the latest",
+			evidence.StatusUnverified, false, evidence.StatusUnverified, false),
+	)
+
+	It("JudgeKept ignores a kept pass for other content", func() {
+		pass := receipt(evidence.StatusPassed)
+		pass.Digest = "sha256:old"
+
+		latest := receipt(evidence.StatusCanceled)
+
+		verdict := evidence.JudgeKept(check, latest, pass, "sha256:current", now, alive(true))
+		Expect(verdict.Status).To(Equal(evidence.StatusCanceled))
+		Expect(verdict.Receipt).To(BeIdenticalTo(latest))
+	})
 })
 
 var _ = Describe("Coverage", func() {

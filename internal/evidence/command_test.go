@@ -57,7 +57,11 @@ var _ = Describe("MatchCommand", func() {
 		Entry("review script", "./review.sh", "review"),
 		Entry("output redirect", "mise run test > out.log 2>&1", "tests"),
 		Entry("cd to the root first", "cd . && mise run test", "tests"),
-		Entry("cd chain back to the root", "cd sub && cd .. && mise run test", "tests"),
+		Entry("cd chain back to the root", "cd ./sub && cd .. && mise run test", "tests"),
+		Entry("cd chain with trailing slashes", "cd ./sub/ && cd ../ && mise run test", "tests"),
+		Entry("cd through CDPATH", "cd sub && cd .. && mise run test", ""),
+		Entry("cd to a CDPATH lookup that ends at the root", "cd sub/.. && mise run test", ""),
+		Entry("cd to the previous directory", "cd - && mise run test", ""),
 		Entry("absolute cd", "cd "+"REPO"+" && mise run test", ""),
 		Entry("extra argument", "mise run test -- -run X", ""),
 		Entry("fewer arguments", "mise run", ""),
@@ -93,9 +97,16 @@ var _ = Describe("MatchCommand", func() {
 		).To(Equal("tests"))
 	})
 
+	It("refuses a relative cd the shell may resolve through CDPATH", func() {
+		parent, name := filepath.Dir(repo), filepath.Base(repo)
+
+		Expect(matched("cd "+name+" && mise run test", parent)).To(BeEmpty())
+		Expect(matched("cd ./"+name+" && mise run test", parent)).To(Equal("tests"))
+	})
+
 	It("refuses commands run from another directory", func() {
 		Expect(matched("mise run test", filepath.Join(repo, "sub"))).To(BeEmpty())
-		Expect(matched("cd sub && mise run test", repo)).To(BeEmpty())
+		Expect(matched("cd ./sub && mise run test", repo)).To(BeEmpty())
 		Expect(matched("cd sub extra && mise run test", repo)).To(BeEmpty())
 		Expect(matched("mise run test", "")).To(BeEmpty())
 	})

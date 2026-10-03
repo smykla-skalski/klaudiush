@@ -52,7 +52,7 @@ base = "origin/main"
 | `paths` | Glob patterns, relative to the repository root, of the files the check covers. klaudiush's own `.klaudiush/` directory is never covered | every file |
 | `exclude` | Glob patterns of files the check ignores | none |
 | `base` | Branch a review diffs against, such as `origin/main`. The diff starts at the merge base of `base` and `HEAD` | required for reviews |
-| `timeout` | Longest a verifier run may take, and how long a run without a result counts as running | `30m` |
+| `timeout` | Longest a verifier run may take, including fingerprinting the files before it, and how long a run without a result counts as running | `30m` |
 
 Commands must be plain literal words: no pipes, `;`, `||`, `&&`, variables, substitutions, globs or quotes that hide expansions. klaudiush rejects other commands when it loads the configuration. Changing a check's `commands`, `paths`, `exclude`, `kind` or `base` invalidates its earlier results.
 
@@ -67,7 +67,7 @@ On the first hook of a session in a repository, klaudiush records a digest of th
 - An edit that was later undone: not required, because the content is back to the baseline.
 - Only changes made while the session used a tool that can change files there count. A session that only read files (Read, Grep, Glob) is never gated by edits someone else made in the meantime. Shell commands count as tools that can change files.
 
-Every repository the session records a baseline for is judged at the completion gate, not only the one the agent stops in. A repository gets a baseline when a hook runs in it, or when a file tool (Write, Edit, a patch) edits a file in it; each repository is judged with the checks its own configuration defines, even when the agent stops in a directory without the gate. Shell commands that edit files in a repository no hook ran in are not seen.
+Every repository the session records a baseline for is judged at the completion gate, not only the one the agent stops in. A repository gets a baseline when a hook runs in it, or when a file tool (Write, Edit, a patch) edits a file in it; each repository is judged with the checks its own configuration defines, even when the agent stops in a directory without the gate. A repository the session edited whose configuration cannot be loaded or whose checks do not compile is not treated as ungated: the completion gate reports it as [HOOK001](errors/HOOK001.md), which blocks unless `[failure_policy]` says otherwise. Shell commands that edit files in a repository no hook ran in are not seen.
 
 If a check's definition changes during a session, the check is required, since its new baseline would include whatever the session changed before.
 
@@ -87,11 +87,11 @@ Baselines live in the session state and are dropped when the session ends. Resul
 | `unverified` | The check ran but klaudiush cannot know how it ended (background run, fingerprint failure) | No |
 | `missing` | The check has not run on this definition | No |
 
-Only the latest result of each check counts. Starting a new run replaces the previous result until it finishes.
+The latest result of each check is what `klaudiush evidence status` shows as `latest`, and starting a new run replaces it. When that latest result is `running`, `canceled`, `stale` or `unverified`, an earlier pass on exactly the current content still satisfies the gate (`status` shows it as `kept`). Only a later failure on the same content invalidates that pass.
 
 ### Claude shell runs
 
-Claude fires `PostToolUse` only after a command succeeded and `PostToolUseFailure` after it failed or was interrupted. For a few commands (`grep`, `diff`, `test`, `git diff`) Claude treats exit status 1 as success and says so in `returnCodeInterpretation`; klaudiush counts those as failed. klaudiush records a run when the `PreToolUse` it allowed is one of the check's commands, word for word, run from the repository root (optionally after `cd <dir> &&` steps that end there). It fingerprints the files when the command starts and again when Claude reports the outcome. Anything chained, piped, backgrounded or prefixed with variables does not count, because its exit status may not be the check's.
+Claude fires `PostToolUse` only after a command succeeded and `PostToolUseFailure` after it failed or was interrupted. For a few commands (`grep`, `diff`, `test`, `git diff`) Claude treats exit status 1 as success and says so in `returnCodeInterpretation`; klaudiush counts those as failed. klaudiush records a run when the `PreToolUse` it allowed is one of the check's commands, word for word, run from the repository root (optionally after `cd <dir> &&` steps that end there). Each `cd` target must be absolute or start with `./` or `../` (or be `.` or `..`): the shell looks any other relative target up in `CDPATH`, which klaudiush cannot see. It fingerprints the files when the command starts and again when Claude reports the outcome. Anything chained, piped, backgrounded or prefixed with variables does not count, because its exit status may not be the check's.
 
 A command started with `run_in_background` never counts: Claude does not report a background command's exit status to hooks. Run it in the foreground, or use the verifier.
 
@@ -101,7 +101,7 @@ A command started with `run_in_background` never counts: Claude does not report 
 klaudiush evidence run tests
 ```
 
-The verifier runs the check's first command from the repository root, streams its output, records its exit status, and exits with it. It fingerprints the covered files before and after the run. It is the only way to produce results in Codex and Gemini, and it works in Claude too.
+The verifier runs the check's first command from the repository root, streams its output, records its exit status, and exits with it. It fingerprints the covered files before and after the run. The `timeout` covers the first fingerprint and the run; the fingerprint after the run gets its own one-minute limit, so it is still taken after a timeout or an interrupt. It is the only way to produce results in Codex and Gemini, and it works in Claude too.
 
 The verifier can run in the background. Until it records a result the gate reports the check as running and blocks, so the agent has to wait for it; the completion gate's limit of 3 blocks a turn still applies. A verifier killed before it could record anything is reported as canceled.
 

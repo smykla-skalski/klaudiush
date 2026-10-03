@@ -171,20 +171,46 @@ func checkNames(checks []*evidence.Check) string {
 
 // checkVerifier runs a check itself, so its exit status comes from the
 // process and not from anything the agent or the provider says about it.
+// fingerprint and cleanup default to fingerprinting the work tree and to
+// defaultCleanupTimeout.
 type checkVerifier struct {
-	store  *hooksession.Store
-	runner kexec.OptionsRunner
-	now    func() time.Time
-	stdin  io.Reader
-	stdout io.Writer
-	stderr io.Writer
-	notify func(format string, args ...any)
+	store       *hooksession.Store
+	runner      kexec.OptionsRunner
+	now         func() time.Time
+	stdin       io.Reader
+	stdout      io.Writer
+	stderr      io.Writer
+	notify      func(format string, args ...any)
+	fingerprint func(ctx context.Context, repo string, check *evidence.Check) (fingerprint, error)
+	cleanup     time.Duration
+}
+
+// defaultCleanupTimeout bounds the fingerprint taken after a run, which must
+// still happen when the run itself was interrupted or timed out.
+const defaultCleanupTimeout = time.Minute
+
+func worktreeFingerprint(
+	ctx context.Context,
+	repo string,
+	check *evidence.Check,
+) (fingerprint, error) {
+	return checkFingerprint(ctx, &lazySnapshot{root: repo}, check)
 }
 
 // run records the check as running, runs it from the repository root, and
-// records how it ended. It returns the check's exit status.
+// records how it ended. It returns the check's exit status. The check's
+// timeout bounds the starting fingerprint and the run; the end fingerprint
+// gets its own deadline, since it is taken after cancellation too.
 func (v *checkVerifier) run(ctx context.Context, repo string, check *evidence.Check) (int, error) {
-	start, err := checkFingerprint(ctx, &lazySnapshot{root: repo}, check)
+	takeFingerprint := v.fingerprint
+	if takeFingerprint == nil {
+		takeFingerprint = worktreeFingerprint
+	}
+
+	runCtx, cancel := context.WithTimeout(ctx, check.Timeout)
+	defer cancel()
+
+	start, err := takeFingerprint(runCtx, repo, check)
 	if err != nil {
 		return 0, errors.Wrap(err, "failed to fingerprint the files the check covers")
 	}
@@ -209,9 +235,17 @@ func (v *checkVerifier) run(ctx context.Context, repo string, check *evidence.Ch
 		return 0, errors.Wrap(putErr, "failed to record the check start")
 	}
 
-	status, code, detail := v.execute(ctx, repo, check)
+	status, code, detail := v.execute(runCtx, repo, check)
 
-	end, endErr := checkFingerprint(context.WithoutCancel(ctx), &lazySnapshot{root: repo}, check)
+	cleanup := v.cleanup
+	if cleanup <= 0 {
+		cleanup = defaultCleanupTimeout
+	}
+
+	endCtx, endCancel := context.WithTimeout(context.WithoutCancel(ctx), cleanup)
+	defer endCancel()
+
+	end, endErr := takeFingerprint(endCtx, repo, check)
 	if endErr != nil {
 		status = evidence.StatusUnverified
 		detail = "klaudiush could not fingerprint the files after the run: " +
@@ -243,16 +277,14 @@ func (v *checkVerifier) run(ctx context.Context, repo string, check *evidence.Ch
 	return code, nil
 }
 
-// execute runs the check's command and classifies how it ended.
+// execute runs the check's command until ctx, which carries the check's
+// timeout, ends, and classifies how it ended.
 func (v *checkVerifier) execute(
 	ctx context.Context,
 	repo string,
 	check *evidence.Check,
 ) (evidence.Status, int, string) {
-	runCtx, cancel := context.WithTimeout(ctx, check.Timeout)
-	defer cancel()
-
-	runCtx, stop := signal.NotifyContext(runCtx, os.Interrupt, syscall.SIGTERM)
+	runCtx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	argv := check.Commands[0]
@@ -324,35 +356,56 @@ func runEvidenceStatus(cmd *cobra.Command, _ []string) error {
 		return nil
 	}
 
-	receipts, err := hooksession.NewStore().Receipts(setup.repo)
+	printf := func(format string, args ...any) { fmt.Printf(format, args...) }
+
+	return printCheckStatus(ctx, printf, hooksession.NewStore(), setup.repo, setup.checks)
+}
+
+// printCheckStatus shows each check's verdict the way the completion gate
+// reaches it: the latest result, or a kept pass on the current content.
+func printCheckStatus(
+	ctx context.Context,
+	printf func(format string, args ...any),
+	store *hooksession.Store,
+	repo string,
+	checks []*evidence.Check,
+) error {
+	receipts, err := store.Receipts(repo)
 	if err != nil {
 		return errors.Wrap(err, "failed to read check results")
 	}
 
-	snap := &lazySnapshot{root: setup.repo}
+	passes, err := store.Passes(repo)
+	if err != nil {
+		return errors.Wrap(err, "failed to read check results")
+	}
 
-	for _, check := range setup.checks {
-		fmt.Printf("\n%s (%s): %s\n", check.Name, check.Kind, check.RunCommand())
+	snap := &lazySnapshot{root: repo}
+
+	for _, check := range checks {
+		printf("\n%s (%s): %s\n", check.Name, check.Kind, check.RunCommand())
 
 		fp, err := checkFingerprint(ctx, snap, check)
 		if err != nil {
-			fmt.Printf("  current: unavailable (%s)\n", firstLine(err.Error()))
+			printf("  current: unavailable (%s)\n", firstLine(err.Error()))
 
 			continue
 		}
 
-		verdict := evidence.Judge(
-			check,
-			receipts[check.Name],
-			fp.digest,
-			time.Now(),
-			evidence.ProcessAlive,
+		latest := receipts[check.Name]
+		verdict := evidence.JudgeKept(
+			check, latest, passes[check.Name], fp.digest, time.Now(), evidence.ProcessAlive,
 		)
-		fmt.Printf("  current: %s (%d file(s))\n", fp.digest, fp.files)
-		fmt.Printf("  verdict: %s, %s\n", verdict.Status, verdict.Reason)
 
-		if verdict.Receipt != nil {
-			fmt.Printf("  latest:  %s\n", verdict.Receipt.Summary())
+		printf("  current: %s (%d file(s))\n", fp.digest, fp.files)
+		printf("  verdict: %s, %s\n", verdict.Status, verdict.Reason)
+
+		if latest != nil {
+			printf("  latest:  %s\n", latest.Summary())
+		}
+
+		if verdict.Receipt != nil && verdict.Receipt != latest {
+			printf("  kept:    %s\n", verdict.Receipt.Summary())
 		}
 	}
 

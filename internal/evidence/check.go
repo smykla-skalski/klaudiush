@@ -13,6 +13,7 @@ import (
 
 	"github.com/bmatcuk/doublestar/v4"
 	"github.com/cockroachdb/errors"
+	"mvdan.cc/sh/v3/syntax"
 
 	"github.com/smykla-skalski/klaudiush/pkg/config"
 )
@@ -159,7 +160,7 @@ func compileCheck(item *config.EvidenceCheckConfig) (*Check, error) {
 		}
 
 		check.Commands = append(check.Commands, argv)
-		check.Lines = append(check.Lines, strings.Join(argv, " "))
+		check.Lines = append(check.Lines, shellLine(argv))
 	}
 
 	for _, pattern := range slices.Concat(check.Paths, check.Exclude) {
@@ -171,6 +172,24 @@ func compileCheck(item *config.EvidenceCheckConfig) (*Check, error) {
 	check.id = name + "@" + definitionHash(check)
 
 	return check, nil
+}
+
+// shellLine renders argv as a command line the shell splits back into the
+// same words, quoting only the words that need it. Quote fails only on null
+// bytes, which a parsed command line cannot hold.
+func shellLine(argv []string) string {
+	words := make([]string, 0, len(argv))
+
+	for _, arg := range argv {
+		quoted, err := syntax.Quote(arg, syntax.LangBash)
+		if err != nil {
+			quoted = arg
+		}
+
+		words = append(words, quoted)
+	}
+
+	return strings.Join(words, " ")
 }
 
 func definitionHash(check *Check) string {

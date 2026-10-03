@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	osexec "os/exec"
 	"path/filepath"
@@ -109,10 +110,10 @@ var _ = Describe("evidenceGate", func() {
 
 	It("does nothing without checks unless a file tool edits or the turn stops", func() {
 		gate := newEvidenceGate(&config.Config{}, store, nil, log)
-		gate.loadChecks = func(string) []*evidence.Check {
+		gate.loadChecks = func(string) ([]*evidence.Check, error) {
 			Fail("no repository should be loaded")
 
-			return nil
+			return nil, nil
 		}
 
 		pre := evidenceCtx(hook.CanonicalEventBeforeTool, "PreToolUse", repo)
@@ -123,12 +124,12 @@ var _ = Describe("evidenceGate", func() {
 		other := evidenceRepo()
 		withChecks := newEvidenceGate(evidenceConfig(check), store, nil, log)
 		gate := newEvidenceGate(&config.Config{}, store, nil, log)
-		gate.loadChecks = func(root string) []*evidence.Check {
+		gate.loadChecks = func(root string) ([]*evidence.Check, error) {
 			if root == other {
-				return withChecks.checks
+				return withChecks.checks, nil
 			}
 
-			return nil
+			return nil, nil
 		}
 
 		write := evidenceCtx(hook.CanonicalEventBeforeTool, "PreToolUse", repo)
@@ -143,6 +144,90 @@ var _ = Describe("evidenceGate", func() {
 		errs := gate.apply(context.Background(), stop, nil)
 		Expect(errs).To(HaveLen(1))
 		Expect(errs[0].Details[evidenceValidator]).To(ContainSubstring(other))
+	})
+
+	It("reports an edited repository whose checks cannot load as unavailable", func() {
+		other := evidenceRepo()
+		gate := newEvidenceGate(&config.Config{}, store, nil, log)
+		gate.loadChecks = func(root string) ([]*evidence.Check, error) {
+			if root == other {
+				return nil, os.ErrPermission
+			}
+
+			return nil, nil
+		}
+
+		read := evidenceCtx(hook.CanonicalEventBeforeTool, "PreToolUse", repo)
+		read.ToolName, read.ToolFamily = hook.ToolTypeRead, hook.ToolFamilyRead
+		read.AffectedPaths = []string{filepath.Join(other, "a.go")}
+		gate.apply(context.Background(), read, nil)
+
+		stop := evidenceCtx(hook.CanonicalEventTurnStop, "Stop", repo)
+		Expect(gate.apply(context.Background(), stop, nil)).To(BeEmpty())
+
+		write := evidenceCtx(hook.CanonicalEventBeforeTool, "PreToolUse", repo)
+		write.ToolName, write.ToolFamily = hook.ToolTypeWrite, hook.ToolFamilyWrite
+		write.AffectedPaths = []string{filepath.Join(other, "a.go")}
+		gate.apply(context.Background(), write, nil)
+
+		errs := gate.apply(context.Background(), stop, nil)
+		Expect(errs).To(HaveLen(1))
+		Expect(errs[0].Reference).To(Equal(validator.RefValidationUnavailable))
+		Expect(errs[0].UnavailableReason).To(Equal(validator.ReasonConfig))
+		Expect(errs[0].ShouldBlock).To(BeTrue())
+		Expect(errs[0].Message).To(ContainSubstring("load the evidence checks of " + other))
+
+		gate.policy = failpolicy.New(&config.FailurePolicyConfig{Mode: config.FailureModeWarn})
+		errs = gate.apply(context.Background(), stop, nil)
+		Expect(errs).To(HaveLen(1))
+		Expect(errs[0].ShouldBlock).To(BeFalse())
+
+		gate.loadChecks = func(string) ([]*evidence.Check, error) { return nil, nil }
+		Expect(gate.apply(context.Background(), stop, nil)).To(BeEmpty())
+	})
+
+	It("reports its own checks that do not compile at the gate", func() {
+		invalid := evidenceConfig(&config.EvidenceCheckConfig{Name: "x"})
+		gate := newEvidenceGate(invalid, store, nil, log)
+		Expect(gate.configErr).To(HaveOccurred())
+
+		errs := gate.apply(
+			context.Background(),
+			evidenceCtx(hook.CanonicalEventTurnStop, "Stop", repo),
+			nil,
+		)
+		Expect(errs).To(HaveLen(1))
+		Expect(errs[0].UnavailableReason).To(Equal(validator.ReasonConfig))
+		Expect(errs[0].Message).To(ContainSubstring("compile the configured evidence checks"))
+	})
+
+	It("loads a repository's checks from its configuration", func() {
+		isolateHome()
+
+		other := evidenceRepo()
+		configDir := filepath.Join(other, ".klaudiush")
+		Expect(os.MkdirAll(configDir, 0o700)).To(Succeed())
+
+		configFile := filepath.Join(configDir, "config.toml")
+		write := func(content string) {
+			Expect(os.WriteFile(configFile, []byte(content), 0o600)).To(Succeed())
+		}
+
+		checks, err := repoChecks(log, other)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(checks).To(BeEmpty())
+
+		write("[evidence]\nenabled = true\n\n[[evidence.checks]]\n" +
+			"name = \"tests\"\ncommands = [\"make test\"]\n")
+
+		checks, err = repoChecks(log, other)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(checks).To(HaveLen(1))
+
+		write("[evidence\nenabled = true\n")
+
+		_, err = repoChecks(log, other)
+		Expect(err).To(HaveOccurred())
 	})
 
 	It("does not gate a read-only session on files it cannot fingerprint", func() {
@@ -274,7 +359,7 @@ var _ = Describe("evidenceGate", func() {
 	It("gates every repository the session edited, not only the one it stops in", func() {
 		other := evidenceRepo()
 		gate := newEvidenceGate(evidenceConfig(check), store, nil, log)
-		gate.loadChecks = func(string) []*evidence.Check { return gate.checks }
+		gate.loadChecks = func(string) ([]*evidence.Check, error) { return gate.checks, nil }
 
 		write := evidenceCtx(hook.CanonicalEventBeforeTool, "PreToolUse", repo)
 		write.ToolName, write.ToolFamily = hook.ToolTypeWrite, hook.ToolFamilyWrite
@@ -292,7 +377,7 @@ var _ = Describe("evidenceGate", func() {
 		Expect(errs).To(HaveLen(1))
 		Expect(errs[0].Details[evidenceValidator]).To(ContainSubstring(other))
 
-		gate.loadChecks = func(string) []*evidence.Check { return nil }
+		gate.loadChecks = func(string) ([]*evidence.Check, error) { return nil, nil }
 		Expect(
 			gate.apply(
 				context.Background(),
@@ -664,6 +749,129 @@ var _ = Describe("checkVerifier", func() {
 		Expect(err).To(MatchError(ContainSubstring("failed to fingerprint")))
 	})
 
+	It("bounds the starting fingerprint by the check's timeout", func() {
+		verifier := &checkVerifier{
+			store:  store,
+			runner: &fakeOptionsRunner{},
+			now:    time.Now,
+			fingerprint: func(ctx context.Context, _ string, _ *evidence.Check) (fingerprint, error) {
+				_, ok := ctx.Deadline()
+				Expect(ok).To(BeTrue())
+				<-ctx.Done()
+
+				return fingerprint{}, ctx.Err()
+			},
+		}
+
+		_, err := verifier.run(context.Background(), repo, check)
+		Expect(err).To(MatchError(context.DeadlineExceeded))
+	})
+
+	It("gives the end fingerprint its own deadline after a timeout", func() {
+		calls := 0
+
+		var notices bytes.Buffer
+
+		verifier := &checkVerifier{
+			store:   store,
+			runner:  &fakeOptionsRunner{wait: true, result: kexec.CommandResult{Err: os.ErrClosed}},
+			now:     time.Now,
+			cleanup: 20 * time.Millisecond,
+			notify:  func(format string, _ ...any) { notices.WriteString(format) },
+			fingerprint: func(
+				ctx context.Context,
+				root string,
+				item *evidence.Check,
+			) (fingerprint, error) {
+				calls++
+				if calls == 1 {
+					return worktreeFingerprint(ctx, root, item)
+				}
+
+				Expect(ctx.Err()).NotTo(HaveOccurred())
+
+				deadline, ok := ctx.Deadline()
+				Expect(ok).To(BeTrue())
+				Expect(time.Until(deadline)).To(BeNumerically("<=", 20*time.Millisecond))
+				<-ctx.Done()
+
+				return fingerprint{}, ctx.Err()
+			},
+		}
+
+		code, err := verifier.run(context.Background(), repo, check)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(code).To(Equal(1))
+		Expect(calls).To(Equal(2))
+
+		receipts, err := store.Receipts(repo)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(receipts["tests"].Status).To(Equal(evidence.StatusUnverified))
+		Expect(receipts["tests"].Detail).To(ContainSubstring("after the run"))
+	})
+
+	It("shows the kept pass that satisfies the gate in the status", func() {
+		checks := []*evidence.Check{check}
+
+		_, _, _ = verify(&fakeOptionsRunner{})
+
+		current, err := worktreeFingerprint(context.Background(), repo, check)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(store.PutReceipt(repo, &evidence.Receipt{
+			RunID:     "later",
+			CheckID:   check.ID(),
+			Check:     check.Name,
+			Kind:      check.Kind,
+			Status:    evidence.StatusRunning,
+			Digest:    current.digest,
+			Source:    string(hook.ProviderClaude),
+			Command:   check.RunCommand(),
+			StartedAt: time.Now().Add(-time.Hour),
+		})).To(Succeed())
+
+		var out bytes.Buffer
+
+		Expect(printCheckStatus(context.Background(), bufferPrintf(&out), store, repo, checks)).
+			To(Succeed())
+		Expect(out.String()).To(ContainSubstring("verdict: passed"))
+		Expect(out.String()).To(ContainSubstring("latest:  tests running"))
+		Expect(out.String()).To(ContainSubstring("kept:    tests passed"))
+
+		Expect(store.PutReceipt(repo, &evidence.Receipt{
+			RunID:   "failed",
+			CheckID: check.ID(),
+			Check:   check.Name,
+			Status:  evidence.StatusRunning,
+			Digest:  current.digest,
+		})).To(Succeed())
+
+		_, err = store.FinishReceipt(repo, check.Name,
+			func(stored *evidence.Receipt) bool { return stored.RunID == "failed" },
+			func(stored *evidence.Receipt) {
+				code := 2
+				stored.Finish(evidence.StatusFailed, &code, current.digest, "", time.Now())
+			},
+		)
+		Expect(err).NotTo(HaveOccurred())
+
+		out.Reset()
+		Expect(printCheckStatus(context.Background(), bufferPrintf(&out), store, repo, checks)).
+			To(Succeed())
+		Expect(out.String()).To(ContainSubstring("verdict: failed"))
+		Expect(out.String()).NotTo(ContainSubstring("kept:"))
+	})
+
+	It("reports a work tree it cannot fingerprint in the status", func() {
+		var out bytes.Buffer
+
+		checks := []*evidence.Check{check}
+
+		dir := GinkgoT().TempDir()
+		Expect(printCheckStatus(context.Background(), bufferPrintf(&out), store, dir, checks)).
+			To(Succeed())
+		Expect(out.String()).To(ContainSubstring("current: unavailable"))
+	})
+
 	It("passes exit codes through", func() {
 		code, ok := commandExitCode(&exitCodeError{code: 7})
 		Expect(ok).To(BeTrue())
@@ -676,6 +884,10 @@ var _ = Describe("checkVerifier", func() {
 		Expect(checkNames(nil)).To(Equal("none"))
 	})
 })
+
+func bufferPrintf(out *bytes.Buffer) func(string, ...any) {
+	return func(format string, args ...any) { fmt.Fprintf(out, format, args...) }
+}
 
 type replacingRunner struct {
 	store *hooksession.Store

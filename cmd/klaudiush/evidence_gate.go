@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"mvdan.cc/sh/v3/syntax"
 
 	"github.com/smykla-skalski/klaudiush/internal/dispatcher"
@@ -33,10 +34,12 @@ const backgroundDetail = "it ran in the background, and hooks never learn " +
 // session started from, ties every observed check run to the content it ran
 // against, and judges those results at the turn's completion gate.
 // loadChecks returns the checks configured for another repository the
-// session touched, or nil when its gate is off.
+// session touched, nil when its gate is off, or the error that kept them
+// from loading. configErr is why the hook's own checks did not compile.
 type evidenceGate struct {
 	checks     []*evidence.Check
-	loadChecks func(repo string) []*evidence.Check
+	configErr  error
+	loadChecks func(repo string) ([]*evidence.Check, error)
 	store      *hooksession.Store
 	policy     *failpolicy.Policy
 	binary     string
@@ -59,20 +62,22 @@ func newEvidenceGate(
 		return nil
 	}
 
-	var checks []*evidence.Check
+	var (
+		checks    []*evidence.Check
+		configErr error
+	)
 
 	if cfg != nil && cfg.Evidence.IsEnabled() {
-		compiled, err := evidence.Compile(cfg.Evidence)
-		if err != nil {
-			log.Info("evidence checks are invalid", "error", err)
+		checks, configErr = evidence.Compile(cfg.Evidence)
+		if configErr != nil {
+			log.Info("evidence checks are invalid", "error", configErr)
 		}
-
-		checks = compiled
 	}
 
 	return &evidenceGate{
-		checks: checks,
-		loadChecks: func(repo string) []*evidence.Check {
+		checks:    checks,
+		configErr: configErr,
+		loadChecks: func(repo string) ([]*evidence.Check, error) {
 			return repoChecks(log, repo)
 		},
 		store:  store,
@@ -85,19 +90,24 @@ func newEvidenceGate(
 }
 
 // repoChecks loads the checks configured for a repository, or nil when its
-// configuration cannot be loaded or keeps the gate off.
-func repoChecks(log logger.Logger, repo string) []*evidence.Check {
+// configuration keeps the gate off. A configuration that cannot be loaded
+// or compiled is an error, not a disabled gate.
+func repoChecks(log logger.Logger, repo string) ([]*evidence.Check, error) {
 	cfg, err := loadConfig(log, repo)
-	if err != nil || !cfg.Evidence.IsEnabled() {
-		return nil
+	if err != nil {
+		return nil, err
+	}
+
+	if !cfg.Evidence.IsEnabled() {
+		return nil, nil
 	}
 
 	checks, err := evidence.Compile(cfg.Evidence)
 	if err != nil {
-		return nil
+		return nil, errors.Wrap(err, "invalid evidence configuration")
 	}
 
-	return checks
+	return checks, nil
 }
 
 func klaudiushBinary() string {
@@ -127,10 +137,12 @@ func (l *lazySnapshot) get(ctx context.Context) (*evidence.Snapshot, error) {
 }
 
 // repoScope is one repository a hook concerns, with the checks configured
-// for it and a snapshot of its work tree.
+// for it and a snapshot of its work tree. err is why its checks could not
+// be loaded.
 type repoScope struct {
 	root   string
 	checks []*evidence.Check
+	err    error
 	snap   *lazySnapshot
 }
 
@@ -178,16 +190,13 @@ func (g *evidenceGate) apply(
 
 	for _, scope := range scopes.list {
 		_, _ = g.ensureBaselines(ctx, hookCtx, scope)
+		g.markTouched(hookCtx, scope.root)
+	}
 
-		if isToolEvent(hookCtx) && !readOnlyTool(hookCtx) {
-			if err := g.store.MarkTouched(
-				hookCtx.Provider,
-				hookCtx.SessionID,
-				scope.root,
-			); err != nil {
-				g.log.Info("failed to record the session's edits", "error", err)
-			}
-		}
+	// A repository whose checks cannot load is remembered, so the completion
+	// gate reports it instead of treating it as ungated.
+	for _, scope := range scopes.failed {
+		g.markTouched(hookCtx, scope.root)
 	}
 
 	if primaryErr != nil {
@@ -205,8 +214,19 @@ func (g *evidenceGate) apply(
 	return errs
 }
 
-// stop judges every repository the session recorded baselines for, plus the
-// one the agent stops in.
+func (g *evidenceGate) markTouched(hookCtx *hook.Context, repo string) {
+	if !isToolEvent(hookCtx) || readOnlyTool(hookCtx) {
+		return
+	}
+
+	if err := g.store.MarkTouched(hookCtx.Provider, hookCtx.SessionID, repo); err != nil {
+		g.log.Info("failed to record the session's edits", "error", err)
+	}
+}
+
+// stop judges every repository the session recorded baselines for or
+// edited, plus the one the agent stops in. Checks that cannot be loaded are
+// reported as unavailable.
 func (g *evidenceGate) stop(
 	ctx context.Context,
 	hookCtx *hook.Context,
@@ -225,6 +245,16 @@ func (g *evidenceGate) stop(
 
 	var findings []*dispatcher.ValidationError
 
+	if g.configErr != nil {
+		findings = append(findings,
+			g.configUnavailable("compile the configured evidence checks", g.configErr))
+	}
+
+	for _, scope := range scopes.failed {
+		findings = append(findings,
+			g.configUnavailable("load the evidence checks of "+scope.root, scope.err))
+	}
+
 	for _, scope := range scopes.list {
 		baselines, err := g.ensureBaselines(ctx, hookCtx, scope)
 		if err != nil {
@@ -241,11 +271,12 @@ func (g *evidenceGate) stop(
 }
 
 // scopeSet collects the repositories a hook concerns, loading each one's
-// checks once.
+// checks once. failed holds the repositories whose checks did not load.
 type scopeSet struct {
 	gate   *evidenceGate
 	byRoot map[string]*repoScope
 	list   []*repoScope
+	failed []*repoScope
 }
 
 func newScopeSet(gate *evidenceGate) *scopeSet {
@@ -259,14 +290,20 @@ func (s *scopeSet) add(root string, checks []*evidence.Check, loaded bool) {
 		return
 	}
 
+	var err error
+
 	if !loaded && s.gate.loadChecks != nil {
-		checks = s.gate.loadChecks(root)
+		checks, err = s.gate.loadChecks(root)
 	}
 
-	scope := &repoScope{root: root, checks: checks, snap: &lazySnapshot{root: root}}
+	scope := &repoScope{root: root, checks: checks, err: err, snap: &lazySnapshot{root: root}}
 	s.byRoot[root] = scope
 
-	if len(checks) > 0 {
+	switch {
+	case err != nil:
+		s.gate.log.Info("failed to load evidence checks", "repo", root, "error", err)
+		s.failed = append(s.failed, scope)
+	case len(checks) > 0:
 		s.list = append(s.list, scope)
 	}
 }
@@ -644,16 +681,9 @@ func (g *evidenceGate) judge(
 		return g.unavailable("fingerprint the files of check "+check.Name, err, true)
 	}
 
-	verdict := abandonedRun(
-		hookCtx,
-		evidence.Judge(check, receipts[check.Name], fp.digest, g.now(), g.alive),
-	)
-	if !verdict.Satisfied() && verdict.Status != evidence.StatusFailed {
-		kept := evidence.Judge(check, passes[check.Name], fp.digest, g.now(), g.alive)
-		if kept.Satisfied() {
-			verdict = kept
-		}
-	}
+	verdict := abandonedRun(hookCtx, evidence.JudgeKept(
+		check, receipts[check.Name], passes[check.Name], fp.digest, g.now(), g.alive,
+	))
 
 	if verdict.Satisfied() {
 		g.log.Info("evidence check satisfied", "check", check.Name, "digest", fp.digest)
@@ -810,7 +840,23 @@ func (g *evidenceGate) unavailable(
 	err error,
 	blocks bool,
 ) *dispatcher.ValidationError {
-	action := g.policy.Resolve(evidenceValidator, validator.ReasonState, blocks)
+	return g.unavailableFor(validator.ReasonState, what, err, blocks)
+}
+
+// configUnavailable reports checks klaudiush could not load. It blocks by
+// default like unreadable files: a broken configuration must not turn the
+// gate off for the repository it belongs to.
+func (g *evidenceGate) configUnavailable(what string, err error) *dispatcher.ValidationError {
+	return g.unavailableFor(validator.ReasonConfig, what, err, true)
+}
+
+func (g *evidenceGate) unavailableFor(
+	reason validator.UnavailableReason,
+	what string,
+	err error,
+	blocks bool,
+) *dispatcher.ValidationError {
+	action := g.policy.Resolve(evidenceValidator, reason, blocks)
 
 	return &dispatcher.ValidationError{
 		Validator: evidenceValidator,
@@ -822,7 +868,7 @@ func (g *evidenceGate) unavailable(
 		Reference:         validator.RefValidationUnavailable,
 		FixHint:           validator.GetSuggestion(validator.RefValidationUnavailable),
 		Unavailable:       true,
-		UnavailableReason: validator.ReasonState,
+		UnavailableReason: reason,
 		Resource:          evidenceValidator,
 	}
 }
