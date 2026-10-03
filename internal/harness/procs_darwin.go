@@ -13,6 +13,7 @@ const (
 	argcSize   = 4
 	zombieStat = 5
 	noSession  = -1
+	usecPerSec = 1_000_000
 )
 
 // listProcesses returns the live processes the caller's user owns. macOS
@@ -37,7 +38,10 @@ func listProcesses() ([]process, error) {
 			sid = noSession
 		}
 
-		p := process{PID: pid, PPID: int(procs[i].Eproc.Ppid), SID: sid}
+		p := process{
+			PID: pid, PPID: int(procs[i].Eproc.Ppid), SID: sid,
+			Start: startTime(&procs[i]),
+		}
 
 		if raw, err := unix.SysctlRaw("kern.procargs2", pid); err == nil {
 			p.Env = parseProcArgs(raw)
@@ -81,6 +85,22 @@ func parseProcArgs(raw []byte) []string {
 	return env
 }
 
-func freezeProcess(pid int) { _ = unix.Kill(pid, unix.SIGSTOP) }
+// startTime is the process start time in microseconds since the epoch.
+func startTime(kp *unix.KinfoProc) int64 {
+	tv := kp.Proc.P_starttime
 
-func killProcess(pid int) { _ = unix.Kill(pid, unix.SIGKILL) }
+	return tv.Sec*usecPerSec + int64(tv.Usec)
+}
+
+// processStart returns the start time of a live, non-zombie process.
+func processStart(pid int) (int64, bool) {
+	kp, err := unix.SysctlKinfoProc("kern.proc.pid", pid)
+	if err != nil || int(kp.Proc.P_pid) != pid || kp.Proc.P_stat == zombieStat {
+		return 0, false
+	}
+
+	return startTime(kp), true
+}
+
+// signalByHandle reports that macOS has no process handle to signal by.
+func signalByHandle(int, int64, unix.Signal) (sent, handled bool) { return false, false }

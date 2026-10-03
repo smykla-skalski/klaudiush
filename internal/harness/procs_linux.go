@@ -10,11 +10,13 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+// Indexes of the /proc/<pid>/stat fields after the command name.
 const (
 	statState   = 0
 	statPPID    = 1
 	statSession = 3
-	statFields  = 4
+	statStart   = 19
+	statFields  = 20
 )
 
 // listProcesses returns the live processes the caller's user owns. Env is
@@ -72,8 +74,9 @@ func readProcess(proc *os.Root, pid int) (process, bool) {
 
 	ppid, _ := strconv.Atoi(fields[statPPID])
 	sid, _ := strconv.Atoi(fields[statSession])
+	start, _ := strconv.ParseInt(fields[statStart], 10, 64)
 
-	p := process{PID: pid, PPID: ppid, SID: sid}
+	p := process{PID: pid, PPID: ppid, SID: sid, Start: start}
 
 	raw, err := proc.ReadFile(dir + "environ")
 	if err != nil {
@@ -110,6 +113,43 @@ func parseStat(stat []byte) ([]string, bool) {
 	return out, true
 }
 
-func freezeProcess(pid int) { _ = unix.Kill(pid, unix.SIGSTOP) }
+// processStart returns the start time of a live, non-zombie process in
+// clock ticks since boot.
+func processStart(pid int) (int64, bool) {
+	stat, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/stat")
+	if err != nil {
+		return 0, false
+	}
 
-func killProcess(pid int) { _ = unix.Kill(pid, unix.SIGKILL) }
+	fields, ok := parseStat(stat)
+	if !ok || fields[statState] == "Z" {
+		return 0, false
+	}
+
+	start, err := strconv.ParseInt(fields[statStart], 10, 64)
+
+	return start, err == nil
+}
+
+// signalByHandle signals through a pidfd, which keeps naming the process it
+// was opened for, after checking that process is the one seen at start.
+// handled is false when no pidfd can be opened for another reason than the
+// process being gone (an old kernel, a seccomp filter).
+func signalByHandle(pid int, start int64, sig unix.Signal) (sent, handled bool) {
+	fd, err := unix.PidfdOpen(pid, 0)
+	if errors.Is(err, unix.ESRCH) {
+		return false, true
+	}
+
+	if err != nil {
+		return false, false
+	}
+
+	defer func() { _ = unix.Close(fd) }()
+
+	if got, ok := processStart(pid); !ok || got != start {
+		return false, true
+	}
+
+	return unix.PidfdSendSignal(fd, sig, nil, 0) == nil, true
+}

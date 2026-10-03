@@ -28,12 +28,14 @@ var sandboxEnvKeys = []string{
 }
 
 // process is one running process as the platform listing sees it. Env is
-// nil when the platform hides it (macOS does for Apple binaries).
+// nil when the platform hides it (macOS does for Apple binaries). Start
+// tells it apart from a later process that reuses its pid.
 type process struct {
-	PID  int
-	PPID int
-	SID  int
-	Env  []string
+	PID   int
+	PPID  int
+	SID   int
+	Start int64
+	Env   []string
 }
 
 // track makes a command run in a new session whose id the sandbox records,
@@ -60,26 +62,26 @@ func (s *Sandbox) StopProcesses() error {
 	deadline := time.Now().Add(stopTimeout)
 
 	for {
-		pids, err := s.Processes()
+		procs, err := s.owned()
 		if err != nil {
 			return err
 		}
 
-		if len(pids) == 0 {
+		if len(procs) == 0 {
 			return nil
 		}
 
 		if time.Now().After(deadline) {
 			return errors.Newf("sandbox processes still running after %s: %s",
-				stopTimeout, joinPIDs(pids))
+				stopTimeout, joinPIDs(pidsOf(procs)))
 		}
 
-		for _, pid := range pids {
-			freezeProcess(pid)
+		for _, p := range procs {
+			freezeProcess(p)
 		}
 
-		for _, pid := range pids {
-			killProcess(pid)
+		for _, p := range procs {
+			killProcess(p)
 		}
 
 		time.Sleep(stopPoll)
@@ -90,6 +92,17 @@ func (s *Sandbox) StopProcesses() error {
 // than the caller. A recorded session with no live member is dropped, so a
 // later process that reuses its id is never taken for a sandbox process.
 func (s *Sandbox) Processes() ([]int, error) {
+	procs, err := s.owned()
+	if err != nil {
+		return nil, err
+	}
+
+	return pidsOf(procs), nil
+}
+
+// owned lists the sandbox processes with the identity they were seen with,
+// so a signal never reaches a later process that reuses one of their pids.
+func (s *Sandbox) owned() ([]process, error) {
 	tracked := s.trackedSessions()
 
 	procs, err := listProcesses()
@@ -129,14 +142,26 @@ func (s *Sandbox) Processes() ([]int, error) {
 		}
 	}
 
-	pids := make([]int, 0, len(owned))
-	for pid := range owned {
-		pids = append(pids, pid)
+	out := make([]process, 0, len(owned))
+
+	for _, p := range procs {
+		if owned[p.PID] {
+			out = append(out, p)
+		}
+	}
+
+	return out, nil
+}
+
+func pidsOf(procs []process) []int {
+	pids := make([]int, 0, len(procs))
+	for _, p := range procs {
+		pids = append(pids, p.PID)
 	}
 
 	slices.Sort(pids)
 
-	return pids, nil
+	return pids
 }
 
 // trackedSessions copies the recorded session ids. Only ids recorded before

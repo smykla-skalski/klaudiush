@@ -154,6 +154,35 @@ var _ = Describe("Sandbox processes", func() {
 		Expect(sb.Processes()).To(BeEmpty())
 	})
 
+	It("signals a pid only while it is the process seen at the listing", func() {
+		blocker := startBlocker()
+		pid := blocker.Process.Pid
+
+		var start int64
+
+		Eventually(func() bool {
+			var ok bool
+
+			start, ok = harness.StartOf(pid)
+
+			return ok
+		}).Should(BeTrue())
+
+		Expect(harness.KillIfSame(pid, start+1)).
+			To(BeFalse(), "a different start is another process")
+		Expect(blocker.Process.Signal(syscall.Signal(0))).To(Succeed())
+
+		Expect(harness.KillIfSame(pid, start)).To(BeTrue())
+
+		state, err := blocker.Process.Wait()
+		Expect(err).NotTo(HaveOccurred())
+		Expect(state.Sys().(syscall.WaitStatus).Signal()).To(Equal(syscall.SIGKILL))
+
+		_, alive := harness.StartOf(pid)
+		Expect(alive).To(BeFalse())
+		Expect(harness.KillIfSame(pid, start)).To(BeFalse())
+	})
+
 	It("fails Close when files keep reappearing from a writer it cannot stop", func() {
 		sb, err := harness.NewSandbox(GinkgoT().TempDir())
 		Expect(err).NotTo(HaveOccurred())
