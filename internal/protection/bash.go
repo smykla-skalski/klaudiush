@@ -128,10 +128,42 @@ func (c *commandCheck) checkCommand(cmd parser.Command) {
 		}
 	}
 
-	if (cmd.Dynamic || readsArgsFromUnknownInput(cmd, program)) &&
-		commandEffect(cmd) != effectNone && c.mentionsProtected() {
-		c.add(Violation{Match: c.firstMention(), Program: program, Target: "$(...)"})
+	if commandEffect(cmd) == effectNone {
+		return
 	}
+
+	unknownInput := readsArgsFromUnknownInput(cmd, program)
+
+	if (cmd.Dynamic || unknownInput) && c.mentionsProtected() {
+		c.add(Violation{Match: c.firstMention(), Program: program, Target: "$(...)"})
+
+		return
+	}
+
+	if unknownInput {
+		if m, ok := c.listsProtectedNames(); ok {
+			c.add(Violation{Match: m, Program: program, Target: m.Path})
+		}
+	}
+}
+
+// listsProtectedNames reports a bare glob in the command, such as * or .*,
+// that expands to a protected name in the working directory: its output
+// fed to xargs names protected files although no word in the command does.
+func (c *commandCheck) listsProtectedNames() (Match, bool) {
+	for _, token := range splitTokens(c.raw) {
+		expanded := c.expand(token)
+		if !hasGlobMeta(expanded) || meaningful(expanded) ||
+			strings.Contains(expanded, unknownPart) {
+			continue
+		}
+
+		if m, ok := c.checkPattern(expanded, c.set.workDir); ok {
+			return m, true
+		}
+	}
+
+	return Match{}, false
 }
 
 // readsArgsFromUnknownInput reports xargs or parallel reading arguments
@@ -265,7 +297,7 @@ func candidates(cmd parser.Command, eff effect, isDir func(string) bool) []candi
 			}
 
 			for _, src := range srcs {
-				joined := strings.TrimSuffix(dest, "/") + "/" + filepath.Base(src)
+				joined := strings.TrimSuffix(dest, "/") + "/" + filepath.Base(localPart(src))
 				words = append(words, candidate{word: joined, tree: tree})
 			}
 		}

@@ -75,7 +75,22 @@ var worktreeWriters = map[string]bool{
 func (c *commandCheck) redirectsGit(cmd parser.Command) bool {
 	sub, _ := gitSplit(cmd.Args)
 
-	return (worktreeWriters[sub] || gitPathCommands[sub]) && gitEnvironment.MatchString(c.raw)
+	if !worktreeWriters[sub] && !gitPathCommands[sub] {
+		return false
+	}
+
+	return gitEnvironment.MatchString(c.raw) || c.loadsShellState()
+}
+
+// loadsShellState reports a source, . or eval in the command: a script
+// read into the shell can export GIT_DIR or GIT_INDEX_FILE where the
+// command text does not show it.
+func (c *commandCheck) loadsShellState() bool {
+	return slices.ContainsFunc(c.result.Commands, func(cmd parser.Command) bool {
+		name := programName(cmd)
+
+		return name == "source" || name == "." || name == "eval"
+	})
 }
 
 // movesCheckedOut reports whether ref is HEAD or the checked-out branch,

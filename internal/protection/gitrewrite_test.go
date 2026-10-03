@@ -148,5 +148,9 @@ var _ = Describe("CheckCommand for git pointed elsewhere", func() {
 		}
 
 		Expect(checkCommand(set, `GIT_DIR=/tmp/evil/.git git log`)).To(BeEmpty())
+		Expect(checkCommand(set, `source /tmp/gitenv.sh; git checkout -f`)).NotTo(BeEmpty())
+		Expect(checkCommand(set, `. /tmp/gitenv.sh && git reset --hard`)).NotTo(BeEmpty())
+		Expect(checkCommand(set, `eval "$(cat /tmp/gitenv.sh)"; git checkout -f`)).NotTo(BeEmpty())
+		Expect(checkCommand(set, `source /tmp/env.sh; git status`)).To(BeEmpty())
 	})
 })

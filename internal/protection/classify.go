@@ -321,3 +321,14 @@ func sources(args []string) []string {
 func isTargetOption(arg string) bool {
 	return arg == optTarget || arg == optTargetDir || strings.HasPrefix(arg, optTargetDir+"=")
 }
+
+// localPart drops the host: prefix of a remote scp or rsync source, so its
+// base name is the name the copy gets.
+func localPart(src string) string {
+	host, path, found := strings.Cut(src, ":")
+	if !found || strings.Contains(host, "/") {
+		return src
+	}
+
+	return path
+}

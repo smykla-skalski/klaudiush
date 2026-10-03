@@ -260,23 +260,51 @@ func normalizeName(name string) string {
 // outputKeyWords mark an argument that names where a tool writes its
 // result, such as save_to or output_path, even for a tool that only reads
 // its input.
-var outputKeyWords = []string{"output", "save", "dest", "target", "out", "write"}
+var outputKeyWords = []string{"output", "save", "dest", "dst", "target", "out", "write"}
 
 // outputTargets returns the paths a read-only tool writes its result to.
 func outputTargets(ctx *hook.Context) []string {
-	var targets []string
+	targets := make([]string, 0, len(ctx.ToolInput.Additional))
 
 	for key, raw := range ctx.ToolInput.Additional {
-		lower := strings.ToLower(key)
-
-		if !slices.ContainsFunc(outputKeyWords, func(word string) bool {
-			return strings.Contains(lower, word)
-		}) {
-			continue
-		}
-
-		targets = append(targets, pathStrings(raw, 0)...)
+		targets = append(targets, outputPathsIn(key, raw, 0)...)
 	}
 
 	return targets
+}
+
+// outputPathsIn returns the path-like strings under output-naming keys,
+// at any depth of the input.
+func outputPathsIn(key string, raw json.RawMessage, depth int) []string {
+	if depth > maxInputDepth {
+		return nil
+	}
+
+	lower := strings.ToLower(key)
+
+	if slices.ContainsFunc(outputKeyWords, func(word string) bool {
+		return strings.Contains(lower, word)
+	}) {
+		return pathStrings(raw, depth)
+	}
+
+	var found []string
+
+	var object map[string]json.RawMessage
+	if json.Unmarshal(raw, &object) == nil {
+		for child, value := range object {
+			found = append(found, outputPathsIn(child, value, depth+1)...)
+		}
+
+		return found
+	}
+
+	var list []json.RawMessage
+	if json.Unmarshal(raw, &list) == nil {
+		for _, value := range list {
+			found = append(found, outputPathsIn(key, value, depth+1)...)
+		}
+	}
+
+	return found
 }

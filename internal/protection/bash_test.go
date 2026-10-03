@@ -158,6 +158,9 @@ var _ = Describe("CheckCommand", func() {
 			`python3 -c "import os; os.symlink('settings.json','.claude/settings.local.json')"`,
 		),
 		Entry("path shim", `ln -sf /bin/true ~/bin/klaudiush`),
+		Entry("glob into xargs", `printf '%s\n' * .* | xargs rm -rf`),
+		Entry("ls glob into xargs", `ls -d .* | xargs rm -rf`),
+		Entry("scp into protected dir", `scp host:settings.json .claude`),
 	)
 
 	DescribeTable("lets other commands through",
@@ -188,6 +191,7 @@ var _ = Describe("CheckCommand", func() {
 		Entry("cp file into agents dir", `cp agent.md .claude/agents/`),
 		Entry("substitution read into other file", `echo $(cat .mcp.json) > out.txt`),
 		Entry("find listing", `find . -type f`),
+		Entry("xargs over sources", `find . -name '*.pyc' | xargs rm`),
 		Entry("find by protected name", `find . -name settings.json`),
 		Entry("copy protected file out", `cp .mcp.json backup.json`),
 		Entry("find other name", `find . -name '*.orig' -delete`),
