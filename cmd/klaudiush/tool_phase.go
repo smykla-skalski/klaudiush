@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/cockroachdb/errors"
+
 	"github.com/smykla-skalski/klaudiush/internal/dispatcher"
 	"github.com/smykla-skalski/klaudiush/internal/evidence"
 	"github.com/smykla-skalski/klaudiush/internal/hookresponse"
@@ -60,7 +62,8 @@ func newToolPhase(cfg *config.Config, gate *evidenceGate) *toolPhase {
 // are withheld, which prerequisites are unmet and why, and the finding for
 // a phase klaudiush could not judge. Outside a repository there is no
 // content to judge, so the phase stays open there, as the evidence gate does;
-// without git klaudiush cannot tell, so the failure policy decides.
+// when git is missing or cannot read the repository, klaudiush cannot tell,
+// so the failure policy decides.
 type phaseState struct {
 	repo        string
 	restricted  bool
@@ -77,17 +80,18 @@ func (p *toolPhase) state(ctx context.Context, hookCtx *hook.Context) phaseState
 
 	repo, err := evidence.RepoRoot(ctx, evidenceWorkDir(hookCtx))
 	if err != nil {
-		if _, lookErr := osexec.LookPath("git"); lookErr != nil {
-			finding := p.gate.unavailable(
-				"find git to judge the evidence tool phase",
-				lookErr,
-				true,
-			)
-
-			return phaseState{restricted: finding.ShouldBlock, unavailable: finding}
+		if errors.Is(err, evidence.ErrNotRepository) {
+			return phaseState{}
 		}
 
-		return phaseState{}
+		action := "find the git repository to judge the evidence tool phase"
+		if _, lookErr := osexec.LookPath("git"); lookErr != nil {
+			action, err = "find git to judge the evidence tool phase", lookErr
+		}
+
+		finding := p.gate.unavailable(action, err, true)
+
+		return phaseState{restricted: finding.ShouldBlock, unavailable: finding}
 	}
 
 	st := phaseState{repo: repo}

@@ -20,6 +20,11 @@ import (
 // ErrNotRepository marks a directory outside any git work tree.
 var ErrNotRepository = errors.New("not a git repository")
 
+// ErrRepoLookup marks a directory git could not judge: it may be inside a
+// work tree whose metadata git cannot read or will not trust, so it is not
+// known to be outside one.
+var ErrRepoLookup = errors.New("git repository lookup failed")
+
 // ErrUnreadable marks a work tree klaudiush cannot fully read.
 var ErrUnreadable = errors.New("work tree not fully readable")
 
@@ -29,14 +34,23 @@ const (
 )
 
 // RepoRoot returns the top-level directory of the git work tree holding dir.
+// It returns ErrNotRepository only when git says dir is outside any work
+// tree and no .git entry exists in dir or above it; every other failure,
+// such as unreadable metadata or a repository git does not trust, is
+// ErrRepoLookup.
 func RepoRoot(ctx context.Context, dir string) (string, error) {
 	if dir == "" {
 		return "", ErrNotRepository
 	}
 
-	out, err := runGit(ctx, dir, "rev-parse", "--show-toplevel")
+	out, stderr, err := runGitStderr(ctx, dir, "rev-parse", "--show-toplevel")
 	if err != nil {
-		return "", errors.WithSecondaryError(errors.Wrap(ErrNotRepository, dir), err)
+		sentinel := ErrRepoLookup
+		if strings.Contains(stderr, "not a git repository") && !hasGitAncestor(dir) {
+			sentinel = ErrNotRepository
+		}
+
+		return "", errors.WithSecondaryError(errors.Wrap(sentinel, dir), err)
 	}
 
 	root := strings.TrimSpace(string(out))
@@ -45,6 +59,36 @@ func RepoRoot(ctx context.Context, dir string) (string, error) {
 	}
 
 	return canonicalDir(root), nil
+}
+
+// hasGitAncestor reports whether dir, or a directory above it, holds a .git
+// entry, as written or with symbolic links resolved. A directory that cannot
+// be resolved, or an entry that cannot be checked, counts as one.
+func hasGitAncestor(dir string) bool {
+	resolved, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		return true
+	}
+
+	for _, start := range []string{dir, resolved} {
+		for current := filepath.Clean(start); ; current = filepath.Dir(current) {
+			if mayHoldGit(current) {
+				return true
+			}
+
+			if current == filepath.Dir(current) {
+				break
+			}
+		}
+	}
+
+	return false
+}
+
+func mayHoldGit(dir string) bool {
+	_, err := os.Lstat(filepath.Join(dir, ".git"))
+
+	return !errors.Is(err, fs.ErrNotExist)
 }
 
 // Snapshot is the state of a work tree at one moment: its files and, on

@@ -232,6 +232,35 @@ var _ = Describe("toolPhase", func() {
 			To(BeEmpty())
 	})
 
+	It("follows the failure policy when git cannot read the repository", func() {
+		broken := GinkgoT().TempDir()
+		Expect(
+			os.WriteFile(filepath.Join(broken, ".git"), []byte("gitdir: /nonexistent\n"), 0o600),
+		).
+			To(Succeed())
+
+		phase := newEvidenceGate(toolPhaseConfig(), store, nil, log).toolPhase()
+		Expect(phase.selection(ctx, geminiCtx(hook.CanonicalEventToolSelection, broken, ""))).
+			NotTo(BeNil())
+
+		errs := phase.apply(
+			ctx,
+			geminiCtx(hook.CanonicalEventBeforeTool, broken, "write_file"),
+			nil,
+		)
+		Expect(errs).To(HaveLen(2))
+		Expect(errs[0].Unavailable).To(BeTrue())
+		Expect(errs[0].Message).To(ContainSubstring("find the git repository"))
+		Expect(errs[1].Reference).To(Equal(validator.RefToolPhaseLocked))
+
+		warn := failpolicy.New(&config.FailurePolicyConfig{Mode: config.FailureModeWarn})
+		open := newEvidenceGate(toolPhaseConfig(), store, warn, log).toolPhase()
+
+		errs = open.apply(ctx, geminiCtx(hook.CanonicalEventBeforeTool, broken, "write_file"), nil)
+		Expect(errs).To(HaveLen(1))
+		Expect(errs[0].ShouldBlock).To(BeFalse())
+	})
+
 	It("restricts with read-only tools when the phase does not compile", func() {
 		cfg := toolPhaseConfig()
 		cfg.Evidence.ToolPhase.Requires = []string{"missing"}
