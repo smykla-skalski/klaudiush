@@ -63,6 +63,7 @@ func newAstWalker(resolver Resolver) *astWalker {
 		assignments:     make(map[string]string),
 		unknownVars:     make(map[string]bool),
 		safeAssigns:     make(map[*syntax.Assign]bool),
+		chainAssigns:    make(map[*syntax.Assign]bool),
 		certain:         make(map[*syntax.Stmt]certainty),
 		loopCalls:       make(map[*syntax.CallExpr]bool),
 		resolver:        resolver,
@@ -995,8 +996,7 @@ func (w *astWalker) walkScript(script string, parent Command, depth int, sw scri
 			break
 		}
 
-		child.prepare(stmt)
-		syntax.Walk(stmt, child.visit)
+		child.walkStmt(stmt)
 	}
 
 	// Commands report the line of the command that ran the script, keeping

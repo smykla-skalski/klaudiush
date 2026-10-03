@@ -35,16 +35,18 @@ type astWalker struct {
 	// assignments records literal NAME=value assignments, both standalone and
 	// as a prefix on a command, so consumers can resolve a variable used later
 	// in the same command line.
-	assignments map[string]string
-	unknownVars map[string]bool
-	safeAssigns map[*syntax.Assign]bool
-	certain     map[*syntax.Stmt]certainty
-	loopCalls   map[*syntax.CallExpr]bool
-	inLoop      bool
-	outerLoop   bool
-	distrust    bool
-	scriptRun   scriptRun
-	launchSeq   int
+	assignments  map[string]string
+	unknownVars  map[string]bool
+	safeAssigns  map[*syntax.Assign]bool
+	chainAssigns map[*syntax.Assign]bool
+	chained      []string
+	certain      map[*syntax.Stmt]certainty
+	loopCalls    map[*syntax.CallExpr]bool
+	inLoop       bool
+	outerLoop    bool
+	distrust     bool
+	scriptRun    scriptRun
+	launchSeq    int
 	// depth counts the launchers, scripts and aliases that led here.
 	depth int
 	// resolver answers what the command text cannot: environment, script

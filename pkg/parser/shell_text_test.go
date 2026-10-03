@@ -72,11 +72,14 @@ var _ = Describe("ShellText", func() {
 		Entry("glued long flag", `T=x; git commit --message="a $T"`, "a x"),
 		Entry("glued short flag", `T=x; git commit -ma"$T"`, "ax"),
 		Entry("combined short flags", `git commit -sSm 'a b'`, "a b"),
+		Entry("assignment later in the commit's && chain",
+			`cd /x && T='a b' && echo "${#T}" && git commit -m "$T"`, "a b"),
 		Entry("value expanded before a prefix assignment",
 			`T=old; T=new git commit -m "$T"`, "old"),
 	)
 
-	DescribeTable("reports what it cannot build",
+	DescribeTable(
+		"reports what it cannot build",
 		func(command, gap string) {
 			_, got := messageOf(command)
 			Expect(got).To(ContainSubstring(gap))
@@ -86,6 +89,16 @@ var _ = Describe("ShellText", func() {
 		Entry("prefix assignment", `T=x git commit -m "$T"`, "$T, which is not set"),
 		Entry("command output variable", `T=$(date); git commit -m "$T"`, "cannot know"),
 		Entry("variable read from input", `T=a; read T; git commit -m "$T"`, "cannot know"),
+		Entry(
+			"assignment in an earlier && chain",
+			`cd /x && T=a; git commit -m "$T"`,
+			"cannot know",
+		),
+		Entry(
+			"assignment after || in the chain",
+			`false || T=a && git commit -m "$T"`,
+			"cannot know",
+		),
 		Entry("variable in a loop", `for i in 1; do T=a; git commit -m "$T"; done`, "cannot know"),
 		Entry("variable holding a reference", `A='${B}'; git commit -m "$A"`, "refers to other"),
 		Entry("unquoted variable that splits", `T='a b'; git commit -m $T`, "splits"),

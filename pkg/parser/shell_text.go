@@ -553,6 +553,33 @@ func prefixGaps(text *ShellText, call *syntax.CallExpr) *ShellText {
 	return &out
 }
 
+// markChainedAssigns marks the plain assignments after the first link of an
+// && chain. Every later link runs only once they ran, so their values hold
+// for the rest of the chain, though not past it.
+func markChainedAssigns(stmt *syntax.Stmt, chained map[*syntax.Assign]bool) {
+	if stmt == nil || stmt.Background || stmt.Coprocess || stmt.Negated {
+		return
+	}
+
+	if call, ok := stmt.Cmd.(*syntax.CallExpr); ok && len(call.Args) == 0 {
+		for _, assign := range call.Assigns {
+			chained[assign] = true
+		}
+	}
+}
+
+// walkStmt walks one statement, then forgets what its && chain assigned.
+func (w *astWalker) walkStmt(stmt *syntax.Stmt) {
+	w.prepare(stmt)
+	syntax.Walk(stmt, w.visit)
+
+	for _, name := range w.chained {
+		w.forget(name)
+	}
+
+	w.chained = nil
+}
+
 // literalIndex reports no subscript, or one of digits, @ or *, which assigns
 // nothing.
 func literalIndex(index syntax.ArithmExpr) bool {
