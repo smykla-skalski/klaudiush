@@ -405,6 +405,13 @@ var declWriters = nameSet("declare export typeset readonly local")
 // text it came from.
 var mapfiles = nameSet("mapfile readarray")
 
+// callbackFlag reports a mapfile option cluster with -C in it (-C, -tC,
+// -C'code'), which runs code that may assign anything.
+func callbackFlag(arg string) bool {
+	return strings.HasPrefix(arg, "-") && !strings.HasPrefix(arg, "--") &&
+		strings.Contains(arg, "C")
+}
+
 // forgetDeclared forgets every variable a declaration run as a command sets,
 // and stops trusting any after an option that changes values or makes
 // references, or an operand that is not literal.
@@ -435,8 +442,10 @@ var defaultVars = map[string]string{"read": "REPLY", "mapfile": "MAPFILE", "read
 // forgetWritten forgets the variables cmd sets other than by assignment.
 func (w *astWalker) forgetWritten(cmd Command) {
 	if HasUnresolvedVars(cmd.Invoked) || strings.Contains(cmd.Invoked, unresolvedProgram) ||
-		assignmentPattern.MatchString(cmd.Invoked) ||
-		(mapfiles[cmd.Name] && slices.Contains(cmd.Args, "-C")) {
+		assignmentPattern.MatchString(
+			cmd.Invoked,
+		) || cmd.Name == sourceBuiltin || cmd.Name == dotBuiltin ||
+		(mapfiles[cmd.Name] && slices.ContainsFunc(cmd.Args, callbackFlag)) {
 		w.state.untrusted = true
 
 		return

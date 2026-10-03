@@ -204,6 +204,16 @@ var _ = Describe("Unresolved eval and command words", func() {
 			opacity("git", parser.DetailWordVariable)),
 		Entry("mapfile callback", `x=status; mapfile -C 'x=commit;:' -c 1 a <<< z; git $x`,
 			opacity("git", parser.DetailWordVariable)),
+		Entry("attached mapfile callback", `x=status; mapfile -c1 -C'x=commit;:' a <<< z; git $x`,
+			opacity("git", parser.DetailWordVariable)),
+		Entry("combined mapfile callback", `x=status; mapfile -tC 'x=commit;:' a <<< z; git $x`,
+			opacity("git", parser.DetailWordVariable)),
+		Entry("sourced descriptor", `x=status; . /dev/fd/0 <<< x=commit; git $x`,
+			opacity("git", parser.DetailWordVariable)),
+		Entry("sourced redirected stdin", `x=status; echo x=commit > g; . /dev/stdin < g; git $x`,
+			opacity("git", parser.DetailWordVariable)),
+		Entry("sourced process substitution", `x=status; v=x; source <(echo "$v=commit"); git $x`,
+			opacity("git", parser.DetailWordVariable)),
 	)
 
 	DescribeTable("keeps a flag with a substituted value from taking the next argument",

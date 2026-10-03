@@ -273,7 +273,7 @@ func launchedBy(cmd Command) (launch, bool) {
 		return shellLaunch(cmd), true
 	case cmd.Name == evalBuiltin:
 		return launch{scripts: []string{strings.Join(cmd.Args, " ")}}, true
-	case cmd.Name == "source" || cmd.Name == ".":
+	case cmd.Name == sourceBuiltin || cmd.Name == dotBuiltin:
 		return sourceLaunch(cmd), true
 	case cmd.Name == "find":
 		return launch{commands: findExecCommands(cmd)}, true
@@ -847,7 +847,7 @@ func launchesTracked(arg string, rest []string) bool {
 
 		return ok
 	default:
-		return isInterpreter || isLauncher || name == evalBuiltin || name == "source"
+		return isInterpreter || isLauncher || name == evalBuiltin || name == sourceBuiltin
 	}
 }
 

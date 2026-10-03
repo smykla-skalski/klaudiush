@@ -10,6 +10,8 @@ const (
 
 	evalBuiltin   = "eval"
 	printfBuiltin = "printf"
+	sourceBuiltin = "source"
+	dotBuiltin    = "."
 )
 
 // nameSet builds a set from a space-separated list of names.
