@@ -43,7 +43,7 @@ Each hook gets the strongest outcome of its findings. The class comes from the r
 | held        | A completion gate (Claude and Codex `Stop`/`SubagentStop`, Gemini `AfterAgent`) kept the agent working.                                                                   |
 | released    | A completion gate let the turn end over unresolved findings after its continuation limit.                                                                                |
 | advisory    | A blocking finding the response could not stop: every finding after a tool ran, findings on events the provider cannot block, and Gemini tool selections that withheld tools. |
-| unavailable | A check could not run and the failure policy warned.                                                                                                                     |
+| unavailable | A check could not run and the failure policy warned or ignored it.                                                                                                       |
 | excepted    | An exception token turned a block into a warning.                                                                                                                         |
 | warned      | Only non-blocking findings.                                                                                                                                               |
 | passed      | No findings.                                                                                                                                                             |
@@ -55,7 +55,9 @@ A check that could not run and blocked under `failure_policy` counts as prevente
 
 ## Repairs and retries
 
-A violation is a finding that asks the agent to change something: a blocking finding before the tool, or any unwaived finding after it. It is identified by session, validator, resource and code. For commands the resource is "a command", so a later command the same validator passes clears it; for files it is the file. A file a shell command writes is checked under that file, so rewriting it through the shell is not counted as a retry.
+A violation is a finding that asks the agent to change something: a blocking finding before the tool, or any unwaived finding after it. It is identified by session, validator, resource and code; an error with several structured findings counts each distinct code as its own violation. For commands the resource is "a command", so a later command the same validator passes clears it; for files it is the file. A file a shell command writes is checked under that file, so rewriting it through the shell is not counted as a retry.
+
+Only a check of the whole resource repairs a file violation: the file as the tool left it, or the complete content a Write proposes. A check of an edit fragment, of a shell write before it runs, or a run that skipped the file (linter disabled, content not readable, file too large) repairs nothing. A completion gate repairs only what it checked: `Stop` the whole session, `SubagentStop` that subagent's violations.
 
 | Field               | Meaning                                                                                                                   |
 |:--------------------|:--------------------------------------------------------------------------------------------------------------------------|
@@ -72,7 +74,7 @@ The per-code table adds the exception rate: the share of a code's reports that a
 
 ## Unavailable checks
 
-Checks that could not run are counted by reason (`missing_tool`, `timeout`, `config`, `state`, `malformed_input`, `panic`, ...) and validator, with how many of them blocked. See the [failure policy guide](FAILURE_POLICY_GUIDE.md) for what each reason means and when it blocks.
+Checks that could not run are counted by reason (`missing_tool`, `timeout`, `config`, `state`, `malformed_input`, `panic`, ...) and validator, with how many of them blocked. Checks the failure policy ignores, such as a missing linter under the default `missing_tools = "ignore"`, are counted too, although the response says nothing about them. See the [failure policy guide](FAILURE_POLICY_GUIDE.md) for what each reason means and when it blocks.
 
 ## Latency
 
