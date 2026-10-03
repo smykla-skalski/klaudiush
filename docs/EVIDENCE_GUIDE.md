@@ -49,7 +49,7 @@ base = "origin/main"
 | `name` | Name used in messages and `klaudiush evidence run <name>` | required |
 | `kind` | `test` (tied to file content) or `review` (tied to the exact diff against `base`) | `test` |
 | `commands` | Exact commands that run the check. The first is what the verifier runs | required |
-| `paths` | Glob patterns, relative to the repository root, of the files the check covers | every file |
+| `paths` | Glob patterns, relative to the repository root, of the files the check covers. klaudiush's own `.klaudiush/` directory is never covered | every file |
 | `exclude` | Glob patterns of files the check ignores | none |
 | `base` | Branch a review diffs against, such as `origin/main`. The diff starts at the merge base of `base` and `HEAD` | required for reviews |
 | `timeout` | Longest a verifier run may take, and how long a run without a result counts as running | `30m` |

@@ -53,9 +53,14 @@ func (c *Check) RunCommand() string {
 	return c.Lines[0]
 }
 
+// stateDir holds klaudiush's own project files. Hooks write state there
+// (patterns.json) and a configuration change already invalidates results
+// through the check ID, so it is never fingerprinted.
+const stateDir = ".klaudiush/"
+
 // Covers reports whether a repository-relative slash path belongs to the check.
 func (c *Check) Covers(path string) bool {
-	if matchAny(c.Exclude, path) {
+	if strings.HasPrefix(path, stateDir) || matchAny(c.Exclude, path) {
 		return false
 	}
 

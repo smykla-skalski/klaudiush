@@ -42,6 +42,7 @@ var _ = Describe("Compile", func() {
 		Expect(check.RunCommand()).To(Equal("go test ./..."))
 		Expect(check.ID()).To(HavePrefix("tests@"))
 		Expect(check.Covers("any/file.txt")).To(BeTrue())
+		Expect(check.Covers(".klaudiush/patterns.json")).To(BeFalse())
 	})
 
 	It("compiles a review check with a base and timeout", func() {
