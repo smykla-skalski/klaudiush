@@ -501,6 +501,43 @@ func (w *astWalker) expandGitAlias(cmd Command) (Command, []nestedScript) {
 	return cmd, nil
 }
 
+// proseGit reports whether a git command written directly in a plain string
+// of interpreter code names no subcommand git could run ("git executable not
+// found"): no builtin, installed command, typo git would correct or alias
+// klaudiush can see, with nothing on the line moving git's configuration.
+// Such a string is a message; run as a command, git would refuse it.
+func (w *astWalker) proseGit(cmd Command, depth int) bool {
+	if !w.prose || depth != w.depth || cmd.Name != gitProgram || cmd.Invoked != gitProgram ||
+		cmd.Dynamic || len(cmd.Args) == 0 || w.state.pathChanged || w.lookupEnvChanged() {
+		return false
+	}
+
+	name := cmd.Args[0]
+	if strings.HasPrefix(name, "-") || gitBuiltins[name] || HasUnresolvedVars(name) {
+		return false
+	}
+
+	if !gitAliasName.MatchString(name) {
+		return true
+	}
+
+	if _, found := w.autocorrect(name); found || w.resolver.GitCommand(name) {
+		return false
+	}
+
+	if _, ok := w.lineGitAlias(name); ok {
+		return false
+	}
+
+	if _, ok := w.envGitAlias(nil, name); ok {
+		return false
+	}
+
+	_, ok := w.resolver.GitAlias(cmd.WorkingDirectory, name)
+
+	return !ok
+}
+
 // unknownGitCommand handles a git subcommand that is neither a builtin nor
 // a known alias. A typo git would autocorrect becomes the command it runs.
 // Anything else either fails in git or runs an alias from configuration
@@ -883,7 +920,10 @@ func (w *astWalker) followFile(
 // each as sw describes.
 func (w *astWalker) followCode(cmd Command, code string, depth int, sw scriptWalk) {
 	for _, line := range commandLines(code) {
-		w.walkScript(line, cmd, depth, sw)
+		lineWalk := sw
+		lineWalk.prose = line.prose
+
+		w.walkScript(line.text, cmd, depth, lineWalk)
 	}
 }
 
@@ -938,6 +978,9 @@ type scriptWalk struct {
 	name string
 	// literal marks a string from interpreter code, where prose is expected.
 	literal bool
+	// prose marks a plain string literal from interpreter code, where an
+	// unknown git word is a message rather than a command.
+	prose bool
 	// label names the script in diagnostics.
 	label string
 	// run is the $0 and positional parameters of a script file, set when
@@ -965,6 +1008,7 @@ func (w *astWalker) walkScript(script string, parent Command, depth int, sw scri
 
 	child := w.child(parent.WorkingDirectory, depth)
 	child.literal = sw.literal
+	child.prose = sw.prose
 	child.distrust = w.distrust || !runsInShell(parent, sw)
 	child.scriptRun = w.childRun(parent, sw)
 	child.launchSeq = parent.Location.Seq

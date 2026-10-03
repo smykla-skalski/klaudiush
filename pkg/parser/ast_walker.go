@@ -66,6 +66,9 @@ type astWalker struct {
 	// literal marks a walker over a string found in interpreter code: its
 	// top-level commands count only when they name something tracked.
 	literal bool
+	// prose marks a walker over a plain string literal in interpreter code,
+	// where a git word no subcommand stands for is a message.
+	prose bool
 	// dirUnknown records that a cd went somewhere that cannot be resolved.
 	dirUnknown bool
 	// dirComputed records a cd to a directory computed by a command
@@ -592,7 +595,7 @@ func (w *astWalker) record(cmd Command, depth int, view string) {
 	cmd, detail := w.programWord(cmd, view)
 
 	// Prose in interpreter code ("hint: run git commit") runs nothing.
-	if w.literal && depth == w.depth && !literalCommand(cmd.Name) {
+	if w.literal && depth == w.depth && !literalCommand(cmd.Name) || w.proseGit(cmd, depth) {
 		return
 	}
 

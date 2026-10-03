@@ -29,36 +29,56 @@ var (
 	)
 	// literalEscapes undoes the escapes common to these languages.
 	literalEscapes = strings.NewReplacer(`\\`, `\`, `\"`, `"`, `\'`, `'`, "\\`", "`", `\n`, "\n")
+	// gitConfigChange matches code that may define git aliases where klaudiush
+	// cannot see them: git config, config files, or the variables that move
+	// or extend the configuration git reads.
+	gitConfigChange = regexp.MustCompile(
+		`(?i)alias\.|\[alias|\[include|include(?:if)?\.|gitconfig|git/config|` +
+			`GIT_CONFIG|GIT_DIR|XDG_CONFIG_HOME|(?-i:\bHOME\b)`,
+	)
 )
+
+// codeLine is a command line found in program source. prose marks a plain
+// string literal, which is mostly messages and docs rather than commands.
+type codeLine struct {
+	text  string
+	prose bool
+}
 
 // commandLines returns the command lines program source may run: its string
 // literals, argv-style lists, program-and-list calls and Perl or Ruby command
-// strings. Only candidates naming git, gh or a shell are kept.
-func commandLines(code string) []string {
+// strings. Only candidates naming git, gh or a shell are kept. String
+// literals count as prose unless the code may change git configuration,
+// since an alias defined there would make an unknown git word run.
+func commandLines(code string) []codeLine {
 	literals := quotedLiteral.FindAllStringSubmatch(code, -1)
 	lists := listLiteral.FindAllStringSubmatch(code, -1)
 	calls := programThenList.FindAllStringSubmatch(code, -1)
 	execs := quotedExec.FindAllStringSubmatch(code, -1)
-	lines := make([]string, 0, len(literals)+len(lists)+len(calls)+len(execs))
+	lines := make([]codeLine, 0, len(literals)+len(lists)+len(calls)+len(execs))
+	prose := !gitConfigChange.MatchString(code)
 
 	for _, m := range literals {
-		lines = append(lines, literalEscapes.Replace(m[1]+m[2]+m[3]))
+		lines = append(
+			lines,
+			codeLine{text: literalEscapes.Replace(m[1] + m[2] + m[3]), prose: prose},
+		)
 	}
 
 	for _, m := range lists {
-		lines = append(lines, joinListItems(m[1]))
+		lines = append(lines, codeLine{text: joinListItems(m[1])})
 	}
 
 	for _, m := range calls {
-		lines = append(lines, shellQuote(m[1])+" "+joinListItems(m[2]))
+		lines = append(lines, codeLine{text: shellQuote(m[1]) + " " + joinListItems(m[2])})
 	}
 
 	for _, m := range execs {
-		lines = append(lines, m[1])
+		lines = append(lines, codeLine{text: m[1]})
 	}
 
-	return slices.DeleteFunc(lines, func(line string) bool {
-		return !mentionsCommand.MatchString(line)
+	return slices.DeleteFunc(lines, func(line codeLine) bool {
+		return !mentionsCommand.MatchString(line.text)
 	})
 }
 

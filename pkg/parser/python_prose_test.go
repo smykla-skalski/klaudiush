@@ -1,0 +1,135 @@
+package parser_test
+
+import (
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+
+	"github.com/smykla-skalski/klaudiush/pkg/parser"
+)
+
+var _ = Describe("Git words in interpreter prose", func() {
+	resolver := fakeResolver{
+		files: map[string]string{
+			"hotspots.py": `#!/usr/bin/env python3
+"""Rank hotspots from git history.
+
+Exit codes:
+    2  usage error, git unavailable, or not inside a git work tree.
+"""
+import shutil
+import subprocess
+
+GIT_EXECUTABLE = shutil.which("git") or "git"
+
+
+def run_git(args):
+    """Run a git subcommand with a fixed argument list."""
+    try:
+        result = subprocess.run([GIT_EXECUTABLE, *args], capture_output=True)
+    except FileNotFoundError:
+        fail("git executable not found on PATH")
+    if result.returncode != 0:
+        fail("git is required and must run inside a git work tree")
+    return subprocess.run(["git", "log", "--name-only"]).stdout
+`,
+		},
+		programs: map[string]parser.Program{
+			"git-executable": parser.ProgramMissing,
+			"git-is":         parser.ProgramMissing,
+			"git-zz":         parser.ProgramMissing,
+			"git-pf":         parser.ProgramMissing,
+		},
+	}
+
+	parse := func(command string) *parser.ParseResult {
+		result, err := parser.NewBashParserWithResolver(resolver).Parse(command)
+		Expect(err).NotTo(HaveOccurred())
+
+		return result
+	}
+
+	hasGit := func(result *parser.ParseResult, subcommand, flag string) bool {
+		for _, cmd := range result.GitOperations {
+			gitCmd, err := parser.ParseGitCommand(cmd)
+			if err == nil && gitCmd.Subcommand == subcommand &&
+				(flag == "" || gitCmd.HasFlag(flag)) {
+				return true
+			}
+		}
+
+		return false
+	}
+
+	DescribeTable("reads messages and docstrings as prose, not commands",
+		func(command string) {
+			result := parse(command)
+			Expect(result.Truncated).To(BeFalse(), "truncated %q: %v", command, result.Opacities)
+
+			for _, cmd := range result.GitOperations {
+				Expect(cmd.Args).NotTo(ContainElement(BeElementOf("executable", "is")))
+			}
+		},
+		Entry("a script calling git through argv lists", "python3 hotspots.py --since 1.month"),
+		Entry("an error message", `python3 -c 'print("git executable not found on PATH")'`),
+		Entry("a docstring", `python3 -c '"""git is required here."""'`),
+		Entry("a message in a node program", `node -e 'console.error("git is missing")'`),
+	)
+
+	It("still records the real git calls of a script with prose", func() {
+		Expect(hasGit(parse("python3 hotspots.py"), "log", "")).To(BeTrue())
+	})
+
+	DescribeTable(
+		"still inspects git run from a string",
+		func(command, subcommand, flag string) {
+			Expect(
+				hasGit(parse(command), subcommand, flag),
+			).To(BeTrue(), "no git %s in %q", subcommand, command)
+		},
+		Entry(
+			"a shell=True string",
+			`python3 -c 'import subprocess; subprocess.run("git push --force", shell=True)'`,
+			"push",
+			"--force",
+		),
+		Entry("os.system", `python3 -c 'import os; os.system("git push --force origin main")'`,
+			"push", "--force"),
+		Entry(
+			"a string after a prose message",
+			`python3 -c 'print("git is slow"); import os; os.system("git commit -m x")'`,
+			"commit",
+			"",
+		),
+	)
+
+	DescribeTable(
+		"fails closed on a git word it cannot resolve",
+		func(command string) {
+			Expect(parse(command).Truncated).To(BeTrue(), "not truncated: %q", command)
+		},
+		Entry("an argv list", `python3 -c 'import subprocess; subprocess.run(["git", "zz"])'`),
+		Entry(
+			"a shell started from an argv list",
+			`python3 -c 'import subprocess; subprocess.run(["sh", "-c", "git zz"])'`,
+		),
+		Entry("a string with git options", `python3 -c 'import os; os.system("git -C /repo zz")'`),
+		Entry(
+			"a string under a moved HOME",
+			`python3 -c 'import os; os.system("HOME=/tmp/h git zz")'`,
+		),
+		Entry(
+			"code that sets HOME",
+			`python3 -c 'import os; os.environ["HOME"] = "/tmp/h"; os.system("git zz")'`,
+		),
+		Entry(
+			"code that sets config parameters",
+			`python3 -c 'import os; os.environ["GIT_CONFIG_PARAMETERS"] = "x"; os.system("git pf")'`,
+		),
+		Entry(
+			"code that sets an alias",
+			`python3 -c 'import os, subprocess; subprocess.run(["git", "config", "alias.pf", "push --force"]); os.system("git pf")'`,
+		),
+		Entry("code that writes a config file",
+			`python3 -c 'open(".git/config", "a").write("x"); import os; os.system("git pf")'`),
+	)
+})
