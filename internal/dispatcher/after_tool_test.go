@@ -329,6 +329,50 @@ var _ = Describe("Dispatcher Bash file writes after the tool ran", func() {
 		}
 	})
 
+	It("reports unavailable runs whose errors the failure policy ignores", func() {
+		reg := validator.NewRegistry()
+		reg.Register(
+			&fixedResult{name: "missing", result: validator.Result{
+				Unavailable:       true,
+				UnavailableReason: validator.ReasonMissingTool,
+				Reference:         validator.RefValidationUnavailable,
+			}},
+			validator.ToolTypeIs(hook.ToolTypeBash),
+		)
+		reg.Register(
+			&fixedResult{name: "broken", result: validator.Result{Unavailable: true}},
+			validator.ToolTypeIs(hook.ToolTypeBash),
+		)
+
+		outcome := dispatcher.NewDispatcherWithExecutor(
+			reg,
+			logger.NewNoOpLogger(),
+			dispatcher.NewSequentialExecutor(logger.NewNoOpLogger()),
+		).DispatchWithChecks(context.Background(), &hook.Context{
+			Provider:  hook.ProviderClaude,
+			Event:     hook.CanonicalEventBeforeTool,
+			ToolName:  hook.ToolTypeBash,
+			ToolInput: hook.ToolInput{Command: "true"},
+		})
+
+		Expect(outcome.Errors).To(HaveLen(1))
+		Expect(outcome.Errors[0].Validator).To(Equal("broken"))
+		Expect(outcome.Unavailable).To(ConsistOf(
+			dispatcher.Unavailable{
+				Validator: "missing",
+				Resource:  hook.ResourceCommand,
+				Reason:    validator.ReasonMissingTool,
+				Reference: validator.RefValidationUnavailable,
+			},
+			dispatcher.Unavailable{
+				Validator: "broken",
+				Resource:  hook.ResourceCommand,
+				Reason:    validator.ReasonError,
+			},
+		))
+		Expect(outcome.Ran).To(BeEmpty())
+	})
+
 	It("reports no checks for a cancelled dispatch", func() {
 		reg := validator.NewRegistry()
 		reg.Register(rec, validator.ToolTypeIs(hook.ToolTypeWrite))

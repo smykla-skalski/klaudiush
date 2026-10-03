@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/smykla-skalski/klaudiush/internal/dispatcher"
+	"github.com/smykla-skalski/klaudiush/internal/validator"
 	"github.com/smykla-skalski/klaudiush/pkg/hook"
 )
 
@@ -19,6 +20,11 @@ type Observation struct {
 	Errors   []*dispatcher.ValidationError
 	Checks   []dispatcher.Check
 	Timings  []dispatcher.Timing
+
+	// Unavailable lists the validator runs that could not check their
+	// resource, including runs whose error the failure policy dropped.
+	Unavailable []dispatcher.Unavailable
+
 	Stopped  bool
 	Released bool
 	Skipped  bool
@@ -114,20 +120,21 @@ func eventName(hookCtx *hook.Context) string {
 	return "unknown"
 }
 
-// findings classifies every error. The hook's outcome is taken over all of
-// them; the record keeps the first maxFindings and marks itself truncated.
+// findings classifies every error, and every unavailable run the errors do
+// not report. The hook's outcome is taken over all of them; the record keeps
+// the first maxFindings and marks itself truncated.
 func findings(
 	hookCtx *hook.Context,
 	obs *Observation,
 	rec *Record,
 	hash hasher,
 ) []Finding {
-	if len(obs.Errors) == 0 {
+	if len(obs.Errors) == 0 && len(obs.Unavailable) == 0 {
 		return nil
 	}
 
 	afterTool := hookCtx.IsAfterTool()
-	out := make([]Finding, 0, len(obs.Errors))
+	out := make([]Finding, 0, len(obs.Errors)+len(obs.Unavailable))
 
 	for i, verr := range obs.Errors {
 		if verr == nil {
@@ -149,10 +156,7 @@ func findings(
 		}
 
 		if verr.Unavailable {
-			f.Unavailable = token(string(verr.UnavailableReason))
-			if f.Unavailable == "" {
-				f.Unavailable = "error"
-			}
+			f.Unavailable = reasonToken(verr.UnavailableReason)
 		}
 
 		for _, code := range errorCodes(verr) {
@@ -161,7 +165,48 @@ func findings(
 		}
 	}
 
+	return append(out, ignoredUnavailable(obs, hash)...)
+}
+
+// ignoredUnavailable lists the unavailable runs no error reports, such as
+// a missing tool the failure policy ignores: the response says nothing,
+// but the run checked nothing.
+func ignoredUnavailable(obs *Observation, hash hasher) []Finding {
+	var out []Finding
+
+	for _, run := range obs.Unavailable {
+		reported := slices.ContainsFunc(obs.Errors, func(verr *dispatcher.ValidationError) bool {
+			return verr != nil && verr.Unavailable &&
+				verr.Validator == run.Validator && verr.Resource == run.Resource
+		})
+		if reported {
+			continue
+		}
+
+		f := Finding{
+			Code:        token(run.Reference.Code()),
+			Validator:   token(run.Validator),
+			Class:       ClassUnavailable,
+			Unavailable: reasonToken(run.Reason),
+		}
+
+		if run.Resource != "" {
+			f.Resource = hash("resource", run.Resource)
+		}
+
+		out = append(out, f)
+	}
+
 	return out
+}
+
+// reasonToken names why a check could not run, "error" when it does not say.
+func reasonToken(reason validator.UnavailableReason) string {
+	if name := token(string(reason)); name != "" {
+		return name
+	}
+
+	return "error"
 }
 
 // errorCodes lists the distinct codes of an error's structured findings, in

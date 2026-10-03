@@ -1,6 +1,10 @@
 env PATH=$KLAUDIUSH_TEST_BIN
 mkdir .klaudiush
 
+stdin write.json
+exec klaudiush --hook-type PreToolUse
+! stdout .
+
 cp warn.toml .klaudiush/config.toml
 stdin write.json
 exec klaudiush --hook-type PreToolUse
@@ -16,11 +20,10 @@ stdin stop.json
 exec klaudiush --hook-type Stop
 
 exec klaudiush metrics --json
-stdout '"records": 3'
+stdout '"records": 4'
 stdout '"prevented": 1'
-stdout '"unavailable": 1'
-stdout '"reason": "missing_tool"'
-stdout '"validator": "shellscript"'
+stdout '"unavailable": 2'
+stdout '"reason": "missing_tool",\s+"validator": "shellscript",\s+"count": 2'
 stdout '"reason": "config"'
 stdout '"blocked": 1'
 

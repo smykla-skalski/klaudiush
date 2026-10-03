@@ -269,6 +269,45 @@ var _ = Describe("Summarize", func() {
 		Expect(summarize(metrics.Filter{}).Repairs.Repaired).To(Equal(2))
 	})
 
+	It("counts unavailable runs the failure policy kept out of the response", func() {
+		reported := &dispatcher.ValidationError{
+			Validator:         "validate-terraform",
+			Reference:         validator.RefValidationUnavailable,
+			Unavailable:       true,
+			UnavailableReason: validator.ReasonTimeout,
+			Resource:          fileResource,
+		}
+
+		record(&metrics.Observation{
+			Context: afterWrite(),
+			Errors:  []*dispatcher.ValidationError{reported},
+			Unavailable: []dispatcher.Unavailable{
+				{
+					Validator: "validate-terraform",
+					Resource:  fileResource,
+					Reason:    validator.ReasonTimeout,
+					Reference: validator.RefValidationUnavailable,
+				},
+				{
+					Validator: "validate-shellscript",
+					Resource:  fileResource,
+					Reason:    validator.ReasonMissingTool,
+					Reference: validator.RefValidationUnavailable,
+				},
+				{Validator: "validate-python", Reason: ""},
+			},
+		})
+
+		report := summarize(metrics.Filter{})
+		Expect(report.Outcomes.Unavailable).To(Equal(1))
+		Expect(report.Unavailable).To(ConsistOf(
+			metrics.UnavailableStats{Reason: "timeout", Validator: "terraform", Count: 1},
+			metrics.UnavailableStats{Reason: "missing_tool", Validator: "shellscript", Count: 1},
+			metrics.UnavailableStats{Reason: "error", Validator: "python", Count: 1},
+		))
+		Expect(report.Repairs.Violations).To(BeZero())
+	})
+
 	It("reports unavailable checks by reason, and blocks they caused", func() {
 		unavailable := &dispatcher.ValidationError{
 			Validator:         "validate-shellscript",

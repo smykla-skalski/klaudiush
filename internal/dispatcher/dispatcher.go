@@ -2,6 +2,7 @@
 package dispatcher
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"strings"
@@ -80,22 +81,36 @@ type Timing struct {
 	Elapsed   time.Duration
 }
 
+// Unavailable is a validator run that could not check its resource. It is
+// kept apart from the errors: the failure policy may drop a run's error,
+// as missing tools are ignored by default, but the run still checked
+// nothing.
+type Unavailable struct {
+	Validator string
+	Resource  string
+	Reason    validator.UnavailableReason
+	Reference validator.Reference
+}
+
 // Outcome is the result of one dispatch: the errors found, every check that
 // proves its resource clean (Checks), every validator that ran to completion
 // on what the tool sends or left (Ran, which includes checks of a partial
-// edit before the tool), and how long each validator run took.
+// edit before the tool), every run that could not check its resource
+// (Unavailable), and how long each validator run took.
 type Outcome struct {
-	Errors  []*ValidationError
-	Checks  []Check
-	Ran     []Check
-	Timings []Timing
+	Errors      []*ValidationError
+	Checks      []Check
+	Ran         []Check
+	Unavailable []Unavailable
+	Timings     []Timing
 }
 
-// runLog collects the checks and timings of one dispatch.
+// runLog collects the checks, unavailable runs and timings of one dispatch.
 type runLog struct {
-	checks  []Check
-	ran     []Check
-	timings []Timing
+	checks      []Check
+	ran         []Check
+	unavailable []Unavailable
+	timings     []Timing
 }
 
 // Error implements the error interface.
@@ -234,7 +249,13 @@ func (d *Dispatcher) DispatchWithChecks(ctx context.Context, hookCtx *hook.Conte
 
 	errs := d.validate(ctx, hookCtx, &ran, newProgress(d.publish))
 
-	return Outcome{Errors: errs, Checks: ran.checks, Ran: ran.ran, Timings: ran.timings}
+	return Outcome{
+		Errors:      errs,
+		Checks:      ran.checks,
+		Ran:         ran.ran,
+		Unavailable: ran.unavailable,
+		Timings:     ran.timings,
+	}
 }
 
 func (d *Dispatcher) validate(
@@ -706,10 +727,11 @@ func (d *Dispatcher) resolver() parser.Resolver {
 	return d.pathResolver
 }
 
-// record adds the timing of every run that started, and the validators
-// that ran on resource to ran and the checks. A cancelled run may have
-// skipped validators, so it proves nothing; on a file, only runs that report
-// reading and checking the whole file as the tool left it prove it clean.
+// record adds the timing of every run that started, every run that could
+// not check resource, and the validators that ran on resource to ran and
+// the checks. A cancelled run may have skipped validators, so it proves
+// nothing; on a file, only runs that report reading and checking the whole
+// file as the tool left it prove it clean.
 func (l *runLog) record(ctx context.Context, runs []ValidatorRun, resource string) {
 	if l == nil {
 		return
@@ -720,6 +742,15 @@ func (l *runLog) record(ctx context.Context, runs []ValidatorRun, resource strin
 			l.timings = append(l.timings, Timing{
 				Validator: run.Validator.Name(),
 				Elapsed:   run.Elapsed,
+			})
+		}
+
+		if run.Result.Unavailable {
+			l.unavailable = append(l.unavailable, Unavailable{
+				Validator: run.Validator.Name(),
+				Resource:  resource,
+				Reason:    cmp.Or(run.Result.UnavailableReason, validator.ReasonError),
+				Reference: run.Result.Reference,
 			})
 		}
 	}

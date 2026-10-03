@@ -38,6 +38,7 @@ func (h *hookRun) recordMetrics(
 
 	if outcome := h.outcome.Load(); outcome != nil {
 		obs.Checks = outcome.Ran
+		obs.Unavailable = outcome.Unavailable
 		obs.Timings = outcome.Timings
 	}
 
