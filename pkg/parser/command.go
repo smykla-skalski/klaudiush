@@ -321,17 +321,33 @@ func extractHeredocFromCmdSubst(cmdSubst *syntax.CmdSubst) string {
 	return ""
 }
 
-// wordsToStrings converts a slice of syntax.Word to string slice.
+// wordsToStrings converts a slice of syntax.Word to string slice, keeping
+// the empty words the shell keeps.
 func wordsToStrings(words []*syntax.Word) []string {
 	result := make([]string, 0, len(words))
 
 	for _, word := range words {
-		if s := wordToString(word); s != "" {
+		if s := wordToString(word); s != "" || keepsEmptyWord(word) {
 			result = append(result, s)
 		}
 	}
 
 	return result
+}
+
+// keepsEmptyWord reports a word the shell passes as an argument even when
+// it is empty: any single- or double-quoted part keeps the word, so sudo -u
+// "" git push gives -u an empty value. An unquoted word that expands to
+// nothing disappears, as with x=; $x git push.
+func keepsEmptyWord(word *syntax.Word) bool {
+	return word != nil && slices.ContainsFunc(word.Parts, func(part syntax.WordPart) bool {
+		switch part.(type) {
+		case *syntax.SglQuoted, *syntax.DblQuoted:
+			return true
+		default:
+			return false
+		}
+	})
 }
 
 // hasDoubleQuotedBackticks checks if a word contains backticks within double quotes.

@@ -1025,7 +1025,7 @@ func (w *astWalker) argStrings(words []*syntax.Word) []string {
 			continue
 		}
 
-		if s := markSubstituted(word, argWord(word)); s != "" {
+		if s := markSubstituted(word, argWord(word)); s != "" || keepsEmptyWord(word) {
 			args = append(args, s)
 		}
 	}
