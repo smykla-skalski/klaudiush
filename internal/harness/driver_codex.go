@@ -43,21 +43,16 @@ const codexCatalog = `{"models":[{"slug":"` + codexModel + `","display_name":"kl
 
 // CodexDriver runs `codex exec`.
 type CodexDriver struct {
-	binary    string
-	binaryErr error
+	*harnessBinary
 }
 
 // NewCodexDriver resolves codex from KLAUDIUSH_HARNESS_CODEX or PATH.
 func NewCodexDriver() *CodexDriver {
-	binary, err := ResolveBinary("KLAUDIUSH_HARNESS_CODEX", "codex")
-
-	return &CodexDriver{binary: binary, binaryErr: err}
+	return &CodexDriver{harnessBinary: newHarnessBinary("KLAUDIUSH_HARNESS_CODEX", "codex")}
 }
 
 func (*CodexDriver) Name() string             { return "codex" }
 func (*CodexDriver) Provider() hook.Provider  { return hook.ProviderCodex }
-func (d *CodexDriver) Binary() string         { return d.binary }
-func (d *CodexDriver) BinaryError() error     { return d.binaryErr }
 func (*CodexDriver) KnownGap(_ string) string { return "" }
 
 // Supports leaves out after-tool repair (klaudiush registers no Codex
@@ -197,7 +192,7 @@ func (d *CodexDriver) listHooks(ctx context.Context, sb *Sandbox) ([]codexHook, 
 		Env:    sb.Env(),
 		Stdin:  &gatedReader{stop: ctx.Done(), data: &input, done: reply.done},
 		Stdout: reply,
-	}, d.binary, "app-server")
+	}, d.resolve(ctx), "app-server")
 
 	if hooks, ok, err := reply.result(); ok {
 		return hooks, err
@@ -312,7 +307,7 @@ func (d *CodexDriver) Run(
 	prompt string,
 	_ RunOptions,
 ) ([]byte, error) {
-	return RunIn(ctx, sb, sb.Work, d.binary,
+	return RunIn(ctx, sb, sb.Work, d.resolve(ctx),
 		"exec", "--skip-git-repo-check", "--sandbox", "workspace-write", "--color", "never", prompt)
 }
 

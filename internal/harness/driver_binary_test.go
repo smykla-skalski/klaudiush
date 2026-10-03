@@ -1,6 +1,7 @@
 package harness_test
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,6 +13,8 @@ import (
 )
 
 const probeVar = "KLAUDIUSH_HARNESS_PROBE"
+
+var ctx = context.Background()
 
 // writeScript writes a script and returns its path with symlinks
 // resolved, the form ResolveBinary returns.
@@ -65,7 +68,7 @@ var _ = Describe("ResolveBinary", func() {
 	It("returns nothing when the harness is not installed", func() {
 		setPath(filepath.Join(root, "empty"), "relative/bin")
 
-		Expect(harness.ResolveBinary(probeVar, "tool")).To(BeEmpty())
+		Expect(harness.ResolveBinary(ctx, probeVar, "tool")).To(BeEmpty())
 	})
 
 	It("follows symlinks of a plain binary on PATH", func() {
@@ -74,7 +77,7 @@ var _ = Describe("ResolveBinary", func() {
 		symlink(want, filepath.Join(bin, "tool"))
 		setPath(bin)
 
-		Expect(harness.ResolveBinary(probeVar, "tool")).To(Equal(want))
+		Expect(harness.ResolveBinary(ctx, probeVar, "tool")).To(Equal(want))
 	})
 
 	It("skips entries that are not executable files", func() {
@@ -88,7 +91,7 @@ var _ = Describe("ResolveBinary", func() {
 		want := writeScript(filepath.Join(root, "third"), "tool", "true")
 		setPath("relative", first, second, filepath.Join(root, "third"))
 
-		Expect(harness.ResolveBinary(probeVar, "tool")).To(Equal(want))
+		Expect(harness.ResolveBinary(ctx, probeVar, "tool")).To(Equal(want))
 	})
 
 	It("prefers the override variable over PATH", func() {
@@ -99,13 +102,13 @@ var _ = Describe("ResolveBinary", func() {
 		override := writeScript(filepath.Join(root, "override"), "tool", "true")
 		GinkgoT().Setenv(probeVar, override)
 
-		Expect(harness.ResolveBinary(probeVar, "tool")).To(Equal(override))
+		Expect(harness.ResolveBinary(ctx, probeVar, "tool")).To(Equal(override))
 	})
 
 	It("fails clearly when the override does not exist", func() {
 		GinkgoT().Setenv(probeVar, filepath.Join(root, "dangling"))
 
-		path, err := harness.ResolveBinary(probeVar, "tool")
+		path, err := harness.ResolveBinary(ctx, probeVar, "tool")
 		Expect(path).To(BeEmpty())
 		Expect(err).To(MatchError(ContainSubstring(probeVar + "=")))
 
@@ -113,7 +116,7 @@ var _ = Describe("ResolveBinary", func() {
 		Expect(os.WriteFile(plain, []byte("x"), 0o600)).To(Succeed())
 		GinkgoT().Setenv(probeVar, plain)
 
-		_, err = harness.ResolveBinary(probeVar, "tool")
+		_, err = harness.ResolveBinary(ctx, probeVar, "tool")
 		Expect(err).To(MatchError(ContainSubstring("not an executable file")))
 	})
 
@@ -127,7 +130,7 @@ var _ = Describe("ResolveBinary", func() {
 		writeScript(fallback, "tool", "true")
 		setPath(shims, fallback)
 
-		Expect(harness.ResolveBinary(probeVar, "tool")).To(Equal(want))
+		Expect(harness.ResolveBinary(ctx, probeVar, "tool")).To(Equal(want))
 	})
 
 	It("resolves a mise shim named by the override variable", func() {
@@ -135,7 +138,7 @@ var _ = Describe("ResolveBinary", func() {
 		mise := fakeMise(filepath.Join(root, "mise-bin"), map[string]string{"tool": want})
 		GinkgoT().Setenv(probeVar, symlink(mise, filepath.Join(root, "shims", "tool")))
 
-		Expect(harness.ResolveBinary(probeVar, "tool")).To(Equal(want))
+		Expect(harness.ResolveBinary(ctx, probeVar, "tool")).To(Equal(want))
 	})
 
 	It("falls through an inactive mise shim to the next PATH entry", func() {
@@ -147,7 +150,7 @@ var _ = Describe("ResolveBinary", func() {
 		want := writeScript(fallback, "tool", "true")
 		setPath(shims, fallback)
 
-		Expect(harness.ResolveBinary(probeVar, "tool")).To(Equal(want))
+		Expect(harness.ResolveBinary(ctx, probeVar, "tool")).To(Equal(want))
 	})
 
 	It("fails clearly when no shim on PATH resolves", func() {
@@ -156,7 +159,7 @@ var _ = Describe("ResolveBinary", func() {
 		symlink(mise, filepath.Join(shims, "tool"))
 		setPath(shims)
 
-		path, err := harness.ResolveBinary(probeVar, "tool")
+		path, err := harness.ResolveBinary(ctx, probeVar, "tool")
 		Expect(path).To(BeEmpty())
 		Expect(err).To(MatchError(And(
 			ContainSubstring("set "+probeVar),
@@ -165,7 +168,7 @@ var _ = Describe("ResolveBinary", func() {
 		)))
 	})
 
-	It("rejects mise answers that are not a want executable", func() {
+	It("rejects mise answers that are not a real executable", func() {
 		mise := fakeMise(filepath.Join(root, "mise-bin"), map[string]string{
 			"relative": "bin/relative",
 			"missing":  filepath.Join(root, "missing"),
@@ -184,7 +187,7 @@ var _ = Describe("ResolveBinary", func() {
 			"missing":  "returned " + filepath.Join(root, "missing"),
 			"loop":     "returned another shim",
 		} {
-			_, err := harness.ResolveBinary(probeVar, tool)
+			_, err := harness.ResolveBinary(ctx, probeVar, tool)
 			Expect(err).To(MatchError(ContainSubstring(reason)), tool)
 		}
 	})
@@ -199,7 +202,97 @@ var _ = Describe("ResolveBinary", func() {
 exec asdf exec "tool" "$@"`)
 		setPath(shims, asdfBin)
 
-		Expect(harness.ResolveBinary(probeVar, "tool")).To(Equal(want))
+		Expect(harness.ResolveBinary(ctx, probeVar, "tool")).To(Equal(want))
+	})
+
+	It("does not fall through a mise shim that fails for another reason", func() {
+		mise := writeScript(filepath.Join(root, "mise-bin"), "mise",
+			`echo "mise ERROR error parsing config file" >&2; exit 1`)
+		shims := filepath.Join(root, "shims")
+		symlink(mise, filepath.Join(shims, "tool"))
+
+		fallback := filepath.Join(root, "fallback")
+		writeScript(fallback, "tool", "true")
+		setPath(shims, shims, fallback)
+
+		path, err := harness.ResolveBinary(ctx, probeVar, "tool")
+		Expect(path).To(BeEmpty())
+		Expect(err).To(MatchError(And(
+			ContainSubstring("set "+probeVar),
+			ContainSubstring("error parsing config file"),
+		)))
+	})
+
+	It("spots asdf shims with many installed versions", func() {
+		want := writeScript(filepath.Join(root, "installs"), "tool", "true")
+		asdfBin := filepath.Join(root, "asdf-bin")
+		writeScript(asdfBin, "asdf", `echo '`+want+`'`)
+
+		plugins := strings.Repeat("# asdf-plugin: nodejs 22.11.0\n", 40)
+		shims := filepath.Join(root, "asdf-shims")
+		path := filepath.Join(shims, "tool")
+		Expect(os.MkdirAll(shims, 0o700)).To(Succeed())
+		Expect(os.WriteFile(path, []byte("#!/usr/bin/env bash\n"+plugins+
+			`exec /opt/asdf/bin/asdf exec "tool" "$@"`+"\n"), 0o700)).To(Succeed())
+		setPath(shims, asdfBin)
+
+		Expect(harness.ResolveBinary(ctx, probeVar, "tool")).To(Equal(want))
+	})
+
+	It("accepts an override relative to the working directory", func() {
+		want := writeScript(filepath.Join(root, "rel"), "tool", "true")
+		wd, err := os.Getwd()
+		Expect(err).NotTo(HaveOccurred())
+
+		rel, err := filepath.Rel(wd, want)
+		Expect(err).NotTo(HaveOccurred())
+		GinkgoT().Setenv(probeVar, rel)
+
+		Expect(harness.ResolveBinary(ctx, probeVar, "tool")).To(Equal(want))
+	})
+
+	It("rejects scripts whose interpreter the sandbox cannot run", func() {
+		dir := filepath.Join(root, "scripts")
+		Expect(os.MkdirAll(dir, 0o700)).To(Succeed())
+
+		for name, shebang := range map[string]string{
+			"env-sh":    "#!/usr/bin/env -S sh -e",
+			"bare-env":  "#!/usr/bin/env",
+			"empty":     "#!",
+			"env-node":  "#!/usr/bin/env klaudiush-missing-interpreter",
+			"abs-gone":  "#!" + filepath.Join(root, "no-interpreter"),
+			"abs-shell": "#!/bin/sh",
+		} {
+			Expect(os.WriteFile(filepath.Join(dir, name), []byte(shebang+"\ntrue\n"), 0o700)).
+				To(Succeed())
+		}
+
+		for name, failure := range map[string]string{
+			"env-sh":    "",
+			"bare-env":  "",
+			"empty":     "",
+			"abs-shell": "",
+			"env-node":  "klaudiush-missing-interpreter, which is not on the sandbox PATH",
+			"abs-gone":  "which is not an executable",
+		} {
+			GinkgoT().Setenv(probeVar, filepath.Join(dir, name))
+
+			_, err := harness.ResolveBinary(ctx, probeVar, name)
+			if failure == "" {
+				Expect(err).NotTo(HaveOccurred(), name)
+			} else {
+				Expect(err).To(MatchError(ContainSubstring(failure)), name)
+			}
+		}
+	})
+
+	It("resolves a driver binary on first use", func() {
+		driver := harness.NewClaudeDriver()
+		want := writeScript(filepath.Join(root, "late"), "claude", "true")
+		GinkgoT().Setenv("KLAUDIUSH_HARNESS_CLAUDE", want)
+
+		Expect(driver.Binary()).To(Equal(want))
+		Expect(driver.BinaryError()).NotTo(HaveOccurred())
 	})
 
 	It("reports a resolution error from the drivers", func() {

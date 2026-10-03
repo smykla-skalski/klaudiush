@@ -53,8 +53,10 @@ Each harness binary is resolved before the sandbox is built, because version-man
 
 - Symlinks are followed to the real file.
 - A mise shim (a link to the `mise` binary) is resolved with `mise which <tool>`, and an asdf shim (a script running `asdf exec`) with `asdf which <tool>`. Both run in the caller's environment and directory, the same place the shim would run, and never inside the sandbox.
-- A mise shim whose tool is not active for the directory is skipped, the way the shim itself falls through to the next `PATH` entry.
-- If a shim is found on `PATH` but nothing resolves, or the override variable names something that is not an executable, the harness fails with the reason and the variable to set.
+- A mise shim whose tool is not active for the directory is skipped, the way the shim itself falls through to the next `PATH` entry. Any other shim error (a broken or untrusted mise config, a missing asdf version) is not skipped.
+- A script whose interpreter is not on the sandbox `PATH` (for example an npm `#!/usr/bin/env node` launcher when node comes from a version manager) is rejected, since it cannot start in the sandbox.
+- Resolution happens on first use, so `mise run test` does not call the version managers.
+- When a shim or the override variable does not resolve to something the sandbox can run, the harness fails with the reason and the variable to set.
 
 A harness that is not installed, or whose `--version` does not run in the sandbox, is skipped and the report says why. The report records the resolved binary path. A scenario that needs a feature the harness lacks is skipped as unsupported.
 
