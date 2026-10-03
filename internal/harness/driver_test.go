@@ -210,6 +210,7 @@ var _ = Describe("drivers", func() {
 		Expect(d.Supports(harness.FeatureCompletionGate)).To(BeFalse())
 		Expect(d.Prepare(sb, model)).To(Succeed())
 		Expect(filepath.Join(sb.Bin, "opencode")).To(BeAnExistingFile())
+		Expect(d.Prepare(sb, model)).To(Succeed())
 		Expect(d.ProviderConfig(sb)).To(ContainSubstring("[providers.opencode]"))
 		Expect(d.HookFile(sb)).To(HaveSuffix("klaudiush.ts"))
 		Expect(d.SeedUnrelatedHook(sb, "")).To(Succeed())

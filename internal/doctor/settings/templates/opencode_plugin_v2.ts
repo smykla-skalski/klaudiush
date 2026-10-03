@@ -137,6 +137,25 @@ function appendText(parts: unknown, text: string) {
   }
 }
 
+type Registration = { dispose: () => unknown }
+
+/**
+ * Registers a hook that cannot refuse anything. A failure is logged instead of
+ * thrown: a rejected setup makes opencode drop the whole plugin, and with it
+ * the execute.before gate that is already registered.
+ */
+async function registerAdvisory(
+  registrations: Registration[],
+  event: string,
+  register: () => Promise<Registration>,
+) {
+  try {
+    registrations.push(await register())
+  } catch (error) {
+    console.error(`klaudiush: could not register ${event}:`, error)
+  }
+}
+
 /**
  * Each plugin instance is bound to one location, the directory the session
  * runs in, which is where the validators resolve project config and git state.
@@ -157,7 +176,7 @@ async function setup(ctx: any) {
     return resp
   }
 
-  const registrations: Array<{ dispose: () => unknown }> = []
+  const registrations: Registration[] = []
 
   registrations.push(
     await ctx.tool.hook("execute.before", (event: any) => {
@@ -176,8 +195,8 @@ async function setup(ctx: any) {
     }),
   )
 
-  registrations.push(
-    await ctx.tool.hook("execute.after", (event: any) => {
+  await registerAdvisory(registrations, "tool.execute.after", () =>
+    ctx.tool.hook("execute.after", (event: any) => {
       const resp = report("tool.execute.after", {
         ...base("tool.execute.after", event.sessionID),
         tool_name: event.tool,
@@ -185,14 +204,18 @@ async function setup(ctx: any) {
         tool_use_id: event.id,
       })
 
+      const context = extraContext(resp)
+
       if (event.status === "completed") {
-        appendText(event.result?.content, extraContext(resp))
+        appendText(event.result?.content, context)
+      } else if (context && typeof event.error?.message === "string") {
+        event.error.message = event.error.message + "\n\n" + context
       }
     }),
   )
 
-  registrations.push(
-    await ctx.session.hook("prompt", (event: any) => {
+  await registerAdvisory(registrations, "chat.message", () =>
+    ctx.session.hook("prompt", (event: any) => {
       report("chat.message", {
         ...base("chat.message", event.sessionID),
         tool_input: { content: event.prompt?.text ?? "" },
@@ -200,8 +223,8 @@ async function setup(ctx: any) {
     }),
   )
 
-  registrations.push(
-    await ctx.session.hook("compaction", (event: any) => {
+  await registerAdvisory(registrations, "session.compacting", () =>
+    ctx.session.hook("compaction", (event: any) => {
       const resp = report("session.compacting", base("session.compacting", event.sessionID))
 
       appendText(event.system, extraContext(resp))

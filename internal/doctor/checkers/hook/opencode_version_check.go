@@ -68,20 +68,23 @@ func (c *OpenCodeAPIChecker) Check(ctx context.Context) doctor.CheckResult {
 		return registrationChecker.failForParseError(openCodeAPICheckName, err)
 	}
 
+	have := settings.DetectOpenCodePluginAPI(source)
+
 	version, err := c.openCode.Detect(ctx)
 	if err != nil {
-		if errors.Is(err, settings.ErrOpenCodeNotInstalled) {
-			return doctor.Skip(openCodeAPICheckName, "opencode not found in PATH")
-		}
-
 		return doctor.FailWarning(
 			openCodeAPICheckName,
-			"Could not detect the opencode version, so the bridge plugin API is unverified",
-		).WithDetails(fmt.Sprintf("Error: %v", err))
+			"Could not detect the opencode version, so it is unverified that opencode loads "+
+				"the bridge plugin",
+		).WithDetails(
+			fmt.Sprintf("Error: %v", err),
+			"File: "+pluginPath,
+			"Plugin API: "+describeAPI(have),
+			"opencode 1.x and 2.x reject each other's plugin and then run every tool unchecked",
+		)
 	}
 
 	want := settings.OpenCodeAPIForVersion(version)
-	have := settings.DetectOpenCodePluginAPI(source)
 
 	if want == settings.OpenCodeAPIUnknown {
 		return doctor.FailWarning(
@@ -104,6 +107,18 @@ func (c *OpenCodeAPIChecker) Check(ctx context.Context) doctor.CheckResult {
 				"Regenerate with: klaudiush doctor --fix",
 			).
 			WithFixID("install_hook")
+	}
+
+	if !settings.OpenCodeAPIVerified(version) {
+		return doctor.FailWarning(
+			openCodeAPICheckName,
+			fmt.Sprintf(
+				"opencode %s is newer than the plugin APIs klaudiush knows; "+
+					"check that it loads the %s bridge",
+				version,
+				want,
+			),
+		).WithDetails("File: " + pluginPath)
 	}
 
 	return doctor.Pass(

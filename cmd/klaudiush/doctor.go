@@ -244,8 +244,13 @@ func registerOpenCodeHookCheckers(
 ) {
 	registry.RegisterChecker(hook.NewOpenCodeConfigChecker(cfg))
 	registry.RegisterChecker(hook.NewOpenCodeRegistrationChecker(cfg))
-	registry.RegisterChecker(hook.NewOpenCodeFreshnessChecker(cfg))
-	registry.RegisterChecker(hook.NewOpenCodeAPIChecker(cfg))
+
+	versions := settings.NewCachedOpenCodeVersionDetector(settings.NewOpenCodeVersionDetector())
+
+	registry.RegisterChecker(
+		hook.NewOpenCodeFreshnessChecker(cfg).WithOpenCodeVersionDetector(versions),
+	)
+	registry.RegisterChecker(hook.NewOpenCodeAPIChecker(cfg).WithOpenCodeVersionDetector(versions))
 
 	for _, eventName := range settings.OpenCodeEventNames() {
 		registry.RegisterChecker(hook.NewOpenCodeEventChecker(cfg, eventName))

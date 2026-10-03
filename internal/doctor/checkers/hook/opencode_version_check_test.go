@@ -91,13 +91,22 @@ var _ = Describe("opencode plugin API checks", func() {
 			Expect(result.IsError()).To(BeTrue())
 		})
 
-		It("skips when opencode is not on PATH", func() {
+		It("warns that an installed bridge is unverified when opencode is not found", func() {
 			install(settings.OpenCodeAPIV1)
 
 			result := apiChecker(stubOpenCode{err: settings.ErrOpenCodeNotInstalled}).Check(ctx)
 
-			Expect(result.Status).To(Equal(doctor.StatusSkipped))
-			Expect(result.Message).To(ContainSubstring("opencode not found"))
+			Expect(result.IsWarning()).To(BeTrue())
+			Expect(result.Details).To(ContainElement("Plugin API: 1.x"))
+		})
+
+		It("warns on an opencode major newer than the known plugin APIs", func() {
+			install(settings.OpenCodeAPIV2)
+
+			result := apiChecker(stubOpenCode{version: "3.0.0"}).Check(ctx)
+
+			Expect(result.IsWarning()).To(BeTrue())
+			Expect(result.Message).To(ContainSubstring("newer than the plugin APIs"))
 		})
 
 		It("warns when the opencode version cannot be read", func() {

@@ -53,6 +53,7 @@ var _ = Describe("opencode hook checkers", func() {
 		originalPath, pathSet = os.LookupEnv("PATH")
 
 		Expect(os.Setenv("PATH", binDir)).To(Succeed())
+		GinkgoT().Setenv("HOME", tempDir)
 	})
 
 	AfterEach(func() {

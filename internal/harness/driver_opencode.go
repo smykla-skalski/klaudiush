@@ -59,7 +59,12 @@ func (d *OpenCodeDriver) Prepare(sb *Sandbox, model *ScriptedModel) error {
 			return errors.Wrap(err, "creating sandbox bin")
 		}
 
-		if err := os.Symlink(d.binary, filepath.Join(sb.Bin, "opencode")); err != nil {
+		link := filepath.Join(sb.Bin, "opencode")
+		if err := os.Remove(link); err != nil && !os.IsNotExist(err) {
+			return errors.Wrap(err, "replacing the sandbox opencode link")
+		}
+
+		if err := os.Symlink(d.binary, link); err != nil {
 			return errors.Wrap(err, "linking opencode into the sandbox")
 		}
 	}

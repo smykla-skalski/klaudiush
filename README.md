@@ -116,9 +116,11 @@ unregistered dispatcher.
 
 opencode 1.x and 2.x load plugins through different APIs, and each rejects the
 other's plugin with only a log warning, after which every tool runs unchecked.
-Both commands run `opencode --version` from `PATH` and write the matching
-bridge. Without opencode on `PATH` they keep the API of the plugin already
-installed, or write the 1.x bridge on a fresh install. Rerun
+Both commands run `opencode --version` (from `PATH`, or
+`~/.opencode/bin/opencode`) and write the matching bridge. When opencode is
+not found they keep the API of the plugin already installed, or write the 1.x
+bridge on a fresh install, and `klaudiush doctor` warns that the bridge is
+unverified. Rerun
 `klaudiush doctor --fix` after upgrading opencode across a major version;
 `klaudiush doctor` reports a bridge the installed opencode rejects as an error.
 

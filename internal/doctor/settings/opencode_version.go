@@ -2,9 +2,12 @@ package settings
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -54,55 +57,116 @@ type OpenCodeVersionDetector interface {
 	Detect(ctx context.Context) (string, error)
 }
 
-// CommandOpenCodeVersionDetector runs `opencode --version` from PATH.
+// CommandOpenCodeVersionDetector runs `opencode --version` from PATH, or from
+// one of the fallback paths when PATH has none.
 type CommandOpenCodeVersionDetector struct {
-	tools  execpkg.ToolChecker
-	runner execpkg.CommandRunner
+	tools     execpkg.ToolChecker
+	runner    execpkg.CommandRunner
+	fallbacks []string
 }
 
-// NewOpenCodeVersionDetector creates a detector backed by the real PATH.
+// NewOpenCodeVersionDetector creates a detector backed by the real PATH. It
+// also looks at ~/.opencode/bin/opencode, where opencode's own installer puts
+// the binary, because that directory is often only on an interactive shell's
+// PATH and missing from the one klaudiush runs with.
 func NewOpenCodeVersionDetector() *CommandOpenCodeVersionDetector {
-	return NewOpenCodeVersionDetectorWith(
+	detector := NewOpenCodeVersionDetectorWith(
 		execpkg.NewToolChecker(),
 		execpkg.NewCommandRunner(openCodeVersionTimeout),
 	)
+
+	if home, err := os.UserHomeDir(); err == nil {
+		detector.fallbacks = []string{filepath.Join(home, ".opencode", "bin", openCodeBinaryName)}
+	}
+
+	return detector
 }
 
-// NewOpenCodeVersionDetectorWith creates a detector with injected execution.
+// NewOpenCodeVersionDetectorWith creates a detector with injected execution
+// and the given fallback binary paths.
 func NewOpenCodeVersionDetectorWith(
 	tools execpkg.ToolChecker,
 	runner execpkg.CommandRunner,
+	fallbacks ...string,
 ) *CommandOpenCodeVersionDetector {
-	return &CommandOpenCodeVersionDetector{tools: tools, runner: runner}
+	return &CommandOpenCodeVersionDetector{tools: tools, runner: runner, fallbacks: fallbacks}
 }
 
 // Detect runs `opencode --version` and extracts the version number.
 func (d *CommandOpenCodeVersionDetector) Detect(ctx context.Context) (string, error) {
-	if !d.tools.IsAvailable(openCodeBinaryName) {
+	binary := d.binary()
+	if binary == "" {
 		return "", ErrOpenCodeNotInstalled
 	}
 
-	result := d.runner.Run(ctx, openCodeBinaryName, "--version")
+	result := d.runner.Run(ctx, binary, "--version")
 	if result.Failed() {
 		return "", errors.Wrapf(result.Err, "opencode --version failed: %s",
 			strings.TrimSpace(result.Stderr))
 	}
 
-	version := openCodeVersionPattern.FindString(result.Stdout)
-	if version == "" {
+	matches := openCodeVersionPattern.FindAllString(result.Stdout, -1)
+	if len(matches) == 0 {
 		return "", errors.Newf("no version in opencode --version output %q",
 			strings.TrimSpace(result.Stdout))
 	}
 
-	return version, nil
+	return matches[len(matches)-1], nil
 }
 
-// OpenCodeAPIForVersion returns the plugin API an opencode version loads.
-func OpenCodeAPIForVersion(version string) OpenCodeAPI {
+func (d *CommandOpenCodeVersionDetector) binary() string {
+	if d.tools.IsAvailable(openCodeBinaryName) {
+		return openCodeBinaryName
+	}
+
+	for _, path := range d.fallbacks {
+		if info, err := os.Stat(path); err == nil && !info.IsDir() && info.Mode()&0o111 != 0 {
+			return path
+		}
+	}
+
+	return ""
+}
+
+// CachedOpenCodeVersionDetector runs its inner detector once, so the doctor
+// checks and the fixer share one `opencode --version` run.
+type CachedOpenCodeVersionDetector struct {
+	inner   OpenCodeVersionDetector
+	once    sync.Once
+	version string
+	err     error
+}
+
+// NewCachedOpenCodeVersionDetector wraps a detector with a one-shot cache.
+func NewCachedOpenCodeVersionDetector(
+	inner OpenCodeVersionDetector,
+) *CachedOpenCodeVersionDetector {
+	return &CachedOpenCodeVersionDetector{inner: inner}
+}
+
+// Detect returns the result of the first detection.
+func (c *CachedOpenCodeVersionDetector) Detect(ctx context.Context) (string, error) {
+	c.once.Do(func() {
+		c.version, c.err = c.inner.Detect(ctx)
+	})
+
+	return c.version, c.err
+}
+
+func openCodeMajor(version string) (int, bool) {
 	majorText, _, _ := strings.Cut(strings.TrimPrefix(strings.TrimSpace(version), "v"), ".")
 
 	major, err := strconv.Atoi(majorText)
-	if err != nil {
+
+	return major, err == nil
+}
+
+// OpenCodeAPIForVersion returns the plugin API an opencode version loads.
+// Majors after 2 get the 2.x bridge, the newest one known, but
+// OpenCodeAPIVerified reports them as unverified.
+func OpenCodeAPIForVersion(version string) OpenCodeAPI {
+	major, ok := openCodeMajor(version)
+	if !ok {
 		return OpenCodeAPIUnknown
 	}
 
@@ -111,6 +175,14 @@ func OpenCodeAPIForVersion(version string) OpenCodeAPI {
 	}
 
 	return OpenCodeAPIV1
+}
+
+// OpenCodeAPIVerified reports whether klaudiush knows the plugin API of an
+// opencode version, rather than assuming a later major kept the 2.x one.
+func OpenCodeAPIVerified(version string) bool {
+	major, ok := openCodeMajor(version)
+
+	return ok && major <= openCodeMajorV2
 }
 
 // DetectOpenCodePluginAPI classifies a bridge plugin source by the API its

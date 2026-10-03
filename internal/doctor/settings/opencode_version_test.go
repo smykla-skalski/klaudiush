@@ -25,6 +25,16 @@ func (s stubOpenCode) Detect(context.Context) (string, error) {
 	return s.version, s.err
 }
 
+type countingOpenCode struct {
+	calls *int
+}
+
+func (c countingOpenCode) Detect(context.Context) (string, error) {
+	*c.calls++
+
+	return "2.0.19", nil
+}
+
 var _ = Describe("opencode plugin API selection", func() {
 	const binaryPath = "/opt/homebrew/bin/klaudiush"
 
@@ -109,6 +119,27 @@ var _ = Describe("opencode plugin API selection", func() {
 		Entry("garbage", "nightly", settings.OpenCodeAPIUnknown),
 	)
 
+	DescribeTable("OpenCodeAPIVerified",
+		func(version string, want bool) {
+			Expect(settings.OpenCodeAPIVerified(version)).To(Equal(want))
+		},
+		Entry("2.x", "2.0.19", true),
+		Entry("1.x", "1.14.0", true),
+		Entry("a later major", "3.0.0", false),
+		Entry("garbage", "nightly", false),
+	)
+
+	It("runs a cached detector once", func() {
+		calls := 0
+		cached := settings.NewCachedOpenCodeVersionDetector(countingOpenCode{calls: &calls})
+
+		for range 3 {
+			Expect(cached.Detect(context.Background())).To(Equal("2.0.19"))
+		}
+
+		Expect(calls).To(Equal(1))
+	})
+
 	DescribeTable(
 		"DetectOpenCodePluginAPI",
 		func(source string, want settings.OpenCodeAPI) {
@@ -192,6 +223,34 @@ var _ = Describe("opencode plugin API selection", func() {
 
 			_, err := detect()
 			Expect(err).To(MatchError(ContainSubstring("no version")))
+		})
+
+		It("takes the last version printed, after any banner", func() {
+			tools.EXPECT().IsAvailable("opencode").Return(true)
+			runner.EXPECT().Run(ctx, "opencode", "--version").
+				Return(execpkg.CommandResult{Stdout: "update 2.1.0 available\n2.0.19\n"})
+
+			Expect(detect()).To(Equal("2.0.19"))
+		})
+
+		It("falls back to an executable outside PATH", func() {
+			dir := GinkgoT().TempDir()
+			missing := filepath.Join(dir, "missing", "opencode")
+			notExecutable := filepath.Join(dir, "plain")
+			executable := filepath.Join(dir, "opencode")
+
+			Expect(os.WriteFile(notExecutable, []byte(""), 0o600)).To(Succeed())
+			Expect(os.WriteFile(executable, []byte(""), 0o700)).To(Succeed())
+
+			tools.EXPECT().IsAvailable("opencode").Return(false)
+			runner.EXPECT().Run(ctx, executable, "--version").
+				Return(execpkg.CommandResult{Stdout: "2.0.19\n"})
+
+			version, err := settings.NewOpenCodeVersionDetectorWith(
+				tools, runner, missing, dir, notExecutable, executable,
+			).Detect(ctx)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(version).To(Equal("2.0.19"))
 		})
 
 		It("is built from the real PATH by default", func() {
