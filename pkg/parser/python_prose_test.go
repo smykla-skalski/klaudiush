@@ -159,5 +159,44 @@ def run_git(args):
 			"a glob the shell expands",
 			`python3 -c 'import os; os.system("git pu[s]h --force")'`,
 		),
+		Entry("os.system", `python3 -c 'import os; os.system("git zz")'`),
+		Entry(
+			"a shell=True call",
+			`python3 -c 'import subprocess; subprocess.run("git zz", shell=True)'`,
+		),
+		Entry(
+			"a call split across lines",
+			"python3 -c 'import subprocess\nsubprocess.run(\n    \"git zz\",\n    shell=True)'",
+		),
+		Entry("a wrapper that runs commands", `python3 -c 'run_cmd("git zz")'`),
+		Entry("an assigned command", `python3 -c 'CMD = "git zz"; import os; os.system(CMD)'`),
+		Entry("a returned command", "python3 -c 'def c():\n    return \"git zz\"'"),
+		Entry("a triple-quoted command", `python3 -c 'import os; os.system("""git zz""")'`),
+		Entry("a second argument", `python3 -c 'print("x", "git zz")'`),
+		Entry("node execSync", `node -e 'require("child_process").execSync("git zz")'`),
+		Entry("a perl string", `perl -e 'print "git zz"'`),
+		Entry(
+			"a script that installs the command it runs",
+			`python3 -c 'import os; p = os.path.expanduser("~/.local/bin/git-" + "zz"); os.system("git zz")'`,
+		),
+		Entry(
+			"a config variable the guard does not list",
+			`python3 -c 'import os; os.environ["GIT_COMMON_DIR"] = "/tmp/e"; os.system("git zz")'`,
+		),
+	)
+
+	DescribeTable(
+		"reads text in these places as prose",
+		func(command string) {
+			Expect(parse(command).Truncated).To(BeFalse(), "truncated: %q", command)
+		},
+		Entry("a message call", `python3 -c 'fail("git zz is not set up")'`),
+		Entry("an f-string message", `python3 -c 'fail(f"git zz failed: {err}")'`),
+		Entry("a raised error", `python3 -c 'raise RuntimeError("git zz is not set up")'`),
+		Entry("a function docstring", "python3 -c 'def f():\n    \"\"\"git zz helper.\"\"\"\n'"),
+		Entry(
+			"a module docstring after a comment",
+			"python3 -c '# tool\n\"\"\"git zz helper.\"\"\"\n'",
+		),
 	)
 })
