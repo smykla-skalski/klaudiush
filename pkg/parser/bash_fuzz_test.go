@@ -61,6 +61,12 @@ func FuzzBashParse(f *testing.F) {
 	f.Add(`x=status; printf -v x commit; read -a x; for x in a; do :; done; git $x`)
 	f.Add(`x=status; f(){ x=commit; }; f; eval x=push; . <(echo x=add); git $x`)
 	f.Add(`docker run img git $X; mise exec -- gh $Y; mise exec -- git-$Z`)
+	f.Add(`docker run -it -e A=1 --entrypoint git a push -f; podman run --entrypoint=$X i`)
+	f.Add(`podman run --entrypoint '["git","push"]' i; docker compose run --entrypoint "sh -c" s x`)
+	f.Add(
+		`nerdctl run --entrypoint sh --entrypoint -c i 'git push'; docker run --entrypoint "$(w)" i`,
+	)
+	f.Add(`docker --context run container create --name "" --entrypoint= -- i --entrypoint git`)
 
 	f.Fuzz(func(t *testing.T, command string) {
 		p := parser.NewBashParser()

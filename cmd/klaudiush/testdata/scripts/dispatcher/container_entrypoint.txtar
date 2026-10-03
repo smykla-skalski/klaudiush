@@ -1,0 +1,74 @@
+exec git init --initial-branch=main
+exec git config user.email "test@test.com"
+exec git config user.name "Test User"
+
+cp file.go staged.go
+exec git add staged.go
+
+stdin docker-git.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+! stdout 'SHELL002'
+
+stdin docker-git-path.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+! stdout 'SHELL002'
+
+stdin podman-json.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+! stdout 'SHELL002'
+
+stdin compose-shell.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+! stdout 'SHELL002'
+
+stdin docker-variable.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+stdout 'container --entrypoint value comes from a variable klaudiush cannot resolve'
+! stdout 'KLAUDIUSH_TEST_SECRET'
+
+stdin docker-output.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+stdout 'container --entrypoint value comes from command output'
+
+stdin docker-valid.json
+exec klaudiush --hook-type PreToolUse
+! stdout .
+
+stdin docker-shell-echo.json
+exec klaudiush --hook-type PreToolUse
+! stdout .
+
+-- file.go --
+package main
+
+-- docker-git.json --
+{"tool_name": "Bash", "tool_input": {"command": "docker run --rm -v .:/w -w /w --entrypoint git alpine commit -m 'bad title'"}}
+
+-- docker-git-path.json --
+{"tool_name": "Bash", "tool_input": {"command": "docker container run \"--entrypoint=/usr/bin/git\" ubuntu commit -m 'bad title'"}}
+
+-- podman-json.json --
+{"tool_name": "Bash", "tool_input": {"command": "podman run --entrypoint '[\"git\",\"commit\"]' img -m 'bad title'"}}
+
+-- compose-shell.json --
+{"tool_name": "Bash", "tool_input": {"command": "docker compose run --entrypoint \"sh -c 'git commit -m bad'\" app"}}
+
+-- docker-variable.json --
+{"tool_name": "Bash", "tool_input": {"command": "docker run --entrypoint \"$KLAUDIUSH_TEST_SECRET\" alpine commit -m x"}}
+
+-- docker-output.json --
+{"tool_name": "Bash", "tool_input": {"command": "docker run --entrypoint=$(which git) alpine commit -m x"}}
+
+-- docker-valid.json --
+{"tool_name": "Bash", "tool_input": {"command": "docker run --entrypoint git alpine commit -sS -m 'feat(api): add user endpoint'"}}
+
+-- docker-shell-echo.json --
+{"tool_name": "Bash", "tool_input": {"command": "docker run --entrypoint sh alpine -c 'echo hi'"}}

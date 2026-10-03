@@ -170,7 +170,7 @@ func causeSummary(cause parser.OpacityCause) string {
 	case parser.OpacityUnresolvedArgs:
 		return "it calls a function whose arguments klaudiush cannot follow"
 	case parser.OpacityUnresolvedWord:
-		return "it runs eval, git or gh with a word klaudiush cannot resolve"
+		return "it runs eval, git, gh or a container entrypoint with a word klaudiush cannot resolve"
 	default:
 		return "part of it is opaque"
 	}
@@ -247,6 +247,15 @@ func unresolvedWordFinding(o parser.Opacity) (message, required, repair string) 
 		message = "eval runs a command line that " + strings.TrimPrefix(o.Detail, "it ")
 		required = "eval of literal text or variables assigned literally on the same line"
 		repair = "Run the commands directly instead of through eval"
+
+		return message, required, repair
+	}
+
+	if o.Operation == parser.EntrypointOperation {
+		message = "the container --entrypoint value " + strings.TrimPrefix(o.Detail, "it ")
+		required = "a literal --entrypoint, or one from a variable assigned literally " +
+			"on the same line"
+		repair = "Write the entrypoint program literally"
 
 		return message, required, repair
 	}
