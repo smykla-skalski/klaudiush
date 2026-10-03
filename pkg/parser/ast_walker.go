@@ -95,6 +95,7 @@ type parseState struct {
 	// table, so a bare name may no longer run what it runs outside it.
 	pathChanged   bool
 	untrusted     bool
+	arrays        map[string]bool
 	expandedWords map[string]bool
 }
 
@@ -685,7 +686,9 @@ func (w *astWalker) extractDecl(decl *syntax.DeclClause) {
 
 		w.noteDynamic(assign)
 
-		if elementAssign(assign) {
+		if elementAssign(assign) || assign.Array != nil || arrayDecl(decl) ||
+			w.state.arrays[assign.Name.Value] {
+			w.markArray(assign.Name.Value)
 			w.forget(assign.Name.Value)
 
 			continue
@@ -705,6 +708,8 @@ func (w *astWalker) noteDynamic(assign *syntax.Assign) {
 	if assign.Name == nil {
 		return
 	}
+
+	w.distrustSplitting(assign.Name.Value)
 
 	if w.state.dynamicVars == nil {
 		w.state.dynamicVars = make(map[string]bool)
@@ -1002,7 +1007,7 @@ func (w *astWalker) extractAssigns(call *syntax.CallExpr) {
 			w.state.pathChanged = true
 		}
 
-		if elementAssign(assign) {
+		if elementAssign(assign) || (assign.Array == nil && w.state.arrays[assign.Name.Value]) {
 			w.forget(assign.Name.Value)
 
 			continue
@@ -1020,6 +1025,7 @@ func (w *astWalker) extractAssigns(call *syntax.CallExpr) {
 			}
 
 			w.assign(assign.Name.Value, strings.Join(elems, " "))
+			w.markArray(assign.Name.Value)
 		}
 
 		w.forgetUnlessSafe(assign)

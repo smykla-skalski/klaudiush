@@ -162,6 +162,41 @@ func elementAssign(assign *syntax.Assign) bool {
 	)
 }
 
+// markArray records that name holds an array: $name is then only its first
+// element, which the joined value kept for it does not show.
+func (w *astWalker) markArray(name string) {
+	if w.state.arrays == nil {
+		w.state.arrays = make(map[string]bool)
+	}
+
+	w.state.arrays[name] = true
+}
+
+// arrayDecl reports a declaration that makes its names arrays (-a, -A).
+func arrayDecl(decl *syntax.DeclClause) bool {
+	return slices.ContainsFunc(decl.Args, func(a *syntax.Assign) bool {
+		if a.Name != nil || a.Value == nil {
+			return false
+		}
+
+		option := wordToString(a.Value)
+
+		return (strings.HasPrefix(option, "-") || strings.HasPrefix(option, "+")) &&
+			strings.ContainsAny(option, "aA")
+	})
+}
+
+// plainArrayRef reports a $name or ${name} reference to an array in word.
+func (w *astWalker) plainArrayRef(word string) bool {
+	for _, m := range varRefPattern.FindAllStringSubmatch(word, -1) {
+		if w.state.arrays[m[1]] && !strings.HasSuffix(m[0], "]}") {
+			return true
+		}
+	}
+
+	return false
+}
+
 // forgetAssigned forgets a variable that ${NAME:=word} or ${NAME=word}
 // assigns as a side effect of being expanded.
 func (w *astWalker) forgetAssigned(exp *syntax.ParamExp) {
@@ -662,6 +697,10 @@ func (w *astWalker) programWordDetail(word string) string {
 	detail := programDetail(word)
 	if detail != DetailWordVariable {
 		return detail
+	}
+
+	if w.plainArrayRef(word) {
+		return DetailWordVariable
 	}
 
 	expanded, ok := w.resolveWord(word)
