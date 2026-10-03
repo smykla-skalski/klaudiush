@@ -44,6 +44,7 @@ if err != nil {
 - **Standalone BDD/test phase markers** in Go test files (`*_test.go`): full-line `given`, `when`, `then`, `arrange`, `act`, and `assert` comments.
 - **Machine directives**: shebangs, Go compiler directives (build constraints, code generation), cgo directives, legacy build tags, character-encoding cookies, and the type/lint/coverage suppression comments recognised by language tooling.
 - **Exception tokens**: any comment containing `EXC:<CODE>:<reason>`.
+- **Text inside string literals**: `//` or `#` inside quoted strings, Go raw strings and JS template literals, and triple-quoted strings (`"""`/`'''`) in Python, TOML, Groovy, Dart, Kotlin, Swift, Scala, Julia, Java and Elixir files, so a Markdown `## Heading` inside a Python docstring or multi-line string is not a comment.
 - **All comments in non-source files**: config, markup, data and shell files (`.toml`, `.yaml`, `.json`, `.md`, `.ini`, `.env`, `.sh`, `Makefile`, `Dockerfile`, ...) use the lenient pattern-based behaviour instead.
 
 ## Modes

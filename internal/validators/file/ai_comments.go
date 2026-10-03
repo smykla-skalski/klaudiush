@@ -126,40 +126,164 @@ var aiDocDecl = regexp.MustCompile(
 		`)`,
 )
 
+// stringState is the multi-line string literal a line starts inside of.
+// Single and double quoted strings are line-local and not tracked here.
+type stringState uint8
+
+const (
+	stateCode stringState = iota
+	stateBacktick
+	stateTripleDouble
+	stateTripleSingle
+)
+
+// tripleQuoteTail is how many bytes of a triple quote follow its first byte.
+const tripleQuoteTail = 2
+
+// tripleQuotes holds the triple-quoted multi-line string delimiters a file's
+// language recognizes. Elsewhere `"""` is an empty string plus a quote.
+type tripleQuotes struct {
+	double bool
+	single bool
+}
+
+var (
+	bothTripleQuotes   = tripleQuotes{double: true, single: true}
+	doubleTripleQuotes = tripleQuotes{double: true}
+)
+
+// tripleQuoteLanguages maps file extensions to the triple-quoted string
+// delimiters their language supports.
+var tripleQuoteLanguages = map[string]tripleQuotes{
+	".py":     bothTripleQuotes,
+	".pyi":    bothTripleQuotes,
+	".pyw":    bothTripleQuotes,
+	".toml":   bothTripleQuotes,
+	".groovy": bothTripleQuotes,
+	".gradle": bothTripleQuotes,
+	".dart":   bothTripleQuotes,
+	".kt":     doubleTripleQuotes,
+	".kts":    doubleTripleQuotes,
+	".swift":  doubleTripleQuotes,
+	".scala":  doubleTripleQuotes,
+	".sc":     doubleTripleQuotes,
+	".jl":     doubleTripleQuotes,
+	".java":   doubleTripleQuotes,
+	".ex":     doubleTripleQuotes,
+	".exs":    doubleTripleQuotes,
+}
+
+// tripleQuotesForPath returns the triple-quoted delimiters recognized for path.
+func tripleQuotesForPath(path string) tripleQuotes {
+	return tripleQuoteLanguages[strings.ToLower(filepath.Ext(path))]
+}
+
+// hasTripleQuote reports whether line holds three q bytes starting at i.
+func hasTripleQuote(line string, i int, q byte) bool {
+	return i+tripleQuoteTail < len(line) &&
+		line[i] == q && line[i+1] == q && line[i+tripleQuoteTail] == q
+}
+
+// opensTripleQuote returns the state entered when a triple-quoted string
+// enabled by triple opens at line[i], or stateCode when none opens there.
+func opensTripleQuote(line string, i int, triple tripleQuotes) stringState {
+	switch {
+	case triple.double && hasTripleQuote(line, i, '"'):
+		return stateTripleDouble
+	case triple.single && hasTripleQuote(line, i, '\''):
+		return stateTripleSingle
+	default:
+		return stateCode
+	}
+}
+
+// scanMultiLineString advances over line[i] while inside a multi-line string
+// and returns the index of the last byte consumed and the resulting state.
+func scanMultiLineString(line string, i int, state stringState) (int, stringState) {
+	c := line[i]
+
+	if state == stateBacktick {
+		if c == '`' {
+			return i, stateCode
+		}
+
+		return i, state
+	}
+
+	q := byte('"')
+	if state == stateTripleSingle {
+		q = '\''
+	}
+
+	switch {
+	case c == '\\':
+		return i + 1, state
+	case hasTripleQuote(line, i, q):
+		return i + tripleQuoteTail, stateCode
+	default:
+		return i, state
+	}
+}
+
+// isCommentMarker reports whether a // or # comment marker starts at line[i]
+// at line start or after whitespace.
+func isCommentMarker(line string, i int) bool {
+	if i > 0 && line[i-1] != ' ' && line[i-1] != '\t' {
+		return false
+	}
+
+	return line[i] == '#' || (line[i] == '/' && i+1 < len(line) && line[i+1] == '/')
+}
+
 // findCommentStart returns the byte index of the first line-comment marker
 // (// or #) that is a real code-level comment, or -1 if the line has none. It
-// tracks single/double/backtick string state so a marker inside a string or URL
-// literal (e.g. the "//" in "https://…" or a " //" inside "a // b") is ignored,
-// and requires the marker to sit at line start or after whitespace. inBack is
-// the backtick-string state carried in from the previous line (Go raw strings
-// and JS template literals span lines); the updated state is returned so the
-// caller can thread it. Single/double quotes are treated as line-local.
-func findCommentStart(line string, inBack bool) (idx int, endInBack bool) {
-	var inSingle, inDouble bool
+// tracks string state so a marker inside a string or URL literal (the "//" in
+// "https://…", a " //" inside "a // b", a "## Heading" inside a Python
+// triple-quoted string) is ignored. state is the multi-line string state
+// carried in from the previous line (Go raw strings, JS template literals and
+// the triple-quoted strings enabled by triple span lines); the updated state is
+// returned so the caller can thread it. Single/double quotes are line-local.
+func findCommentStart(
+	line string,
+	state stringState,
+	triple tripleQuotes,
+) (idx int, endState stringState) {
+	var quote byte
 
 	for i := 0; i < len(line); i++ {
+		if state != stateCode {
+			i, state = scanMultiLineString(line, i, state)
+
+			continue
+		}
+
 		c := line[i]
 
+		opened := stateCode
+		if quote == 0 {
+			opened = opensTripleQuote(line, i, triple)
+		}
+
 		switch {
-		case (inSingle || inDouble) && c == '\\':
-			i++ // skip the escaped character
-		case c == '`' && !inSingle && !inDouble:
-			inBack = !inBack
-		case c == '\'' && !inDouble && !inBack:
-			inSingle = !inSingle
-		case c == '"' && !inSingle && !inBack:
-			inDouble = !inDouble
-		case inSingle || inDouble || inBack:
-			// inside a string literal: markers here are not comments
-		case c == '#' && (i == 0 || line[i-1] == ' ' || line[i-1] == '\t'):
-			return i, inBack
-		case c == '/' && i+1 < len(line) && line[i+1] == '/' &&
-			(i == 0 || line[i-1] == ' ' || line[i-1] == '\t'):
-			return i, inBack
+		case quote != 0:
+			switch c {
+			case '\\':
+				i++
+			case quote:
+				quote = 0
+			}
+		case c == '`':
+			state = stateBacktick
+		case opened != stateCode:
+			state, i = opened, i+tripleQuoteTail
+		case c == '\'' || c == '"':
+			quote = c
+		case isCommentMarker(line, i):
+			return i, state
 		}
 	}
 
-	return -1, inBack
+	return -1, state
 }
 
 // isShebangOrDocMarker reports whether the comment body (marker stripped, not
@@ -238,7 +362,13 @@ func (v *AICommentValidator) Validate(
 
 	cov := fileCoverage(hookCtx, false)
 
-	violations := findAICommentViolations(content, v.patterns, strict, allowTestPhaseMarkers)
+	violations := findAICommentViolations(
+		content,
+		v.patterns,
+		strict,
+		allowTestPhaseMarkers,
+		tripleQuotesForPath(path),
+	)
 	if len(violations) == 0 {
 		return cov.mark(validator.Pass())
 	}
@@ -294,17 +424,18 @@ func findAICommentViolations(
 	patterns []*regexp.Regexp,
 	strict bool,
 	allowTestPhaseMarkers bool,
+	triple tripleQuotes,
 ) []violation {
 	var violations []violation
 
 	lines := strings.Split(content, "\n")
 
-	var inBack bool
+	state := stateCode
 
 	for i, line := range lines {
 		var idx int
 
-		idx, inBack = findCommentStart(line, inBack)
+		idx, state = findCommentStart(line, state, triple)
 		if idx < 0 {
 			continue
 		}

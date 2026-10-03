@@ -303,3 +303,79 @@ var _ = Describe("AICommentValidator struct field docs", func() {
 			"// Guard against nil to avoid a shutdown panic.\nif cli == nil {\n}"),
 	)
 })
+
+var _ = Describe("AICommentValidator multi-line string literals", func() {
+	var (
+		sv  *file.AICommentValidator
+		ctx *hook.Context
+	)
+
+	BeforeEach(func() {
+		sv = file.NewAICommentValidator(
+			logger.NewNoOpLogger(),
+			&config.AICommentValidatorConfig{Mode: config.AICommentModeStrict},
+			nil,
+		)
+		ctx = &hook.Context{
+			EventType: hook.EventTypePreToolUse,
+			ToolName:  hook.ToolTypeWrite,
+		}
+	})
+
+	DescribeTable(
+		"does not treat markers inside triple-quoted strings as comments",
+		func(path, content string) {
+			ctx.ToolInput.FilePath = path
+			ctx.ToolInput.Content = content
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeTrue())
+		},
+		Entry("markdown heading in a python triple-double string", "/repo/gen.py",
+			"BODY = \"\"\"\n## Problem\n\nText.\n\"\"\"\nprint(BODY)"),
+		Entry("heading in a python triple-single string", "/repo/gen.py",
+			"BODY = '''\n# Steps\n// not code\n'''"),
+		Entry("hash line in a python docstring", "/repo/cli.py",
+			"def run():\n    \"\"\"Run the tool.\n\n    # example\n    \"\"\"\n    return 1"),
+		Entry("f-string prefix", "/repo/gen.py",
+			"msg = f\"\"\"\n## {title}\n\"\"\""),
+		Entry("escaped quote does not close the string", "/repo/gen.py",
+			"X = \"\"\"a \\\"\"\" ## b\n# still inside\n\"\"\""),
+		Entry("apostrophe inside a triple-double string", "/repo/gen.py",
+			"X = \"\"\"\nIt's here\n# heading\n\"\"\""),
+		Entry("hash in a regular python string", "/repo/gen.py",
+			"x = '# not a comment'\ny = \"## also not\""),
+		Entry("kotlin raw string", "/repo/Main.kt",
+			"val s = \"\"\"\n# heading\n// path\n\"\"\""),
+		Entry("toml multi-line string", "/repo/config.toml",
+			"Q = '''\n# Set the value\n'''"),
+	)
+
+	DescribeTable(
+		"keeps detecting real comments around triple-quoted strings",
+		func(path, content string) {
+			ctx.ToolInput.FilePath = path
+			ctx.ToolInput.Content = content
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
+		},
+		Entry("comment after a string closes on a later line", "/repo/gen.py",
+			"BODY = \"\"\"\n## Problem\n\"\"\"\n# holds the body\nprint(BODY)"),
+		Entry("trailing comment after a one-line triple string", "/repo/gen.py",
+			"x = \"\"\"a\"\"\"  # holds the text"),
+		Entry("comment before the string opens", "/repo/gen.py",
+			"# holds the body\nBODY = \"\"\"\n## Problem\n\"\"\""),
+		Entry("python comment with an apostrophe", "/repo/gen.py",
+			"x = 1\n# it's the running total"),
+	)
+
+	It("filler mode ignores verb-first text inside a python triple string", func() {
+		v := file.NewAICommentValidator(logger.NewNoOpLogger(), nil, nil)
+		ctx.ToolInput.FilePath = "/repo/gen.py"
+		ctx.ToolInput.Content = "HELP = \"\"\"\n# Set the value first\n\"\"\""
+		Expect(v.Validate(context.Background(), ctx).Passed).To(BeTrue())
+	})
+
+	It("treats triple quotes as plain quotes in languages without them", func() {
+		ctx.ToolInput.FilePath = "/repo/main.go"
+		ctx.ToolInput.Content = "s := \"\"\"\n// holds the running total"
+		Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
+	})
+})
