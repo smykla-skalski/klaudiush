@@ -80,6 +80,7 @@ func (w *astWalker) child(dir string, depth int) *astWalker {
 	child := newAstWalker(w.resolver)
 	child.currentDir = dir
 	child.dirUnknown = w.dirUnknown
+	child.dirComputed = w.dirComputed
 	child.depth = depth
 	child.scriptFiles = w.scriptFiles
 	child.state = w.state

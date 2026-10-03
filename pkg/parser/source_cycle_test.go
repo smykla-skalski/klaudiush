@@ -12,9 +12,11 @@ import (
 )
 
 const (
-	chainLength = 10
-	manyWrites  = 1500
-	manyCalls   = 20
+	chainLength     = 10
+	manyWrites      = 1500
+	manyCalls       = 20
+	manyAssignments = 160
+	largeValue      = 60 << 10
 )
 
 var _ = Describe("Scripts that run themselves", func() {
@@ -202,6 +204,31 @@ def main():
 		result := parse("bash -c 'bash /s/unknowndir.sh'")
 
 		Expect(result.Truncated).To(BeTrue())
+	})
+
+	It("still allows a script run after a cd to a computed directory", func() {
+		result := parse(`cd "$(git rev-parse --show-toplevel)" && python3 tools/x.py`)
+
+		Expect(result.Truncated).To(BeFalse(), "opacities: %v", result.Opacities)
+	})
+
+	It("keeps following scripts cheap with large definitions in scope", func() {
+		var line strings.Builder
+
+		value := strings.Repeat("v", largeValue)
+		for i := range manyAssignments {
+			fmt.Fprintf(&line, "V%d='%s'; ", i, value)
+		}
+
+		for range manyCalls {
+			line.WriteString("bash /s/true.sh; ")
+		}
+
+		start := time.Now()
+		result := parse(line.String())
+
+		Expect(result.Truncated).To(BeFalse())
+		Expect(time.Since(start)).To(BeNumerically("<", 2*time.Second))
 	})
 
 	It("keeps following scripts cheap after many file writes", func() {

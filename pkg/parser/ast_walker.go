@@ -64,6 +64,10 @@ type astWalker struct {
 	literal bool
 	// dirUnknown records that a cd went somewhere that cannot be resolved.
 	dirUnknown bool
+	// dirComputed records a cd to a directory computed by a command
+	// substitution, whose output the walker does not see, so the directory
+	// it tracks may be wrong.
+	dirComputed bool
 	// dirStack holds the directories pushd saved.
 	dirStack []string
 	// scope caches the variable snapshot until an assignment changes it;
@@ -613,10 +617,12 @@ func literalCommand(name string) bool {
 func (w *astWalker) trackShellState(cmd Command) {
 	switch cmd.Name {
 	case "cd":
-		w.changeDir(dirOperand(cmd))
+		w.dirComputed = w.dirComputed || cmd.Dynamic
+		w.changeDir(firstOperand(cmd.Args))
 	case "pushd":
+		w.dirComputed = w.dirComputed || cmd.Dynamic
 		w.dirStack = append(w.dirStack, w.currentDir)
-		w.changeDir(dirOperand(cmd))
+		w.changeDir(firstOperand(cmd.Args))
 	case "popd":
 		if n := len(w.dirStack); n > 0 {
 			w.currentDir, w.dirStack = w.dirStack[n-1], w.dirStack[:n-1]
@@ -645,17 +651,6 @@ func (w *astWalker) changeDir(target string) {
 	default:
 		w.currentDir, w.dirUnknown = resolvePath(w.currentDir, target), false
 	}
-}
-
-// dirOperand returns the directory cd or pushd changes to. One computed by a
-// command substitution is unknown, even when its output word is dropped,
-// which would otherwise read as a bare cd to the home directory.
-func dirOperand(cmd Command) string {
-	if cmd.Dynamic {
-		return "-"
-	}
-
-	return firstOperand(cmd.Args)
 }
 
 // firstOperand returns the first argument that is not an option.

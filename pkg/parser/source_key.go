@@ -19,6 +19,7 @@ const (
 	// itself fails closed at the depth limit as any deep nesting does.
 	maxKeyWrites     = 256
 	maxKeyWriteBytes = 64 << 10
+	maxKeyScopeBytes = 64 << 10
 	ghAliasCommand   = "alias"
 )
 
@@ -33,10 +34,12 @@ type scriptSourceText struct {
 // the directory, the variables, aliases and functions in scope, how far
 // variables are trusted, the command table, the definitions being expanded
 // and the latest content written on the line to each file. A walker whose
-// directory is unknown gets a key that matches nothing: relative reads and
-// writes there cannot be told apart, so its repeats are never cut.
+// directory is unknown or computed gets a key that matches nothing: relative
+// reads and writes there cannot be told apart, so its repeats are never cut.
+// So does one with more definitions in scope than maxKeyScopeBytes, which
+// would cost too much to hash on every followed script.
 func (w *astWalker) sourceKey(cmd Command, text string, literal bool) string {
-	if w.dirUnknown || cmd.DirUnknown {
+	if w.dirUnknown || w.dirComputed || cmd.DirUnknown || w.scopeBytes() > maxKeyScopeBytes {
 		return w.uniqueKey()
 	}
 
@@ -345,4 +348,18 @@ func (w *astWalker) ambiguousAliases() bool {
 	}
 
 	return false
+}
+
+// scopeBytes counts the variables, aliases and functions in scope, which a
+// script's state would have to hash on every followed script.
+func (w *astWalker) scopeBytes() int {
+	size := 0
+
+	for _, m := range []map[string]string{w.assignments, w.aliases, w.funcs} {
+		for k, v := range m {
+			size += len(k) + len(v)
+		}
+	}
+
+	return size
 }
