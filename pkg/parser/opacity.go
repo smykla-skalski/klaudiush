@@ -41,7 +41,7 @@ const OpacityUnresolvedWord OpacityCause = "unresolved-word"
 // (Cause), what (Operation), the programs that led to it, outermost first
 // (Origin), for some causes a fixed explanation (Detail), and for a known
 // tool's printed shell setup that tool, one of EvalSetupTools (Tool), which
-// has its own bound (see MaxOpacities). It names programs, scripts and
+// has its own bound (see MaxSetupOpacities). It names programs, scripts and
 // subcommands only, never their arguments, so it is safe to show.
 type Opacity struct {
 	Cause     OpacityCause
