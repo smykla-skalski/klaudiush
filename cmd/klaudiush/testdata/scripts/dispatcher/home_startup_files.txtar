@@ -1,0 +1,88 @@
+exec git init --initial-branch=main
+exec git config user.email "test@test.com"
+exec git config user.name "Test User"
+
+cp file.go staged.go
+exec git add staged.go
+
+stdin zshenv-disk.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+! stdout 'SHELL002'
+
+stdin zshenv-written.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+! stdout 'SHELL002'
+
+stdin bashrc-interactive.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+! stdout 'SHELL002'
+
+stdin profile-login.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+! stdout 'SHELL002'
+
+stdin home-output.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+stdout 'startup files under HOME cannot be inspected'
+
+stdin zshenv-unknown-write.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+stdout 'startup file .zshenv cannot be inspected'
+
+stdin bash-no-home-file.json
+exec klaudiush --hook-type PreToolUse
+! stdout .
+
+stdin zsh-empty-home.json
+exec klaudiush --hook-type PreToolUse
+! stdout .
+
+stdin zsh-no-rcs.json
+exec klaudiush --hook-type PreToolUse
+! stdout .
+
+-- file.go --
+package main
+
+-- .zshenv --
+git commit -m 'bad title'
+
+-- l/.profile --
+git commit -m 'bad title'
+
+-- empty/.keep --
+
+-- zshenv-disk.json --
+{"tool_name": "Bash", "tool_input": {"command": "zsh -c true"}}
+
+-- zshenv-written.json --
+{"tool_name": "Bash", "tool_input": {"command": "echo \"git commit -m 'bad title'\" > w/.zshenv; HOME=w zsh -c true"}}
+
+-- bashrc-interactive.json --
+{"tool_name": "Bash", "tool_input": {"command": "echo \"git commit -m 'bad title'\" > b/.bashrc; HOME=b bash -i -c true"}}
+
+-- profile-login.json --
+{"tool_name": "Bash", "tool_input": {"command": "HOME=l bash -lc true"}}
+
+-- home-output.json --
+{"tool_name": "Bash", "tool_input": {"command": "HOME=$(mktemp -d) zsh -c true"}}
+
+-- zshenv-unknown-write.json --
+{"tool_name": "Bash", "tool_input": {"command": "cp x empty/.zshenv; HOME=empty zsh -c true"}}
+
+-- bash-no-home-file.json --
+{"tool_name": "Bash", "tool_input": {"command": "HOME=l bash -c true"}}
+
+-- zsh-empty-home.json --
+{"tool_name": "Bash", "tool_input": {"command": "HOME=empty zsh -c true"}}
+
+-- zsh-no-rcs.json --
+{"tool_name": "Bash", "tool_input": {"command": "zsh -f -c true"}}

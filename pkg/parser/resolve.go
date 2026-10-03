@@ -856,6 +856,12 @@ func (w *astWalker) follow(cmd Command, l launch, depth int, startup []startupSc
 // shells read. Each run is walked on its own, since the directory and
 // variables it sees may differ; the work budget bounds repetition.
 func (w *astWalker) walkStartup(cmd Command, startup []startupScript, depth int) {
+	if shells[cmd.Name] && len(startup) > 0 {
+		w.walkScript("", cmd, depth, scriptWalk{prelude: startup})
+
+		return
+	}
+
 	for _, script := range startup {
 		w.walkScript("", cmd, depth, scriptWalk{prelude: []startupScript{script}})
 	}
@@ -881,7 +887,7 @@ func (w *astWalker) followFile(
 		src := scriptSourceText{path: file.path, text: text, literal: literal}
 		if !literal {
 			src.run = w.fileRun(cmd, file, depth)
-			src.prelude = startup
+			src.prelude = w.shebangStartup(cmd, file, text, startup)
 		}
 
 		key := w.sourceKey(cmd, src)
@@ -998,7 +1004,7 @@ func (w *astWalker) walkScript(script string, parent Command, depth int, sw scri
 	child.scriptRun = w.childRun(parent, sw)
 	child.launchSeq = parent.Location.Seq
 	child.seedStartup(parent)
-	child.walkPrelude(sw.prelude)
+	child.walkPrelude(sw.prelude, parent)
 
 	if sw.name != "" {
 		child.expanding[sw.name] = true

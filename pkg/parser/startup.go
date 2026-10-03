@@ -26,11 +26,14 @@ const devNull = "/dev/null"
 // not read it again.
 const startupPrefix = "startup:"
 
-// startupVars are the variables naming a file a new shell runs first.
-var startupVars = nameSet(bashEnvVar + " " + envVar)
+// startupVars are the variables naming a file a new shell runs first, or
+// the directory it reads its own startup files from.
+var startupVars = nameSet(anyStartupVar)
 
 // startupMention matches a startup variable named anywhere in a loop body.
-var startupMention = regexp.MustCompile(`(^|[^A-Za-z0-9_])(BASH_ENV|ENV)([^A-Za-z0-9_]|$)`)
+var startupMention = regexp.MustCompile(
+	`(^|[^A-Za-z0-9_])(BASH_ENV|ENV|HOME|ZDOTDIR)([^A-Za-z0-9_]|$)`,
+)
 
 // specialBuiltins keep prefix assignments in the shell in POSIX mode.
 var specialBuiltins = nameSet(`: . break continue eval exec exit export readonly
@@ -47,10 +50,13 @@ type startupValue struct {
 }
 
 // startupScript is a file a shell runs before anything else.
+// A lazy one is a zsh file after .zshenv, read again when .zshenv moves
+// ZDOTDIR or HOME; one with no key only marks where that happens.
 type startupScript struct {
 	label string
 	key   string
 	text  string
+	lazy  bool
 }
 
 // prefixStartup returns the startup variables a call sets for its command
@@ -155,29 +161,33 @@ func (w *astWalker) startupScripts(cmd Command, args []string) []startupScript {
 		}
 	}
 
+	if !shells[cmd.Name] {
+		v, set := w.startupSetting(cmd, bashEnvVar)
+		add(bashEnvVar, v, set)
+
+		return scripts
+	}
+
+	mode := shellOptions(cmd.Name, args)
+	named := rcfiles(args)
+	before, after := homeStartupFiles(cmd.Name, mode, len(named) > 0)
+	scripts = append(scripts, w.homeScripts(cmd, before)...)
+
 	v, set := w.startupSetting(cmd, bashEnvVar)
 	add(bashEnvVar, v, set)
 
-	if !shells[cmd.Name] {
-		return scripts
+	if mode.interactive {
+		v, set = w.startupSetting(cmd, envVar)
+		add(envVar, v, set)
 	}
 
-	if !interactiveShell(args) {
-		return scripts
+	if mode.interactive && bashShells[cmd.Name] {
+		for _, rcfile := range named {
+			add(rcfileLabel, literalRCFile(rcfile), true)
+		}
 	}
 
-	v, set = w.startupSetting(cmd, envVar)
-	add(envVar, v, set)
-
-	if !bashShells[cmd.Name] {
-		return scripts
-	}
-
-	for _, rcfile := range rcfiles(args) {
-		add(rcfileLabel, literalRCFile(rcfile), true)
-	}
-
-	return scripts
+	return append(scripts, w.homeScripts(cmd, after)...)
 }
 
 // bashShells read --rcfile and --init-file.
@@ -371,58 +381,56 @@ func (w *astWalker) startupPath(v startupValue) (path, detail string) {
 	}
 }
 
-// interactiveShell reports whether a shell's options make it interactive.
-func interactiveShell(args []string) bool {
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-
-		switch {
-		case arg == endOfOptions:
-			return false
-		case slices.Contains(shellValueFlags, arg):
-			i++
-		case arg == "--interactive":
-			return true
-		case strings.HasPrefix(arg, "--"), strings.HasPrefix(arg, "+"):
-		case strings.HasPrefix(arg, "-"):
-			if strings.Contains(arg[1:], "i") {
-				return true
-			}
-		default:
-			return false
-		}
-	}
-
-	return false
-}
-
 // walkPrelude walks the startup files in the shell the walker stands for, so
 // what they define is in place for the script that follows.
-func (w *astWalker) walkPrelude(prelude []startupScript) {
+func (w *astWalker) walkPrelude(prelude []startupScript, parent Command) {
+	start := w.currentHomeState()
+
 	for _, part := range prelude {
-		w.expanding[startupPrefix+part.key+"\x00"+part.text] = true
-		w.expanding[startupPrefix+devStdin] = w.expanding[startupPrefix+devStdin] ||
-			strings.HasSuffix(part.key, "\x00"+devStdin)
-		w.via = append(w.via, part.label)
-
-		for stmt, err := range syntax.NewParser().StmtsSeq(strings.NewReader(part.text)) {
-			if err != nil {
-				w.opaque(OpacityScriptSyntax, part.label, "")
-
-				break
-			}
-
-			w.prepare(stmt)
-			syntax.Walk(stmt, w.visit)
+		parts := []startupScript{part}
+		if part.lazy {
+			parts = w.lazyStartup(part, parent, start)
 		}
 
-		w.via = w.via[:len(w.via)-1]
+		for _, part := range parts {
+			if part.key != "" {
+				w.walkStartupPart(part)
+			}
+		}
 	}
 }
+
+// walkStartupPart walks one startup file. What runs after it runs after
+// every assignment in it, so positions noted in it are dropped.
+func (w *astWalker) walkStartupPart(part startupScript) {
+	w.expanding[startupPrefix+part.key+"\x00"+part.text] = true
+	w.expanding[startupPrefix+devStdin] = w.expanding[startupPrefix+devStdin] ||
+		strings.HasSuffix(part.key, "\x00"+devStdin)
+	w.via = append(w.via, part.label)
+
+	for stmt, err := range syntax.NewParser().StmtsSeq(strings.NewReader(part.text)) {
+		if err != nil {
+			w.opaque(OpacityScriptSyntax, part.label, "")
+
+			break
+		}
+
+		w.prepare(stmt)
+		syntax.Walk(stmt, w.visit)
+	}
+
+	clear(w.startupPending)
+
+	w.via = w.via[:len(w.via)-1]
+}
+
+// anyStartupVar names every startup variable, for a loop that may set any.
+var anyStartupVar = strings.Join([]string{bashEnvVar, envVar, homeVar, zdotdirVar}, " ")
 
 // noteLoopStartup records a loop that may set a startup variable on a later
 // pass: one naming it, or running source or eval, whose text it cannot see.
-func (w *astWalker) noteLoopStartup(node syntax.Node) {
+// Reading $HOME or $ZDOTDIR (param) sets neither; a loop reads HOME often.
+func (w *astWalker) noteLoopStartup(node syntax.Node, param bool) {
 	var text string
 
 	switch n := node.(type) {
@@ -436,15 +444,19 @@ func (w *astWalker) noteLoopStartup(node syntax.Node) {
 		}
 
 		if w.loopMayWriteAny(n) {
-			text = bashEnvVar + " " + envVar
+			text = anyStartupVar
 		}
 	case *syntax.DeclClause:
 		if slices.ContainsFunc(n.Args, computedOperand) {
-			text = bashEnvVar + " " + envVar
+			text = anyStartupVar
 		}
 	}
 
 	for _, m := range startupMention.FindAllStringSubmatch(text, -1) {
+		if param && (m[2] == homeVar || m[2] == zdotdirVar) {
+			continue
+		}
+
 		if w.loopStartup == nil {
 			w.loopStartup = make(map[string]bool)
 		}

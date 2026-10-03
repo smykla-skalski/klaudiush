@@ -8,6 +8,10 @@ import (
 )
 
 func FuzzBashParse(f *testing.F) {
+	home := f.TempDir()
+	f.Setenv("HOME", home)
+	f.Setenv("ZDOTDIR", home)
+
 	// Seed from bash_test.go and common patterns
 	f.Add("git status")
 	f.Add("git commit -sS -m 'test message'")
@@ -61,6 +65,9 @@ func FuzzBashParse(f *testing.F) {
 	f.Add(`BASH_ENV=./x.sh bash -c true; env BASH_ENV=/x sh; ENV=/x dash -ic true`)
 	f.Add(`export BASH_ENV=$(mktemp); bash --rcfile "$RC" -i; BASH_ENV='$(id)' git status`)
 	f.Add(`for i in 1 2; do bash -c true; BASH_ENV=/x; done; unset BASH_ENV; read ENV`)
+	f.Add(`echo 'git push' > ~/.zshenv; zsh -c true; HOME=. bash -lic true; ZDOTDIR=$X zsh -l`)
+	f.Add(`cd; echo x >> .bashrc; bash -i; HOME=$(mktemp -d) sh -l; unset HOME; zsh -fo rcs`)
+	f.Add(`for d in a; do zsh -c "$HOME"; : ${ZDOTDIR:=/z}; done; env HOME=/x zsh --no-rcs`)
 	f.Add(`x=status; printf -v x commit; read -a x; for x in a; do :; done; git $x`)
 	f.Add(`x=status; f(){ x=commit; }; f; eval x=push; . <(echo x=add); git $x`)
 	f.Add(`docker run img git $X; mise exec -- gh $Y; mise exec -- git-$Z`)
