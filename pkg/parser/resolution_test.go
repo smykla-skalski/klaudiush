@@ -3,6 +3,7 @@ package parser_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -19,6 +20,13 @@ type fakeResolver struct {
 	aliases   map[string]string
 	paths     map[string]string
 	ghAliases map[string]string
+	outputs   map[string]string
+}
+
+func (f fakeResolver) CommandOutput(_ string, argv []string) (string, bool) {
+	out, ok := f.outputs[strings.Join(argv, " ")]
+
+	return out, ok
 }
 
 func (f fakeResolver) LookupEnv(name string) (string, bool) {

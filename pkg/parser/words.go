@@ -669,7 +669,7 @@ const findPath = "{}"
 // nothing leaves the next argument as the program, so x=; $x git push runs
 // git. It also says why the word cannot be known, or returns "" when every
 // expansion in it resolves to literal text.
-func (w *astWalker) programWord(cmd Command) (Command, string) {
+func (w *astWalker) programWord(cmd Command, view string) (Command, string) {
 	detail := ""
 
 	for range len(cmd.Args) + 1 {
@@ -677,8 +677,10 @@ func (w *astWalker) programWord(cmd Command) (Command, string) {
 		cmd.Invoked = w.expandName(raw)
 
 		if detail == "" {
-			detail = w.programWordDetail(raw)
+			detail = w.programWordDetail(raw, view)
 		}
+
+		view = ""
 
 		if !HasUnresolvedVars(raw) {
 			break
@@ -707,38 +709,118 @@ func (w *astWalker) programWord(cmd Command) (Command, string) {
 }
 
 // programWordDetail says why a program word cannot be known: a variable the
-// rules of resolveWord do not trust, command output, or a glob in the word
-// or in a variable's value.
-func (w *astWalker) programWordDetail(word string) string {
-	detail := programDetail(word)
-	if detail != DetailWordVariable {
-		return detail
+// rules of resolveWord do not trust, command output, or a glob. view is the
+// word with quoted glob characters neutralized, when the word came from the
+// command line; globs are looked for in it after expansion.
+func (w *astWalker) programWordDetail(word, view string) string {
+	expanded := word
+
+	if HasUnresolvedVars(word) {
+		resolved, ok := w.resolveWord(word)
+		if !ok || w.plainArrayRef(word) {
+			return w.variableDetail()
+		}
+
+		expanded = resolved
 	}
 
-	if w.plainArrayRef(word) {
-		return DetailWordVariable
+	if strings.Contains(expanded, unresolvedProgram) || strings.Contains(expanded, findPath) {
+		return DetailWordOutput
 	}
 
-	expanded, ok := w.resolveWord(word)
-	if !ok {
-		return DetailWordVariable
+	globbed := expanded
+	if view != "" {
+		globbed = w.expandName(w.applyDefaults(view))
 	}
 
-	return programDetail(expanded)
+	if slices.ContainsFunc(strings.Fields(globbed), globWord) {
+		return DetailWordOutput
+	}
+
+	return ""
 }
 
-// programDetail is commandWordDetail for a program word, where a lone [ is
-// the test builtin rather than a glob.
-func programDetail(word string) string {
+// variableDetail says why a variable in a program word is not trusted, so
+// the repair can match: inside a loop or a new shell none is.
+func (w *astWalker) variableDetail() string {
 	switch {
-	case HasUnresolvedVars(word):
-		return DetailWordVariable
-	case strings.Contains(word, unresolvedProgram) || strings.Contains(word, findPath) ||
-		slices.ContainsFunc(strings.Fields(word), globWord):
-		return DetailWordOutput
+	case w.inLoop:
+		return DetailWordLoop
+	case w.distrust:
+		return DetailWordNewShell
+	case w.state.untrusted:
+		return DetailWordUntrusted
 	default:
-		return ""
+		return DetailWordVariable
 	}
+}
+
+// neutralGlob stands in for a quoted or escaped glob character, which
+// matches nothing.
+const neutralGlob = "\uE002"
+
+// neutralize replaces the glob characters in quoted text.
+func neutralize(text string) string {
+	return strings.NewReplacer("*", neutralGlob, "?", neutralGlob, "[", neutralGlob).Replace(text)
+}
+
+// globView renders a program word for finding globs: quoted and escaped
+// glob characters are neutralized, an unquoted plain variable stays a
+// reference whose value may glob, and a quoted one cannot.
+func globView(word *syntax.Word) string {
+	return globParts(word.Parts, false)
+}
+
+func globParts(parts []syntax.WordPart, quoted bool) string {
+	var b strings.Builder
+
+	for _, part := range parts {
+		switch p := part.(type) {
+		case *syntax.Lit:
+			if quoted {
+				b.WriteString(neutralize(p.Value))
+			} else {
+				b.WriteString(unescapedGlobs(p.Value))
+			}
+		case *syntax.SglQuoted:
+			b.WriteString(neutralize(p.Value))
+		case *syntax.DblQuoted:
+			b.WriteString(globParts(p.Parts, true))
+		case *syntax.ParamExp:
+			if quoted {
+				b.WriteString(neutralGlob)
+			} else {
+				b.WriteString(neutralize(paramExpToString(p)))
+			}
+		default:
+			b.WriteString(unresolvedProgram)
+		}
+	}
+
+	return b.String()
+}
+
+// unescapedGlobs neutralizes the glob characters a backslash escapes in
+// unquoted text, keeping the others.
+func unescapedGlobs(text string) string {
+	var b strings.Builder
+
+	escaped := false
+
+	for _, r := range text {
+		switch {
+		case escaped:
+			escaped = false
+
+			b.WriteString(neutralize(string(r)))
+		case r == '\\':
+			escaped = true
+		default:
+			b.WriteRune(r)
+		}
+	}
+
+	return b.String()
 }
 
 // globWord reports a word the shell expands against file names.

@@ -105,6 +105,7 @@ type OSResolver struct {
 	execPath  *string                      // git --exec-path
 	ghAliases map[string]string            // gh aliases
 	paths     map[string]string            // LookPath results, "" when not found
+	outputs   map[string]string
 }
 
 // LookupEnv returns the value of an environment variable.
@@ -568,4 +569,62 @@ func sameContent(a, b string) bool {
 			return false
 		}
 	}
+}
+
+// CommandOutput runs one of AllowedLookups in dir without a shell and
+// returns its trimmed output, remembering it for the parse. go is kept from
+// downloading another toolchain, and git from taking optional locks.
+func (r *OSResolver) CommandOutput(dir string, argv []string) (string, bool) {
+	if !AllowedLookup(argv) {
+		return "", false
+	}
+
+	dir = xdg.ExpandPathSilent(dir)
+	key := dir + "\x00" + strings.Join(argv, "\x00")
+
+	r.mu.Lock()
+	out, cached := r.outputs[key]
+	r.mu.Unlock()
+
+	if !cached {
+		out = runLookup(dir, argv)
+
+		r.mu.Lock()
+		if r.outputs == nil {
+			r.outputs = make(map[string]string)
+		}
+
+		r.outputs[key] = out
+		r.mu.Unlock()
+	}
+
+	return out, out != ""
+}
+
+// runLookup runs an allowed lookup, spelled out so no other program runs.
+func runLookup(dir string, argv []string) string {
+	ctx, cancel := context.WithTimeout(context.Background(), lookupTimeout)
+	defer cancel()
+
+	var cmd *exec.Cmd
+
+	switch {
+	case argv[0] == gitProgram:
+		cmd = exec.CommandContext(ctx, "git", "rev-parse", "--show-toplevel")
+	case argv[2] == "GOBIN":
+		cmd = exec.CommandContext(ctx, "go", "env", "GOBIN")
+	default:
+		cmd = exec.CommandContext(ctx, "go", "env", "GOPATH")
+	}
+
+	cmd.Dir = dir
+
+	cmd.Env = append(os.Environ(), "GOTOOLCHAIN=local", "GIT_OPTIONAL_LOCKS=0")
+
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+
+	return strings.TrimSpace(string(out))
 }

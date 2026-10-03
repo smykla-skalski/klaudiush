@@ -293,17 +293,32 @@ func unresolvedWordFinding(o parser.Opacity) (message, required, repair string) 
 // command output or a glob.
 func programWordFinding(o parser.Opacity) (message, required, repair string) {
 	message = "the program name " + strings.TrimPrefix(o.Detail, "it ")
-	required = "a literal program name or path, or one from a variable assigned " +
-		"literally on the same line or set in the environment"
 
+	required = "a literal program name or path"
 	if o.Detail == parser.DetailWordVariable {
-		repair = "Write the program name or path literally, or assign the " +
-			"variable a literal value earlier on the same line"
-	} else {
+		required += ", or one from a variable assigned literally on the same line " +
+			"or set in the environment"
+	}
+
+	repair = programWordRepairs[o.Detail]
+	if repair == "" {
 		repair = "Write the program name or path literally instead of computing it"
 	}
 
 	return message, required, repair
+}
+
+// programWordRepairs match the reason a program word's variable was not
+// trusted: inside a loop or a new shell no assignment would help.
+var programWordRepairs = map[string]string{
+	parser.DetailWordVariable: "Write the program name or path literally, or assign the " +
+		"variable a literal value earlier on the same line",
+	parser.DetailWordLoop: "Write the program name literally inside the loop, or run the " +
+		"command outside the loop",
+	parser.DetailWordNewShell: "Write the program name literally inside the nested shell " +
+		"or script, or run the command directly",
+	parser.DetailWordUntrusted: "Write the program name literally, or run it in a separate " +
+		"command from the one that changed IFS, sourced a file or redeclared variables",
 }
 
 // evalSetupRepairs replace eval of a tool's printed shell setup with a form

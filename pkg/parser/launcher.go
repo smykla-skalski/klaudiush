@@ -35,13 +35,16 @@ func (l launch) empty() bool {
 	return len(l.commands) == 0 && len(l.scripts) == 0 && len(l.files) == 0 && len(l.code) == 0
 }
 
-// scriptFile is a file a command runs.
+// scriptFile is a file a command runs. args are its positional parameters
+// when withArgs is set: the arguments the command passes after the file.
 type scriptFile struct {
 	path        string
 	interpreter bool // run by a language interpreter rather than a shell
 	// explicit marks a file the command itself names to run. One that cannot
 	// be read then fails closed; a script only found on PATH does not.
 	explicit bool
+	args     []string
+	withArgs bool
 }
 
 // launcher describes how a command that runs another command lays out its
@@ -256,7 +259,9 @@ func launched(cmd Command) launch {
 	// A program given by path may be a script whose commands would otherwise
 	// run unseen.
 	if strings.Contains(cmd.Invoked, "/") {
-		l.files = append(l.files, scriptFile{path: cmd.Invoked, explicit: true})
+		l.files = append(l.files, scriptFile{
+			path: cmd.Invoked, explicit: true, args: cmd.Args, withArgs: true,
+		})
 	}
 
 	return l
@@ -638,7 +643,9 @@ func shellLaunch(cmd Command) launch {
 	case ok && isScript:
 		return launch{scripts: []string{operand}}
 	case ok:
-		return launch{files: []scriptFile{{path: operand, explicit: true}}}
+		return launch{files: []scriptFile{{
+			path: operand, explicit: true, args: argsAfter(cmd.Args, operand), withArgs: true,
+		}}}
 	case cmd.Stdin != "":
 		return launch{scripts: []string{cmd.Stdin}}
 	case cmd.StdinFile != "":
@@ -688,7 +695,9 @@ func sourceLaunch(cmd Command) launch {
 		return launch{}
 	}
 
-	return launch{files: []scriptFile{{path: cmd.Args[0], explicit: true}}}
+	return launch{files: []scriptFile{{
+		path: cmd.Args[0], explicit: true, args: cmd.Args[1:], withArgs: len(cmd.Args) > 1,
+	}}}
 }
 
 // interpreterLaunch returns the source a language interpreter runs: inline

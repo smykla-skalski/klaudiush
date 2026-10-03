@@ -40,6 +40,8 @@ type astWalker struct {
 	inLoop      bool
 	outerLoop   bool
 	distrust    bool
+	scriptRun   scriptRun
+	launchSeq   int
 	// depth counts the launchers, scripts and aliases that led here.
 	depth int
 	// resolver answers what the command text cannot: environment, script
@@ -470,12 +472,16 @@ func (w *astWalker) extractCommand(call *syntax.CallExpr) {
 	}
 
 	// First word is the command name
-	name := commandWord(call.Args[0])
-	args := w.argStrings(call.Args[1:])
+	words := w.withoutEmptyPositional(call.Args)
+	if len(words) == 0 {
+		return
+	}
+
+	name, args, view := w.callWords(words)
 
 	// The shell expands {git,commit,-m,x} into words before running anything.
-	if words := braceWords(call.Args[0]); len(words) > 0 {
-		name, args = words[0], slices.Concat(words[1:], args)
+	if braced := braceWords(words[0]); len(braced) > 0 && !w.positionalWord(words[0]) {
+		name, args, view = braced[0], slices.Concat(braced[1:], args), braced[0]
 	}
 
 	if name == "" {
@@ -485,7 +491,7 @@ func (w *astWalker) extractCommand(call *syntax.CallExpr) {
 	seq := w.state.nextSeq()
 	w.noteEvalSetup(call, seq)
 
-	w.recordCommand(Command{
+	w.record(Command{
 		Name: name,
 		Args: args,
 		Location: Location{
@@ -499,7 +505,7 @@ func (w *astWalker) extractCommand(call *syntax.CallExpr) {
 		Dynamic:          anyWordDynamic(call.Args),
 		Stdin:            w.stdinByCall[call],
 		StdinFile:        w.stdinFileByCall[call],
-	}, w.depth)
+	}, w.depth, view)
 }
 
 // recordCommand stores cmd under the program it really runs, then follows
@@ -508,13 +514,19 @@ func (w *astWalker) extractCommand(call *syntax.CallExpr) {
 // git alias. Without this, /usr/bin/git, env git, bash -c "git ...", ./x.sh
 // or an alias would each hide a git command from every validator.
 func (w *astWalker) recordCommand(cmd Command, depth int) {
+	w.record(cmd, depth, "")
+}
+
+// record is recordCommand, with the glob view of a program word written on
+// the command line.
+func (w *astWalker) record(cmd Command, depth int, view string) {
 	if !w.state.spend() {
 		w.opaque(OpacityWorkBudget, safeName(commandName(cmd.Name)), "")
 
 		return
 	}
 
-	cmd, detail := w.programWord(cmd)
+	cmd, detail := w.programWord(cmd, view)
 
 	// Prose in interpreter code ("hint: run git commit") runs nothing.
 	if w.literal && depth == w.depth && !literalCommand(cmd.Name) {
@@ -547,6 +559,7 @@ func (w *astWalker) recordCommand(cmd Command, depth int) {
 
 	l.scripts = append(l.scripts, w.gitEnvScripts(cmd)...)
 	l.files = append(l.files, w.pathScripts(cmd, l)...)
+	l.files = withoutPartialArgs(l.files, followed)
 	nested = append(nested, w.definitionScripts(followed)...)
 
 	if l.empty() && len(nested) == 0 {
@@ -589,7 +602,7 @@ func (w *astWalker) pathScripts(cmd Command, l launch) []scriptFile {
 		return nil
 	}
 
-	return []scriptFile{{path: path}}
+	return []scriptFile{{path: path, args: cmd.Args, withArgs: true}}
 }
 
 // literalCommand reports whether a name found in interpreter code runs
@@ -607,6 +620,8 @@ func literalCommand(name string) bool {
 // (cd, pushd, popd) and the programs bare names run (hash -p, enable).
 func (w *astWalker) trackShellState(cmd Command) {
 	switch cmd.Name {
+	case setBuiltin, "shift":
+		w.trackPositional(cmd)
 	case "cd":
 		w.changeDir(firstOperand(cmd.Args))
 	case "pushd":
@@ -1015,6 +1030,7 @@ func (w *astWalker) extractAssigns(call *syntax.CallExpr) {
 		}
 
 		if elementAssign(assign) || (assign.Array == nil && w.state.arrays[assign.Name.Value]) {
+			w.markArray(assign.Name.Value)
 			w.forget(assign.Name.Value)
 
 			continue

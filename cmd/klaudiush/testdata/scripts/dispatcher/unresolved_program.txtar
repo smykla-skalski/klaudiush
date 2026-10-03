@@ -42,6 +42,58 @@ stdin which.json
 exec klaudiush --hook-type PreToolUse
 ! stdout .
 
+stdin toplevel.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'GIT010'
+! stdout 'SHELL002'
+
+stdin toplevel-after-init.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+
+stdin script-dir.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'GIT010'
+! stdout 'SHELL002'
+
+stdin wrapper.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'GIT010'
+! stdout 'SHELL002'
+
+stdin wrapper-xargs.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+
+-- scripts/x.sh --
+git commit -m 'bad title'
+
+-- scripts/run.sh --
+"$(dirname "$0")/x.sh"
+
+-- scripts/wrap.sh --
+exec "$@"
+
+-- toplevel.json --
+{"tool_name": "Bash", "tool_input": {"command": "\"$(git rev-parse --show-toplevel)/scripts/x.sh\""}}
+
+-- toplevel-after-init.json --
+{"tool_name": "Bash", "tool_input": {"command": "git init -q sub && cd sub && \"$(git rev-parse --show-toplevel)/scripts/x.sh\""}}
+
+-- script-dir.json --
+{"tool_name": "Bash", "tool_input": {"command": "bash scripts/run.sh"}}
+
+-- wrapper.json --
+{"tool_name": "Bash", "tool_input": {"command": "bash scripts/wrap.sh git commit -m 'bad title'"}}
+
+-- wrapper-xargs.json --
+{"tool_name": "Bash", "tool_input": {"command": "echo git status | xargs bash scripts/wrap.sh"}}
+
 -- unset-variable.json --
 {"tool_name": "Bash", "tool_input": {"command": "$KLAUDIUSH_TEST_UNSET origin main"}}
 

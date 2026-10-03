@@ -2,6 +2,7 @@ package parser_test
 
 import (
 	"fmt"
+	"slices"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -39,7 +40,7 @@ var _ = Describe("Unresolved program words", func() {
 
 	hasCommand := func(result *parser.ParseResult, name string, args ...string) bool {
 		for _, cmd := range result.Commands {
-			if cmd.Name == name && fmt.Sprint(cmd.Args) == fmt.Sprint(args) {
+			if cmd.Name == name && slices.Equal(cmd.Args, args) {
 				return true
 			}
 		}
@@ -79,9 +80,9 @@ var _ = Describe("Unresolved program words", func() {
 		Entry("found path under find", `find /usr/bin -name git -exec {} ci \;`,
 			program(parser.DetailWordOutput, "find")),
 		Entry("IFS appended to", `IFS+=,; X=git,push; $X origin main`,
-			program(parser.DetailWordVariable)),
+			program(parser.DetailWordUntrusted)),
 		Entry("IFS appended to by export", `X=git,push; export IFS+=,; $X origin main`,
-			program(parser.DetailWordVariable)),
+			program(parser.DetailWordUntrusted)),
 		Entry("array redeclared", `a=(ls); declare -a a=(git push); "${a[@]}"`,
 			program(parser.DetailWordVariable)),
 		Entry("array exported", `a=(ls); export a=(git push); "${a[@]}"`,
@@ -96,10 +97,12 @@ var _ = Describe("Unresolved program words", func() {
 			program(parser.DetailWordVariable)),
 		Entry("quoted array element from output", `a=("$(echo git)" push); ${a[*]}`,
 			program(parser.DetailWordVariable)),
+		Entry("indexed array given a scalar", `a=([1]=push [0]=x); a=git; "${a[@]}" status`,
+			program(parser.DetailWordVariable)),
 		Entry("custom IFS", `IFS=,; X=git,push; $X origin main`,
-			program(parser.DetailWordVariable)),
+			program(parser.DetailWordUntrusted)),
 		Entry("IFS set by read", `read IFS <<< ","; X=git,push; $X`,
-			program(parser.DetailWordVariable)),
+			program(parser.DetailWordUntrusted)),
 		Entry("indirect reference", `${!x} push`, program(parser.DetailWordVariable)),
 		Entry("array element", `${arr[0]} push`, program(parser.DetailWordVariable)),
 		Entry("positional parameter", `"$1" push`, program(parser.DetailWordVariable)),
@@ -107,11 +110,11 @@ var _ = Describe("Unresolved program words", func() {
 		Entry("variable holding output", `X=$(echo git); $X push`,
 			program(parser.DetailWordVariable)),
 		Entry("loop variable", `for p in git; do $p push; done`,
-			program(parser.DetailWordVariable)),
+			program(parser.DetailWordLoop)),
 		Entry("environment variable in a loop", `for f in a; do $EDITOR $f; done`,
-			program(parser.DetailWordVariable)),
+			program(parser.DetailWordLoop)),
 		Entry("environment variable in a new shell", `bash -c '$G push'`,
-			program(parser.DetailWordVariable, "bash")),
+			program(parser.DetailWordNewShell, "bash")),
 		Entry("under env", `env $X push`, program(parser.DetailWordVariable, "env")),
 		Entry("under sudo", `sudo $(echo git) push`, program(parser.DetailWordOutput, "sudo")),
 		Entry("under nohup", `nohup $X &`, program(parser.DetailWordVariable, "nohup")),
@@ -148,6 +151,10 @@ var _ = Describe("Unresolved program words", func() {
 		Entry("function forwarding its arguments", `f() { "$@"; }; f git push`, "git", "push"),
 		Entry("value split into words", `x="git commit"; $x -m y`, "git", "commit", "-m", "y"),
 		Entry("empty value", `X=""; $X git push`, "git", "push"),
+		Entry("quoted glob character", `"tool?" --x`, "tool?", "--x"),
+		Entry("escaped glob character", `tool\? --x`, "tool?", "--x"),
+		Entry("single-quoted bracket", `'gi[t]' --x`, "gi[t]", "--x"),
+		Entry("quoted expansion of a glob", `X='gi?'; "$X" --x`, "gi?", "--x"),
 		Entry("bare empty assignment", `X=; $X git push`, "git", "push"),
 		Entry("default of an unset variable", `"${X:-git}" push`, "git", "push"),
 		Entry("default of a set variable", `${EDITOR:-vi} file`, "vim", "file"),

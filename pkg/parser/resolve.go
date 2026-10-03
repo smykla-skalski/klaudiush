@@ -139,23 +139,25 @@ func (w *astWalker) expandName(word string) string {
 
 // commandWord renders a command word, resolving a command substitution to
 // the program it prints, as in $(which git) or "$(command -v git)".
-func commandWord(word *syntax.Word) string {
-	return commandWordParts(word.Parts)
+func (w *astWalker) commandWord(word *syntax.Word) string {
+	return w.commandWordParts(word.Parts)
 }
 
 // commandWordParts renders the parts of a command word, looking inside
 // double quotes for substitutions too.
-func commandWordParts(parts []syntax.WordPart) string {
+func (w *astWalker) commandWordParts(parts []syntax.WordPart) string {
 	var b strings.Builder
 
 	for _, part := range parts {
 		switch p := part.(type) {
 		case *syntax.CmdSubst:
-			b.WriteString(substitutedProgram(p))
+			b.WriteString(w.substitutedProgram(p))
+		case *syntax.ParamExp:
+			b.WriteString(w.scriptDirParam(p))
 		case *syntax.ExtGlob, *syntax.ProcSubst, *syntax.ArithmExp:
 			b.WriteString(unresolvedProgram)
 		case *syntax.DblQuoted:
-			b.WriteString(commandWordParts(p.Parts))
+			b.WriteString(w.commandWordParts(p.Parts))
 		default:
 			b.WriteString(argWord(&syntax.Word{Parts: []syntax.WordPart{part}}))
 		}
@@ -192,8 +194,8 @@ func braceWords(word *syntax.Word) []string {
 	return words
 }
 
-// substitutedProgram returns the program a command substitution prints.
-func substitutedProgram(sub *syntax.CmdSubst) string {
+// lookupProgram returns the program a lookup command substitution prints.
+func lookupProgram(sub *syntax.CmdSubst) string {
 	if len(sub.Stmts) != 1 {
 		return unresolvedProgram
 	}
@@ -806,7 +808,7 @@ func (w *astWalker) followFile(cmd Command, file scriptFile, depth int) {
 		if file.interpreter || interpreterShebang(text) {
 			w.followCode(cmd, text, depth, label)
 		} else {
-			w.walkScript(text, cmd, depth, scriptWalk{label: label})
+			w.walkScript(text, cmd, depth, w.fileWalk(cmd, file, depth, label))
 		}
 	case ScriptOpaque:
 		if file.explicit {
@@ -876,6 +878,10 @@ type scriptWalk struct {
 	literal bool
 	// label names the script in diagnostics.
 	label string
+	// run is the $0 and positional parameters of a script file, set when
+	// file is.
+	run  scriptRun
+	file bool
 }
 
 // walkScript records the commands of a script that parent runs. A cd inside
@@ -893,6 +899,8 @@ func (w *astWalker) walkScript(script string, parent Command, depth int, sw scri
 	child := w.child(parent.WorkingDirectory, depth)
 	child.literal = sw.literal
 	child.distrust = w.distrust || !runsInShell(parent, sw)
+	child.scriptRun = w.childRun(parent, sw)
+	child.launchSeq = parent.Location.Seq
 
 	if sw.name != "" {
 		child.expanding[sw.name] = true

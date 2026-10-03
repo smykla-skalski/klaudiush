@@ -80,6 +80,11 @@ const (
 const (
 	DetailWordVariable = "it comes from a variable klaudiush cannot resolve"
 	DetailWordOutput   = "it comes from command output, arithmetic or a glob"
+	DetailWordLoop     = "it comes from a variable, and klaudiush resolves no variable inside a loop"
+	DetailWordNewShell = "it comes from a variable, and klaudiush resolves no variable " +
+		"inside a new shell or script"
+	DetailWordUntrusted = "it comes from a variable, and klaudiush resolves no variable " +
+		"after an earlier command changed how variables expand"
 )
 
 // shownName matches a name plain enough to show: no expansions, quotes,
