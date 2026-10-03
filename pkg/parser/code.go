@@ -29,14 +29,21 @@ var (
 	)
 	// literalEscapes undoes the escapes common to these languages.
 	literalEscapes = strings.NewReplacer(`\\`, `\`, `\"`, `"`, `\'`, `'`, "\\`", "`", `\n`, "\n")
-	// gitConfigChange matches code that may define git aliases where klaudiush
-	// cannot see them: git config, config files, or the variables that move
-	// or extend the configuration git reads.
-	gitConfigChange = regexp.MustCompile(
-		`(?i)alias\.|\[alias|\[include|include(?:if)?\.|gitconfig|git/config|` +
-			`GIT_CONFIG|GIT_DIR|XDG_CONFIG_HOME|(?-i:\bHOME\b)`,
-	)
 )
+
+// gitConfigChange matches code that may make an unknown git word run
+// something klaudiush cannot see: git config, config files, the variables
+// that move or extend the configuration git reads, a directory change to
+// another repository, or a PATH that finds other git commands. PATH counts
+// only as a key or assignment, since messages name it ("not found on PATH").
+var gitConfigChange = regexp.MustCompile(
+	`(?i)alias\.|\[alias|\[include|include(?:if)?\.|gitconfig|git/config|` +
+		`GIT_CONFIG|GIT_DIR|GIT_EXEC_PATH|XDG_CONFIG_HOME|chdir|\bcwd\b|` +
+		`(?-i:\bHOME\b|["']PATH["']|\bPATH\s*=|\.PATH\b|\{PATH\})`,
+)
+
+// shellPatternChars start a brace expansion or glob in a shell word.
+const shellPatternChars = "{}[]*?"
 
 // codeLine is a command line found in program source. prose marks a plain
 // string literal, which is mostly messages and docs rather than commands.

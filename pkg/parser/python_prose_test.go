@@ -131,5 +131,33 @@ def run_git(args):
 		),
 		Entry("code that writes a config file",
 			`python3 -c 'open(".git/config", "a").write("x"); import os; os.system("git pf")'`),
+		Entry("code that changes directory",
+			`python3 -c 'import os; os.chdir("/repo"); os.system("git pf")'`),
+		Entry("a call run in another directory",
+			`python3 -c 'import subprocess; subprocess.run("git pf", shell=True, cwd="/repo")'`),
+		Entry(
+			"a string that changes directory",
+			`python3 -c 'import os; os.system("cd \"$D\" && git zz")'`,
+		),
+		Entry(
+			"code that changes PATH",
+			`python3 -c 'import os; os.environ["PATH"] = "./bin:" + os.environ["PATH"]; os.system("git zz")'`,
+		),
+		Entry(
+			"code that passes PATH to a call",
+			`python3 -c 'import os, subprocess; subprocess.run("git zz", shell=True, env=dict(os.environ, PATH="./bin"))'`,
+		),
+		Entry("a node program that changes PATH",
+			`node -e 'process.env.PATH = "./bin"; require("child_process").execSync("git zz")'`),
+		Entry("code that sets the exec path",
+			`python3 -c 'import os; os.environ["GIT_EXEC_PATH"] = "./bin"; os.system("git zz")'`),
+		Entry(
+			"a brace the shell expands",
+			`python3 -c 'import os; os.system("git {push,} --force")'`,
+		),
+		Entry(
+			"a glob the shell expands",
+			`python3 -c 'import os; os.system("git pu[s]h --force")'`,
+		),
 	)
 })

@@ -504,16 +504,20 @@ func (w *astWalker) expandGitAlias(cmd Command) (Command, []nestedScript) {
 // proseGit reports whether a git command written directly in a plain string
 // of interpreter code names no subcommand git could run ("git executable not
 // found"): no builtin, installed command, typo git would correct or alias
-// klaudiush can see, with nothing on the line moving git's configuration.
-// Such a string is a message; run as a command, git would refuse it.
+// klaudiush can see, with nothing on the line moving git's configuration or
+// directory. Such a string is a message; run as a command, git would refuse
+// it. A word with a brace or glob is not prose: the shell may expand it to a
+// real subcommand ("{push,}").
 func (w *astWalker) proseGit(cmd Command, depth int) bool {
 	if !w.prose || depth != w.depth || cmd.Name != gitProgram || cmd.Invoked != gitProgram ||
-		cmd.Dynamic || len(cmd.Args) == 0 || w.state.pathChanged || w.lookupEnvChanged() {
+		cmd.Dynamic || len(cmd.Args) == 0 || w.dirUnknown || w.dirComputed ||
+		w.state.pathChanged || w.lookupEnvChanged() {
 		return false
 	}
 
 	name := cmd.Args[0]
-	if strings.HasPrefix(name, "-") || gitBuiltins[name] || HasUnresolvedVars(name) {
+	if strings.HasPrefix(name, "-") || gitBuiltins[name] || HasUnresolvedVars(name) ||
+		strings.ContainsAny(name, shellPatternChars) {
 		return false
 	}
 
