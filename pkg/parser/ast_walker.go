@@ -1026,6 +1026,11 @@ func (w *astWalker) noteDynamic(assign *syntax.Assign) {
 		return
 	}
 
+	// export NAME keeps whatever value NAME already holds.
+	if assign.Naked {
+		return
+	}
+
 	delete(w.state.dynamicVars, assign.Name.Value)
 }
 
