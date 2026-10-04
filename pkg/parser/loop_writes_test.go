@@ -238,5 +238,10 @@ var _ = Describe("Startup variables a loop may set", func() {
 		Entry("prompt from a list", `read -p "$@" x; bash /abs/run.sh`, true),
 		Entry("computed name after a quoted prompt", `read -p "$P" "$N"; bash /abs/run.sh`, true),
 		Entry("printf %n outside a loop", `printf '%n' "$N"; bash /abs/run.sh`, true),
+		Entry("bash 3.2 and zsh assign through a %n a format variable holds",
+			`printf "ab $F" BASH_ENV; bash /abs/run.sh`, true),
+		Entry("format variable may hold %n for computed arguments",
+			`printf "Hi $U %s\n" "$(date)"; bash /abs/run.sh`, true),
+		Entry("literal format without %n", `printf 'Hi %s\n' "$(date)"; bash /abs/run.sh`, false),
 	)
 })
