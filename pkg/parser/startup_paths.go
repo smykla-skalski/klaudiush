@@ -2,7 +2,6 @@ package parser
 
 import (
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"mvdan.cc/sh/v3/syntax"
@@ -83,27 +82,6 @@ const setBuiltin = "set"
 
 // setOption names a set option by its long name.
 const setOption = "-o"
-
-// loopMayWriteAny reports a call in a loop that may set any variable on a
-// later pass in text the loop does not show: source, eval, a same-line
-// function or alias, or a variable writer with a computed operand.
-func (w *astWalker) loopMayWriteAny(call *syntax.CallExpr) bool {
-	word := wordToString(call.Args[0])
-	name := commandName(word)
-
-	switch {
-	case name == sourceBuiltin || name == dotBuiltin || name == evalBuiltin:
-		return true
-	case w.defined(word):
-		return true
-	case varWriters[name] || declWriters[name]:
-		return slices.ContainsFunc(call.Args[1:], func(arg *syntax.Word) bool {
-			return !isLiteralWord(arg)
-		})
-	default:
-		return false
-	}
-}
 
 // computedOperand reports a declaration operand that is not a literal
 // assignment, which may write any name.
