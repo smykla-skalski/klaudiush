@@ -145,6 +145,11 @@ var _ = Describe("Home startup files", func() {
 		Entry("profile for zsh --emulate sh -l", `HOME=/bpr zsh --emulate sh -l -c true`),
 	)
 
+	It("reads login files when an unresolved word may be -l", func() {
+		Expect(pushed(parse(`HOME=/bp bash "$UNSET" -c true`))).To(BeTrue())
+		Expect(parse(`HOME=/bp bash "$UNSET"`).GitOperations).To(BeEmpty())
+	})
+
 	It("validates zshenv before the script", func() {
 		result := parse(`HOME=/z zsh -c 'git status'`)
 
@@ -297,8 +302,6 @@ var _ = Describe("Home startup files", func() {
 		Entry("loop reading HOME", `for d in a b; do zsh -c "ls $HOME/$d"; done`),
 		Entry("prefix HOME on another command", `HOME=/z true; zsh -c true`),
 		Entry("other file under home", `zsh -c 'cat ~/.zshenv.bak'`),
-		Entry("script after cd to a variable from command output",
-			`d=$(git rev-parse --show-toplevel); cd "$d" && ./run.sh`),
 		Entry("zsh --emulate sh reads no zshenv", `HOME=/z zsh --emulate sh -c true`),
 		Entry("csh -f", `HOME=/c csh -f -c true`),
 		Entry("exec without -l", `HOME=/zl exec -a zsh -c true`),
@@ -354,6 +357,14 @@ var _ = Describe("Home startup files the line never touched", func() {
 		Entry("a reader naming the file", `cat ~/.zprofile; zsh -l -c true`),
 		Entry("git with a variable", `git log "$X"; zsh -l -c true`, "log ${X}"),
 	)
+
+	It("does not count the shell's own arguments as touching them", func() {
+		result := parse(`sudo bash -l "$X/run.sh"`)
+
+		Expect(result.Opacities).To(ConsistOf(
+			HaveField("Cause", parser.OpacityUnreadableScript),
+		))
+	})
 
 	DescribeTable("checks them strictly once the line may have changed them",
 		func(command string) {

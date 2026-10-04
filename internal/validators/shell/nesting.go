@@ -174,11 +174,20 @@ func opacitySummary(o parser.Opacity) string {
 		return "it runs a program whose name klaudiush cannot resolve"
 	}
 
+	if argumentWord(o) {
+		return "it runs " + strings.TrimSuffix(o.Operation, " argument") +
+			" with an argument klaudiush cannot resolve"
+	}
+
 	return causeSummary(o.Cause)
 }
 
 func programWord(o parser.Opacity) bool {
 	return o.Cause == parser.OpacityUnresolvedWord && o.Operation == parser.ProgramWordOperation
+}
+
+func argumentWord(o parser.Opacity) bool {
+	return o.Cause == parser.OpacityUnresolvedWord && parser.IsArgumentOperation(o.Operation)
 }
 
 func causeSummary(cause parser.OpacityCause) string {
@@ -263,9 +272,12 @@ func opacityFinding(o parser.Opacity) validator.Finding {
 		f.Repair = "Run the command inside the function directly, or forward " +
 			`arguments with plain "$@"`
 	case parser.OpacityUnresolvedWord:
-		if programWord(o) {
+		switch {
+		case programWord(o):
 			f.Message, f.Required, f.Repair = programWordFinding(o)
-		} else {
+		case argumentWord(o):
+			f.Message, f.Required, f.Repair = argumentWordFinding(o)
+		default:
 			f.Message, f.Required, f.Repair = unresolvedWordFinding(o)
 		}
 	case parser.OpacityStartupFile:
@@ -418,6 +430,48 @@ var programWordRepairs = map[string]string{
 		"command from the one that changed IFS, sourced a file or redeclared variables",
 }
 
+// argumentWordFinding explains a git push or commit argument that comes
+// from a variable, command output, a glob or word splitting.
+func argumentWordFinding(o parser.Opacity) (message, required, repair string) {
+	message = "a " + o.Operation + " " + strings.TrimPrefix(o.Detail, "it ")
+
+	if o.Operation == parser.ArgumentOperation("commit") {
+		required = "literal git commit options; a computed value only quoted, right after " +
+			"the option that takes it, or as a path after --"
+		repair = "Write the options literally, quote computed values, and put computed " +
+			"paths after --"
+
+		return message, required, repair
+	}
+
+	required = "a literal remote, refspec and options for git push, or ones from " +
+		"variables assigned literally on the same line"
+
+	repair = argumentWordRepairs[o.Detail]
+	if repair == "" {
+		repair = "Write the remote and branch literally instead of computing them: run " +
+			"the command that prints them first, then use its output in the push"
+	}
+
+	return message, required, repair
+}
+
+// argumentWordRepairs match the reason a git push argument is opaque.
+var argumentWordRepairs = map[string]string{
+	parser.DetailWordVariable: "Write the remote and branch literally, or assign the " +
+		"variable a literal value earlier on the same line",
+	parser.DetailWordLoop: "Run the push outside the loop, with the remote and branch " +
+		"written literally",
+	parser.DetailWordNewShell: "Write the remote and branch literally inside the nested " +
+		"shell or script, or run the push directly",
+	parser.DetailWordUntrusted: "Write the remote and branch literally, or push in a " +
+		"separate command from the one that changed IFS, sourced a file or redeclared variables",
+	parser.DetailWordSplit: "Quote the variable so it stays one word, or write each " +
+		"word literally",
+	parser.DetailWordSecret: "Push to a configured remote by name instead of a URL " +
+		"carrying the credential",
+}
+
 // evalSetupRepairs replace eval or source of a tool's printed shell setup
 // with a form klaudiush can inspect, keyed by parser.EvalSetupTools.
 var evalSetupRepairs = map[string]string{
@@ -487,6 +541,8 @@ func startupFileRepair(o parser.Opacity) string {
 		return "Use an absolute path for " + o.Operation + ", or cd to a literal directory first"
 	case parser.DetailScriptWritten:
 		return "Write the startup file in a separate command before starting the shell"
+	case parser.DetailScriptUnplacedWrite:
+		return "Run the command that changes files in a separate command before starting the shell"
 	default:
 		return "Keep the startup file a readable regular file within the size limit, " +
 			"or run its commands directly"
@@ -540,6 +596,9 @@ func unreadableScriptRepair(detail string) string {
 	case parser.DetailScriptWritten:
 		return "Write the script with literal content, or write it in a separate " +
 			"command before running it"
+	case parser.DetailScriptUnplacedWrite:
+		return "Run the command that changes files (unzip, patch, git reset --hard, " +
+			"git stash) in a separate command before running the script"
 	default:
 		return "Run the script's commands directly, or keep the script a readable " +
 			"regular file within the size limit"

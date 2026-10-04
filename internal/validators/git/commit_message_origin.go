@@ -85,7 +85,7 @@ var noOpEditors = []string{":", "/usr/bin/true", "/bin/true"}
 
 // exactOptions are commit options that are also a prefix of a longer one,
 // which git takes as themselves, not as an abbreviation.
-var exactOptions = []string{"--all", "--allow-empty"}
+var exactOptions = []string{flagAll, "--allow-empty"}
 
 // gitConfigVars set git config from the environment, which may name the
 // editor.

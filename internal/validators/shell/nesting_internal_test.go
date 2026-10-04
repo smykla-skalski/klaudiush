@@ -43,6 +43,19 @@ var _ = Describe("opacity explanations", func() {
 		)
 	})
 
+	It("explains a push argument that hides a secret", func() {
+		o := parser.Opacity{
+			Cause:     parser.OpacityUnresolvedWord,
+			Operation: parser.ArgumentOperation("push"),
+			Detail:    parser.DetailWordSecret,
+		}
+
+		Expect(opacityFinding(o)).To(SatisfyAll(
+			HaveField("Message", ContainSubstring("looks like a secret")),
+			HaveField("Repair", ContainSubstring("configured remote by name")),
+		))
+	})
+
 	It("falls back when a truncated parse has no explanation", func() {
 		Expect(truncatedSummary(nil, false)).To(Equal(truncatedText))
 	})

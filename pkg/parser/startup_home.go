@@ -44,8 +44,9 @@ type shellMode struct {
 
 // shellOptions reads the options a shell named name is given before its
 // first operand. Anything after it, -c's command included, is an operand. A
-// word klaudiush cannot resolve may be -l or -i, so the shell is taken as
-// both.
+// word klaudiush cannot resolve that is followed by an option may itself be
+// -l or -i, so the shell is taken as both; one followed by none is the
+// script it runs.
 func shellOptions(name string, args []string) shellMode {
 	var mode shellMode
 
@@ -55,7 +56,8 @@ func shellOptions(name string, args []string) shellMode {
 		switch {
 		case arg == endOfOptions || arg == "-" || arg == "+":
 			return mode
-		case marked(arg) || HasUnresolvedVars(arg):
+		case (marked(arg) || strings.HasPrefix(arg, "${")) &&
+			i+1 < len(args) && strings.HasPrefix(args[i+1], "-"):
 			mode.login, mode.interactive = true, true
 
 			return mode
@@ -699,18 +701,6 @@ func assignsDefault(pe *syntax.ParamExp) bool {
 		(pe.Exp.Op == syntax.AssignUnset || pe.Exp.Op == syntax.AssignUnsetOrNull)
 }
 
-// refersToOutput reports a word naming a variable that holds command
-// output, which expandName renders as the text around it alone.
-func (w *astWalker) refersToOutput(word string) bool {
-	for _, m := range varRefPattern.FindAllStringSubmatch(word, -1) {
-		if w.state.dynamicVars[m[1]] {
-			return true
-		}
-	}
-
-	return false
-}
-
 // withEnvUnset marks the startup variables env removes with -u or --unset,
 // or with -i, which starts the command with no environment at all.
 func withEnvUnset(child Command, options []string) Command {
@@ -783,32 +773,26 @@ var fileReaders = nameSet(`ack ag bat cat diff egrep fgrep file grep head jq les
 	md5sum more rg sha256sum shasum sort stat tail uniq wc yq`)
 
 // homeTouched reports whether the line may have changed a home startup file
-// before the shell reads it: a write to it or to a path klaudiush cannot
-// resolve, or a command other than a reader that names the file, the
-// directory it is in, or a path it cannot resolve (sed -i, ln, cp -r into
-// the home directory, rsync).
+// before the shell reads it: a write to it, a write klaudiush cannot place
+// or resolve, a copy into a directory above it, or a command other than a
+// reader that names the file, the directory it is in, or a path it cannot
+// resolve (rsync, a tool the write tracking does not know). The shell's own
+// command and the launchers in front of it run nothing before it starts.
 func (w *astWalker) homeTouched(target, dir string, cmd Command) bool {
 	if _, found, _, unsure := w.homeWrite(target); found || unsure {
 		return true
 	}
 
-	for p := w; p != nil; p = p.parent {
-		if p.dynamicWrites > 0 {
-			return true
-		}
-
-		for _, fw := range p.fileWrites {
-			if _, known := w.writtenPath(fw); !known {
-				return true
-			}
-		}
+	if w.unplacedWriteBefore(cmd, target) || w.lineWriteAbove(target) || w.unresolvedWrite() {
+		return true
 	}
 
 	name := filepath.Base(target)
 	home := resolvePath(cmd.WorkingDirectory, dir)
 
 	for earlier := range w.earlierCommands() {
-		if shellBuiltins[earlier.Name] || fileReaders[earlier.Name] {
+		if shellBuiltins[earlier.Name] || fileReaders[earlier.Name] ||
+			earlier.Location == cmd.Location {
 			continue
 		}
 
@@ -816,6 +800,20 @@ func (w *astWalker) homeTouched(target, dir string, cmd Command) bool {
 			return w.argTouches(earlier, arg, name, home)
 		}) {
 			return true
+		}
+	}
+
+	return false
+}
+
+// unresolvedWrite reports a write on the line whose path holds a variable
+// klaudiush cannot resolve, which may be any startup file.
+func (w *astWalker) unresolvedWrite() bool {
+	for p := w; p != nil; p = p.parent {
+		for _, fw := range p.fileWrites {
+			if _, known := w.writtenPath(fw); !known && !fw.TargetUnknown {
+				return true
+			}
 		}
 	}
 

@@ -86,7 +86,11 @@ type astWalker struct {
 	// it tracks may be wrong.
 	dirComputed bool
 	// dirStack holds the directories pushd saved.
-	dirStack []string
+	dirStack        []string
+	dirStackUnknown []bool
+	// dirSynced records that a cd set PWD, which then no longer holds a
+	// value assigned on the line.
+	dirSynced bool
 	// scope caches the variable snapshot until an assignment changes it;
 	// scopeDynamic is the dynamicVersion it was taken at.
 	scope        *VarScope
@@ -97,6 +101,7 @@ type astWalker struct {
 	startupPending  map[string]syntax.Pos
 	startupDeferred map[string]bool
 	caseChanged     bool
+	forwarded       map[string]writtenArg
 }
 
 // parseState is shared by a walker and all the child walkers of one parse.
@@ -689,10 +694,12 @@ func (w *astWalker) extractCommand(call *syntax.CallExpr) {
 		StdinFile:        w.stdinFileByCall[call],
 		startup:          prefixStartup(call),
 		dynamicWords:     dynamicArgs(call.Args[1:]),
+		written:          writtenArgs(call.Args[1:]),
 		argTexts:         argTexts,
 		stdinText:        prefixGaps(w.stdinTextByCall[call], call),
 		env:              env,
 		quoting:          argQuoting(call.Args[1:]),
+		lookedUpDir:      w.lookupDir(name, words),
 	}, w.depth, view)
 }
 
@@ -726,6 +733,10 @@ func (w *astWalker) record(cmd Command, depth int, view string) {
 	}
 
 	cmd, nested := w.resolveProgram(cmd)
+	if cmd.Name == gitProgram {
+		cmd = w.resolveGitArgs(cmd)
+	}
+
 	followed := cmd
 	cmd.Args, cmd.SubstitutedArgs = storedArgs(cmd)
 
@@ -739,7 +750,7 @@ func (w *astWalker) record(cmd Command, depth int, view string) {
 	w.commands = append(w.commands, cmd)
 	w.trackShellState(cmd)
 	w.forgetWritten(followed)
-	w.extractFileWriteCommand(cmd)
+	w.extractFileWriteCommand(cmd, followed)
 
 	l := w.launchedFrom(cmd, followed)
 	if detail != "" {
@@ -779,7 +790,12 @@ func (w *astWalker) record(cmd Command, depth int, view string) {
 func (w *astWalker) walkNested(script nestedScript, cmd Command, depth int) {
 	untrusted := w.state.untrusted
 
-	w.walkScript(script.text, cmd, depth, scriptWalk{name: script.name})
+	w.walkScript(
+		script.text,
+		cmd,
+		depth,
+		scriptWalk{name: script.name, forwarded: script.forward},
+	)
 
 	if script.splitArgs && (untrusted || w.state.untrusted) {
 		w.opaque(OpacityUnresolvedArgs, w.shownWord(script.name), "")
@@ -825,16 +841,22 @@ func (w *astWalker) trackShellState(cmd Command) {
 	switch cmd.Name {
 	case "shift":
 		w.trackPositional(cmd)
-	case "cd":
-		w.dirComputed = w.dirComputed || cmd.Dynamic
-		w.changeDirTo(cmd, cmd.Args)
+	case cdBuiltin:
+		defer w.syncDirVars()()
+
+		w.moveDir(cmd)
 	case "pushd":
-		w.dirComputed = w.dirComputed || cmd.Dynamic
+		defer w.syncDirVars()()
+
 		w.dirStack = append(w.dirStack, w.currentDir)
-		w.changeDirTo(cmd, cmd.Args)
+		w.dirStackUnknown = append(w.dirStackUnknown, w.dirUnknown)
+		w.moveDir(cmd)
 	case "popd":
+		defer w.syncDirVars()()
+
 		if n := len(w.dirStack); n > 0 {
 			w.currentDir, w.dirStack = w.dirStack[n-1], w.dirStack[:n-1]
+			w.dirUnknown, w.dirStackUnknown = w.dirStackUnknown[n-1], w.dirStackUnknown[:n-1]
 		} else {
 			w.dirUnknown = true
 		}
@@ -861,6 +883,7 @@ func (w *astWalker) changeDir(target string) {
 		w.currentDir, w.dirUnknown = "~", false
 	case target == "-" || HasUnresolvedVars(target):
 		w.dirUnknown = true
+	case w.dirUnknown && !filepath.IsAbs(target) && !strings.HasPrefix(target, "~"):
 	default:
 		w.currentDir, w.dirUnknown = resolvePath(w.currentDir, target), false
 	}
@@ -882,10 +905,6 @@ func (w *astWalker) changeDirTo(cmd Command, args []string) {
 	target := args[i]
 	if target == "" {
 		return
-	}
-
-	if w.refersToOutput(target) {
-		w.dirComputed = true
 	}
 
 	if w.expandName(target) != "" {
@@ -1038,7 +1057,7 @@ func (w *astWalker) varScope() *VarScope {
 
 	w.scope = &VarScope{
 		Assignments: maps.Clone(w.assignments),
-		DynamicVars: maps.Clone(w.state.dynamicVars),
+		DynamicVars: w.unknownDirVars(maps.Clone(w.state.dynamicVars)),
 		unknown:     maps.Clone(w.unknownVars),
 	}
 	w.scopeDynamic = w.state.dynamicVersion
@@ -1345,50 +1364,50 @@ func (w *astWalker) extractAssigns(call *syntax.CallExpr) {
 	}
 }
 
-// extractFileWriteCommand detects file write commands (tee, cp, mv).
-func (w *astWalker) extractFileWriteCommand(cmd Command) {
-	op, targets := getFileWriteOperation(cmd)
-	if op == WriteOpNone {
+// extractFileWriteCommand records the files a program writes. followed is
+// the command before its substitution marks were removed: a target built
+// from command output is unknown, in full or in part.
+func (w *astWalker) extractFileWriteCommand(cmd, followed Command) {
+	write := writesOf(followed)
+	if write.op == WriteOpNone {
 		return
 	}
 
-	for _, target := range targets {
-		fw := FileWrite{
-			Path:             target,
-			Operation:        op,
-			Source:           cmd.Name,
-			Location:         cmd.Location,
-			WorkingDirectory: cmd.WorkingDirectory,
-			DirUnknown:       cmd.DirUnknown,
-			Dynamic:          cmd.Dynamic,
-			Vars:             cmd.Vars,
+	base := FileWrite{
+		Operation:        write.op,
+		Source:           cmd.Name,
+		Location:         cmd.Location,
+		WorkingDirectory: cmd.WorkingDirectory,
+		DirUnknown:       cmd.DirUnknown,
+		Vars:             cmd.Vars,
+	}
+
+	computed := placesIntoDirs[write.op] && splitsSubstitution(followed)
+
+	for _, target := range write.targets {
+		path := strings.ReplaceAll(target, unresolvedWord, "")
+		if path == "" {
+			computed = computed || marked(target)
+
+			continue
+		}
+
+		fw := base
+		fw.Path = path
+		fw.Dynamic = marked(target) || w.namesDynamicVar(target)
+		w.fileWrites = append(w.fileWrites, fw)
+	}
+
+	if write.unknown || computed {
+		fw := base
+		fw.TargetUnknown = true
+
+		if !computed {
+			fw.Scope = w.writeScope(cmd, write)
 		}
 
 		w.fileWrites = append(w.fileWrites, fw)
 	}
-}
-
-// getFileWriteOperation determines if a command writes to files.
-func getFileWriteOperation(cmd Command) (WriteOp, []string) {
-	switch cmd.Name {
-	case "tee":
-		// tee writes to all file arguments
-		return WriteOpTee, extractTeeTargets(cmd.Args)
-
-	case "cp", "copy":
-		// cp writes to the last argument
-		if len(cmd.Args) >= 2 { //nolint:mnd // Trivial check for minimum args (source + dest)
-			return WriteOpCopy, []string{cmd.Args[len(cmd.Args)-1]}
-		}
-
-	case "mv", "move":
-		// mv writes to the last argument
-		if len(cmd.Args) >= 2 { //nolint:mnd // Trivial check for minimum args (source + dest)
-			return WriteOpMove, []string{cmd.Args[len(cmd.Args)-1]}
-		}
-	}
-
-	return WriteOpNone, nil
 }
 
 // extractTeeTargets extracts file targets from tee command arguments.

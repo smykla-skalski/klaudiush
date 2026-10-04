@@ -277,6 +277,42 @@ var _ = Describe("CheckCommand after an unresolved cd", func() {
 		).NotTo(BeEmpty())
 		Expect(checkCommand(set, `cd "$DIR" && rm -rf build`)).To(BeEmpty())
 	})
+
+	It("matches relative names after a cd to command output", func() {
+		set := newEnv(GinkgoT().TempDir(), "linux", nil).set()
+
+		Expect(checkCommand(set, `cd "$(mktemp -d)" && rm settings.json`)).NotTo(BeEmpty())
+		Expect(checkCommand(set, `cd "$(mktemp -d)" && rm "$PWD/settings.json"`)).NotTo(BeEmpty())
+		Expect(checkCommand(set, `cd "$(mktemp -d)" && echo x > notes.txt`)).To(BeEmpty())
+	})
+})
+
+var _ = Describe("CheckCommand with an archive extracted into a directory", func() {
+	It("blocks extraction into a protected directory", func() {
+		e := newEnv(GinkgoT().TempDir(), "linux", nil)
+		set := e.set()
+
+		claude := filepath.Join(e.project, ".claude")
+		Expect(checkCommand(set, `unzip -o x.zip -d `+claude)).NotTo(BeEmpty())
+		Expect(checkCommand(set, `tar -C `+claude+` -xf x.tar`)).NotTo(BeEmpty())
+		Expect(checkCommand(set, `unzip -o x.zip -d `+filepath.Join(e.project, "build"))).
+			To(BeEmpty())
+	})
+})
+
+var _ = Describe("CheckCommand with $PWD after a cd", func() {
+	It("resolves $PWD to the directory the cd moved to", func() {
+		e := newEnv(GinkgoT().TempDir(), "linux", nil)
+		e.write("project/sub/keep.txt", "")
+		set := e.set()
+
+		command := `cd ` + filepath.Join(e.project, "sub") +
+			` && rm "$PWD/../.klaudiush/config.toml"`
+		Expect(checkCommand(set, command)).NotTo(BeEmpty())
+
+		command = `cd ` + filepath.Join(e.project, "sub") + ` && rm "$PWD/keep.txt"`
+		Expect(checkCommand(set, command)).To(BeEmpty())
+	})
 })
 
 var _ = Describe("CheckCommand with a renamed klaudiush", func() {
