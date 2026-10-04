@@ -33,6 +33,7 @@ Each finding names the operation klaudiush could not see through, the programs t
 | Nested script that does not parse     | `bash -c 'git status && ('`                       | Fix the nested script's syntax                            |
 | Unknown git subcommand                | `HOME=/x git cm`                                  | Use the builtin, or define the alias in git config first  |
 | Function arguments it cannot follow   | `f() { git "${@:1}"; }; f commit`                 | Forward arguments with plain `"$@"`                       |
+| Function body no shell accepts        | `f() ! { :; } && git push`                        | Fix the definition; a body cannot be negated              |
 | Program name from a variable          | `$TOOL push`, `xargs $CMD`, top-level `"$@"`      | Write it literally, or assign it literally on the line    |
 | Program name from output or a glob    | `$(echo git) push`, `/usr/bin/gi? push`           | Write the program name or path literally                  |
 | git or gh word from a variable        | `git $SUB`, `gh pr $ACTION`                       | Write it literally, or assign it literally on the line    |

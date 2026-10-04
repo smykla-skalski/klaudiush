@@ -95,6 +95,7 @@ type wordQuoting uint8
 const (
 	quotedWord wordQuoting = 1 << iota
 	unquotedWord
+	splitWord
 )
 
 // argQuoting maps each rendered argument to how its words were quoted.
@@ -106,6 +107,10 @@ func argQuoting(words []*syntax.Word) map[string]wordQuoting {
 			quoting[argWord(word)] |= quotedWord
 		} else {
 			quoting[argWord(word)] |= unquotedWord
+		}
+
+		if !singleWord(word) {
+			quoting[argWord(word)] |= splitWord
 		}
 	}
 

@@ -39,6 +39,8 @@ func FuzzParseGitCommand(f *testing.F) {
 	f.Add("git\t\tpush")
 	f.Add("git\t{}\tnowhere\tfeat")
 	f.Add("git\t'push'\tnowhere")
+	f.Add("git\tcommit\t-m\tf() { :; } && git push --force")
+	f.Add("git\t-c\talias.x=!f() { :; } && git push\tx")
 
 	f.Fuzz(func(t *testing.T, input string) {
 		parts := strings.Split(input, "\t")

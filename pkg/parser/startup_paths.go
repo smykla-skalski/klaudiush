@@ -2,7 +2,6 @@ package parser
 
 import (
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"mvdan.cc/sh/v3/syntax"
@@ -83,124 +82,6 @@ const setBuiltin = "set"
 
 // setOption names a set option by its long name.
 const setOption = "-o"
-
-// loopMayWriteAny reports a call in a loop that may set any variable on a
-// later pass in text the loop does not show: source, eval, a same-line
-// function or alias, or a variable writer with a computed operand.
-func (w *astWalker) loopMayWriteAny(call *syntax.CallExpr) bool {
-	word := wordToString(call.Args[0])
-	name := commandName(word)
-
-	switch {
-	case name == sourceBuiltin || name == dotBuiltin || name == evalBuiltin:
-		return true
-	case w.defined(word):
-		return true
-	case name == printfBuiltin:
-		return printfMayWriteAny(call.Args[1:])
-	case varWriters[name] || declWriters[name]:
-		return slices.ContainsFunc(call.Args[1:], func(arg *syntax.Word) bool {
-			return !isLiteralWord(arg)
-		})
-	default:
-		return false
-	}
-}
-
-// printfMayWriteAny reports a printf that may write a computed name. Only
-// -v names a variable, so a printf without it writes nothing but what its
-// values assign. With -v, a target that is not a plain name, a startup
-// variable, or any computed word may write one. A word before the format
-// that expands or globs may itself become -v.
-func printfMayWriteAny(args []*syntax.Word) bool {
-	for i, word := range args {
-		if computedPrintfWord(word) {
-			return true
-		}
-
-		arg := argWord(word)
-
-		switch {
-		case strings.HasPrefix(arg, "-v"):
-			target := strings.TrimPrefix(arg, "-v")
-			if target == "" && i+1 < len(args) {
-				target = argWord(args[i+1])
-			}
-
-			return !variableName.MatchString(target) || startupVars[target] ||
-				slices.ContainsFunc(args, computedPrintfWord)
-		case arg == endOfOptions || !strings.HasPrefix(arg, "-"):
-			return slices.ContainsFunc(args[i:], assigningWord)
-		}
-	}
-
-	return false
-}
-
-// assigningWord reports a word whose expansion may assign a variable. Only
-// literal text, plain $name or ${name} references, a literal element and
-// command or process substitutions, which run in a subshell, are known not
-// to; arithmetic, indirection, ${x:=v}, ${x@P} and the rest may.
-func assigningWord(word *syntax.Word) bool {
-	return !plainParts(word.Parts)
-}
-
-func plainParts(parts []syntax.WordPart) bool {
-	for _, part := range parts {
-		switch p := part.(type) {
-		case *syntax.Lit, *syntax.SglQuoted, *syntax.ProcSubst:
-		case *syntax.DblQuoted:
-			if !plainParts(p.Parts) {
-				return false
-			}
-		case *syntax.CmdSubst:
-			if p.TempFile || p.ReplyVar {
-				return false
-			}
-		case *syntax.ParamExp:
-			if !plainParam(p) {
-				return false
-			}
-		default:
-			return false
-		}
-	}
-
-	return true
-}
-
-// plainParam reports a reference that only reads a variable: $name,
-// ${name}, ${#name} or a literal element.
-func plainParam(pe *syntax.ParamExp) bool {
-	return pe.Param != nil && pe.Flags == nil && pe.NestedParam == nil &&
-		!pe.Excl && !pe.Width && !pe.IsSet && literalIndex(pe.Index) &&
-		pe.Modifiers == nil && pe.Slice == nil && pe.Repl == nil &&
-		pe.Names == 0 && pe.Exp == nil
-}
-
-// tildeWord reports a word with a leading unquoted ~, which expands to a
-// directory from HOME, PWD, OLDPWD or the user database.
-func tildeWord(word *syntax.Word) bool {
-	if len(word.Parts) == 0 {
-		return false
-	}
-
-	lit, ok := word.Parts[0].(*syntax.Lit)
-
-	return ok && strings.HasPrefix(lit.Value, "~")
-}
-
-// computedPrintfWord reports a printf word the shell may turn into other
-// words: an expansion, a brace expansion, a tilde or a file name glob.
-func computedPrintfWord(word *syntax.Word) bool {
-	if !isLiteralWord(word) || globWord(globView(word)) || tildeWord(word) {
-		return true
-	}
-
-	clone := &syntax.Word{Parts: slices.Clone(word.Parts)}
-
-	return syntax.SplitBraces(clone)
-}
 
 // computedOperand reports a declaration operand that is not a literal
 // assignment, which may write any name.
