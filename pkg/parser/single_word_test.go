@@ -74,4 +74,45 @@ var _ = Describe("Single-word command output in launcher options", func() {
 		Entry("output as the image", "/home/u", "docker run --rm $(id -un) ls"),
 		Entry("output in a parallel command word", "/home/u", "parallel echo $(nproc) ::: a"),
 	)
+
+	DescribeTable("follows what review found hidden",
+		func(command string, truncated bool) {
+			result := parseIn("/home/u", command)
+
+			Expect(result.Truncated).To(Equal(truncated), command)
+
+			if !truncated {
+				Expect(result.GitOperations).NotTo(BeEmpty(), command)
+			}
+		},
+		Entry("an empty last entrypoint before a dynamic program",
+			`docker run --entrypoint="" img $CMD push`, true),
+		Entry("an xargs --arg-file value starting with a dash",
+			"xargs --arg-file -I git", true),
+		Entry("an xargs replace string from the line",
+			`R=X; echo git | xargs -I "$R" X push`, false),
+		Entry("an xargs replace string from an unknown variable",
+			`echo git | xargs -I "$R" X push`, true),
+		Entry("a parallel replace string from the line",
+			`R=X; parallel -I "$R" X push ::: git`, false),
+		Entry("a parallel replace string from an unknown variable",
+			`parallel -I "$R" X push ::: git`, true),
+		Entry("a parallel filter from the line",
+			`X='system("git push")'; parallel --filter "$X" echo ::: a`, false),
+		Entry("a parallel filter from an unknown variable",
+			`parallel --filter "$X" echo ::: a`, true),
+	)
+
+	DescribeTable("keeps quoted values whole",
+		func(command string) {
+			result := parseIn("/home/u", command)
+
+			Expect(result.Truncated).To(BeFalse(), command)
+			Expect(result.GitOperations).To(BeEmpty(), command)
+		},
+		Entry("a quoted multiword value from the line",
+			`X='A=x img git push'; docker run -e "$X" alpine echo`),
+		Entry("a quoted array element", `docker run -e "${a[0]}" img ls`),
+		Entry("a quoted joined array", `docker run -e "${a[*]}" img ls`),
+	)
 })

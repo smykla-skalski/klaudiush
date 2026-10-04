@@ -360,7 +360,7 @@ func (r *runReader) image(idx int, entrypoints []string) {
 	}
 
 	if r.all {
-		r.payloadImage(idx, len(entrypoints) > 0)
+		r.payloadImage(idx, len(entrypoints) > 0 && entrypoints[len(entrypoints)-1] != "")
 
 		return
 	}
@@ -496,7 +496,7 @@ func (w *astWalker) entrypointCommands(cmd Command) []Command {
 
 	r := &runReader{}
 
-	readings, complete := w.expandedArgs(cmd.Args)
+	readings, complete := w.expandedArgs(cmd)
 	if !complete && slices.ContainsFunc(readings[1].args, mentionsEntrypoint) {
 		r.exhausted = true
 	}
@@ -587,12 +587,15 @@ func (c Command) sameCall(other Command) bool {
 	return c.Name == other.Name && slices.Equal(c.Args, other.Args)
 }
 
-// expandedArgs substitutes the variables it can resolve in args. Whether an
-// argument was quoted is not known, so each substituted argument that holds
-// several words is read both whole and split, in every combination. Past
+// expandedArgs substitutes the variables it can resolve in cmd's
+// arguments. Each substituted argument that holds several words and may
+// split (it was not quoted) is read both whole and split, in every
+// combination; a quoted one stays whole. Past
 // maxSplitChoices such arguments it returns only the all-whole and all-split
 // readings and reports false.
-func (w *astWalker) expandedArgs(args []string) ([]argReading, bool) {
+func (w *astWalker) expandedArgs(cmd Command) ([]argReading, bool) {
+	args := cmd.Args
+
 	if !slices.ContainsFunc(args, HasUnresolvedVars) {
 		origins := make([]int, len(args))
 		for i := range origins {
@@ -614,6 +617,12 @@ func (w *astWalker) expandedArgs(args []string) ([]argReading, bool) {
 		}
 
 		fields := strings.Fields(expanded)
+		if !cmd.mayShift(arg) {
+			choices = append(choices, [][]string{{expanded}})
+
+			continue
+		}
+
 		if len(fields) == 1 && fields[0] == expanded {
 			choices = append(choices, [][]string{fields})
 

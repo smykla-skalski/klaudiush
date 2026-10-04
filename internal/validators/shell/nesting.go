@@ -326,6 +326,10 @@ func unresolvedWordFinding(o parser.Opacity) (message, required, repair string) 
 		return containerRunFinding(o)
 	case parser.ParallelOperation:
 		return parallelFinding(o)
+	case parser.XargsReplaceOperation:
+		return "the xargs replace string " + strings.TrimPrefix(o.Detail, "it "),
+			"a literal replace string, or one from a variable assigned literally on the same line",
+			"Write the -I replace string literally"
 	}
 
 	message = "the " + o.Operation + " command word " + strings.TrimPrefix(o.Detail, "it ")

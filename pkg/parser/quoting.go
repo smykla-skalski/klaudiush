@@ -150,10 +150,17 @@ func (w *astWalker) partSplitting(part syntax.WordPart, quoted bool) (expands, s
 	}
 }
 
-// allElementsParam reports "$@" or an array subscript ("${a[@]}"), which
-// expand to one word per element even when quoted.
+// allElementsParam reports "$@" or an all-elements subscript ("${a[@]}"),
+// which expand to one word per element even when quoted; "${a[0]}" and
+// "${a[*]}" stay one word.
 func allElementsParam(p *syntax.ParamExp) bool {
-	return p.Index != nil || (p.Param != nil && p.Param.Value == "@")
+	if p.Param != nil && p.Param.Value == "@" {
+		return true
+	}
+
+	index, ok := p.Index.(*syntax.Word)
+
+	return ok && index.Lit() == "@"
 }
 
 // pwdParam reports a plain $PWD that the line has not reassigned, in a

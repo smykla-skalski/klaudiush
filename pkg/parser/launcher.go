@@ -656,7 +656,10 @@ func xargsInput(args []string) (replace string, fromFile bool) {
 			}
 		case name == "--arg-file":
 			fromFile = true
-		case strings.HasPrefix(arg, "--") || !strings.HasPrefix(arg, "-"):
+			i += xargsSeparateValue(arg, attached)
+		case strings.HasPrefix(arg, "--"):
+			i += xargsSeparateValue(arg, attached)
+		case !strings.HasPrefix(arg, "-"):
 		default:
 			letter, value, next := xargsShortOption(arg)
 			if next && i+1 < len(args) {
@@ -677,6 +680,16 @@ func xargsInput(args []string) (replace string, fromFile bool) {
 	}
 
 	return replace, fromFile
+}
+
+// xargsSeparateValue returns 1 when a long xargs option takes the next
+// argument as its value, so that value is not read as an option.
+func xargsSeparateValue(arg string, attached bool) int {
+	if !attached && slices.Contains(launchers["xargs"].valueFlags, arg) {
+		return 1
+	}
+
+	return 0
 }
 
 // xargsShortOption returns the option of a short cluster that takes a
@@ -721,6 +734,7 @@ func xargsCommands(child Command, stdin, replace string) []Command {
 
 	for line := range strings.SplitSeq(strings.TrimSpace(stdin), "\n") {
 		cmd := child
+		cmd.Name = strings.ReplaceAll(child.Name, replace, line)
 		cmd.Args = make([]string, len(child.Args))
 
 		for i, arg := range child.Args {

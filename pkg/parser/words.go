@@ -509,6 +509,10 @@ func (w *astWalker) launchedFrom(cmd, followed Command) launch {
 		}
 	}
 
+	if launchers[cmd.Name].stdinArgs {
+		l.commands = w.resolveXargsReplace(followed, l.commands)
+	}
+
 	if parallelPrograms[cmd.Name] {
 		l.commands, l.scripts = nil, nil
 		l.scripts, l.code = w.parallelScripts(followed)

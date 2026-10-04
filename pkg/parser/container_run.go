@@ -120,7 +120,7 @@ func (w *astWalker) containerRunCommands(cmd Command) []Command {
 		return nil
 	}
 
-	readings, complete := w.expandedArgs(cmd.Args)
+	readings, complete := w.expandedArgs(cmd)
 	exhausted, dynamic := !complete, ""
 
 	var cmds []Command

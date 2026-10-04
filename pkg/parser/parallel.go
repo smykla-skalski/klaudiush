@@ -132,6 +132,7 @@ var plusReplace = regexp.MustCompile(`\{[+./#%:][^{}\s]*\}`)
 // maps a default replacement string to the one -I and its kind set.
 type parallelOptions struct {
 	replace   map[string]string
+	resolve   func(string) (string, string)
 	argSep    string
 	fileSep   string
 	scripts   []string
@@ -160,7 +161,7 @@ func (w *astWalker) parallelScripts(cmd Command) (scripts, code []string) {
 		cmd.Args = cmd.Args[1:]
 	}
 
-	opts := readParallelOptions(cmd.Args, cmd.mayShift)
+	opts := readParallelOptions(cmd.Args, cmd.mayShift, w.literalValue)
 	if opts.stop {
 		return nil, nil
 	}
@@ -194,8 +195,17 @@ func (w *astWalker) parallelScripts(cmd Command) (scripts, code []string) {
 // readParallelOptions reads parallel's options up to where its command may
 // start. An option it does not know may take the next argument or not, so
 // both places are kept.
-func readParallelOptions(args []string, shifts func(string) bool) parallelOptions {
-	opts := parallelOptions{replace: map[string]string{}, argSep: ":::", fileSep: "::::"}
+func readParallelOptions(
+	args []string,
+	shifts func(string) bool,
+	resolve func(string) (string, string),
+) parallelOptions {
+	opts := parallelOptions{
+		replace: map[string]string{},
+		argSep:  ":::",
+		fileSep: "::::",
+		resolve: resolve,
+	}
 	seen := make(map[int]bool)
 	queue := []int{0}
 
@@ -282,6 +292,17 @@ func (o *parallelOptions) next(args []string, at int, shifts func(string) bool) 
 		}
 	}
 
+	if attached && parallelShapingFlag(name) {
+		resolved, detail := o.resolve(value)
+		if detail != "" {
+			o.dynamic = detail
+
+			return nil
+		}
+
+		value = resolved
+	}
+
 	if attached || !takes {
 		o.apply(name, value, attached)
 	}
@@ -294,6 +315,16 @@ func (o *parallelOptions) next(args []string, at int, shifts func(string) bool) 
 	default:
 		return []int{at + 1}
 	}
+}
+
+// parallelShapingFlag reports an option whose value shapes the command
+// lines parallel runs: a replacement string, Perl code, an --ssh command or
+// an input separator.
+func parallelShapingFlag(name string) bool {
+	_, replace := parallelReplaceFlags[name]
+
+	return replace || parallelCodeFlags[name] || parallelTagFlags[name] ||
+		name == "--ssh" || name == "--arg-sep" || name == "--arg-file-sep"
 }
 
 // shortParallelOption reads a short option cluster (-j4, -kq, -I {}): the
