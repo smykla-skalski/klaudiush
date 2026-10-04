@@ -163,12 +163,14 @@ type writtenArg struct {
 // writtenArgs records how each argument word was written, keyed by the
 // argument it renders to, in the order the words appear, so two words that
 // render alike ("$(pwd)" and "$(git branch --show-current)") stay apart.
-func writtenArgs(words []*syntax.Word) map[string][]writtenArg {
+// An unquoted expansion known to give one word that matches no files
+// ($(id -u), $(pwd) in a plain directory) is written as if quoted.
+func (w *astWalker) writtenArgs(words []*syntax.Word) map[string][]writtenArg {
 	written := make(map[string][]writtenArg, len(words))
 
 	for _, word := range words {
 		key := markSubstituted(word, argWord(word))
-		arg := writeArg(word)
+		arg := writeArg(word, w.oneWordPart)
 
 		if argv := lookupArgv(word); ArgumentLookup(argv) {
 			arg.lookup = strings.Join(argv, lookupSeparator)
@@ -201,6 +203,25 @@ func (a *argWriter) expansion(shown string) {
 	a.view.WriteString(shown)
 }
 
+// unquoted writes an unquoted variable as a reference and an unquoted
+// command substitution as splitMark, unless oneWord knows it gives one word
+// that matches no files.
+func (a *argWriter) unquoted(part syntax.WordPart, oneWord func(syntax.WordPart) bool) {
+	if oneWord(part) {
+		a.expansion(neutralGlob)
+
+		return
+	}
+
+	if exp, ok := part.(*syntax.ParamExp); ok {
+		a.expansion(paramExpToString(exp))
+
+		return
+	}
+
+	a.expansion(splitMark)
+}
+
 func (a *argWriter) quoted(parts []syntax.WordPart) {
 	a.view.WriteString(neutralGlob)
 
@@ -221,7 +242,7 @@ func (a *argWriter) quoted(parts []syntax.WordPart) {
 	}
 }
 
-func writeArg(word *syntax.Word) writtenArg {
+func writeArg(word *syntax.Word, oneWord func(syntax.WordPart) bool) writtenArg {
 	a := argWriter{arg: writtenArg{literal: true}}
 
 	for i, part := range word.Parts {
@@ -244,8 +265,8 @@ func writeArg(word *syntax.Word) writtenArg {
 			a.text(value, neutralArg(value)+neutralGlob)
 		case *syntax.DblQuoted:
 			a.quoted(p.Parts)
-		case *syntax.ParamExp:
-			a.expansion(paramExpToString(p))
+		case *syntax.ParamExp, *syntax.CmdSubst:
+			a.unquoted(p, oneWord)
 		default:
 			a.expansion(splitMark)
 		}
@@ -304,16 +325,8 @@ func splitsQuoted(exp *syntax.ParamExp) bool {
 // when there are as many of each.
 func (w *astWalker) writtenAs(cmd Command, i int) writtenArg {
 	arg := cmd.Args[i]
-	if forwarded, ok := w.forwarded[arg]; ok {
-		return forwarded
-	}
 
-	written := cmd.written[arg]
-	if len(written) != countOf(cmd.Args, arg) {
-		return unknownArg(arg)
-	}
-
-	return written[countOf(cmd.Args[:i], arg)]
+	return w.writtenAt(cmd, arg, countOf(cmd.Args, arg), countOf(cmd.Args[:i], arg))
 }
 
 func countOf(args []string, arg string) int {

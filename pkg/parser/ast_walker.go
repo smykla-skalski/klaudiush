@@ -694,7 +694,7 @@ func (w *astWalker) extractCommand(call *syntax.CallExpr) {
 		StdinFile:        w.stdinFileByCall[call],
 		startup:          prefixStartup(call),
 		dynamicWords:     dynamicArgs(call.Args[1:]),
-		written:          writtenArgs(call.Args[1:]),
+		written:          w.writtenArgs(call.Args[1:]),
 		argTexts:         argTexts,
 		stdinText:        prefixGaps(w.stdinTextByCall[call], call),
 		env:              env,

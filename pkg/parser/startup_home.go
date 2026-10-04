@@ -3,6 +3,7 @@ package parser
 import (
 	"maps"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -56,7 +57,7 @@ func shellOptions(name string, args []string) shellMode {
 		switch {
 		case arg == endOfOptions || arg == "-" || arg == "+":
 			return mode
-		case (marked(arg) || strings.HasPrefix(arg, "${")) &&
+		case mayBeDynamic(arg) && !literalLead.MatchString(arg) &&
 			i+1 < len(args) && strings.HasPrefix(args[i+1], "-"):
 			mode.login, mode.interactive = true, true
 
@@ -99,6 +100,10 @@ func (w *astWalker) optionWords(args []string) []string {
 
 	return words
 }
+
+// literalLead matches a word that starts with literal text other than an
+// option dash, which no expansion after it can turn into an option.
+var literalLead = regexp.MustCompile(`^[A-Za-z0-9_./~+:@%,=]`)
 
 // takesOptionName reports an option cluster whose -o or -O takes the next
 // argument as an option name: -o, -eo, +O.
