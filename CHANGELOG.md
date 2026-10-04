@@ -5,6 +5,16 @@ All notable changes to klaudiush will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.43.1](https://github.com/smykla-skalski/klaudiush/compare/v1.43.0...v1.43.1) (2026-10-04)
+
+### Bug Fixes
+
+* **parser:** block unseen source substitutions ([#751](https://github.com/smykla-skalski/klaudiush/issues/751)) ([07f2079](https://github.com/smykla-skalski/klaudiush/commit/07f207914fdab67dabf05ce190bca29d10d4f750))
+* **parser:** keep quoted empty words in argv ([#748](https://github.com/smykla-skalski/klaudiush/issues/748)) ([4b29245](https://github.com/smykla-skalski/klaudiush/commit/4b292452cdd76d47e9067396a042caa1d2d9277c))
+* **parser:** parse container exec like run ([#752](https://github.com/smykla-skalski/klaudiush/issues/752)) ([06e0c4b](https://github.com/smykla-skalski/klaudiush/commit/06e0c4b632077d4f38f017912ccb023842a48258))
+* **parser:** stop reading Python prose as git ([#755](https://github.com/smykla-skalski/klaudiush/issues/755)) ([a43a0b4](https://github.com/smykla-skalski/klaudiush/commit/a43a0b44c2c88e09f445e637f998d72d1f1d5de8))
+* **validator:** exempt PEP 723 blocks in FILE011 ([#749](https://github.com/smykla-skalski/klaudiush/issues/749)) ([0f3b563](https://github.com/smykla-skalski/klaudiush/commit/0f3b563605226f95e80e0bfd4d1965eb534baba9))
+
 ## [1.43.0](https://github.com/smykla-skalski/klaudiush/compare/v1.42.0...v1.43.0) (2026-10-03)
 
 ### Features
