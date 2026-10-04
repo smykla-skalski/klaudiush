@@ -694,7 +694,8 @@ func (w *astWalker) distrustDecl(decl *syntax.DeclClause) {
 
 // writtenVars returns the words cmd may write to: every operand and flag
 // value, since an empty value such as read -d ” leaves no word behind, and
-// for printf only the value of -v, given apart or attached.
+// for printf only the value of -v, given apart or attached. A value in
+// quotes for an option of read or mapfile that takes one names nothing.
 func writtenVars(cmd Command) []string {
 	var names []string
 
@@ -710,6 +711,8 @@ func writtenVars(cmd Command) []string {
 			i++
 		case strings.HasPrefix(arg, "-v") || strings.HasPrefix(arg, "-a"):
 			names = append(names, arg[2:])
+		case strings.HasPrefix(arg, "-") && quotedValue(cmd, i):
+			i++
 		case strings.HasPrefix(arg, "-"):
 		case cmd.Name == printfBuiltin:
 			return names

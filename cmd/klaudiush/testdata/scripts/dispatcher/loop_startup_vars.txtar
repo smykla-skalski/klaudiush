@@ -19,6 +19,14 @@ stdin pr-state.json
 exec klaudiush --hook-type PreToolUse
 ! stdout .
 
+stdin read-prompt.json
+exec klaudiush --hook-type PreToolUse
+! stdout .
+
+stdin read-prompt-plain.json
+exec klaudiush --hook-type PreToolUse
+! stdout .
+
 stdin bash-env-output.json
 exec klaudiush --hook-type PreToolUse
 stdout '"permissionDecision":"deny"'
@@ -40,6 +48,11 @@ stdout '"permissionDecision":"deny"'
 stdout 'startup file BASH_ENV names cannot be inspected'
 
 stdin function-export.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'startup file BASH_ENV names cannot be inspected'
+
+stdin read-computed-name.json
 exec klaudiush --hook-type PreToolUse
 stdout '"permissionDecision":"deny"'
 stdout 'startup file BASH_ENV names cannot be inspected'
@@ -88,3 +101,12 @@ EOF
 
 -- function-export.json --
 {"tool_name": "Bash", "tool_input": {"command": "f() { export BASH_ENV=$1; }; for i in 1 2; do gh pr view 1; f \"$i\"; done"}}
+
+-- read-prompt.json --
+{"tool_name": "Bash", "tool_input": {"command": "for i in 1 2; do read -p \"$i> \" x; gh x; done"}}
+
+-- read-prompt-plain.json --
+{"tool_name": "Bash", "tool_input": {"command": "read -p \"$P> \" x; bash run.sh"}}
+
+-- read-computed-name.json --
+{"tool_name": "Bash", "tool_input": {"command": "for i in 1 2; do read -p \"$i> \" \"$i\"; gh pr view 1; done"}}

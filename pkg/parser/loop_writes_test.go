@@ -73,6 +73,27 @@ var _ = Describe("Startup variables a loop may set", func() {
 		),
 		Entry("printf operand before a shell reading HOME files",
 			`for i in 1 2; do printf x $i; zsh -c true; done`),
+		Entry("read with a computed prompt", `for i in 1 2; do read -p "$i> " x; gh x; done`),
+		Entry(
+			"read with computed option values",
+			`for i in 1 2; do read -rt "$t" -n "$n" -N "$n" -d "$d" -u "$fd" -i "$i" -e x; gh x; done`,
+		),
+		Entry(
+			"read with an attached prompt cluster",
+			`for i in 1 2; do read -rp "$i: " x; gh x; done`,
+		),
+		Entry(
+			"read -a with a literal array",
+			`for i in 1 2; do read -ra parts <<< "$i"; gh x; done`,
+		),
+		Entry(
+			"mapfile with computed option values",
+			`for i in 1 2; do mapfile -t -n "$n" -O "$o" -s "$s" -u "$fd" -d "$d" lines; gh x; done`,
+		),
+		Entry(
+			"readarray with a computed count",
+			`for i in 1 2; do readarray -n "$i" lines < f; gh x; done`,
+		),
 	)
 
 	DescribeTable(
@@ -98,6 +119,21 @@ var _ = Describe("Startup variables a loop may set", func() {
 		),
 		Entry("read -a value attached", `for i in 1 2; do gh x; read -aBASH_ENV < f; done`),
 		Entry("read into a computed name", `for i in 1 2; do read $i; gh x; done`),
+		Entry(
+			"read with a computed name after a prompt",
+			`for i in 1 2; do read -p "$i> " "$i"; gh x; done`,
+		),
+		Entry("read with a prompt that may split", `for i in 1 2; do read -p $i x; gh x; done`),
+		Entry("read with a prompt from a list", `for i in 1 2; do read -p "$@" x; gh x; done`),
+		Entry("read with a computed option word", `for i in 1 2; do read "$o" x; gh x; done`),
+		Entry("read -a with a computed array", `for i in 1 2; do read -a "$i"; gh x; done`),
+		Entry("read with a glob name", `for i in 1 2; do gh x; read -r BASH_EN[V] < f; done`),
+		Entry("mapfile into a computed array", `for i in 1 2; do mapfile -n "$n" "$i"; gh x; done`),
+		Entry(
+			"mapfile with a count that may split",
+			`for i in 1 2; do mapfile -n $n lines; gh x; done`,
+		),
+		Entry("mapfile into BASH_ENV", `for i in 1 2; do gh x; mapfile -t BASH_ENV < f; done`),
 		Entry("builtin read into a computed name", `for i in 1 2; do builtin read $i; gh x; done`),
 		Entry("command printf -v", `for i in 1 2; do command printf -v $i x; gh x; done`),
 		Entry("command -p declare", `for i in 1 2; do command -p declare "$i=x"; gh x; done`),
@@ -169,5 +205,17 @@ var _ = Describe("Startup variables a loop may set", func() {
 		Entry("alias for eval", `alias e=eval; for i in 1 2; do gh x; e "$i"; done`),
 		Entry("alias for read", `alias r=read; for i in 1 2; do gh x; r "$i"; done`),
 		Entry("alias ending in a blank", `alias s='sudo '; for i in 1 2; do gh x; s ls; done`),
+	)
+	DescribeTable("treats quoted read and mapfile option values as no target",
+		func(command string, blocked bool) {
+			Expect(parse(command).Truncated).To(Equal(blocked), command)
+		},
+		Entry("quoted prompt", `read -p "$P> " x; bash /abs/run.sh`, false),
+		Entry("quoted prompt in a cluster", `read -rp "$P> " x; bash /abs/run.sh`, false),
+		Entry("quoted mapfile count", `mapfile -n "$N" lines < f; bash /abs/run.sh`, false),
+		Entry("unquoted prompt", `read -p $P x; bash /abs/run.sh`, true),
+		Entry("prompt partly unquoted", `read -p "a"$P x; bash /abs/run.sh`, true),
+		Entry("prompt from a list", `read -p "$@" x; bash /abs/run.sh`, true),
+		Entry("computed name after a quoted prompt", `read -p "$P" "$N"; bash /abs/run.sh`, true),
 	)
 })

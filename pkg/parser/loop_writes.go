@@ -228,47 +228,166 @@ func expandingWord(word *syntax.Word) bool {
 	})
 }
 
-// writerTargets returns, as text, the variables a variable writer sets, or
-// every startup variable when one is computed or expands. printf sets one
-// only with -v before its format, so such a word after the format sets
-// nothing.
-func writerTargets(name string, args []*syntax.Word) string {
-	words := make([]string, 0, len(args))
+// writerSpec describes the options of a variable writer: the letters taking
+// a value, the letters taking a target name, and how many operands are
+// targets (all when negative).
+type writerSpec struct {
+	values   string
+	targets  string
+	operands int
+}
 
-	for i, arg := range args {
-		if computedWord(arg) || expandingWord(arg) {
-			if name != printfBuiltin || printfOptionAt(args[:i]) {
-				return anyStartupVar
+// writerSpecs are the writers whose option values the loop scan tells apart
+// from their targets.
+var writerSpecs = map[string]writerSpec{
+	"read":        {values: "dinNptu", targets: "a", operands: -1},
+	"mapfile":     {values: "dnOsuCc", operands: 1},
+	"readarray":   {values: "dnOsuCc", operands: 1},
+	printfBuiltin: {targets: "v"},
+}
+
+// writerTargets returns, as text, the variables a variable writer sets, or
+// every startup variable when a target or an option word is computed or
+// expands. A computed option value that stays one word sets nothing.
+func writerTargets(name string, args []*syntax.Word) string {
+	spec, ok := writerSpecs[name]
+	if !ok {
+		if slices.ContainsFunc(args, unsureWord) {
+			return anyStartupVar
+		}
+
+		words := make([]string, 0, len(args))
+		for _, arg := range args {
+			words = append(words, argWord(arg))
+		}
+
+		return strings.Join(writtenVars(Command{Name: name, Args: words}), " ")
+	}
+
+	names, rest, ok := spec.optionTargets(args)
+	if !ok {
+		return anyStartupVar
+	}
+
+	for i, arg := range rest {
+		if spec.operands >= 0 && i >= spec.operands {
+			break
+		}
+
+		if unsureWord(arg) {
+			return anyStartupVar
+		}
+
+		names = append(names, argWord(arg))
+	}
+
+	return strings.Join(names, " ")
+}
+
+// optionTargets returns the targets the options of a writer name and the
+// operands after them. It fails when an option word, or a target, is
+// computed or expands, or a value may not stay one word.
+func (spec writerSpec) optionTargets(args []*syntax.Word) ([]string, []*syntax.Word, bool) {
+	var names []string
+
+	for i := 0; i < len(args); i++ {
+		if unsureWord(args[i]) {
+			return nil, nil, false
+		}
+
+		option := argWord(args[i])
+
+		switch {
+		case option == endOfOptions:
+			return names, args[i+1:], true
+		case !strings.HasPrefix(option, "-") || option == "-":
+			return names, args[i:], true
+		}
+
+		for j := 1; j < len(option); j++ {
+			letter := option[j : j+1]
+			takesTarget := strings.Contains(spec.targets, letter)
+
+			if !takesTarget && !strings.Contains(spec.values, letter) {
+				continue
+			}
+
+			switch {
+			case j+1 < len(option) && takesTarget:
+				names = append(names, option[j+1:])
+			case j+1 < len(option):
+			case i+1 >= len(args):
+			case takesTarget && unsureWord(args[i+1]):
+				return nil, nil, false
+			case takesTarget:
+				i++
+				names = append(names, argWord(args[i]))
+			case !singleWord(args[i+1]):
+				return nil, nil, false
+			default:
+				i++
 			}
 
 			break
 		}
-
-		words = append(words, argWord(arg))
 	}
 
-	return strings.Join(writtenVars(Command{Name: name, Args: words}), " ")
+	return names, nil, true
 }
 
-// printfOptionAt reports whether the word after the literal words before is
-// still an option of printf or the variable -v names, not the format or an
-// argument for it.
-func printfOptionAt(before []*syntax.Word) bool {
-	for i := 0; i < len(before); i++ {
-		arg := argWord(before[i])
+// quotedValue reports whether the argument after the option at i is the
+// value that option of read or mapfile takes, written in quotes so it stays
+// one word whatever it expands to.
+func quotedValue(cmd Command, i int) bool {
+	spec, ok := writerSpecs[cmd.Name]
+	if !ok || spec.values == "" || i+1 >= len(cmd.Args) {
+		return false
+	}
 
-		switch {
-		case arg == endOfOptions:
-			return false
-		case arg == "-v":
-			i++
-		case strings.HasPrefix(arg, "-"):
+	option := cmd.Args[i]
+	if len(option) < 2 || strings.ContainsAny(option[1:len(option)-1], spec.values+spec.targets) ||
+		!strings.Contains(spec.values, option[len(option)-1:]) {
+		return false
+	}
+
+	return cmd.quoting[cmd.Args[i+1]] == quotedWord
+}
+
+// unsureWord reports a word whose value or number of words the scan cannot
+// know: computed, or holding a brace or glob character.
+func unsureWord(word *syntax.Word) bool {
+	return computedWord(word) || expandingWord(word)
+}
+
+// singleWord reports a word that stays exactly one word: literal, or with
+// its expansions inside double quotes, apart from "$@" and array elements,
+// which may split.
+func singleWord(word *syntax.Word) bool {
+	if expandingWord(word) {
+		return false
+	}
+
+	for _, part := range word.Parts {
+		switch p := part.(type) {
+		case *syntax.Lit, *syntax.SglQuoted:
+		case *syntax.DblQuoted:
+			if slices.ContainsFunc(p.Parts, splitsInQuotes) {
+				return false
+			}
 		default:
 			return false
 		}
 	}
 
 	return true
+}
+
+// splitsInQuotes reports a part of a double-quoted word that may still
+// expand to several words: "$@", an array element list or a name list.
+func splitsInQuotes(part syntax.WordPart) bool {
+	pe, ok := part.(*syntax.ParamExp)
+
+	return ok && ((pe.Param != nil && pe.Param.Value == "@") || pe.Index != nil || pe.Names != 0)
 }
 
 // definitionWrites returns, as text, the startup variables a same-line
