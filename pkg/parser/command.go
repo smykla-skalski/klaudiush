@@ -79,6 +79,9 @@ type Command struct {
 
 	startup      map[string]startupValue
 	dynamicWords map[string]bool
+	argTexts     map[string]ShellText
+	stdinText    *ShellText
+	env          map[string]EnvValue
 	quoting      map[string]wordQuoting
 	// quotedWords are the rendered arguments the shell keeps one word each.
 	quotedWords map[string]bool

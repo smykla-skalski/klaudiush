@@ -412,8 +412,7 @@ func (w *astWalker) walkPrelude(prelude []startupScript) {
 				break
 			}
 
-			w.prepare(stmt)
-			syntax.Walk(stmt, w.visit)
+			w.walkStmt(stmt)
 		}
 
 		w.via = w.via[:len(w.via)-1]

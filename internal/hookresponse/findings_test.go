@@ -3,6 +3,8 @@ package hookresponse_test
 import (
 	"context"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -14,9 +16,11 @@ import (
 	"github.com/smykla-skalski/klaudiush/internal/hookresponse"
 	"github.com/smykla-skalski/klaudiush/internal/validator"
 	"github.com/smykla-skalski/klaudiush/internal/validators/git"
+	"github.com/smykla-skalski/klaudiush/internal/validators/shell"
 	"github.com/smykla-skalski/klaudiush/pkg/config"
 	"github.com/smykla-skalski/klaudiush/pkg/hook"
 	"github.com/smykla-skalski/klaudiush/pkg/logger"
+	"github.com/smykla-skalski/klaudiush/pkg/parser"
 )
 
 // fakeToken matches the GitHub PAT pattern; it is not a real credential.
@@ -281,6 +285,54 @@ var _ = Describe("structured findings", func() {
 			Expect(reason).To(ContainSubstring("1997 more like this at: message line 6,"))
 			Expect(reason).To(ContainSubstring("and others. Repair each the same way."))
 			Expect(reason).To(ContainSubstring("Replace '#1' with '1'"))
+		})
+
+		It("keeps every setup repair and other finding of a full SHELL002 list", func() {
+			setups := map[string]string{
+				"ssh-agent": "ssh-agent -s", "mise": "mise activate bash",
+				"direnv": "direnv export bash", "rbenv": "rbenv init -",
+				"pyenv": "pyenv init -", "nodenv": "nodenv init -",
+				"conda": "conda shell.bash hook", "brew": "brew shellenv",
+				"starship": "starship init bash", "zoxide": "zoxide init bash",
+				"fnm": "fnm env",
+			}
+			Expect(parser.EvalSetupTools()).To(ConsistOf(slices.Collect(maps.Keys(setups))))
+
+			parts := make([]string, 0, len(setups)+parser.MaxOpacities)
+			for _, setup := range setups {
+				parts = append(parts, `eval "$(`+setup+`)"`)
+			}
+
+			for i := range parser.MaxOpacities - 1 {
+				parts = append(parts, "HOME=/nonexistent-klaudiush git zz"+strings.Repeat("z", i))
+			}
+
+			result := shell.NewNestingValidator(logger.NewNoOpLogger()).Validate(
+				context.Background(),
+				&hook.Context{
+					EventType: hook.EventTypePreToolUse,
+					ToolName:  hook.ToolTypeBash,
+					ToolInput: hook.ToolInput{Command: strings.Join(parts, "; ")},
+				},
+			)
+			errs := []*dispatcher.ValidationError{{
+				Message: result.Message, ShouldBlock: true,
+				Reference: result.Reference, Findings: result.Findings,
+			}}
+
+			resp := hookresponse.BuildForContext(preToolCtx(hook.ProviderCodex), errs, nil)
+			reason, _ := hookSpecific(responseFields(resp))["permissionDecisionReason"].(string)
+
+			Expect(len(reason)).To(BeNumerically("<=", 6000))
+			Expect(reason).NotTo(ContainSubstring("more like this"))
+
+			for tool := range setups {
+				Expect(reason).To(ContainSubstring("shell setup "+tool+" prints"), tool)
+			}
+
+			for i := range parser.MaxOpacities - 1 {
+				Expect(reason).To(ContainSubstring("git zz" + strings.Repeat("z", i) + " is not"))
+			}
 		})
 
 		It("cuts at a rune boundary as a last resort", func() {
