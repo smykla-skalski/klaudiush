@@ -675,6 +675,16 @@ func (w *astWalker) forgetName(name string) {
 	}
 }
 
+// printfConversionN matches a %n conversion, with any flags, width or
+// precision, which makes printf assign to the variable its argument names.
+var printfConversionN = regexp.MustCompile(`%[-+ #0-9.*]*n`)
+
+// printfAssigns reports a printf format that may assign through %n: one
+// that has it, or one holding an expansion klaudiush cannot read.
+func printfAssigns(format string) bool {
+	return printfConversionN.MatchString(format) || strings.Contains(format, "$") || marked(format)
+}
+
 // variableName matches a plain shell variable name.
 var variableName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
@@ -694,7 +704,8 @@ func (w *astWalker) distrustDecl(decl *syntax.DeclClause) {
 
 // writtenVars returns the words cmd may write to: every operand and flag
 // value, since an empty value such as read -d ” leaves no word behind, and
-// for printf only the value of -v, given apart or attached. A value in
+// for printf the value of -v, given apart or attached, and the arguments a
+// format with %n assigns. A value in
 // quotes for an option of read or mapfile that takes one names nothing.
 func writtenVars(cmd Command) []string {
 	var names []string
@@ -714,6 +725,8 @@ func writtenVars(cmd Command) []string {
 		case strings.HasPrefix(arg, "-") && quotedValue(cmd, i):
 			i++
 		case strings.HasPrefix(arg, "-"):
+		case cmd.Name == printfBuiltin && printfAssigns(arg):
+			return append(names, cmd.Args[i+1:]...)
 		case cmd.Name == printfBuiltin:
 			return names
 		default:

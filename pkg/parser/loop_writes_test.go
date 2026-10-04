@@ -74,6 +74,9 @@ var _ = Describe("Startup variables a loop may set", func() {
 		Entry("printf operand before a shell reading HOME files",
 			`for i in 1 2; do printf x $i; zsh -c true; done`),
 		Entry("read with a computed prompt", `for i in 1 2; do read -p "$i> " x; gh x; done`),
+		Entry("command -v lookup", `for i in 1 2; do command -v printf "$i"; gh x; done`),
+		Entry("command -pV lookup", `for i in 1 2; do command -pV read "$i"; gh x; done`),
+		Entry("printf without %n", `for i in 1 2; do printf '%s %d\n' "$i" 3; gh x; done`),
 		Entry(
 			"read with computed option values",
 			`for i in 1 2; do read -rt "$t" -n "$n" -N "$n" -d "$d" -u "$fd" -i "$i" -e x; gh x; done`,
@@ -119,6 +122,23 @@ var _ = Describe("Startup variables a loop may set", func() {
 		),
 		Entry("read -a value attached", `for i in 1 2; do gh x; read -aBASH_ENV < f; done`),
 		Entry("read into a computed name", `for i in 1 2; do read $i; gh x; done`),
+		Entry("quote-assembled export in a function",
+			`f() { export BA'SH'_ENV=/abs/p; }; for i in 1 2; do bash -c true; f; done`),
+		Entry(
+			"escaped export in the loop",
+			`for i in 1 2; do bash -c true; builtin export BASH\_ENV=/abs/p; done`,
+		),
+		Entry("function shadowing command",
+			`command() { export BASH_ENV=$1; }; for i in 1 2; do bash -c true; command true; done`),
+		Entry(
+			"printf %n into a computed name",
+			`n=BASH_ENV; for i in 1 2; do bash -c true; printf '%n' "$n"; done`,
+		),
+		Entry("printf %n with a width", `for i in 1 2; do gh x; printf '%5n' BASH_ENV; done`),
+		Entry(
+			"printf with a computed format and arguments",
+			`for i in 1 2; do gh x; printf "$f" "$i"; done`,
+		),
 		Entry(
 			"read with a computed name after a prompt",
 			`for i in 1 2; do read -p "$i> " "$i"; gh x; done`,
@@ -217,5 +237,6 @@ var _ = Describe("Startup variables a loop may set", func() {
 		Entry("prompt partly unquoted", `read -p "a"$P x; bash /abs/run.sh`, true),
 		Entry("prompt from a list", `read -p "$@" x; bash /abs/run.sh`, true),
 		Entry("computed name after a quoted prompt", `read -p "$P" "$N"; bash /abs/run.sh`, true),
+		Entry("printf %n outside a loop", `printf '%n' "$N"; bash /abs/run.sh`, true),
 	)
 })

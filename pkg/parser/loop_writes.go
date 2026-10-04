@@ -49,6 +49,10 @@ func (w *astWalker) loopStartupNames(
 		text = n.Value
 	case *syntax.SglQuoted:
 		text = n.Value
+	case *syntax.Word:
+		if isLiteralWord(n) {
+			text = argWord(n)
+		}
 	case *syntax.CallExpr:
 		text = w.loopWrites(n, seen)
 	case *syntax.DeclClause:
@@ -94,19 +98,18 @@ func isNamerefOption(option string) bool {
 }
 
 // loopWrites returns, as text naming them, the startup variables a call in
-// a loop may set on a later pass in text the loop does not show: what the
-// builtin it names may set, and what a same-line function or alias of that
-// name may set. builtin and command skip the definitions.
+// a loop may set on a later pass in text the loop does not show: what a
+// same-line function or alias named by its first word may set, and what
+// the builtin it runs, past builtin and command, may set.
 func (w *astWalker) loopWrites(call *syntax.CallExpr, seen map[string]bool) string {
-	args := runWrapped(call.Args)
-	if len(args) == 0 {
+	if len(call.Args) == 0 {
 		return ""
 	}
 
-	text := w.commandWrites(commandName(wordToString(args[0])), args[1:], seen)
+	text := w.definitionWrites(call.Args[0], call.Args[1:], seen)
 
-	if len(args) == len(call.Args) {
-		text += " " + w.definitionWrites(args[0], args[1:], seen)
+	if args := runWrapped(call.Args); len(args) > 0 {
+		text += " " + w.commandWrites(commandName(wordToString(args[0])), args[1:], seen)
 	}
 
 	return text
@@ -193,17 +196,18 @@ func funcBodies(stmt *syntax.Stmt) map[string][]string {
 }
 
 // runWrapped drops builtin and command, with the options of command, from
-// the front of a call, leaving the command they run.
+// the front of a call, leaving the command they run. command -v and -V only
+// look a name up, so they run nothing.
 func runWrapped(args []*syntax.Word) []*syntax.Word {
 	for len(args) > 0 && isLiteralWord(args[0]) {
 		switch commandName(argWord(args[0])) {
 		case builtinCommand:
 			args = args[1:]
 		case commandBuiltin:
-			args = args[1:]
-			for len(args) > 0 && isLiteralWord(args[0]) &&
-				strings.HasPrefix(argWord(args[0]), "-") {
-				args = args[1:]
+			var runs bool
+
+			if args, runs = commandOptions(args[1:]); !runs {
+				return nil
 			}
 		default:
 			return args
@@ -211,6 +215,27 @@ func runWrapped(args []*syntax.Word) []*syntax.Word {
 	}
 
 	return args
+}
+
+// commandOptions drops the options of command, reporting false when one of
+// them makes it look the name up instead of running it.
+func commandOptions(args []*syntax.Word) ([]*syntax.Word, bool) {
+	for len(args) > 0 && isLiteralWord(args[0]) {
+		option := argWord(args[0])
+
+		switch {
+		case option == endOfOptions:
+			return args[1:], true
+		case !strings.HasPrefix(option, "-") || option == "-":
+			return args, true
+		case strings.ContainsAny(option[1:], "vV"):
+			return nil, false
+		}
+
+		args = args[1:]
+	}
+
+	return args, true
 }
 
 // computedWord reports a word that is not literal text.
@@ -243,7 +268,7 @@ var writerSpecs = map[string]writerSpec{
 	"read":        {values: "dinNptu", targets: "a", operands: -1},
 	"mapfile":     {values: "dnOsuCc", operands: 1},
 	"readarray":   {values: "dnOsuCc", operands: 1},
-	printfBuiltin: {targets: "v"},
+	printfBuiltin: {targets: "v", operands: 1},
 }
 
 // writerTargets returns, as text, the variables a variable writer sets, or
@@ -269,11 +294,42 @@ func writerTargets(name string, args []*syntax.Word) string {
 		return anyStartupVar
 	}
 
+	if name == printfBuiltin {
+		return printfTargets(names, rest)
+	}
+
 	for i, arg := range rest {
 		if spec.operands >= 0 && i >= spec.operands {
 			break
 		}
 
+		if unsureWord(arg) {
+			return anyStartupVar
+		}
+
+		names = append(names, argWord(arg))
+	}
+
+	return strings.Join(names, " ")
+}
+
+// printfTargets adds the arguments a printf format assigns through %n to
+// the -v target in names. A format the scan cannot read may hold %n, which
+// assigns nothing only when it stays one word with no arguments after it.
+func printfTargets(names []string, rest []*syntax.Word) string {
+	if len(rest) == 0 {
+		return strings.Join(names, " ")
+	}
+
+	if unsureWord(rest[0]) && (len(rest) > 1 || !singleWord(rest[0])) {
+		return anyStartupVar
+	}
+
+	if !printfAssigns(argWord(rest[0])) {
+		return strings.Join(names, " ")
+	}
+
+	for _, arg := range rest[1:] {
 		if unsureWord(arg) {
 			return anyStartupVar
 		}
