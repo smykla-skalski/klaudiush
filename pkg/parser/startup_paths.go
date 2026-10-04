@@ -139,7 +139,8 @@ func printfMayWriteAny(args []*syntax.Word) bool {
 
 // assigningWord reports a word whose expansion may assign a variable it
 // names only at run time: arithmetic, a computed index or slice, an
-// indirect ${!n:=v}, or ${x@P}, which expands the value again. A command substitution runs in a subshell, so what it
+// indirect ${!n}, whose target may be an element with a computed index, or
+// ${x@P}, which expands the value again. A command substitution runs in a subshell, so what it
 // assigns does not reach the loop.
 func assigningWord(word *syntax.Word) bool {
 	found := false
@@ -152,13 +153,19 @@ func assigningWord(word *syntax.Word) bool {
 			found = true
 		case *syntax.ParamExp:
 			found = found || !literalIndex(n.Index) || n.Slice != nil ||
-				(n.Excl && assignsDefault(n)) || promptExpansion(n)
+				indirect(n) || promptExpansion(n)
 		}
 
 		return !found
 	})
 
 	return found
+}
+
+// indirect reports ${!n}, which expands the variable n names, as opposed to
+// listing names with ${!pre@} or keys with ${!a[@]}.
+func indirect(pe *syntax.ParamExp) bool {
+	return pe.Excl && pe.Names == 0 && pe.Index == nil
 }
 
 // promptExpansion reports ${x@P}, which expands x as a prompt string.

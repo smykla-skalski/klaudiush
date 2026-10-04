@@ -242,6 +242,9 @@ var _ = Describe("Shell startup files", func() {
 		Entry("loop printing an indirect default",
 			`for i in 1 2; do bash -c true; printf '%s' "${!n:=/abs/x.sh}"; done`,
 			"BASH_ENV", parser.DetailStartupValue),
+		Entry("loop printing an indirect expansion",
+			`for i in 1 2; do bash -c true; n=$(cat n.txt); printf '%s' "${!n}"; done`,
+			"BASH_ENV", parser.DetailStartupValue),
 		Entry("loop printing arithmetic",
 			`for i in 1 2; do bash -c true; printf -- '%s' "$((n))"; done`,
 			"BASH_ENV", parser.DetailStartupValue),
@@ -354,6 +357,8 @@ var _ = Describe("Shell startup files", func() {
 			`for f in a b; do printf -- '%s -> %s\n' "$f" "$(readlink $f)"; ls "$f"; done`),
 		Entry("loop with a quoted glob in the printf format",
 			`for f in a b; do printf '%s*\n' "$(readlink $f)"; ls "$f"; done`),
+		Entry("loop printing names and keys",
+			`for f in a b; do printf '%s ' "${!BASH@}" "${!arr[@]}"; ls "$f"; done`),
 		Entry("loop printing arithmetic inside command output",
 			`for f in a b; do printf '%s' "$(echo $((1+1)))" "${a[0]}"; ls "$f"; done`),
 	)
