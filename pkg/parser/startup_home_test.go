@@ -1,6 +1,8 @@
 package parser_test
 
 import (
+	"strings"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -282,5 +284,72 @@ var _ = Describe("Home startup files", func() {
 		Entry("zsh --emulate sh reads no zshenv", `HOME=/z zsh --emulate sh -c true`),
 		Entry("csh -f", `HOME=/c csh -f -c true`),
 		Entry("exec without -l", `HOME=/zl exec -a zsh -c true`),
+	)
+})
+
+var _ = Describe("Home startup files the line never touched", func() {
+	const brew = `eval "$(/opt/homebrew/bin/brew shellenv)"`
+
+	resolver := fakeResolver{
+		env: map[string]string{"HOME": "/env"},
+		files: map[string]string{
+			"/env/.zprofile": brew,
+			"/env/.zshenv":   "path=(${(s.:.)PATH})\nZDOTDIR=$(mktemp -d)",
+			"/env/.bashrc":   strings.Repeat("true\n", 3000) + "git push --force",
+			"/env/.profile":  "git push --force\n" + brew,
+		},
+		opaque: map[string]bool{"/env/.zlogin": true},
+	}
+
+	parse := func(command string) *parser.ParseResult {
+		result, err := parser.NewBashParserWithResolver(resolver).Parse(command)
+		Expect(err).NotTo(HaveOccurred(), command)
+
+		return result
+	}
+
+	DescribeTable("follows them without blocking on what it cannot see",
+		func(command string, git ...string) {
+			result := parse(command)
+
+			Expect(result.Truncated).To(BeFalse(), command)
+			Expect(result.Opacities).To(BeEmpty(), command)
+
+			ops := make([]string, 0, len(result.GitOperations))
+			for _, op := range result.GitOperations {
+				ops = append(ops, strings.Join(op.Args, " "))
+			}
+
+			if len(git) == 0 {
+				Expect(ops).To(BeEmpty(), command)
+			} else {
+				Expect(ops).To(Equal(git), command)
+			}
+		},
+		Entry("brew shellenv in .zprofile", `zsh -l -c true`),
+		Entry("the script still checked", `zsh -l -c 'git status'`, "status"),
+		Entry("zsh syntax and a computed ZDOTDIR in .zshenv", `zsh -i -c true`),
+		Entry("unreadable .zlogin", `zsh -l -c true`),
+		Entry("commands still recorded", `sh -l -c true`, "push --force"),
+		Entry("past the work budget, leaving the line's own", `bash -i -c 'git status'`,
+			"status"),
+		Entry("a reader naming the file", `cat ~/.zprofile; zsh -l -c true`),
+		Entry("git with a variable", `git log "$X"; zsh -l -c true`, "log ${X}"),
+	)
+
+	DescribeTable("checks them strictly once the line may have changed them",
+		func(command string) {
+			Expect(parse(command).Truncated).To(BeTrue(), command)
+		},
+		Entry("sed -i", `sed -i 's/a/b/' ~/.zprofile; zsh -l -c true`),
+		Entry("ln", `ln -sf /tmp/p ~/.zprofile; zsh -l -c true`),
+		Entry("cp into home", `cp -r cfg/. ~; zsh -l -c true`),
+		Entry("rsync into $HOME", `rsync -a cfg/ "$HOME/"; zsh -l -c true`),
+		Entry("write to an unknown path", `echo x > "$F"; zsh -l -c true`),
+		Entry("command on an unknown path", `mv a "$F"; zsh -l -c true`),
+		Entry("HOME set on the line", `HOME=/env zsh -l -c true`),
+		Entry("ZDOTDIR set on the line", `export ZDOTDIR=/env; zsh -l -c true`),
+		Entry("written on the line",
+			"echo 'eval \"$(x)\"' > ~/.zprofile; zsh -l -c true"),
 	)
 })

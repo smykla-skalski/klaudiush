@@ -42,6 +42,7 @@ type astWalker struct {
 	inLoop      bool
 	outerLoop   bool
 	distrust    bool
+	lenient     bool
 	scriptRun   scriptRun
 	launchSeq   int
 	// depth counts the launchers, scripts and aliases that led here.
@@ -106,6 +107,7 @@ type parseState struct {
 	opacities      []Opacity
 	moreOpacities  bool
 	budgetReported bool
+	lenientWork    int
 	// work is how many more commands and scripts may be followed. Fan-out
 	// through functions, aliases or scripts would otherwise grow without
 	// bound and push the hook past its timeout, which lets the command run.

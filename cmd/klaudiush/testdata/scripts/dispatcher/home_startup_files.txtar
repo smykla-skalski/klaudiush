@@ -49,8 +49,27 @@ stdin zsh-no-rcs.json
 exec klaudiush --hook-type PreToolUse
 ! stdout .
 
+env ZDOTDIR=$WORK/brew
+stdin zsh-login.json
+exec klaudiush --hook-type PreToolUse
+! stdout .
+
+stdin zprofile-edited.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+
 -- file.go --
 package main
+
+-- brew/.zprofile --
+eval "$(/opt/homebrew/bin/brew shellenv)"
+
+-- zsh-login.json --
+{"tool_name": "Bash", "tool_input": {"command": "zsh -l -c true"}}
+
+-- zprofile-edited.json --
+{"tool_name": "Bash", "tool_input": {"command": "sed -i '' 's/x/y/' brew/.zprofile; zsh -l -c true"}}
 
 -- .zshenv --
 git commit -m 'bad title'

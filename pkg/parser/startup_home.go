@@ -285,16 +285,16 @@ func (w *astWalker) homeScripts(cmd Command, files []string) []startupScript {
 // homeDirs returns the directories a shell started by cmd reads its startup
 // files from, recording why when they cannot be known. A ZDOTDIR assigned on
 // the line may not be exported, so zsh may read HOME's files instead.
-func (w *astWalker) homeDirs(cmd Command, zdot bool) ([]string, bool) {
-	home, homeSet, ok := w.startupDir(cmd, homeVar)
+func (w *astWalker) homeDirs(cmd Command, zdot bool) ([]homeDir, bool) {
+	home, ok := w.startupDir(cmd, homeVar)
 	if !ok {
 		return nil, false
 	}
 
-	var dirs []string
+	var dirs []homeDir
 
 	if zdot {
-		dir, set, known := w.startupDir(cmd, zdotdirVar)
+		dir, known := w.startupDir(cmd, zdotdirVar)
 		if !known {
 			return nil, false
 		}
@@ -302,34 +302,46 @@ func (w *astWalker) homeDirs(cmd Command, zdot bool) ([]string, bool) {
 		_, prefixed := cmd.startup[zdotdirVar]
 		_, assigned := w.assignments[zdotdirVar]
 
-		if set {
+		if dir.set {
 			dirs = append(dirs, dir)
 		}
 
-		if set && (prefixed || (!assigned && !w.startupUnset[zdotdirVar])) {
+		if dir.set && (prefixed || (!assigned && !w.startupUnset[zdotdirVar])) {
 			return dirs, true
 		}
 	}
 
-	if homeSet && !slices.Contains(dirs, home) {
+	if home.set && !slices.ContainsFunc(dirs, func(d homeDir) bool { return d.path == home.path }) {
 		dirs = append(dirs, home)
 	}
 
 	return dirs, true
 }
 
+// homeDir is a directory a shell reads startup files from. inherited marks
+// one taken from the environment klaudiush runs in rather than the line.
+type homeDir struct {
+	path      string
+	set       bool
+	inherited bool
+}
+
 // startupDir returns the directory a startup directory variable holds for
 // cmd, and whether it is set. A shell whose HOME is unset takes it from the
 // user database, which klaudiush does not read.
-func (w *astWalker) startupDir(cmd Command, name string) (dir string, set, known bool) {
+func (w *astWalker) startupDir(cmd Command, name string) (homeDir, bool) {
+	inherited := func() (homeDir, bool) {
+		path, set := w.resolver.LookupEnv(name)
+
+		return homeDir{path: path, set: set, inherited: true}, true
+	}
+
 	if v, ok := cmd.startup[name]; ok && v.unset {
 		if name != homeVar {
-			return "", false, true
+			return homeDir{}, true
 		}
 
-		dir, set = w.resolver.LookupEnv(name)
-
-		return dir, set, true
+		return inherited()
 	}
 
 	v, set := w.startupSetting(cmd, name)
@@ -339,15 +351,13 @@ func (w *astWalker) startupDir(cmd Command, name string) (dir string, set, known
 	case name == homeVar && w.startupUnset[name] && !prefixed:
 		w.opaque(OpacityStartupFile, name, DetailStartupValue)
 
-		return "", false, false
+		return homeDir{}, false
 	case !set:
-		dir, set = w.resolver.LookupEnv(name)
-
-		return dir, set, true
+		return inherited()
 	case v.dynamic:
 		w.opaque(OpacityStartupFile, name, DetailStartupValue)
 
-		return "", false, false
+		return homeDir{}, false
 	}
 
 	dir, detail := w.startupPath(v)
@@ -361,17 +371,24 @@ func (w *astWalker) startupDir(cmd Command, name string) (dir string, set, known
 	if detail != "" {
 		w.opaque(OpacityStartupFile, name, detail)
 
-		return "", false, false
+		return homeDir{}, false
 	}
 
-	return dir, true, true
+	return homeDir{path: dir, set: true}, true
 }
 
 // homeScript reads the startup file named file in dir, as the shell joins
-// them, recording why when it cannot.
-func (w *astWalker) homeScript(cmd Command, file, dir string) (startupScript, bool) {
-	clean := resolvePath(cmd.WorkingDirectory, dir+"/"+file)
+// them, recording why when it cannot. A file the line may have changed is
+// checked strictly; one in an inherited directory that the line never
+// touched is lenient, and skipped when it cannot be read.
+func (w *astWalker) homeScript(cmd Command, file string, dir homeDir) (startupScript, bool) {
+	clean := resolvePath(cmd.WorkingDirectory, dir.path+"/"+file)
 	relative := !filepath.IsAbs(clean)
+	touched := w.homeTouched(clean, dir.path, cmd)
+
+	if dir.inherited && !touched && !w.lenient {
+		defer w.enterLenient()()
+	}
 
 	detail := ""
 
@@ -397,7 +414,10 @@ func (w *astWalker) homeScript(cmd Command, file, dir string) (startupScript, bo
 			return startupScript{}, false
 		}
 
-		return startupScript{label: file, key: key, text: text}, true
+		return startupScript{
+			label: file, key: key, text: text,
+			touched: touched, lenient: dir.inherited && !touched,
+		}, true
 	case ScriptOpaque:
 		w.opaque(OpacityStartupFile, file, detail)
 	case ScriptMissing, ScriptBinary:
@@ -589,6 +609,7 @@ func (w *astWalker) lazyStartup(
 	part startupScript,
 	parent Command,
 	start homeState,
+	lenient bool,
 ) []startupScript {
 	switch changed := w.currentHomeState() != start; {
 	case !changed:
@@ -600,7 +621,33 @@ func (w *astWalker) lazyStartup(
 		parent.WorkingDirectory = w.currentDir
 		parent.DirUnknown, parent.DirComputed = w.dirUnknown, w.dirComputed
 
-		return w.homeScripts(parent, []string{part.label})
+		if !lenient || w.lenient {
+			return w.homeScripts(parent, []string{part.label})
+		}
+
+		defer w.enterLenient()()
+
+		scripts := w.homeScripts(parent, []string{part.label})
+		for i := range scripts {
+			scripts[i].lenient = !scripts[i].touched
+		}
+
+		return scripts
+	}
+}
+
+// enterLenient stops recording opacities and switches to the lenient work
+// budget, which the line's own does not share, until the returned function
+// runs.
+func (w *astWalker) enterLenient() func() {
+	work := w.state.work
+	w.state.work = w.state.lenientWork
+	w.lenient = true
+
+	return func() {
+		w.state.lenientWork = max(w.state.work, 0)
+		w.state.work = work
+		w.lenient = false
 	}
 }
 
@@ -686,4 +733,65 @@ func execLogin(options []string) bool {
 	}
 
 	return false
+}
+
+// fileReaders only read the files they name, so naming a startup file does
+// not change it.
+var fileReaders = nameSet(`ack ag bat cat diff egrep fgrep file grep head jq less ls
+	md5sum more rg sha256sum shasum sort stat tail uniq wc yq`)
+
+// homeTouched reports whether the line may have changed a home startup file
+// before the shell reads it: a write to it or to a path klaudiush cannot
+// resolve, or a command other than a reader that names the file, the
+// directory it is in, or a path it cannot resolve (sed -i, ln, cp -r into
+// the home directory, rsync).
+func (w *astWalker) homeTouched(target, dir string, cmd Command) bool {
+	if _, found, _, unsure := w.homeWrite(target); found || unsure {
+		return true
+	}
+
+	for p := w; p != nil; p = p.parent {
+		if p.dynamicWrites > 0 {
+			return true
+		}
+
+		for _, fw := range p.fileWrites {
+			if _, known := w.writtenPath(fw); !known {
+				return true
+			}
+		}
+	}
+
+	name := filepath.Base(target)
+	home := resolvePath(cmd.WorkingDirectory, dir)
+
+	for earlier := range w.earlierCommands() {
+		if shellBuiltins[earlier.Name] || fileReaders[earlier.Name] {
+			continue
+		}
+
+		if slices.ContainsFunc(earlier.Args, func(arg string) bool {
+			return w.argTouches(earlier, arg, name, home)
+		}) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// argTouches reports whether an argument names a startup file, the
+// directory it is in, or a path klaudiush cannot resolve. git and gh are
+// validated on their own, so their unresolved arguments do not count.
+func (w *astWalker) argTouches(cmd Command, arg, name, dir string) bool {
+	switch {
+	case strings.Contains(arg, name):
+		return true
+	case marked(arg) || HasUnresolvedVars(w.expandName(arg)):
+		return cmd.Name != gitProgram && cmd.Name != ghCLI
+	}
+
+	path := ExpandHome(w.expandName(arg), w.resolver)
+
+	return resolvePath(cmd.WorkingDirectory, path) == dir
 }

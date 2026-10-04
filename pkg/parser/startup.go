@@ -52,12 +52,16 @@ type startupValue struct {
 
 // startupScript is a file a shell runs before anything else.
 // A lazy one is a zsh file after .zshenv, read again when .zshenv moves
-// ZDOTDIR or HOME; one with no key only marks where that happens.
+// ZDOTDIR or HOME; one with no key only marks where that happens. A lenient
+// one sits on disk where the line never touched it, so what cannot be
+// inspected in it does not block.
 type startupScript struct {
-	label string
-	key   string
-	text  string
-	lazy  bool
+	label   string
+	key     string
+	text    string
+	lazy    bool
+	touched bool
+	lenient bool
 }
 
 // prefixStartup returns the startup variables a call sets for its command
@@ -391,24 +395,50 @@ func (w *astWalker) startupPath(v startupValue) (path, detail string) {
 // what they define is in place for the script that follows.
 func (w *astWalker) walkPrelude(prelude []startupScript, parent Command) {
 	start := w.currentHomeState()
+	moved := homeMove{}
 
 	for _, part := range prelude {
 		parts := []startupScript{part}
 		if part.lazy {
-			parts = w.lazyStartup(part, parent, start)
+			parts = w.lazyStartup(part, parent, start, moved.lenient)
 		}
 
 		for _, part := range parts {
-			if part.key != "" {
-				w.walkStartupPart(part)
+			if part.key == "" {
+				continue
+			}
+
+			before := w.currentHomeState()
+
+			w.walkStartupPart(part)
+
+			if w.currentHomeState() != before {
+				moved.note(part.lenient)
 			}
 		}
 	}
 }
 
+// homeMove records whether the startup files that moved HOME or ZDOTDIR
+// were all lenient ones.
+type homeMove struct {
+	lenient bool
+	strict  bool
+}
+
+// note records one startup file that moved HOME or ZDOTDIR.
+func (m *homeMove) note(lenient bool) {
+	m.strict = m.strict || !lenient
+	m.lenient = lenient && !m.strict
+}
+
 // walkStartupPart walks one startup file. What runs after it runs after
 // every assignment in it, so positions noted in it are dropped.
 func (w *astWalker) walkStartupPart(part startupScript) {
+	if part.lenient && !w.lenient {
+		defer w.enterLenient()()
+	}
+
 	w.expanding[startupPrefix+part.key+"\x00"+part.text] = true
 	w.expanding[startupPrefix+devStdin] = w.expanding[startupPrefix+devStdin] ||
 		strings.HasSuffix(part.key, "\x00"+devStdin)

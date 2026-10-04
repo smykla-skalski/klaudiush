@@ -70,9 +70,10 @@ func newAstWalker(resolver Resolver) *astWalker {
 		scriptFiles:     make(map[string]string),
 		startupUnset:    make(map[string]bool),
 		state: &parseState{
-			work:     maxParseWork,
-			distinct: make(map[string]bool),
-			repeated: make(map[string]bool),
+			work:        maxParseWork,
+			lenientWork: maxParseWork,
+			distinct:    make(map[string]bool),
+			repeated:    make(map[string]bool),
 		},
 		expanding: make(map[string]bool),
 	}
@@ -86,6 +87,7 @@ func (w *astWalker) child(dir string, depth int) *astWalker {
 	child.currentDir = dir
 	child.dirUnknown = w.dirUnknown
 	child.dirComputed = w.dirComputed
+	child.lenient = w.lenient
 	child.depth = depth
 	child.scriptFiles = w.scriptFiles
 	child.state = w.state
