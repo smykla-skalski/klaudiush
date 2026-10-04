@@ -107,30 +107,28 @@ func (w *astWalker) loopMayWriteAny(call *syntax.CallExpr) bool {
 	}
 }
 
-// printfMayWriteAny reports a printf that may write a computed name: one
-// whose options or -v target are not literal, may glob, or name something
-// other than a plain variable. Only -v names a variable, so the format and
-// the values after it never do.
+// printfMayWriteAny reports a printf that may write a computed name. Only
+// -v names a variable, so a printf without it writes nothing but what its
+// values assign. With -v, a target that is not a plain name, a startup
+// variable, or any computed word may write one. A word before the format
+// that expands or globs may itself become -v.
 func printfMayWriteAny(args []*syntax.Word) bool {
-	for i := 0; i < len(args); i++ {
-		if computedPrintfWord(args[i]) {
+	for i, word := range args {
+		if computedPrintfWord(word) {
 			return true
 		}
 
-		arg := argWord(args[i])
+		arg := argWord(word)
 
 		switch {
-		case arg == "-v":
-			i++
-
-			if i < len(args) &&
-				(computedPrintfWord(args[i]) || !variableName.MatchString(argWord(args[i]))) {
-				return true
-			}
 		case strings.HasPrefix(arg, "-v"):
-			if !variableName.MatchString(arg[2:]) {
-				return true
+			target := strings.TrimPrefix(arg, "-v")
+			if target == "" && i+1 < len(args) {
+				target = argWord(args[i+1])
 			}
+
+			return !variableName.MatchString(target) || startupVars[target] ||
+				slices.ContainsFunc(args, computedPrintfWord)
 		case arg == endOfOptions || !strings.HasPrefix(arg, "-"):
 			return slices.ContainsFunc(args[i:], assigningWord)
 		}
@@ -140,8 +138,8 @@ func printfMayWriteAny(args []*syntax.Word) bool {
 }
 
 // assigningWord reports a word whose expansion may assign a variable it
-// names only at run time: arithmetic, a computed index or slice, or an
-// indirect ${!n:=v}. A command substitution runs in a subshell, so what it
+// names only at run time: arithmetic, a computed index or slice, an
+// indirect ${!n:=v}, or ${x@P}, which expands the value again. A command substitution runs in a subshell, so what it
 // assigns does not reach the loop.
 func assigningWord(word *syntax.Word) bool {
 	found := false
@@ -154,13 +152,19 @@ func assigningWord(word *syntax.Word) bool {
 			found = true
 		case *syntax.ParamExp:
 			found = found || !literalIndex(n.Index) || n.Slice != nil ||
-				(n.Excl && assignsDefault(n))
+				(n.Excl && assignsDefault(n)) || promptExpansion(n)
 		}
 
 		return !found
 	})
 
 	return found
+}
+
+// promptExpansion reports ${x@P}, which expands x as a prompt string.
+func promptExpansion(pe *syntax.ParamExp) bool {
+	return pe.Exp != nil && pe.Exp.Op == syntax.OtherParamOps &&
+		pe.Exp.Word != nil && pe.Exp.Word.Lit() == "P"
 }
 
 // computedPrintfWord reports a printf word the shell may turn into other

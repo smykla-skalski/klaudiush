@@ -248,6 +248,15 @@ var _ = Describe("Shell startup files", func() {
 		Entry("loop printing a computed index",
 			`for i in 1 2; do bash -c true; printf '%s' "${a[n]}"; done`,
 			"BASH_ENV", parser.DetailStartupValue),
+		Entry("loop with a split printf -v BASH_ENV",
+			`for i in 1 2; do bash -c true; printf -v BASH_"ENV" '%s' "$(cat f)"; done`,
+			"BASH_ENV", parser.DetailStartupValue),
+		Entry("loop with printf -v through a computed nameref",
+			`for i in 1 2; do bash -c true; printf -v r '%s' "$(cat f)"; declare -n r=$t; done`,
+			"BASH_ENV", parser.DetailStartupValue),
+		Entry("loop printing a prompt expansion",
+			`for i in 1 2; do bash -c true; printf '%s' "${x@P}"; done`,
+			"BASH_ENV", parser.DetailStartupValue),
 		Entry("loop with a computed printf option",
 			`for i in 1 2; do bash -c true; printf $opt "$n" '%s' x; done`,
 			"BASH_ENV", parser.DetailStartupValue),
@@ -347,7 +356,5 @@ var _ = Describe("Shell startup files", func() {
 			`for f in a b; do printf '%s*\n' "$(readlink $f)"; ls "$f"; done`),
 		Entry("loop printing arithmetic inside command output",
 			`for f in a b; do printf '%s' "$(echo $((1+1)))" "${a[0]}"; ls "$f"; done`),
-		Entry("loop with a literal printf -v target",
-			`for f in a b; do printf -v out '%s' "$(readlink $f)"; ls "$f"; done`),
 	)
 })
