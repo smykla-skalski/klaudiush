@@ -137,53 +137,45 @@ func printfMayWriteAny(args []*syntax.Word) bool {
 	return false
 }
 
-// assigningWord reports a word whose expansion may assign a variable it
-// names only at run time: arithmetic, a computed index or slice, an
-// indirect ${!n}, whose target may be an element with a computed index, a
-// default assignment ${x:=v}, whose x may be a nameref, or ${x@P}, which
-// expands the value again. A command substitution runs in a
-// subshell, so what it assigns does not reach the loop; ${ cmd;} and
-// ${|cmd;} run in the current shell and count as assigning.
+// assigningWord reports a word whose expansion may assign a variable. Only
+// literal text, plain $name or ${name} references, a literal element and
+// command or process substitutions, which run in a subshell, are known not
+// to; arithmetic, indirection, ${x:=v}, ${x@P} and the rest may.
 func assigningWord(word *syntax.Word) bool {
-	found := false
+	return !plainParts(word.Parts)
+}
 
-	syntax.Walk(word, func(node syntax.Node) bool {
-		switch n := node.(type) {
+func plainParts(parts []syntax.WordPart) bool {
+	for _, part := range parts {
+		switch p := part.(type) {
+		case *syntax.Lit, *syntax.SglQuoted, *syntax.ProcSubst:
+		case *syntax.DblQuoted:
+			if !plainParts(p.Parts) {
+				return false
+			}
 		case *syntax.CmdSubst:
-			found = found || n.TempFile || n.ReplyVar
-
-			return false
-		case *syntax.ProcSubst:
-			return false
-		case *syntax.ArithmExp:
-			found = true
+			if p.TempFile || p.ReplyVar {
+				return false
+			}
 		case *syntax.ParamExp:
-			found = found || !literalIndex(n.Index) || n.Slice != nil ||
-				indirect(n) || assignsDefault(n) || promptExpansion(n)
+			if !plainParam(p) {
+				return false
+			}
+		default:
+			return false
 		}
-
-		return !found
-	})
-
-	return found
-}
-
-// indirect reports ${!n}, which expands the variable n names, as opposed to
-// listing names with ${!pre@} or keys with ${!a[@]}.
-func indirect(pe *syntax.ParamExp) bool {
-	return pe.Excl && pe.Names == 0 && !allIndex(pe.Index)
-}
-
-// allIndex reports the [@] or [*] index of ${!a[@]}, which lists keys.
-func allIndex(index syntax.ArithmExpr) bool {
-	word, ok := index.(*syntax.Word)
-	if !ok {
-		return false
 	}
 
-	lit := word.Lit()
+	return true
+}
 
-	return lit == "@" || lit == "*"
+// plainParam reports a reference that only reads a variable: $name,
+// ${name}, ${#name} or a literal element.
+func plainParam(pe *syntax.ParamExp) bool {
+	return pe.Param != nil && pe.Flags == nil && pe.NestedParam == nil &&
+		!pe.Excl && !pe.Width && !pe.IsSet && literalIndex(pe.Index) &&
+		pe.Modifiers == nil && pe.Slice == nil && pe.Repl == nil &&
+		pe.Names == 0 && pe.Exp == nil
 }
 
 // tildeWord reports a word with a leading unquoted ~, which expands to a
@@ -196,12 +188,6 @@ func tildeWord(word *syntax.Word) bool {
 	lit, ok := word.Parts[0].(*syntax.Lit)
 
 	return ok && strings.HasPrefix(lit.Value, "~")
-}
-
-// promptExpansion reports ${x@P}, which expands x as a prompt string.
-func promptExpansion(pe *syntax.ParamExp) bool {
-	return pe.Exp != nil && pe.Exp.Op == syntax.OtherParamOps &&
-		pe.Exp.Word != nil && pe.Exp.Word.Lit() == "P"
 }
 
 // computedPrintfWord reports a printf word the shell may turn into other
