@@ -116,7 +116,7 @@ func printfMayWriteAny(args []*syntax.Word) bool {
 			return true
 		}
 
-		arg := wordToString(args[i])
+		arg := argWord(args[i])
 
 		switch {
 		case arg == "-v":
