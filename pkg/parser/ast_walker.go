@@ -98,6 +98,7 @@ type astWalker struct {
 
 	startupUnset    map[string]bool
 	loopStartup     map[string]bool
+	stmtFuncs       map[string][]string
 	startupPending  map[string]syntax.Pos
 	startupDeferred map[string]bool
 	caseChanged     bool
@@ -913,7 +914,7 @@ func (w *astWalker) changeDirTo(cmd Command, args []string) {
 		return
 	}
 
-	switch cmd.quoting[target] {
+	switch cmd.quoting[target] &^ splitWord {
 	case quotedWord:
 	case unquotedWord:
 		w.changeDirTo(cmd, slices.Delete(slices.Clone(args), i, i+1))

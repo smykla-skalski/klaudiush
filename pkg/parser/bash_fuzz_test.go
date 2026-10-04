@@ -54,6 +54,8 @@ func FuzzBashParse(f *testing.F) {
 	f.Add(`f() { git "$@"; }; alias g=git; f commit; g push`)
 	f.Add(`git -c alias.ci=commit ci; git config alias.x '!sh -c "git push"'; git x`)
 	f.Add(`bash -c git\ commit\ -m\ x`)
+	f.Add(`for i in 1 2; do printf '%s' "$(gh x $i)"; done`)
+	f.Add(`f() { g; }; g() { f; read "$1"; }; alias r='read '; for i in 1; do f; r $i; done`)
 	f.Add("find . -exec git commit -m x \\; | xargs -I{} git add {}")
 	// Forms the parser cannot see through
 	f.Add(strings.Repeat("env ", 10) + "git commit -m x")
