@@ -140,14 +140,19 @@ func printfMayWriteAny(args []*syntax.Word) bool {
 // assigningWord reports a word whose expansion may assign a variable it
 // names only at run time: arithmetic, a computed index or slice, an
 // indirect ${!n}, whose target may be an element with a computed index, or
-// ${x@P}, which expands the value again. A command substitution runs in a subshell, so what it
-// assigns does not reach the loop.
+// ${x@P}, which expands the value again. A command substitution runs in a
+// subshell, so what it assigns does not reach the loop; ${ cmd;} and
+// ${|cmd;} run in the current shell and count as assigning.
 func assigningWord(word *syntax.Word) bool {
 	found := false
 
 	syntax.Walk(word, func(node syntax.Node) bool {
 		switch n := node.(type) {
-		case *syntax.CmdSubst, *syntax.ProcSubst:
+		case *syntax.CmdSubst:
+			found = found || n.TempFile || n.ReplyVar
+
+			return false
+		case *syntax.ProcSubst:
 			return false
 		case *syntax.ArithmExp:
 			found = true
@@ -168,6 +173,18 @@ func indirect(pe *syntax.ParamExp) bool {
 	return pe.Excl && pe.Names == 0 && pe.Index == nil
 }
 
+// tildeWord reports a word with a leading unquoted ~, which expands to a
+// directory from HOME, PWD, OLDPWD or the user database.
+func tildeWord(word *syntax.Word) bool {
+	if len(word.Parts) == 0 {
+		return false
+	}
+
+	lit, ok := word.Parts[0].(*syntax.Lit)
+
+	return ok && strings.HasPrefix(lit.Value, "~")
+}
+
 // promptExpansion reports ${x@P}, which expands x as a prompt string.
 func promptExpansion(pe *syntax.ParamExp) bool {
 	return pe.Exp != nil && pe.Exp.Op == syntax.OtherParamOps &&
@@ -175,9 +192,9 @@ func promptExpansion(pe *syntax.ParamExp) bool {
 }
 
 // computedPrintfWord reports a printf word the shell may turn into other
-// words: an expansion, a brace expansion or a file name glob.
+// words: an expansion, a brace expansion, a tilde or a file name glob.
 func computedPrintfWord(word *syntax.Word) bool {
-	if !isLiteralWord(word) || globWord(globView(word)) {
+	if !isLiteralWord(word) || globWord(globView(word)) || tildeWord(word) {
 		return true
 	}
 
