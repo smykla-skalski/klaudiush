@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"regexp"
 	"slices"
 	"strings"
 
@@ -61,7 +62,7 @@ func (w *astWalker) loopStartupNames(
 			text = anyStartupVar
 		}
 	case *syntax.ParamExp:
-		if n.Excl && assignsDefault(n) {
+		if indirectRef(n) || promptExpansion(n) {
 			text = anyStartupVar
 		}
 	}
@@ -77,6 +78,32 @@ func (w *astWalker) loopStartupNames(
 	}
 
 	return names
+}
+
+// indirectRef reports ${!v}, which reads or, with :=, writes the variable
+// v names; that name may be an element whose computed index assigns. Name
+// lists (${!pre@}) and key lists (${!a[@]}) are not indirect.
+func indirectRef(pe *syntax.ParamExp) bool {
+	return pe.Excl && pe.Names == 0 && !allIndex(pe.Index)
+}
+
+// allIndex reports the [@] or [*] index of ${!a[@]}, which lists keys.
+func allIndex(index syntax.ArithmExpr) bool {
+	word, ok := index.(*syntax.Word)
+	if !ok {
+		return false
+	}
+
+	lit := word.Lit()
+
+	return lit == "@" || lit == "*"
+}
+
+// promptExpansion reports ${x@P}, which expands the value of x again as a
+// prompt string.
+func promptExpansion(pe *syntax.ParamExp) bool {
+	return pe.Exp != nil && pe.Exp.Op == syntax.OtherParamOps &&
+		pe.Exp.Word != nil && pe.Exp.Word.Lit() == "P"
 }
 
 // namerefOption reports a declaration option making a nameref, through
@@ -244,13 +271,37 @@ func computedWord(word *syntax.Word) bool {
 }
 
 // expandingWord reports a literal word with an unquoted brace or glob
-// character, which the shell may turn into other words.
+// character, or a leading unquoted ~, which the shell may turn into other
+// words.
 func expandingWord(word *syntax.Word) bool {
+	if len(word.Parts) > 0 {
+		if lit, ok := word.Parts[0].(*syntax.Lit); ok && strings.HasPrefix(lit.Value, "~") {
+			return true
+		}
+	}
+
 	return slices.ContainsFunc(word.Parts, func(part syntax.WordPart) bool {
 		lit, ok := part.(*syntax.Lit)
 
 		return ok && strings.ContainsAny(lit.Value, "{[*?")
 	})
+}
+
+// targetName matches a target a writer sets directly: a plain name, or an
+// element with a literal numeric index. Any other subscript is arithmetic
+// that may assign a variable it computes.
+var targetName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*(\[[0-9]+\])?$`)
+
+// joinTargets returns the targets as text, or every startup variable when
+// one is not a name the writer sets directly.
+func joinTargets(names []string) string {
+	for _, name := range names {
+		if !targetName.MatchString(name) {
+			return anyStartupVar
+		}
+	}
+
+	return strings.Join(names, " ")
 }
 
 // writerSpec describes the options of a variable writer: the letters taking
@@ -310,7 +361,7 @@ func writerTargets(name string, args []*syntax.Word) string {
 		names = append(names, argWord(arg))
 	}
 
-	return strings.Join(names, " ")
+	return joinTargets(names)
 }
 
 // printfTargets adds the arguments a printf format assigns through %n to
@@ -318,7 +369,7 @@ func writerTargets(name string, args []*syntax.Word) string {
 // assigns nothing only when it stays one word with no arguments after it.
 func printfTargets(names []string, rest []*syntax.Word) string {
 	if len(rest) == 0 {
-		return strings.Join(names, " ")
+		return joinTargets(names)
 	}
 
 	if unsureWord(rest[0]) && (len(rest) > 1 || !singleWord(rest[0])) {
@@ -326,7 +377,7 @@ func printfTargets(names []string, rest []*syntax.Word) string {
 	}
 
 	if !printfAssigns(argWord(rest[0])) {
-		return strings.Join(names, " ")
+		return joinTargets(names)
 	}
 
 	for _, arg := range rest[1:] {
@@ -337,7 +388,7 @@ func printfTargets(names []string, rest []*syntax.Word) string {
 		names = append(names, argWord(arg))
 	}
 
-	return strings.Join(names, " ")
+	return joinTargets(names)
 }
 
 // optionTargets returns the targets the options of a writer name and the
