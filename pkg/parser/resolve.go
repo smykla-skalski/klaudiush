@@ -1018,7 +1018,7 @@ func (w *astWalker) scriptSource(path string, cmd Command) (string, ScriptStatus
 
 	target := resolvePath(cmd.WorkingDirectory, path)
 
-	if w.unplacedWriteBefore(cmd) {
+	if w.unplacedWriteBefore(cmd, target) {
 		return "", ScriptOpaque, DetailScriptUnplacedWrite
 	}
 

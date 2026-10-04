@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"path/filepath"
 	"slices"
 	"strings"
 )
@@ -10,17 +11,95 @@ import (
 func treeWritesOf(cmd Command) programWrite {
 	switch cmd.Name {
 	case "unzip":
-		return programWrite{op: WriteOpUnpack, unknown: unzipExtracts(cmd.Args)}
+		root, anywhere := optionDir(cmd.Args, nameSet("-d"))
+
+		return programWrite{
+			op: WriteOpUnpack, unknown: unzipExtracts(cmd.Args), root: root, anywhere: anywhere,
+		}
 	case "tar", "bsdtar", "gtar":
-		return programWrite{op: WriteOpUnpack, unknown: tarExtracts(cmd.Args)}
+		root, anywhere := optionDir(cmd.Args, nameSet("-C --directory"))
+		anywhere = anywhere || slices.ContainsFunc(cmd.Args, func(arg string) bool {
+			return tarAbsoluteNames[arg] ||
+				(strings.HasPrefix(arg, "-") && !strings.HasPrefix(arg, "--") && len(arg) > 2 &&
+					strings.ContainsAny(arg[1:], "CP"))
+		})
+
+		return programWrite{
+			op: WriteOpUnpack, unknown: tarExtracts(cmd.Args), root: root, anywhere: anywhere,
+		}
 	case "patch":
-		return programWrite{op: WriteOpUnpack, unknown: patchApplies(cmd.Args)}
+		root, anywhere := optionDir(cmd.Args, nameSet("-d --directory"))
+
+		return programWrite{
+			op: WriteOpUnpack, unknown: patchApplies(cmd.Args), root: root, anywhere: anywhere,
+		}
 	case gitProgram:
-		return programWrite{op: WriteOpUnpack, unknown: gitRewritesTree(cmd.Args)}
+		root, anywhere := gitTreeDir(cmd.Args)
+
+		return programWrite{
+			op: WriteOpUnpack, unknown: gitRewritesTree(cmd.Args),
+			root: root, anywhere: anywhere, tree: true,
+		}
 	default:
 		return programWrite{}
 	}
 }
+
+// optionDir returns the directory the last of opts names, as NAME DIR or
+// NAME=DIR, relative to the command's directory. A repeated option, or one
+// whose value is built from command output, leaves the directory anywhere.
+func optionDir(args []string, opts map[string]bool) (dir string, anywhere bool) {
+	seen := 0
+
+	for i, arg := range args {
+		name, value, hasValue := strings.Cut(arg, "=")
+
+		switch {
+		case !opts[name]:
+			continue
+		case hasValue:
+			dir = value
+		case i+1 < len(args):
+			dir = args[i+1]
+		default:
+			return "", true
+		}
+
+		seen++
+	}
+
+	return dir, seen > 1 || marked(dir) || HasUnresolvedVars(dir)
+}
+
+// gitTreeDir returns the directory git -C moves to before it looks for its
+// work tree. --git-dir or --work-tree put the work tree anywhere.
+func gitTreeDir(args []string) (dir string, anywhere bool) {
+	idx := gitSubcommandIndex(args)
+	if idx < 0 {
+		return "", true
+	}
+
+	for i := 0; i < idx; i++ {
+		name, _, _ := strings.Cut(args[i], "=")
+
+		switch {
+		case name == "--git-dir" || name == "--work-tree":
+			return "", true
+		case args[i] == flagUpperC && i+1 < idx && filepath.IsAbs(args[i+1]):
+			dir = args[i+1]
+			i++
+		case args[i] == flagUpperC && i+1 < idx:
+			dir = filepath.Join(dir, args[i+1])
+			i++
+		}
+	}
+
+	return dir, marked(dir) || HasUnresolvedVars(dir)
+}
+
+// tarAbsoluteNames keep leading slashes and .. in member names, so an
+// archive may write anywhere.
+var tarAbsoluteNames = nameSet("-P --absolute-names")
 
 // unzipReadOnly are unzip options that list, test or print an archive
 // instead of extracting it.
@@ -82,8 +161,9 @@ var stashWrites = nameSet("push save pop apply branch")
 // not name.
 var treeRewriters = nameSet("merge pull rebase cherry-pick revert am")
 
-// applyReadOnly are git apply options that leave the work tree alone.
-var applyReadOnly = nameSet("--cached --check --stat --numstat --summary")
+// applyInspects are git apply options that only report on a patch unless
+// --apply is given too.
+var applyInspects = nameSet("--check --stat --numstat --summary")
 
 // branchCreators create a branch from HEAD when given only its name.
 var branchCreators = nameSet("-b -B -c -C --orphan")
@@ -108,8 +188,14 @@ func gitRewritesTree(args []string) bool {
 	case "stash":
 		return len(rest) == 0 || strings.HasPrefix(rest[0], "-") || stashWrites[rest[0]]
 	case "apply":
-		return slices.Contains(rest, "--index") ||
-			!slices.ContainsFunc(rest, func(arg string) bool { return applyReadOnly[arg] })
+		inspects := slices.ContainsFunc(
+			rest,
+			func(arg string) bool { return applyInspects[arg] },
+		) &&
+			!slices.Contains(rest, "--apply")
+		indexOnly := slices.Contains(rest, "--cached") && !slices.Contains(rest, "--index")
+
+		return !inspects && !indexOnly
 	case "checkout", "switch":
 		return !createsBranchOnly(rest)
 	case "restore":

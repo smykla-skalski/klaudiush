@@ -17,6 +17,14 @@ stdout '"permissionDecision":"deny"'
 stdout 'SHELL002'
 stdout 'cannot place'
 
+stdin unzip-elsewhere-script.json
+exec klaudiush --hook-type PreToolUse
+! stdout .
+
+stdin pull-make.json
+exec klaudiush --hook-type PreToolUse
+! stdout .
+
 stdin stash-script.json
 exec klaudiush --hook-type PreToolUse
 stdout '"permissionDecision":"deny"'
@@ -72,6 +80,12 @@ bad message
 
 -- unzip-script.json --
 {"tool_name": "Bash", "tool_input": {"command": "unzip -o x.zip && bash script.sh"}}
+
+-- unzip-elsewhere-script.json --
+{"tool_name": "Bash", "tool_input": {"command": "unzip -o x.zip -d /nonexistent-out && bash script.sh"}}
+
+-- pull-make.json --
+{"tool_name": "Bash", "tool_input": {"command": "git pull --ff-only && make test"}}
 
 -- stash-script.json --
 {"tool_name": "Bash", "tool_input": {"command": "git stash pop && bash script.sh"}}

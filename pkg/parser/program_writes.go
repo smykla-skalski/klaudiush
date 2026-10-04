@@ -8,11 +8,16 @@ import (
 )
 
 // programWrite is what one command writes: the paths it names, and whether
-// it also changes files it does not name.
+// it also changes files it does not name. Those files are below root (relative to the
+// command's directory, the work tree around it when tree is set), or
+// anywhere.
 type programWrite struct {
-	op      WriteOp
-	targets []string
-	unknown bool
+	op       WriteOp
+	targets  []string
+	unknown  bool
+	root     string
+	anywhere bool
+	tree     bool
 }
 
 // optionSpec says which options of a program take a value: short ones
@@ -127,7 +132,7 @@ func scanShort(args []string, i int, spec optionSpec, onOpt func(name, value str
 var (
 	copySpec = optionSpec{
 		short: "St",
-		long:  "--suffix --target-directory",
+		long:  "--suffix --target-directory --sparse",
 		flags: `--recursive --force --interactive --no-clobber --link --symbolic-link
 			--parents --update --verbose --archive --no-target-directory
 			--strip-trailing-slashes --dereference --no-dereference --relative --logical
@@ -174,7 +179,13 @@ var (
 		short: "eTBfM",
 		long: `--rsh --exclude --include --exclude-from --include-from --files-from
 			--filter --backup-dir --suffix --chmod --temp-dir --partial-dir --log-file
-			--compare-dest --copy-dest --link-dest --rsync-path`,
+			--compare-dest --copy-dest --link-dest --rsync-path --block-size --max-size
+			--min-size --max-delete --timeout --contimeout --modify-window --port
+			--password-file --bwlimit --out-format --log-file-format --chown --usermap
+			--groupmap --iconv --checksum-choice --compress-choice --compress-level
+			--skip-compress --info --debug --protocol --address --sockopts --outbuf
+			--remote-option --stop-after --stop-at --max-alloc --checksum-seed
+			--write-batch --only-write-batch --read-batch --mkpath-mode`,
 	}
 )
 
@@ -186,7 +197,8 @@ var (
 	sedScriptOpts   = nameSet("-e -f --expression --file")
 	perlScriptOpts  = nameSet("-e -E")
 	curlRemoteOpts  = nameSet("-O --remote-name --remote-name-all")
-	curlUnknownOpts = nameSet("-J --remote-header-name -K --config")
+	curlUnknownOpts = nameSet("-J --remote-header-name")
+	curlConfigOpts  = nameSet("-K --config")
 	curlDirOpts     = nameSet("--output-dir")
 	curlURLOpts     = nameSet("--url")
 	wgetOutputOpts  = nameSet("-O --output-document -o --output-file -a --append-output")
@@ -356,6 +368,8 @@ func curlWrites(args []string) programWrite {
 			remote = true
 		case curlUnknownOpts[name]:
 			write.unknown = true
+		case curlConfigOpts[name]:
+			write.unknown, write.anywhere = true, true
 		case curlDirOpts[name]:
 			dir = value
 		case curlURLOpts[name]:
@@ -368,6 +382,7 @@ func curlWrites(args []string) programWrite {
 	}
 
 	write.targets = append(write.targets, underDir(dir, named)...)
+	write.root = dir
 
 	return write
 }
@@ -396,6 +411,8 @@ func wgetWrites(args []string) programWrite {
 	if !document {
 		write.targets = append(write.targets, underDir(dir, remoteNames(operands, &write))...)
 	}
+
+	write.root = dir
 
 	return write
 }
@@ -454,7 +471,8 @@ func remoteName(url string) (string, bool) {
 	}
 
 	name := url[i+1:]
-	if name == "" || name == "." || name == parentDir || HasUnresolvedVars(name) || marked(name) {
+	if name == "" || name == "." || name == parentDir || HasUnresolvedVars(name) || marked(name) ||
+		strings.ContainsAny(name, "{}[]") {
 		return "", false
 	}
 

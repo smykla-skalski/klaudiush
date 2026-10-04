@@ -1333,25 +1333,30 @@ func (w *astWalker) extractFileWriteCommand(cmd, followed Command) {
 		Vars:             cmd.Vars,
 	}
 
-	unknown := write.unknown || (placesIntoDirs[write.op] && splitsSubstitution(followed))
+	computed := placesIntoDirs[write.op] && splitsSubstitution(followed)
 
 	for _, target := range write.targets {
 		path := strings.ReplaceAll(target, unresolvedWord, "")
 		if path == "" {
-			unknown = unknown || marked(target)
+			computed = computed || marked(target)
 
 			continue
 		}
 
 		fw := base
 		fw.Path = path
-		fw.Dynamic = marked(target)
+		fw.Dynamic = marked(target) || w.namesDynamicVar(target)
 		w.fileWrites = append(w.fileWrites, fw)
 	}
 
-	if unknown {
+	if write.unknown || computed {
 		fw := base
 		fw.TargetUnknown = true
+
+		if !computed {
+			fw.Scope = w.writeScope(cmd, write)
+		}
+
 		w.fileWrites = append(w.fileWrites, fw)
 	}
 }

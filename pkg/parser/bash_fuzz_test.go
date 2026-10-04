@@ -74,6 +74,7 @@ func FuzzBashParse(f *testing.F) {
 	f.Add(`cd "$(git rev-parse --show-toplevel)/s"; d=$(mktemp); pushd "$d"; popd; cd ~/x`)
 	f.Add(`cp -$'\377' a b; sed -$'\303'i x f; curl -$'\377' u; tar xzf a; perl -pi -e x f`)
 	f.Add(`wget -rP d u; rsync -a s/ d; git checkout -b x && git restore -S f; cp $(echo a b)`)
+	f.Add(`git -C /r -C s pull && bash ./x; tar -C d -xPf a; unzip -d a -d b z; patch -d=p`)
 	f.Add(`x=status; printf -v x commit; read -a x; for x in a; do :; done; git $x`)
 	f.Add(`x=status; f(){ x=commit; }; f; eval x=push; . <(echo x=add); git $x`)
 	f.Add(`docker run img git $X; mise exec -- gh $Y; mise exec -- git-$Z`)

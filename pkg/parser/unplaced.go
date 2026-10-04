@@ -18,14 +18,22 @@ const DetailScriptUnplacedWrite = "an earlier command on the line changes files 
 // cannot resolve. Any file read after it may differ from the disk. The
 // redirects of the reading command itself are left out: they open their
 // files as it starts, and a log named by date would otherwise block every
-// run of a script.
-func (w *astWalker) unplacedWriteBefore(cmd Command) bool {
+// run of a script. A program that changes files it does not name counts
+// only when the reading command runs shell code and target is within the
+// tree the program changes (the work tree for git, the extraction directory
+// for archives).
+func (w *astWalker) unplacedWriteBefore(cmd Command, target string) bool {
 	own := func(loc Location) bool {
 		return cmd.Location.Seq != 0 && loc.Seq == cmd.Location.Seq-1
 	}
 
 	for p := w; p != nil; p = p.parent {
 		if slices.ContainsFunc(p.fileWrites, func(fw FileWrite) bool {
+			if fw.TargetUnknown && fw.Source != "" &&
+				(!followsShellCode(cmd) || w.outsideScope(fw, target)) {
+				return false
+			}
+
 			if fw.Source != "" {
 				return unplaced(fw) && fw.Location.Seq != cmd.Location.Seq
 			}
@@ -73,6 +81,7 @@ func (w *astWalker) lineWriteAbove(target string) bool {
 	for p := w; p != nil; p = p.parent {
 		for _, fw := range p.fileWrites {
 			if placesIntoDirs[fw.Operation] &&
+				(fw.Operation != WriteOpOutput || fw.Source == "install") &&
 				isBelow(target, resolvePath(fw.WorkingDirectory, fw.Path)) {
 				return true
 			}

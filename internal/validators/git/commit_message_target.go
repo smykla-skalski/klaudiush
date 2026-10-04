@@ -250,6 +250,11 @@ func (src messageSource) changedBetween(t messageTarget, from, before parser.Loc
 		}
 
 		if fw.TargetUnknown {
+			if fw.Scope != "" && t.abs != "" && !sameFile(fw.Scope, t.abs) &&
+				!containsPath(fw.Scope, t.abs) {
+				continue
+			}
+
 			return opaqueSourceWith(reasonUnknownWrite, repairSeparate)
 		}
 

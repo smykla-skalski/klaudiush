@@ -88,6 +88,8 @@ func (c *commandCheck) add(v Violation) {
 
 func (c *commandCheck) checkWrite(fw parser.FileWrite) {
 	if fw.TargetUnknown {
+		c.checkUnknownTarget(fw)
+
 		return
 	}
 
@@ -106,6 +108,22 @@ func (c *commandCheck) checkWrite(fw parser.FileWrite) {
 	program := strings.ToLower(fw.Operation.String())
 	if m, ok := c.checkWord(target, dir, false, program); ok {
 		c.add(Violation{Match: m, Program: program, Target: fw.Path})
+	}
+}
+
+// checkUnknownTarget blocks a program that changes unnamed files below a
+// directory holding protected files, such as unzip -d .claude. The working
+// directory, project root and home stay allowed, as for any program that
+// names them: extracting there is common, and the per-command checks still
+// see protected names on the line.
+func (c *commandCheck) checkUnknownTarget(fw parser.FileWrite) {
+	if fw.Scope == "" {
+		return
+	}
+
+	program := strings.ToLower(fw.Operation.String())
+	if m, ok := c.checkWord(fw.Scope, c.set.workDir, true, program); ok {
+		c.add(Violation{Match: m, Program: fw.Source, Target: fw.Scope})
 	}
 }
 
