@@ -147,22 +147,12 @@ func (w *astWalker) prepare(stmt *syntax.Stmt) {
 
 		switch n := node.(type) {
 		case *syntax.WhileClause, *syntax.ForClause:
-			params := make(map[*syntax.Lit]bool)
-
-			syntax.Walk(n, func(inner syntax.Node) bool {
-				if pe, ok := inner.(*syntax.ParamExp); ok && pe.Param != nil &&
-					!assignsDefault(pe) {
-					params[pe.Param] = true
-				}
-
-				lit, isLit := inner.(*syntax.Lit)
-				w.noteLoopStartup(inner, isLit && params[lit])
+			walkLoop(n, func(inner syntax.Node, param bool) {
+				w.noteLoopStartup(inner, param)
 
 				if call, ok := inner.(*syntax.CallExpr); ok {
 					w.loopCalls[call] = true
 				}
-
-				return true
 			})
 
 			return false

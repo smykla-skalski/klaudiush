@@ -1,0 +1,90 @@
+chmod 755 bin/gh
+env PATH=$WORK/bin:$PATH
+env BASH_ENV=
+env ENV=
+
+stdin issue-states.json
+exec klaudiush --hook-type PreToolUse
+! stdout .
+
+stdin wait-then-states.json
+exec klaudiush --hook-type PreToolUse
+! stdout .
+
+stdin probe-script.json
+exec klaudiush --hook-type PreToolUse
+! stdout .
+
+stdin pr-state.json
+exec klaudiush --hook-type PreToolUse
+! stdout .
+
+stdin bash-env-output.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'startup file BASH_ENV names cannot be inspected'
+
+stdin bash-env-export.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'startup file BASH_ENV names cannot be inspected'
+
+stdin bash-env-loop.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'startup file BASH_ENV names cannot be inspected'
+
+stdin printf-computed-name.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'startup file BASH_ENV names cannot be inspected'
+
+stdin function-export.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'startup file BASH_ENV names cannot be inspected'
+
+-- bin/gh --
+#!/bin/sh
+echo OPEN
+
+-- run.sh --
+echo hi
+
+-- probe.sh --
+probe() {
+  jq -nc --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}' | /opt/homebrew/bin/klaudiush --hook-type PreToolUse | jq -r '.hookSpecificOutput.permissionDecision // "allow"'
+}
+while read -r line; do
+  printf '%s => ' "$line"; probe "$line"
+done <<'EOF'
+ls
+git status
+EOF
+
+-- issue-states.json --
+{"tool_name": "Bash", "tool_input": {"command": "for i in $(seq 737 746); do printf \"%s:%s \" $i \"$(gh issue view $i --repo o/r --json state -q .state)\"; done; echo"}}
+
+-- wait-then-states.json --
+{"tool_name": "Bash", "tool_input": {"command": "R=x; until [ \"$(timeout 30 gh pr view 759 --repo o/r --json state -q .state)\" = MERGED ]; do sleep 20; done; for i in $(seq 737 746); do printf \"%s:%s \" $i $(gh issue view $i --repo o/r --json state -q .state); done; echo"}}
+
+-- probe-script.json --
+{"tool_name": "Bash", "tool_input": {"command": "bash probe.sh"}}
+
+-- pr-state.json --
+{"tool_name": "Bash", "tool_input": {"command": "timeout 30 gh pr view 759 --repo o/r --json state -q .state"}}
+
+-- bash-env-output.json --
+{"tool_name": "Bash", "tool_input": {"command": "BASH_ENV=$(mktemp) bash -c true"}}
+
+-- bash-env-export.json --
+{"tool_name": "Bash", "tool_input": {"command": "export BASH_ENV=$(x); bash run.sh"}}
+
+-- bash-env-loop.json --
+{"tool_name": "Bash", "tool_input": {"command": "for f in a b; do export BASH_ENV=$f; gh pr view 1; done"}}
+
+-- printf-computed-name.json --
+{"tool_name": "Bash", "tool_input": {"command": "for i in 1 2; do printf -v \"$i\" x; gh pr view 1; done"}}
+
+-- function-export.json --
+{"tool_name": "Bash", "tool_input": {"command": "f() { export BASH_ENV=$1; }; for i in 1 2; do gh pr view 1; f \"$i\"; done"}}

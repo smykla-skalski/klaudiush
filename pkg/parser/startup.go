@@ -470,40 +470,15 @@ func (w *astWalker) walkStartupPart(part startupScript) {
 var anyStartupVar = strings.Join([]string{bashEnvVar, envVar, homeVar, zdotdirVar}, " ")
 
 // noteLoopStartup records a loop that may set a startup variable on a later
-// pass: one naming it, or running source or eval, whose text it cannot see.
-// Reading $HOME or $ZDOTDIR (param) sets neither; a loop reads HOME often.
+// pass: one naming it, or running source, eval or a same-line definition
+// that may set it in text the loop does not show.
 func (w *astWalker) noteLoopStartup(node syntax.Node, param bool) {
-	var text string
-
-	switch n := node.(type) {
-	case *syntax.Lit:
-		text = n.Value
-	case *syntax.SglQuoted:
-		text = n.Value
-	case *syntax.CallExpr:
-		if len(n.Args) == 0 {
-			return
-		}
-
-		if w.loopMayWriteAny(n) {
-			text = anyStartupVar
-		}
-	case *syntax.DeclClause:
-		if slices.ContainsFunc(n.Args, computedOperand) {
-			text = anyStartupVar
-		}
-	}
-
-	for _, m := range startupMention.FindAllStringSubmatch(text, -1) {
-		if param && (m[2] == homeVar || m[2] == zdotdirVar) {
-			continue
-		}
-
+	for _, name := range w.loopStartupNames(node, param, make(map[string]bool)) {
 		if w.loopStartup == nil {
 			w.loopStartup = make(map[string]bool)
 		}
 
-		w.loopStartup[m[2]] = true
+		w.loopStartup[name] = true
 	}
 }
 
