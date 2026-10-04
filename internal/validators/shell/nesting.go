@@ -331,8 +331,17 @@ func unresolvedWordFinding(o parser.Opacity) (message, required, repair string) 
 		return message, required, repair
 	}
 
-	if o.Operation == parser.ContainerExecOperation {
+	switch o.Operation {
+	case parser.ContainerExecOperation:
 		return containerExecFinding(o)
+	case parser.ContainerRunOperation:
+		return containerRunFinding(o)
+	case parser.ParallelOperation:
+		return parallelFinding(o)
+	case parser.XargsReplaceOperation:
+		return "the xargs replace string " + strings.TrimPrefix(o.Detail, "it "),
+			"a literal replace string, or one from a variable assigned literally on the same line",
+			"Write the -I replace string literally"
 	}
 
 	message = "the " + o.Operation + " command word " + strings.TrimPrefix(o.Detail, "it ")
@@ -363,6 +372,49 @@ func programWordFinding(o parser.Opacity) (message, required, repair string) {
 	repair = programWordRepairs[o.Detail]
 	if repair == "" {
 		repair = "Write the program name or path literally instead of computing it"
+	}
+
+	return message, required, repair
+}
+
+// containerRunFinding explains a container run whose subcommand, an
+// option or the image, or the program after the image, may not be what it
+// reads as.
+func containerRunFinding(o parser.Opacity) (message, required, repair string) {
+	message = "the container subcommand, a run option or the image " +
+		strings.TrimPrefix(o.Detail, "it ")
+	required = "a literal subcommand, options and image, quoted expansions in option " +
+		"values, or variables assigned literally on the same line"
+	repair = "Write the subcommand, options and image literally"
+
+	switch o.Detail {
+	case parser.DetailWordUnquoted:
+		repair = `Quote expansions and globs in container options and the image ` +
+			`(-v "$SRC":/w, "img:$TAG")`
+	case parser.DetailEntrypointOptions:
+		required = "container options klaudiush can read up to the image"
+		repair = "Attach option values with = (--opt=value), or drop options " +
+			"before the image"
+	}
+
+	return message, required, repair
+}
+
+// parallelFinding explains a GNU parallel command line built from a word
+// klaudiush cannot read, or read from input it cannot see.
+func parallelFinding(o parser.Opacity) (message, required, repair string) {
+	message = "the command line parallel runs " + strings.TrimPrefix(o.Detail, "it ")
+	required = "literal parallel options and command words, or variables assigned " +
+		"literally on the same line"
+	repair = "Write the command parallel runs literally, or run it directly"
+
+	switch o.Detail {
+	case parser.DetailParallelInput:
+		required = "a command written on the line, or command lines given after :::"
+		repair = "Give parallel the command to run, or list the command lines after :::"
+	case parser.DetailEntrypointOptions:
+		required = "parallel options klaudiush can read up to the command"
+		repair = "Attach option values with = (--opt=value), or drop unknown options"
 	}
 
 	return message, required, repair

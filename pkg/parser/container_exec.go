@@ -317,7 +317,7 @@ func (w *astWalker) containerExecCommands(cmd Command) (cmds []Command, replace 
 		return nil, false
 	}
 
-	readings, complete := w.expandedArgs(cmd.Args)
+	readings, complete := w.expandedArgs(cmd)
 	found, all := false, true
 	exhausted, dynamic := !complete, ""
 

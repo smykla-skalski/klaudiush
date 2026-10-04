@@ -1,0 +1,124 @@
+exec git init --initial-branch=main
+exec git config user.email "test@test.com"
+exec git config user.name "Test User"
+
+cp file.go staged.go
+exec git add staged.go
+
+stdin docker-option.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+stdout 'container subcommand, a run option or the image comes from a variable klaudiush cannot resolve'
+! stdout 'KLAUDIUSH_TEST_SECRET'
+
+stdin docker-program.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+stdout 'program name comes from a variable'
+
+stdin docker-split.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+stdout 'is an unquoted expansion or glob that may split'
+
+stdin parallel-variable.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+stdout 'command line parallel runs comes from a variable'
+
+stdin xargs-replace.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+
+stdin docker-literal.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'GIT007'
+! stdout 'SHELL002'
+
+stdin parallel-literal.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'GIT007'
+! stdout 'SHELL002'
+
+stdin xargs-literal.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'GIT007'
+! stdout 'SHELL002'
+
+stdin docker-quoted.json
+exec klaudiush --hook-type PreToolUse
+! stdout .
+
+stdin parallel-gzip.json
+exec klaudiush --hook-type PreToolUse
+! stdout .
+
+stdin xargs-echo.json
+exec klaudiush --hook-type PreToolUse
+! stdout .
+
+stdin docker-pwd.json
+exec klaudiush --hook-type PreToolUse
+! stdout .
+
+stdin parallel-nproc.json
+exec klaudiush --hook-type PreToolUse
+! stdout .
+
+stdin docker-pwd-arg.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+
+-- file.go --
+package main
+
+-- docker-option.json --
+{"tool_name": "Bash", "tool_input": {"command": "docker run $KLAUDIUSH_TEST_SECRET img push"}}
+
+-- docker-program.json --
+{"tool_name": "Bash", "tool_input": {"command": "docker run --rm img $KLAUDIUSH_TEST_UNSET push"}}
+
+-- docker-split.json --
+{"tool_name": "Bash", "tool_input": {"command": "docker run --rm -v $(cat d):/w img ls"}}
+
+-- parallel-variable.json --
+{"tool_name": "Bash", "tool_input": {"command": "parallel $KLAUDIUSH_TEST_UNSET ::: a"}}
+
+-- xargs-replace.json --
+{"tool_name": "Bash", "tool_input": {"command": "xargs -I % sh -c %"}}
+
+-- docker-literal.json --
+{"tool_name": "Bash", "tool_input": {"command": "X='img git push nowhere feat'; docker run $X"}}
+
+-- parallel-literal.json --
+{"tool_name": "Bash", "tool_input": {"command": "parallel -I @ 'git @ nowhere feat' ::: push"}}
+
+-- xargs-literal.json --
+{"tool_name": "Bash", "tool_input": {"command": "echo push | xargs -0I % git % nowhere feat"}}
+
+-- docker-quoted.json --
+{"tool_name": "Bash", "tool_input": {"command": "docker run --rm -v \"$(pwd)\":/w -w /w img make test"}}
+
+-- parallel-gzip.json --
+{"tool_name": "Bash", "tool_input": {"command": "parallel -j4 gzip ::: *.log"}}
+
+-- xargs-echo.json --
+{"tool_name": "Bash", "tool_input": {"command": "ls | xargs -I % echo %"}}
+
+-- docker-pwd.json --
+{"tool_name": "Bash", "tool_input": {"command": "docker run --rm -u $(id -u):$(id -g) -v $(pwd):/w -w /w img make"}}
+
+-- parallel-nproc.json --
+{"tool_name": "Bash", "tool_input": {"command": "parallel -j $(nproc) gzip ::: a.log"}}
+
+-- docker-pwd-arg.json --
+{"tool_name": "Bash", "tool_input": {"command": "docker run --rm -v $(pwd x):/w img ls"}}

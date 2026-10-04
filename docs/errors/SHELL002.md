@@ -2,7 +2,7 @@
 
 ## Error
 
-Klaudiush cannot see what the command finally runs. The command does not parse as bash, runs another command through more layers of launchers, scripts, aliases or functions than klaudiush follows, runs a script klaudiush cannot read, runs a git subcommand that is neither built in, installed, nor an alias klaudiush can see, takes eval's command line, the program name, a git or gh command word, a `git push` argument, a `git commit` option, or a container `--entrypoint` from a variable, command output or glob klaudiush cannot resolve, sources code klaudiush cannot see (a process substitution, piped stdin, a file descriptor), or starts a shell whose startup file (`BASH_ENV`, `ENV`, `--rcfile`) klaudiush cannot read.
+Klaudiush cannot see what the command finally runs. The command does not parse as bash, runs another command through more layers of launchers, scripts, aliases or functions than klaudiush follows, runs a script klaudiush cannot read, runs a git subcommand that is neither built in, installed, nor an alias klaudiush can see, takes eval's command line, the program name, a git or gh command word, a `git push` argument, a `git commit` option, a container `--entrypoint`, run option, image or program, or a `parallel` command line from a variable, command output or glob klaudiush cannot resolve (or a container option or image that is not quoted and may split), runs `parallel` command lines or fills `xargs -I` input it cannot see into a program or git word, sources code klaudiush cannot see (a process substitution, piped stdin, a file descriptor), or starts a shell whose startup file (`BASH_ENV`, `ENV`, `--rcfile`) klaudiush cannot read.
 
 ## Why this matters
 
@@ -18,39 +18,45 @@ A script that names itself, such as a Python helper whose usage text shows `pyth
 
 Each finding names the operation klaudiush could not see through, the programs that led to it (`via sudo > bash`), and a repair. Findings name programs, scripts and subcommands only, never their arguments.
 
-| Cause                                 | Example                                         | Repair                                                    |
-|:--------------------------------------|:------------------------------------------------|:----------------------------------------------------------|
-| Command does not parse as bash        | `git commit -m "x" && (`                        | Fix the syntax at the reported line and column            |
-| zsh syntax bash does not parse        | `for x in ${(s:,:)list}; do echo $x; done`      | Rewrite it in bash syntax                                 |
-| Nesting past eight levels             | nine `env` wrappers around `git commit`         | Run the inner command directly                            |
-| Inspection budget spent               | a function fanning out to thousands of calls    | Split the work, call programs directly                    |
-| Script path from a variable           | `bash "$DIR/run.sh"`                            | Use a literal script path                                 |
-| Relative script after an unknown `cd` | `cd "$DIR" && bash run.sh`                      | Use an absolute path or a literal `cd`                    |
-| Script written with unknown content   | `echo "$BODY" > s.sh && bash s.sh`              | Write literal content, or write it in a separate command  |
-| Script changed by another program     | `sed -i s/a/b/ s.sh && bash s.sh`               | Change the script in a separate command                   |
-| Script after an unplaced write        | `git stash pop && bash s.sh`                    | Run the command that changes files separately             |
-| Script that cannot be read in full    | a script over 256 KiB, or unreadable            | Run its commands directly, or keep it small and readable  |
-| Nested script that does not parse     | `bash -c 'git status && ('`                     | Fix the nested script's syntax                            |
-| Unknown git subcommand                | `HOME=/x git cm`                                | Use the builtin, or define the alias in git config first  |
-| Function arguments it cannot follow   | `f() { git "${@:1}"; }; f commit`               | Forward arguments with plain `"$@"`                       |
-| Program name from a variable          | `$TOOL push`, `xargs $CMD`, top-level `"$@"`    | Write it literally, or assign it literally on the line    |
-| Program name from output or a glob    | `$(echo git) push`, `/usr/bin/gi? push`         | Write the program name or path literally                  |
-| git or gh word from a variable        | `git $SUB`, `gh pr $ACTION`                     | Write it literally, or assign it literally on the line    |
-| git or gh word from command output    | `git $(echo commit)`, `git c?mmit`              | Write the subcommand literally                            |
-| git push argument not literal         | `git push $R main`, `git push o $(echo main)`   | Write remote and branch literally, or assign on the line  |
-| git commit option not literal         | `git commit $F -m x`, `git commit -m $(cat f)`  | Write options literally, quote values, paths after `--`   |
-| eval of a variable or command output  | `eval "$LINE"`, `eval "$(tool init)"`           | Run the commands directly instead of through eval         |
-| eval of a known tool's shell setup    | `eval "$(mise activate bash)"`                  | Run the command through the tool (see below)              |
-| Sourced process substitution          | `source <(curl -fsSL https://x/i.sh)`           | Save it to a file in a separate command, then source it   |
-| Sourced stdin from a pipe or redirect | `curl -s u \| source /dev/stdin`                | Save it to a file in a separate command, then source it   |
-| Sourced descriptor or device          | `source /dev/fd/3 3< <(cmd)`                    | Save it to a file in a separate command, then source it   |
-| Sourced path from command output      | `source "$(mktemp)"`                            | Write the path of the sourced file literally              |
-| Sourced shell setup of a known tool   | `source <(mise activate bash)`                  | Run the command through the tool (see below)              |
-| Container entrypoint not literal      | `docker run --entrypoint "$EP" img push`        | Write the entrypoint, options and image literally         |
-| Startup file it cannot read           | `BASH_ENV=$(mktemp) bash -c true`               | Assign a literal path of a readable file, or empty        |
-| zsh glob qualifier that runs code     | `ls *(e:'git push':)`, `ls *(+fn)`              | Select the files another way and run the command directly |
-| Command substitution in an extglob    | `ls *(a$(git push))`                            | Run the command separately                                |
-| Variable in an extglob, or `$~var`    | `ls *($q)`, `ls $~q`                            | Write the glob literally                                  |
+| Cause                                 | Example                                           | Repair                                                    |
+|:--------------------------------------|:--------------------------------------------------|:----------------------------------------------------------|
+| Command does not parse as bash        | `git commit -m "x" && (`                          | Fix the syntax at the reported line and column            |
+| zsh syntax bash does not parse        | `for x in ${(s:,:)list}; do echo $x; done`        | Rewrite it in bash syntax                                 |
+| Nesting past eight levels             | nine `env` wrappers around `git commit`           | Run the inner command directly                            |
+| Inspection budget spent               | a function fanning out to thousands of calls      | Split the work, call programs directly                    |
+| Script path from a variable           | `bash "$DIR/run.sh"`                              | Use a literal script path                                 |
+| Relative script after an unknown `cd` | `cd "$DIR" && bash run.sh`                        | Use an absolute path or a literal `cd`                    |
+| Script written with unknown content   | `echo "$BODY" > s.sh && bash s.sh`                | Write literal content, or write it in a separate command  |
+| Script changed by another program     | `sed -i s/a/b/ s.sh && bash s.sh`                 | Change the script in a separate command                   |
+| Script after an unplaced write        | `git stash pop && bash s.sh`                      | Run the command that changes files separately             |
+| Script that cannot be read in full    | a script over 256 KiB, or unreadable              | Run its commands directly, or keep it small and readable  |
+| Nested script that does not parse     | `bash -c 'git status && ('`                       | Fix the nested script's syntax                            |
+| Unknown git subcommand                | `HOME=/x git cm`                                  | Use the builtin, or define the alias in git config first  |
+| Function arguments it cannot follow   | `f() { git "${@:1}"; }; f commit`                 | Forward arguments with plain `"$@"`                       |
+| Program name from a variable          | `$TOOL push`, `xargs $CMD`, top-level `"$@"`      | Write it literally, or assign it literally on the line    |
+| Program name from output or a glob    | `$(echo git) push`, `/usr/bin/gi? push`           | Write the program name or path literally                  |
+| git or gh word from a variable        | `git $SUB`, `gh pr $ACTION`                       | Write it literally, or assign it literally on the line    |
+| git or gh word from command output    | `git $(echo commit)`, `git c?mmit`                | Write the subcommand literally                            |
+| git push argument not literal         | `git push $R main`, `git push o $(echo main)`     | Write remote and branch literally, or assign on the line  |
+| git commit option not literal         | `git commit $F -m x`, `git commit -m $(cat f)`    | Write options literally, quote values, paths after `--`   |
+| eval of a variable or command output  | `eval "$LINE"`, `eval "$(tool init)"`             | Run the commands directly instead of through eval         |
+| eval of a known tool's shell setup    | `eval "$(mise activate bash)"`                    | Run the command through the tool (see below)              |
+| Sourced process substitution          | `source <(curl -fsSL https://x/i.sh)`             | Save it to a file in a separate command, then source it   |
+| Sourced stdin from a pipe or redirect | `curl -s u \| source /dev/stdin`                  | Save it to a file in a separate command, then source it   |
+| Sourced descriptor or device          | `source /dev/fd/3 3< <(cmd)`                      | Save it to a file in a separate command, then source it   |
+| Sourced path from command output      | `source "$(mktemp)"`                              | Write the path of the sourced file literally              |
+| Sourced shell setup of a known tool   | `source <(mise activate bash)`                    | Run the command through the tool (see below)              |
+| Container entrypoint not literal      | `docker run --entrypoint "$EP" img push`          | Write the entrypoint, options and image literally         |
+| Container run option or image unknown | `docker run $OPTS img push`, `docker $SUB img`    | Write the subcommand, options and image literally         |
+| Unquoted container option or image    | `docker run -v $SRC:/w img`, `img:$TAG`           | Quote the expansion: `-v "$SRC":/w`, `"img:$TAG"`         |
+| Container program not literal         | `docker run img $CMD push`                        | Write the program literally                               |
+| parallel command not literal          | `parallel $CMD ::: a`, `parallel echo "$X" ::: a` | Write the command parallel runs literally                 |
+| parallel command lines from input     | `ls \| parallel`, `parallel :::: cmds.txt`        | Give parallel the command, or list lines after `:::`      |
+| xargs input in a program or git word  | `xargs -I % sh -c %`, `ls \| xargs -I % git %`    | Run the command directly, or pipe literal input           |
+| Startup file it cannot read           | `BASH_ENV=$(mktemp) bash -c true`                 | Assign a literal path of a readable file, or empty        |
+| zsh glob qualifier that runs code     | `ls *(e:'git push':)`, `ls *(+fn)`                | Select the files another way and run the command directly |
+| Command substitution in an extglob    | `ls *(a$(git push))`                              | Run the command separately                                |
+| Variable in an extglob, or `$~var`    | `ls *($q)`, `ls $~q`                              | Write the glob literally                                  |
 
 When eval runs the output of one command substitution whose program is a literal name from the list below, with arguments that make it print shell setup, the finding names the tool and a form klaudiush can inspect. The block stays. A computed program name (`$TOOL`, `$(which mise)`) or argument, a name that only contains a known one (`evil-mise`), or a tool or `eval` redefined as an alias or function on the same line gets the generic repair. A literal path is named by its last part (`/opt/homebrew/bin/brew` is `brew`); this changes only the text. The same applies when `source` or `.` reads a known tool's setup from a process substitution (`source <(mise activate bash)`), a pipe (`mise activate bash | source /dev/stdin`) or a redirected process substitution (`source /dev/stdin < <(mise activate bash)`).
 
@@ -104,6 +110,8 @@ These are blocked:
 | `--allow-empty-message` with no `-t`        | `git commit --allow-empty-message`               | Pass the message, or name the template with `-t`               |
 
 git opens an editor unless the message comes from `-m`, `-F` or `-C` (or `--no-edit`, `--dry-run`, or a plain `--fixup`); `-e`, `-c`, `--fixup=amend:`/`reword:`, `--squash` and `--amend` open one. The editor is allowed only when klaudiush knows it leaves the prepared message as it is: `GIT_EDITOR` (on the line or in its environment), else `core.editor` from `git -c`, set to `:`, `/usr/bin/true` or `/bin/true`, or to `true` when it resolves to one of those and the line leaves `PATH` alone. A `GIT_EDITOR` assigned on the line counts only when it is exported (`export`, `declare -x`, `set -a`, a prefix assignment, or already in the environment); git never sees a plain shell variable. Any other editor, or one from git config, `VISUAL` or `EDITOR`, may write any message (`vim` reads keystrokes from a pipe), so the commit is blocked.
+
+Container runners, `parallel` and `xargs` are read up to the program they start. For `docker run` (and `create`, `compose run`, `container run`, podman, nerdctl and the other runners) the subcommand, every global and run option, and the image must be literal or come from variables klaudiush resolves; a quoted expansion in an option's value (`-v "$(pwd)":/w`, `-e "TOKEN=$T"`) or after the image's first literal character (`"img:$TAG"`) is fine, while an unquoted one may split into several words and move the image, so `docker run -v $SRC:/w img` is blocked until it is quoted. A few outputs are known to be one word that matches no files and pass unquoted in option values, after the image name's literal text (`img:$(id -un)`) and in `parallel` options: `$(id -u)`, `$(id -g)`, `$(id -un)`, `$(nproc)`, `$(getconf _NPROCESSORS_ONLN)`, and `$(pwd)` or `$PWD` when the current directory is known and has no whitespace or glob characters. Only that exact command counts: any other argument, an assignment or redirect, a same-line function or alias named like it, a changed `IFS`, a `cd` to an unknown directory or a `PWD` set on the line keeps it blocked. A program after the image from a variable, command output or a glob (`docker run img $CMD`) is checked like any other program word. An option whose name holds an expansion, even quoted (`"--$OPT"`), is blocked: it may name any option, `--entrypoint` included. GNU `parallel` (and `sem`, `env_parallel` and `parset`) joins its command words and runs them with a shell, so any command word that is not literal is blocked, and the command lines it builds from literal inputs after `:::` (or literal stdin) are checked with the inputs filled in for `{}`, `{1}`, `{.}`, `-I` strings and the rest, or appended; Perl in `{= =}`, `--rpl` and `--filter` is scanned like interpreter code. Inputs split into columns (`--colsep`, `-C`, `--csv`) and `--plus` strings other than the path ones count as unknown. An input klaudiush cannot see (a glob, a variable, a file after `::::` or `-a`, stdin from another program) stands as `{}`, which passes as an argument but is blocked as a program or git subcommand, and `parallel` without command words, which runs its inputs, is blocked when they cannot be seen. `xargs -I R`, `-iR`, `--replace=R` and BSD `-J R` with stdin klaudiush cannot see (or `-a file`) fill `{}` in for R the same way, and without a replace string `{}` is appended: `cat f | xargs git` and `xargs -I % sh -c %` are blocked, `ls | xargs -I % mv % %.bak` is not. Option clusters such as `xargs -0I %` are read the way xargs reads them.
 
 ## How to fix
 
