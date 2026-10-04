@@ -371,7 +371,9 @@ func (spec writerSpec) optionTargets(args []*syntax.Word) ([]string, []*syntax.W
 	var names []string
 
 	for i := 0; i < len(args); i++ {
-		if unsureWord(args[i]) {
+		// A leading ~ is left to the operands: alone it never becomes an
+		// option the writer acts on.
+		if computedWord(args[i]) || expandingWord(args[i]) {
 			return nil, nil, false
 		}
 

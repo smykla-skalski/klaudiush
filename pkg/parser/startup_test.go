@@ -371,6 +371,8 @@ var _ = Describe("Shell startup files", func() {
 			`for v in PATH HOME; do echo "$v=${!v}"; bash -c true; done`),
 		Entry("loop reading with a tilde prompt",
 			`for f in a b; do read -r -p ~/q var; bash -c true; done`),
+		Entry("loop printing a home path alone",
+			`for f in a; do printf ~/x; bash -c true; done`),
 		Entry("loop printing name and key lists",
 			`for f in a b; do printf '%s' "${!arr[@]}" "$(readlink $f)"; ls "$f"; done`),
 		Entry("loop printing arithmetic inside command output",
