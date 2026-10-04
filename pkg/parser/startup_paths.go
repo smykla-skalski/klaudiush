@@ -96,6 +96,8 @@ func (w *astWalker) loopMayWriteAny(call *syntax.CallExpr) bool {
 		return true
 	case w.defined(word):
 		return true
+	case name == printfBuiltin:
+		return printfMayWriteAny(call.Args[1:])
 	case varWriters[name] || declWriters[name]:
 		return slices.ContainsFunc(call.Args[1:], func(arg *syntax.Word) bool {
 			return !isLiteralWord(arg)
@@ -103,6 +105,32 @@ func (w *astWalker) loopMayWriteAny(call *syntax.CallExpr) bool {
 	default:
 		return false
 	}
+}
+
+// printfMayWriteAny reports a printf that may write a computed name: one
+// whose -v target or options are not literal. Only -v names a variable, so
+// the format and the values after it never do.
+func printfMayWriteAny(args []*syntax.Word) bool {
+	for i := 0; i < len(args); i++ {
+		if !isLiteralWord(args[i]) {
+			return true
+		}
+
+		arg := wordToString(args[i])
+
+		switch {
+		case arg == "-v":
+			i++
+
+			if i < len(args) && !isLiteralWord(args[i]) {
+				return true
+			}
+		case arg == endOfOptions || !strings.HasPrefix(arg, "-"):
+			return false
+		}
+	}
+
+	return false
 }
 
 // computedOperand reports a declaration operand that is not a literal
