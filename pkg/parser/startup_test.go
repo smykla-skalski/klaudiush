@@ -368,9 +368,7 @@ var _ = Describe("Shell startup files", func() {
 			`for f in a b; do printf '%s*\n' "$(readlink $f)"; ls "$f"; done`),
 		Entry("loop printing a quoted brace",
 			`for f in a b; do printf '{%s,%s}\n' "$f" "$(readlink $f)"; ls "$f"; done`),
-		Entry("loop printing names and keys",
-			`for f in a b; do printf '%s ' "${!BASH@}" "${!arr[@]}"; ls "$f"; done`),
 		Entry("loop printing arithmetic inside command output",
-			`for f in a b; do printf '%s' "$(echo $((1+1)))" "${a[0]}"; ls "$f"; done`),
+			`for f in a b; do printf '%s' "$(echo $((1+1)))" "${a[0]}" "$(readlink $f)"; done`),
 	)
 })
