@@ -132,11 +132,35 @@ func printfMayWriteAny(args []*syntax.Word) bool {
 				return true
 			}
 		case arg == endOfOptions || !strings.HasPrefix(arg, "-"):
-			return false
+			return slices.ContainsFunc(args[i:], assigningWord)
 		}
 	}
 
 	return false
+}
+
+// assigningWord reports a word whose expansion may assign a variable it
+// names only at run time: arithmetic, a computed index or slice, or an
+// indirect ${!n:=v}. A command substitution runs in a subshell, so what it
+// assigns does not reach the loop.
+func assigningWord(word *syntax.Word) bool {
+	found := false
+
+	syntax.Walk(word, func(node syntax.Node) bool {
+		switch n := node.(type) {
+		case *syntax.CmdSubst, *syntax.ProcSubst:
+			return false
+		case *syntax.ArithmExp:
+			found = true
+		case *syntax.ParamExp:
+			found = found || !literalIndex(n.Index) || n.Slice != nil ||
+				(n.Excl && assignsDefault(n))
+		}
+
+		return !found
+	})
+
+	return found
 }
 
 // computedPrintfWord reports a printf word the shell may turn into other
