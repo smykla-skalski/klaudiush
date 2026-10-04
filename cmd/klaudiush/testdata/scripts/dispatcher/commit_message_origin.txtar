@@ -1,0 +1,175 @@
+exec git init --initial-branch=main
+exec git config user.email "test@test.com"
+exec git config user.name "Test User"
+exec git config commit.gpgsign false
+cp file.go first.go
+exec git add first.go
+exec git commit -q -m 'not a conventional message'
+cp file.go staged.go
+exec git add staged.go
+
+stdin var-good.json
+exec klaudiush --hook-type PreToolUse
+! stdout .
+
+stdin var-bad.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'GIT013'
+! stdout 'SHELL002'
+
+stdin var-unset.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+stdout 'TITLE, which is not set'
+
+stdin var-output.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+stdout 'command output'
+
+stdin heredoc-literal.json
+exec klaudiush --hook-type PreToolUse
+! stdout .
+
+stdin heredoc-expanded.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'GIT013'
+
+stdin no-message.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+stdout 'opens an editor'
+
+stdin custom-editor.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+stdout 'cp /tmp/msg'
+
+env GIT_EDITOR=true
+
+stdin no-message.json
+exec klaudiush --hook-type PreToolUse
+! stdout .
+
+stdin reuse.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'GIT013'
+! stdout 'SHELL002'
+
+stdin reuse-moved.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+stdout 'may move'
+
+stdin template-bad.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'GIT013'
+
+stdin template-good.json
+exec klaudiush --hook-type PreToolUse
+! stdout .
+
+-- file.go --
+package main
+
+func main() {}
+
+-- good.txt --
+fix(git): validate other message sources
+
+-- bad.txt --
+not a conventional message
+
+-- var-good.json --
+{
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "TITLE='fix(git): validate other message sources'; git commit -sS -m \"$TITLE\""
+  }
+}
+-- var-bad.json --
+{
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "TITLE='bad title'; git commit -sS -m \"$TITLE\""
+  }
+}
+-- var-unset.json --
+{
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "git commit -sS -m \"$TITLE\""
+  }
+}
+-- var-output.json --
+{
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "git commit -sS -m \"fix(git): bump to $(cat VERSION)\""
+  }
+}
+-- heredoc-literal.json --
+{
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "git commit -sS -m \"$(cat <<'EOF'\nfix(git): expand ${HOME} in paths\nEOF\n)\""
+  }
+}
+-- heredoc-expanded.json --
+{
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "T='bad title'; git commit -sS -m \"$(cat <<EOF\n$T\nEOF\n)\""
+  }
+}
+-- no-message.json --
+{
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "git commit -sS"
+  }
+}
+-- custom-editor.json --
+{
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "GIT_EDITOR='cp /tmp/msg' git commit -sS --amend"
+  }
+}
+-- reuse.json --
+{
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "git commit -sS -C HEAD"
+  }
+}
+-- reuse-moved.json --
+{
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "git commit -sS -m 'fix(git): first' && git commit -sS --amend -C HEAD"
+  }
+}
+-- template-bad.json --
+{
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "git commit -sS -t bad.txt"
+  }
+}
+-- template-good.json --
+{
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "git commit -sS -t good.txt"
+  }
+}
