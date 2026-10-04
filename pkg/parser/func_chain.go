@@ -42,11 +42,17 @@ func splitFuncChains(root syntax.Node) (string, bool) {
 }
 
 // splitFuncChain moves the list folded into the body of fn, defined by
-// stmt, out of it, reporting false on a shape it cannot split.
+// stmt, out of it, reporting false on a shape it cannot split. zsh takes a
+// definition as a body, as in f() g() { :; } && cmd, where the list folds
+// into the innermost definition, so that one is split first.
 func splitFuncChain(stmt *syntax.Stmt, fn *syntax.FuncDecl) bool {
 	chain := fn.Body
 	if chain == nil {
 		return true
+	}
+
+	if inner, isFunc := chain.Cmd.(*syntax.FuncDecl); isFunc && !splitFuncChain(chain, inner) {
+		return false
 	}
 
 	head, isList := chain.Cmd.(*syntax.BinaryCmd)

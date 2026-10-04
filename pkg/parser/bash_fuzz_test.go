@@ -134,6 +134,7 @@ E
 	f.Add(`git -C "" -c '' push $'' ""''; X=; $X git push; env -u "" "$X" git push`)
 	f.Add(`f() { :; } && git commit -m 'bad title'; g() { :; } || git push --force; h() ( : ) | x`)
 	f.Add(`f() { :; } && BASH_ENV=$(mktemp) bash -c true; function k { :; } >/dev/null && k`)
+	f.Add(`f() g() h() { :; } && git push; f() function g { :; } | x; f() g() echo b || y`)
 	f.Add(`f() ! { :; } && g() if :; then :; fi || a && h() [[ x ]] |& b; ( i() { :; } && c ) &`)
 
 	f.Fuzz(func(t *testing.T, command string) {

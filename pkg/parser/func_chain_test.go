@@ -59,7 +59,19 @@ var _ = Describe("Commands chained after a function definition", func() {
 		Entry("inside eval", "eval 'f() { :; } && git push --force'"),
 		Entry("inside a called function", "g() { f() { :; } && git push --force; }; g"),
 		Entry("inside a loop", "for i in 1; do f() { :; } && git push --force; done"),
+		Entry("after a zsh nested definition", "f() g() { :; } && git push --force"),
+		Entry("after a zsh nested definition in a pipe", "f() g() { :; } | git push --force"),
+		Entry("after three nested definitions", "f() g() h() { :; } && git push --force"),
+		Entry("after a nested keyword definition", "f() function g { :; } && git push --force"),
+		Entry("after a nested simple body", "f() g() echo b && git push --force"),
+		Entry("inside zsh -c", "zsh -c 'f() g() { :; } && git push --force'"),
 	)
+
+	It("keeps a nested definition as the outer body", func() {
+		result := parse("f() g() { git status; } && git push --force; f")
+
+		Expect(gitLines(result)).To(Equal([]string{"push --force"}))
+	})
 
 	It("blocks a startup file chained after a definition", func() {
 		result := parse("f() { :; } && BASH_ENV=$(mktemp) bash -c true")

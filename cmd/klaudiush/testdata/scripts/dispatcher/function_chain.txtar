@@ -27,6 +27,11 @@ exec klaudiush --hook-type PreToolUse
 stdout '"permissionDecision":"deny"'
 stdout 'Force push is blocked'
 
+stdin nested-push.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'Force push is blocked'
+
 stdin startup.json
 exec klaudiush --hook-type PreToolUse
 stdout '"permissionDecision":"deny"'
@@ -57,6 +62,9 @@ stdout 'f has a body no shell accepts'
 
 -- pipe-push.json --
 {"tool_name": "Bash", "tool_input": {"command": "f() ( : ) | git push --force origin main"}}
+
+-- nested-push.json --
+{"tool_name": "Bash", "tool_input": {"command": "f() g() { :; } && git push --force origin main"}}
 
 -- startup.json --
 {"tool_name": "Bash", "tool_input": {"command": "f() { :; } && BASH_ENV=$(mktemp) bash -c true"}}
