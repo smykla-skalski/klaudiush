@@ -133,6 +133,13 @@ Available remotes: [{{.AvailableRemotesStr}}]
 
 Blocked branches: [{{.BlockedBranchesStr}}]`,
 	)
+
+	PushUncheckedBranchTemplate = Parse(
+		"push_unchecked_branch",
+		`❌ Push target {{.Branch}} cannot be checked against blocked branches
+
+Blocked branches: [{{.BlockedBranchesStr}}]`,
+	)
 )
 
 // GitAddTmpFilesData holds data for GitAddTmpFilesTemplate

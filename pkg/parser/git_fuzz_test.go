@@ -32,6 +32,8 @@ func FuzzParseGitCommand(f *testing.F) {
 	f.Add("$(...)\tpush")
 	f.Add("git\t${G}\tstatus")
 	f.Add("git\tcommit\t-m\tBASH_ENV=$(id)")
+	f.Add("git\tpush\t-o\t\torigin\t+main:${B}")
+	f.Add("git\tcommit\t--no-verify\t-m\t\t--\t${f}")
 	f.Add("git\t-C\t\tpush\t--force")
 	f.Add("git\tcommit\t-m\t\t-sS")
 	f.Add("git\t\tpush")

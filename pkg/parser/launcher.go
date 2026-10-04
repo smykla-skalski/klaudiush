@@ -1048,10 +1048,9 @@ func childCommand(parent Command, name string, args []string) Command {
 		StdinFile:        parent.StdinFile,
 		startup:          parent.startup,
 		dynamicWords:     parent.dynamicWords,
+		written:          parent.written,
 		argTexts:         parent.argTexts,
 		stdinText:        parent.stdinText,
 		quoting:          parent.quoting,
-		quotedWords:      parent.quotedWords,
-		taggedWords:      parent.taggedWords,
 	}
 }

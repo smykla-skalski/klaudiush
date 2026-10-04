@@ -7,20 +7,12 @@ import (
 	"github.com/smykla-skalski/klaudiush/pkg/parser"
 )
 
-// cwdResolver is a fakeResolver that knows the directory commands start in.
-type cwdResolver struct {
-	fakeResolver
-
-	cwd string
-}
-
-func (r cwdResolver) WorkingDir() (string, bool) {
-	return r.cwd, r.cwd != ""
-}
-
 var _ = Describe("Single-word command output in launcher options", func() {
 	parseIn := func(cwd, command string) *parser.ParseResult {
-		resolver := cwdResolver{cwd: cwd}
+		resolver := fakeResolver{env: map[string]string{}}
+		if cwd != "" {
+			resolver.env["PWD"] = cwd
+		}
 
 		result, err := parser.NewBashParserWithResolver(resolver).Parse(command)
 		Expect(err).NotTo(HaveOccurred())

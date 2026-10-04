@@ -94,7 +94,7 @@ const (
 		"inside a new shell or script"
 	DetailWordUntrusted = "it comes from a variable, and klaudiush resolves no variable " +
 		"after an earlier command changed how variables expand"
-	DetailWordSplit = "it is an unquoted expansion or glob that may split into " +
+	DetailWordUnquoted = "it is an unquoted expansion or glob that may split into " +
 		"several words or match files"
 )
 

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/smykla-skalski/klaudiush/pkg/hook"
@@ -33,6 +34,10 @@ func bashWriteTargets(
 	writes []parser.FileWrite,
 	resolver parser.Resolver,
 ) []fileWriteTarget {
+	writes = slices.DeleteFunc(slices.Clone(writes), func(fw parser.FileWrite) bool {
+		return fw.TargetUnknown
+	})
+
 	if !bashCtx.IsAfterTool() {
 		targets := make([]fileWriteTarget, 0, len(writes))
 

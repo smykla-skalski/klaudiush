@@ -264,7 +264,7 @@ func (r *runReader) read(i int, entrypoints []string) {
 
 			return
 		case r.all && strings.HasPrefix(arg, "-") && r.shifts(arg):
-			r.dynamic = DetailWordSplit
+			r.dynamic = DetailWordUnquoted
 
 			return
 		case strings.HasPrefix(arg, "--"):
@@ -323,7 +323,7 @@ func (r *runReader) skipValue(i int, entrypoints []string, takes, unknown bool) 
 	}
 
 	if r.all && r.shifts(r.args[i+1]) {
-		r.dynamic = DetailWordSplit
+		r.dynamic = DetailWordUnquoted
 
 		return len(r.args)
 	}
@@ -605,6 +605,7 @@ func (w *astWalker) expandedArgs(cmd Command) ([]argReading, bool) {
 		return []argReading{{args: args, origins: origins}}, true
 	}
 
+	shapes := w.argShapes(cmd)
 	choices := make([][][]string, 0, len(args))
 	splits := 0
 
@@ -617,7 +618,7 @@ func (w *astWalker) expandedArgs(cmd Command) ([]argReading, bool) {
 		}
 
 		fields := strings.Fields(expanded)
-		if !cmd.mayShift(arg) {
+		if shapes.whole[arg] {
 			choices = append(choices, [][]string{{expanded}})
 
 			continue

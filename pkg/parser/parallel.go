@@ -161,7 +161,9 @@ func (w *astWalker) parallelScripts(cmd Command) (scripts, code []string) {
 		cmd.Args = cmd.Args[1:]
 	}
 
-	opts := readParallelOptions(cmd.Args, cmd.mayShift, w.literalValue)
+	shapes := w.argShapes(cmd)
+
+	opts := readParallelOptions(cmd.Args, shapes.mayShift, w.literalValue)
 	if opts.stop {
 		return nil, nil
 	}
@@ -178,7 +180,7 @@ func (w *astWalker) parallelScripts(cmd Command) (scripts, code []string) {
 			break
 		}
 
-		lines, lineCode, why := w.parallelLines(cmd, &opts, start)
+		lines, lineCode, why := w.parallelLines(cmd, shapes, &opts, start)
 		scripts, code = append(scripts, lines...), append(code, lineCode...)
 		detail = why
 	}
@@ -257,7 +259,7 @@ func (o *parallelOptions) commandAt(args []string, at int, shifts func(string) b
 
 		return 0, true
 	case shifts(arg):
-		o.dynamic = DetailWordSplit
+		o.dynamic = DetailWordUnquoted
 
 		return 0, true
 	default:
@@ -286,7 +288,7 @@ func (o *parallelOptions) next(args []string, at int, shifts func(string) bool) 
 		value, attached = args[at+1], true
 
 		if shifts(value) {
-			o.dynamic = DetailWordSplit
+			o.dynamic = DetailWordUnquoted
 
 			return nil
 		}
@@ -411,6 +413,7 @@ type parallelInput struct {
 // starts at start, or why they cannot be known.
 func (w *astWalker) parallelLines(
 	cmd Command,
+	shapes argShapes,
 	opts *parallelOptions,
 	start int,
 ) (lines, code []string, detail string) {
@@ -419,7 +422,7 @@ func (w *astWalker) parallelLines(
 		end++
 	}
 
-	words, detail := w.parallelWords(cmd, cmd.Args[start:end])
+	words, detail := w.parallelWords(shapes, cmd.Args[start:end])
 	if detail != "" {
 		return nil, nil, detail
 	}
@@ -447,15 +450,15 @@ func (w *astWalker) parallelLines(
 // parallelWords returns parallel's command words with known variables
 // substituted, or why one cannot be known. The words are joined and run by
 // a shell, so any part of one that is not literal could add commands.
-func (w *astWalker) parallelWords(cmd Command, args []string) ([]string, string) {
+func (w *astWalker) parallelWords(shapes argShapes, args []string) ([]string, string) {
 	words := make([]string, 0, len(args))
 
 	for _, arg := range args {
 		switch {
 		case marked(arg) || bracesExpand(arg):
 			return nil, DetailWordOutput
-		case globWord(arg) && cmd.mayShift(arg):
-			return nil, DetailWordSplit
+		case globWord(arg) && shapes.mayShift(arg):
+			return nil, DetailWordUnquoted
 		case HasUnresolvedVars(arg):
 			expanded, ok := w.resolveWord(arg)
 			if !ok {

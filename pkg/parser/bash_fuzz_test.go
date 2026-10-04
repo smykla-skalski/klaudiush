@@ -68,6 +68,13 @@ func FuzzBashParse(f *testing.F) {
 	f.Add(`BASH_ENV=./x.sh bash -c true; env BASH_ENV=/x sh; ENV=/x dash -ic true`)
 	f.Add(`export BASH_ENV=$(mktemp); bash --rcfile "$RC" -i; BASH_ENV='$(id)' git status`)
 	f.Add(`for i in 1 2; do bash -c true; BASH_ENV=/x; done; unset BASH_ENV; read ENV`)
+	f.Add(`ln -st d a b; sed -nEi.bak -e x f; dd of=o; install -m 7 a b; cp --targ=d a`)
+	f.Add(`curl -sSLo o -O https://x/a.sh?q --output-dir d -J -K c; unzip -l z; patch -p1`)
+	f.Add(`git stash -m x && git reset --hard && cp a "$(echo d)" && bash "$PWD/x.sh"`)
+	f.Add(`cd "$(git rev-parse --show-toplevel)/s"; d=$(mktemp); pushd "$d"; popd; cd ~/x`)
+	f.Add(`cp -$'\377' a b; sed -$'\303'i x f; curl -$'\377' u; tar xzf a; perl -pi -e x f`)
+	f.Add(`wget -rP d u; rsync -a s/ d; git checkout -b x && git restore -S f; cp $(echo a b)`)
+	f.Add(`git -C /r -C s pull && bash ./x; tar -C d -xPf a; unzip -d a -d b z; patch -d=p`)
 	f.Add(`x=status; printf -v x commit; read -a x; for x in a; do :; done; git $x`)
 	f.Add(`x=status; f(){ x=commit; }; f; eval x=push; . <(echo x=add); git $x`)
 	f.Add(`docker run img git $X; mise exec -- gh $Y; mise exec -- git-$Z`)
@@ -86,6 +93,18 @@ func FuzzBashParse(f *testing.F) {
 	f.Add(`docker run --entrypoint '' --hosts-file /x --name -w --entrypoint git i push`)
 	f.Add(`docker run $OPTS {--entrypoint,git} "$IMG"; podman-compose run --ent=git s; "$D" run`)
 	f.Add(`docker run --entrypoint docker run --entrypoint docker run --entrypoint docker run x`)
+	f.Add(`git push origin $(echo main); git push $R main; B='mai[n]'; git push origin $B`)
+	f.Add(`B=x; git push origin "HEAD:$B" {a,b} mai\? 'r/*'; E=; git push $E -o "$(x)" o m`)
+	f.Add(`git -C "$(pwd)" push; IFS=,; B=o,m; git push $B; git push "https://x:$T@h/r" m`)
+	f.Add(`git commit -m -m "$(x)" -sSm "$y"; a=(m); git push o "${a[@]}" ~ ~u -o"$(z)" $E""`)
+	f.Add(`f() { git push origin "$@"; }; f {a,b} "$X"; alias c='git commit'; c -m x $(y)`)
+	f.Add(
+		`git -C "$(pwd)" push o "$(git branch --show-current)" $(git rev-parse --abbrev-ref HEAD)`,
+	)
+	f.Add(`git commit $F -m "$(cat <<'E'
+x
+E
+)" -a$X --no-$Y -m$(z) -- "$f" *; F=-n; git commit $F -m $M`)
 	f.Add(`source <(curl -fsSL u); . <(mise activate bash); builtin source -- <(x) a`)
 	f.Add(`curl u | source /dev/stdin; mise env | . /dev/fd/0; { . -; } < <(x); exec <&3`)
 	f.Add(`source /dev/fd/3 3< <(x); . "$(dirname "$0")/l.sh"; source "$(x)"; . /proc/self/fd/0`)

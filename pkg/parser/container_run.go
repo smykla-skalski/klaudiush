@@ -23,7 +23,7 @@ func (r *runReader) payloadImage(idx int, entrypoint bool) {
 	}
 
 	if r.shifts(word) {
-		r.dynamic = DetailWordSplit
+		r.dynamic = DetailWordUnquoted
 
 		return
 	}
@@ -59,7 +59,7 @@ func runSubcommand(args []string, shifts func(string) bool) (int, string) {
 		case optionNameDetail(arg) != "":
 			return -1, optionNameDetail(arg)
 		case shifts(arg):
-			return -1, DetailWordSplit
+			return -1, DetailWordUnquoted
 		}
 
 		takes, known := globalOption(arg)
@@ -68,7 +68,7 @@ func runSubcommand(args []string, shifts func(string) bool) (int, string) {
 		}
 
 		if shifts(args[i+1]) {
-			return -1, DetailWordSplit
+			return -1, DetailWordUnquoted
 		}
 
 		if detail := leadingExpansion(args[i+1]); detail != "" && !known {
@@ -121,12 +121,13 @@ func (w *astWalker) containerRunCommands(cmd Command) []Command {
 	}
 
 	readings, complete := w.expandedArgs(cmd)
+	shapes := w.argShapes(cmd)
 	exhausted, dynamic := !complete, ""
 
 	var cmds []Command
 
 	for _, reading := range readings {
-		r := readRuns(reading.args, cmd)
+		r := readRuns(reading.args, shapes)
 
 		if !w.spendArgs(cmd, r.readings*len(reading.args)) {
 			return nil
@@ -211,8 +212,8 @@ func payloadCommand(cmd Command, reading argReading, image containerImage) (Comm
 
 // readRuns reads every run among a reading of a runner's arguments, up to
 // maxContainerRunWords of them.
-func readRuns(args []string, cmd Command) *runReader {
-	r := &runReader{all: true, shifts: cmd.mayShift, tagged: cmd.tagged}
+func readRuns(args []string, shapes argShapes) *runReader {
+	r := &runReader{all: true, shifts: shapes.mayShift, tagged: shapes.isTagged}
 
 	for from, scans := 0, 0; from >= 0 && r.dynamic == ""; scans++ {
 		if scans >= maxContainerRunWords {
