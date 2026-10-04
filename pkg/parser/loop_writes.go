@@ -442,15 +442,22 @@ func unsureWord(word *syntax.Word) bool {
 	return computedWord(word) || expandingWord(word) || tildeWord(word)
 }
 
-// tildeWord reports a word with a leading unquoted ~.
+// tildeWord reports a word the shell tilde-expands: one whose tilde prefix,
+// the text from a leading ~ up to the first unquoted slash, has no quoted
+// character.
 func tildeWord(word *syntax.Word) bool {
 	if len(word.Parts) == 0 {
 		return false
 	}
 
 	lit, ok := word.Parts[0].(*syntax.Lit)
+	if !ok || !strings.HasPrefix(lit.Value, "~") {
+		return false
+	}
 
-	return ok && strings.HasPrefix(lit.Value, "~")
+	prefix, _, slash := strings.Cut(lit.Value, "/")
+
+	return !strings.Contains(prefix, `\`) && (slash || len(word.Parts) == 1)
 }
 
 // singleWord reports a word that stays exactly one word: literal, or with
