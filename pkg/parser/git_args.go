@@ -597,12 +597,11 @@ func (w *astWalker) commitOption(
 		return arg, true, DetailWordOutput
 	}
 
-	value, keep, detail := w.resolvedArg(arg, written, expanded)
-	if detail != "" && notOption(written.prefix, subcmdCommit) {
+	if notOption(written.prefix, subcmdCommit) {
 		return arg, true, ""
 	}
 
-	return value, keep, detail
+	return w.resolvedArg(arg, written, expanded)
 }
 
 // notOption reports literal text that starts an argument which cannot be

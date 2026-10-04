@@ -28,22 +28,27 @@ type astWalker struct {
 	// stdinByCall maps a CallExpr to the content fed to its stdin (heredoc or
 	// piped echo/printf). Populated when a Stmt or pipeline is visited, then
 	// consumed when the corresponding CallExpr is extracted into a Command.
-	stdinByCall map[*syntax.CallExpr]string
+	stdinByCall     map[*syntax.CallExpr]string
+	stdinTextByCall map[*syntax.CallExpr]*ShellText
 	// stdinFileByCall maps a CallExpr to the file redirected to its stdin (<).
 	stdinFileByCall map[*syntax.CallExpr]string
 	// assignments records literal NAME=value assignments, both standalone and
 	// as a prefix on a command, so consumers can resolve a variable used later
 	// in the same command line.
-	assignments map[string]string
-	unknownVars map[string]bool
-	safeAssigns map[*syntax.Assign]bool
-	certain     map[*syntax.Stmt]certainty
-	loopCalls   map[*syntax.CallExpr]bool
-	inLoop      bool
-	outerLoop   bool
-	distrust    bool
-	scriptRun   scriptRun
-	launchSeq   int
+	assignments  map[string]string
+	unknownVars  map[string]bool
+	safeAssigns  map[*syntax.Assign]bool
+	chainAssigns map[*syntax.Assign]bool
+	exported     map[string]bool
+	allExport    bool
+	chained      []string
+	certain      map[*syntax.Stmt]certainty
+	loopCalls    map[*syntax.CallExpr]bool
+	inLoop       bool
+	outerLoop    bool
+	distrust     bool
+	scriptRun    scriptRun
+	launchSeq    int
 	// depth counts the launchers, scripts and aliases that led here.
 	depth int
 	// resolver answers what the command text cannot: environment, script
@@ -70,6 +75,9 @@ type astWalker struct {
 	// literal marks a walker over a string found in interpreter code: its
 	// top-level commands count only when they name something tracked.
 	literal bool
+	// prose marks a walker over a plain string literal in interpreter code,
+	// where a git word no subcommand stands for is a message.
+	prose bool
 	// dirUnknown records that a cd went somewhere that cannot be resolved.
 	dirUnknown bool
 	// dirComputed records a cd to a directory computed by a command
@@ -120,6 +128,7 @@ type parseState struct {
 	// table, so a bare name may no longer run what it runs outside it.
 	pathChanged   bool
 	untrusted     bool
+	outputRouted  bool
 	arrays        map[string]bool
 	expandedWords map[string]bool
 	// evalSetups names the setup tool whose output an eval call runs, by
@@ -138,6 +147,7 @@ type parseState struct {
 	uniqueKeys int
 
 	namesUnknown bool
+	arithmetic   bool
 }
 
 // spend takes one unit of work, reporting false once the budget is gone.
@@ -181,9 +191,16 @@ func (w *astWalker) visit(node syntax.Node) bool {
 	switch n := node.(type) {
 	case *syntax.BinaryCmd:
 		w.extractPipedStdin(n)
+
+		if (n.Op == syntax.Pipe || n.Op == syntax.PipeAll) && !w.pipeFilter(n.Y) {
+			w.noteOutputRoute()
+		}
+	case *syntax.CmdSubst:
+		w.noteOutputRoute()
 	case *syntax.CallExpr:
 		w.extractCommand(n)
 	case *syntax.ProcSubst:
+		w.noteOutputRoute()
 		w.markOutputSubst(n)
 	case *syntax.FuncDecl:
 		// The body runs only when the function is called, and each call is
@@ -201,6 +218,7 @@ func (w *astWalker) visit(node syntax.Node) bool {
 		}
 	case *syntax.Stmt:
 		w.extractRedirect(n)
+		w.noteRedirectedOutput(n)
 		w.noteStdinRedirects(n)
 
 		if form := numericGlobQualifier(n); form != "" {
@@ -215,9 +233,6 @@ func (w *astWalker) visit(node syntax.Node) bool {
 	case *syntax.Subshell:
 		// Subshells are handled recursively by syntax.Walk
 		return true
-	case *syntax.CmdSubst:
-		// Command substitution is handled recursively
-		return true
 	}
 
 	return true
@@ -225,8 +240,66 @@ func (w *astWalker) visit(node syntax.Node) bool {
 
 // recordStdin associates stdin content with a CallExpr so it can be attached
 // to the Command when that CallExpr is later extracted.
-func (w *astWalker) recordStdin(call *syntax.CallExpr, content string) {
+func (w *astWalker) recordStdin(call *syntax.CallExpr, content string, text ShellText) {
 	w.stdinByCall[call] = content
+	resolved := w.resolveText(text)
+	w.stdinTextByCall[call] = &resolved
+}
+
+// noteRedirectedOutput notes a statement that may send output to a program:
+// a redirect to a process substitution (cmd > >(sh)), an exec that redirects
+// the shell's descriptors, a coprocess, or a named pipe another command may
+// read as it is written. Its redirects are walked after the command itself,
+// so they are checked here first.
+func (w *astWalker) noteRedirectedOutput(stmt *syntax.Stmt) {
+	_, coproc := stmt.Cmd.(*syntax.CoprocClause)
+	call := callExprOf(stmt)
+	execRedirect := len(stmt.Redirs) > 0 && isCommand(call, "exec")
+	namedPipe := isCommand(call, "mkfifo") || isCommand(call, "mknod")
+
+	if coproc || stmt.Coprocess || execRedirect || namedPipe ||
+		slices.ContainsFunc(stmt.Redirs, func(r *syntax.Redirect) bool {
+			return r.Word != nil &&
+				slices.ContainsFunc(r.Word.Parts, func(part syntax.WordPart) bool {
+					_, ok := part.(*syntax.ProcSubst)
+
+					return ok
+				})
+		}) {
+		w.noteOutputRoute()
+	}
+}
+
+// noteOutputRoute records that the line hands some command's output to
+// another (a pipe, a substitution, a redirect into a program). Text an
+// interpreter prints may then run, so none of it counts as prose for the
+// rest of the parse. A prose string itself runs nothing, so it routes
+// nothing; a command string an interpreter runs (os.system) does.
+func (w *astWalker) noteOutputRoute() {
+	if !w.prose {
+		w.state.outputRouted = true
+	}
+}
+
+// pipeFilters only read and print or save their input; none runs any of it.
+// sort (--compress-program) and rg (--pre) are left out: they can.
+var pipeFilters = nameSet("head tail jq grep egrep fgrep wc uniq cut tr column nl cat tee")
+
+// pipeFilter reports whether a pipeline stage is one of pipeFilters, written
+// literally and not redefined on the line, so what flows into it is displayed
+// rather than run. A stage with a redirect or a substitution (tee >(sh)) may
+// hand its input on, and is walked only after the stage before it, so it is
+// not a filter.
+func (w *astWalker) pipeFilter(stmt *syntax.Stmt) bool {
+	call := callExprOf(stmt)
+	if call == nil || len(stmt.Redirs) > 0 || len(call.Assigns) > 0 || len(call.Args) == 0 ||
+		!isLiteralWord(call.Args[0]) || anyWordDynamic(call.Args) {
+		return false
+	}
+
+	name := wordToString(call.Args[0])
+
+	return pipeFilters[name] && !w.defined(name) && !w.state.pathChanged
 }
 
 // extractPipedStdin handles "producer | consumer" pipelines, capturing the
@@ -257,7 +330,7 @@ func (w *astWalker) capturePipedStdin(
 	producer, consumer *syntax.CallExpr,
 ) bool {
 	if content, ok := literalCommandOutput(producer); ok {
-		w.recordStdin(consumer, content)
+		w.recordStdin(consumer, content, ShellText{Parts: []TextPart{{Text: content}}})
 
 		return true
 	}
@@ -270,7 +343,7 @@ func (w *astWalker) capturePipedStdin(
 
 	switch {
 	case info.hasHeredoc && copiesStdinVerbatim(producer):
-		w.recordStdin(consumer, info.heredocContent)
+		w.recordStdin(consumer, info.heredocContent, catText(info.heredocText))
 
 		if stmtHeredocExpands(stmt) {
 			w.setUntrusted(consumer, "")
@@ -557,6 +630,18 @@ func printfEscape(c byte) (byte, bool) {
 // extractCommand extracts a command from a CallExpr node.
 func (w *astWalker) extractCommand(call *syntax.CallExpr) {
 	w.inLoop = w.outerLoop || w.loopCalls[call]
+
+	// The shell expands arguments before a prefix assignment takes effect.
+	var argTexts map[string]ShellText
+	if len(call.Args) > 1 {
+		argTexts = w.argTexts(call.Args[1:])
+	}
+
+	var env map[string]EnvValue
+	if len(call.Args) > 0 {
+		env = w.envSnapshot(call)
+	}
+
 	w.extractAssigns(call)
 
 	if len(call.Args) == 0 {
@@ -602,6 +687,9 @@ func (w *astWalker) extractCommand(call *syntax.CallExpr) {
 		startup:          prefixStartup(call),
 		dynamicWords:     dynamicArgs(call.Args[1:]),
 		written:          writtenArgs(call.Args[1:]),
+		argTexts:         argTexts,
+		stdinText:        prefixGaps(w.stdinTextByCall[call], call),
+		env:              env,
 		quoting:          argQuoting(call.Args[1:]),
 	}, w.depth, view)
 }
@@ -627,7 +715,7 @@ func (w *astWalker) record(cmd Command, depth int, view string) {
 	cmd, detail := w.programWord(cmd, view)
 
 	// Prose in interpreter code ("hint: run git commit") runs nothing.
-	if w.literal && depth == w.depth && !literalCommand(cmd.Name) {
+	if w.literal && depth == w.depth && !literalCommand(cmd.Name) || w.proseGit(cmd, depth) {
 		return
 	}
 
@@ -765,6 +853,7 @@ func (w *astWalker) trackShellState(cmd Command) {
 		w.state.pathChanged = true
 	case setBuiltin:
 		w.trackPositional(cmd)
+		w.noteAllExport(cmd.Args)
 		w.noteKeywordMode(cmd.Args)
 	}
 }
@@ -864,6 +953,7 @@ func (w *astWalker) gitEnvScripts(cmd Command) []string {
 // extractDecl records assignments made by export, declare, local and
 // readonly, and notes a changed PATH.
 func (w *astWalker) extractDecl(decl *syntax.DeclClause) {
+	w.noteExports(decl)
 	w.distrustDecl(decl)
 
 	for _, assign := range decl.Args {
@@ -925,6 +1015,11 @@ func (w *astWalker) noteDynamic(assign *syntax.Assign) {
 // assign records a literal assignment.
 func (w *astWalker) assign(name, value string) {
 	w.distrustSplitting(name)
+
+	if w.allExport {
+		w.markExported(name, true)
+	}
+
 	w.assignments[name] = value
 	w.scope = nil
 
@@ -971,6 +1066,7 @@ type redirInfo struct {
 	outputOp       WriteOp
 	outputLoc      Location
 	heredocContent string
+	heredocText    ShellText
 	heredocLoc     Location
 	inputPath      string // file redirected to stdin (<)
 	hasOutput      bool
@@ -1055,6 +1151,8 @@ func collectRedirs(stmt *syntax.Stmt) redirInfo {
 			syntax.RdrAllClob, syntax.AppAll, syntax.AppAllClob, syntax.RdrInOut, syntax.DplOut:
 			info.addOutput(redir)
 		case syntax.Hdoc, syntax.DashHdoc, syntax.WordHdoc:
+			info.heredocText = heredocText(redir)
+
 			switch {
 			case redir.Op == syntax.WordHdoc:
 				// A here-string feeds its word, plus a newline, to stdin.
@@ -1107,7 +1205,7 @@ func (w *astWalker) extractRedirect(stmt *syntax.Stmt) {
 	// stdin-fed content (e.g. "git commit -F - <<EOF ... EOF >/dev/null").
 	if info.hasHeredoc {
 		if call := callExprOf(stmt); call != nil {
-			w.recordStdin(call, info.heredocContent)
+			w.recordStdin(call, info.heredocContent, info.heredocText)
 		}
 	}
 

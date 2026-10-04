@@ -84,8 +84,7 @@ func (p *BashParser) Parse(command string) (*ParseResult, error) {
 	walker := newAstWalker(p.resolver)
 
 	for _, stmt := range file.Stmts {
-		walker.prepare(stmt)
-		syntax.Walk(stmt, walker.visit)
+		walker.walkStmt(stmt)
 	}
 
 	// Extract git operations

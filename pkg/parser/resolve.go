@@ -58,10 +58,12 @@ func newAstWalker(resolver Resolver) *astWalker {
 		commands:        make([]Command, 0),
 		fileWrites:      make([]FileWrite, 0),
 		stdinByCall:     make(map[*syntax.CallExpr]string),
+		stdinTextByCall: make(map[*syntax.CallExpr]*ShellText),
 		stdinFileByCall: make(map[*syntax.CallExpr]string),
 		assignments:     make(map[string]string),
 		unknownVars:     make(map[string]bool),
 		safeAssigns:     make(map[*syntax.Assign]bool),
+		chainAssigns:    make(map[*syntax.Assign]bool),
 		certain:         make(map[*syntax.Stmt]certainty),
 		loopCalls:       make(map[*syntax.CallExpr]bool),
 		resolver:        resolver,
@@ -515,6 +517,42 @@ func (w *astWalker) expandGitAlias(cmd Command) (Command, []nestedScript) {
 	return cmd, nil
 }
 
+// proseGit reports whether a git command written directly in a plain string
+// of interpreter code names no subcommand git could run ("git executable not
+// found"): no builtin, installed command, typo git would correct or alias
+// klaudiush can see, with nothing on the line moving git's configuration or
+// directory. Such a string is a message; run as a command, git would refuse
+// it. Only a plain alias-shaped word qualifies: an option, a brace or glob
+// the shell may expand ("{push,}") or any other form stays opaque.
+func (w *astWalker) proseGit(cmd Command, depth int) bool {
+	if !w.prose || depth != w.depth || cmd.Name != gitProgram || cmd.Invoked != gitProgram ||
+		cmd.Dynamic || len(cmd.Args) == 0 || w.dirUnknown || w.dirComputed ||
+		w.state.pathChanged || w.lookupEnvChanged() {
+		return false
+	}
+
+	name := cmd.Args[0]
+	if gitBuiltins[name] || !gitAliasName.MatchString(name) {
+		return false
+	}
+
+	if _, found := w.autocorrect(name); found || w.resolver.GitCommand(name) {
+		return false
+	}
+
+	if _, ok := w.lineGitAlias(name); ok {
+		return false
+	}
+
+	if _, ok := w.envGitAlias(nil, name); ok {
+		return false
+	}
+
+	_, ok := w.resolver.GitAlias(cmd.WorkingDirectory, name)
+
+	return !ok
+}
+
 // unknownGitCommand handles a git subcommand that is neither a builtin nor
 // a known alias. A typo git would autocorrect becomes the command it runs.
 // Anything else either fails in git or runs an alias from configuration
@@ -931,11 +969,48 @@ func (w *astWalker) followFile(
 }
 
 // followCode records the command lines found in program source, walking
-// each as sw describes.
+// each as sw describes. Prose is read only in Python and JavaScript, whose
+// print and log calls cannot pipe their own output into a program, and only
+// when nothing on the line routes output to another command.
 func (w *astWalker) followCode(cmd Command, code string, depth int, sw scriptWalk) {
+	proseAllowed := !w.state.outputRouted && proseLanguage(cmd, code)
+
 	for _, line := range commandLines(code) {
-		w.walkScript(line, cmd, depth, sw)
+		lineWalk := sw
+		lineWalk.prose = proseAllowed && line.prose
+
+		w.walkScript(line.text, cmd, depth, lineWalk)
 	}
+}
+
+// proseLanguage reports whether program source is Python or JavaScript, by
+// the interpreter running it or, for a script run by path, its shebang. A
+// named interpreter (awk -f x.py) ignores the shebang, and a script's own
+// name (./python-tool) says nothing about its language.
+func proseLanguage(cmd Command, code string) bool {
+	name := commandName(cmd.Name)
+	if _, named := interpreters[name]; named {
+		return proseInterpreter(name)
+	}
+
+	line, _, _ := strings.Cut(code, "\n")
+	if !strings.HasPrefix(line, "#!") {
+		return false
+	}
+
+	return slices.ContainsFunc(
+		strings.Fields(strings.TrimPrefix(line, "#!")),
+		func(word string) bool {
+			return proseInterpreter(commandName(word))
+		},
+	)
+}
+
+// proseInterpreter reports whether an interpreter name runs Python or
+// JavaScript.
+func proseInterpreter(name string) bool {
+	return strings.HasPrefix(name, "python") || name == "node" || name == "nodejs" ||
+		name == "deno" || name == "bun"
 }
 
 // scriptSource returns the text of a script a command runs: stdin, a process
@@ -989,6 +1064,9 @@ type scriptWalk struct {
 	name string
 	// literal marks a string from interpreter code, where prose is expected.
 	literal bool
+	// prose marks a plain string literal from interpreter code, where an
+	// unknown git word is a message rather than a command.
+	prose bool
 	// label names the script in diagnostics.
 	label string
 	// run is the $0 and positional parameters of a script file, set when
@@ -1017,6 +1095,7 @@ func (w *astWalker) walkScript(script string, parent Command, depth int, sw scri
 
 	child := w.child(parent.WorkingDirectory, depth)
 	child.literal = sw.literal
+	child.prose = sw.prose
 	child.distrust = w.distrust || !runsInShell(parent, sw)
 	child.scriptRun = w.childRun(parent, sw)
 	child.launchSeq = parent.Location.Seq
@@ -1049,8 +1128,7 @@ func (w *astWalker) walkScript(script string, parent Command, depth int, sw scri
 			break
 		}
 
-		child.prepare(stmt)
-		syntax.Walk(stmt, child.visit)
+		child.walkStmt(stmt)
 	}
 
 	// Commands report the line of the command that ran the script, keeping

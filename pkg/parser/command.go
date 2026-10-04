@@ -80,6 +80,9 @@ type Command struct {
 	startup      map[string]startupValue
 	dynamicWords map[string]bool
 	written      map[string][]writtenArg
+	argTexts     map[string]ShellText
+	stdinText    *ShellText
+	env          map[string]EnvValue
 	quoting      map[string]wordQuoting
 }
 

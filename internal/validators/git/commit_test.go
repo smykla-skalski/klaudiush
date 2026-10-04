@@ -1776,17 +1776,14 @@ Signed-off-by: Test User <test@klaudiu.sh>`
 			).To(ContainSubstring("doesn't follow conventional commits format"))
 		})
 
-		It("skips an unresolved -m variable instead of validating the token", func() {
-			// The hook cannot see $VAR's runtime value, so it must not validate
-			// the literal "$VAR" (which would fail the conventional-commit check).
+		It("blocks an unresolved -m variable instead of validating the token", func() {
 			ctx := &hook.Context{
 				EventType: hook.EventTypePreToolUse,
 				ToolName:  hook.ToolTypeBash,
 				ToolInput: hook.ToolInput{Command: `git commit -sS -a -m "$VAR"`},
 			}
 
-			result := validator.Validate(context.Background(), ctx)
-			Expect(result.Passed).To(BeTrue())
+			expectOpaqueMessage(validator.Validate(context.Background(), ctx), "$VAR")
 		})
 
 		It("validates a single-quoted literal that looks like a variable", func() {
@@ -1817,17 +1814,14 @@ Signed-off-by: Test User <test@klaudiu.sh>`
 			Expect(result.ShouldBlock).To(BeTrue())
 		})
 
-		It("skips a modified -m expansion", func() {
-			// "${MSG:-default}" is still an unresolved expansion (its value depends
-			// on MSG at runtime), so it is skipped rather than validated.
+		It("blocks a modified -m expansion", func() {
 			ctx := &hook.Context{
 				EventType: hook.EventTypePreToolUse,
 				ToolName:  hook.ToolTypeBash,
 				ToolInput: hook.ToolInput{Command: `git commit -sS -a -m "${MSG:-default}"`},
 			}
 
-			result := validator.Validate(context.Background(), ctx)
-			Expect(result.Passed).To(BeTrue())
+			expectOpaqueMessage(validator.Validate(context.Background(), ctx), "${MSG:-default}")
 		})
 
 		It("blocks an unresolved -F variable path with no inline write", func() {
@@ -1842,7 +1836,9 @@ Signed-off-by: Test User <test@klaudiu.sh>`
 	})
 
 	Describe("No message flag", func() {
-		It("should pass when no -m flag (message from editor)", func() {
+		It("should pass when no -m flag and the editor changes nothing", func() {
+			setEditorEnv("true")
+
 			ctx := &hook.Context{
 				EventType: hook.EventTypePreToolUse,
 				ToolName:  hook.ToolTypeBash,

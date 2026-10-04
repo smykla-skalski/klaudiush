@@ -254,7 +254,9 @@ func pushRepo(gitCmd *parser.GitCommand) string {
 
 // allBranchFlags push every local branch, so any blocked branch that exists
 // locally is pushed too.
-var allBranchFlags = []string{"--all", "--branches", "--mirror"}
+var allBranchFlags = []string{flagAll, "--branches", "--mirror"}
+
+const flagAll = "--all"
 
 // validateBlockedBranches checks every branch a push updates against the
 // blocked list. A target it cannot name (HEAD on a detached or unreadable
