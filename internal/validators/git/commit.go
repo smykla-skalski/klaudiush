@@ -117,7 +117,7 @@ func (v *CommitValidator) validateCommits(
 
 		res := v.validateGitCommit(ctx, gitCmd, hasGitAdd, src)
 		if attribution != nil {
-			return v.withAttribution(res, attribution, gitCmd, src)
+			return v.withAttribution(ctx, res, attribution, gitCmd, src)
 		}
 
 		switch {
@@ -141,6 +141,7 @@ func (v *CommitValidator) validateCommits(
 // attribution block as before. When the message already has an attribution
 // finding, attribution elsewhere on the command gets its own finding.
 func (v *CommitValidator) withAttribution(
+	ctx context.Context,
 	res, attribution *validator.Result,
 	gitCmd *parser.GitCommand,
 	src messageSource,
@@ -154,7 +155,7 @@ func (v *CommitValidator) withAttribution(
 	if slices.ContainsFunc(res.Findings, func(f validator.Finding) bool {
 		return f.Reference == validator.RefGitClaudeAttr
 	}) {
-		msg, err := v.extractCommitMessage(gitCmd, src)
+		msg, err := v.extractCommitMessage(ctx, gitCmd, src)
 		if err != nil || !containsAIAttribution(withoutMessage(src.text, msg)) {
 			return res
 		}
@@ -222,7 +223,7 @@ func (v *CommitValidator) validateGitCommit(
 		return validator.Pass()
 	}
 
-	commitMsg, err := v.extractCommitMessage(gitCmd, src)
+	commitMsg, err := v.extractCommitMessage(ctx, gitCmd, src)
 	if err != nil {
 		log.Debug("Commit message cannot be inspected", "error", err)
 
@@ -397,6 +398,7 @@ func (*CommitValidator) hasGitAddInChain(commands []parser.Command) bool {
 
 // extractCommitMessage extracts commit message from -m/--message or -F/--file flags.
 func (v *CommitValidator) extractCommitMessage(
+	ctx context.Context,
 	gitCmd *parser.GitCommand,
 	src messageSource,
 ) (string, error) {
@@ -404,27 +406,34 @@ func (v *CommitValidator) extractCommitMessage(
 		return "", err
 	}
 
-	if hasFileFlag(gitCmd) {
-		return v.readMessageFile(gitCmd, src, v.getFlagValue(gitCmd, commitFileFlags))
-	}
+	fixupRev, fixupGap, fixupReuses := src.fixupRev(gitCmd)
 
-	// Check for inline message flags (-m/--message)
-	// TrimSpace handles trailing newlines from HEREDOC syntax: -m "$(cat <<'EOF'\n...\nEOF\n)"
-	if msg := v.getFlagValue(gitCmd, commitMessageFlags); msg != "" {
-		// A bare variable (e.g. -m "$MSG") is an unresolved expansion whose
-		// runtime content the hook cannot see. Skip rather than validate the
-		// literal token, which would always fail the conventional-commit check.
-		if isBareExpansion(msg) {
-			v.Logger().
-				Debug("commit message is an unresolved variable; skipping validation", "value", msg)
-
-			return "", nil
+	edits := editorRuns(gitCmd, fixupReuses)
+	if edits {
+		if err := src.checkEditor(gitCmd); err != nil {
+			return "", err
 		}
-
-		return strings.TrimSpace(msg), nil
 	}
 
-	return "", nil
+	strip := edits && src.cleanupStrips(gitCmd)
+	reuse, reuses := lastValue(gitCmd, reuseFlags)
+
+	switch {
+	case hasFileFlag(gitCmd):
+		return v.readMessageFile(gitCmd, src, v.getFlagValue(gitCmd, commitFileFlags))
+	case reuses:
+		rev, gap := src.flagText(gitCmd, reuse)
+
+		return v.reusedMessage(ctx, gitCmd, src, rev, gap, strip)
+	case fixupReuses:
+		return v.reusedMessage(ctx, gitCmd, src, fixupRev, fixupGap, strip)
+	case slices.ContainsFunc(commitMessageFlags, gitCmd.HasFlag):
+		return src.inlineMessage(gitCmd)
+	case usesTemplate(gitCmd):
+		return v.templateMessage(gitCmd, src, strip)
+	default:
+		return "", nil
+	}
 }
 
 // expandTilde best-effort expands a leading ~ or ~/ to the user's home
