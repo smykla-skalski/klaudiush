@@ -5,6 +5,19 @@ All notable changes to klaudiush will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.43.2](https://github.com/smykla-skalski/klaudiush/compare/v1.43.1...v1.43.2) (2026-10-04)
+
+### Bug Fixes
+
+* **git:** validate other commit message sources ([#753](https://github.com/smykla-skalski/klaudiush/issues/753)) ([c563322](https://github.com/smykla-skalski/klaudiush/commit/c56332262c40819366ccea0b8021cf3a7ec77b92))
+* **output:** keep findings past eval setup cap ([#756](https://github.com/smykla-skalski/klaudiush/issues/756)) ([4acd3bb](https://github.com/smykla-skalski/klaudiush/commit/4acd3bbc0c5bdc431fb7a6e7614514844f77ad0c))
+* **parser:** block dynamic container launch words ([#757](https://github.com/smykla-skalski/klaudiush/issues/757)) ([be261fc](https://github.com/smykla-skalski/klaudiush/commit/be261fc6e7d98beeea6d10f048d847d2307a843a))
+* **parser:** block dynamic git push targets ([#750](https://github.com/smykla-skalski/klaudiush/issues/750)) ([a220308](https://github.com/smykla-skalski/klaudiush/commit/a2203087e13cdb10629458c92b9cbcab5c27aee8))
+* **parser:** follow HOME and ZDOTDIR startup files ([#759](https://github.com/smykla-skalski/klaudiush/issues/759)) ([a7bc028](https://github.com/smykla-skalski/klaudiush/commit/a7bc02803778a7cc8acaf760d2f3ab7e17dffb08))
+* **parser:** stop blocking unset BASH_ENV in loops ([#764](https://github.com/smykla-skalski/klaudiush/issues/764)) ([7149ecc](https://github.com/smykla-skalski/klaudiush/commit/7149ecce8112809b063c853e292f901cfd923f19))
+* **parser:** track more writes and computed cd ([#758](https://github.com/smykla-skalski/klaudiush/issues/758)) ([d8b4999](https://github.com/smykla-skalski/klaudiush/commit/d8b49996c8e42246c218db1b93168b9d8c5ede3d))
+* **parser:** walk commands chained after a func ([#765](https://github.com/smykla-skalski/klaudiush/issues/765)) ([796cfe5](https://github.com/smykla-skalski/klaudiush/commit/796cfe5414e4cdee604edc137ea3442fd674f59a))
+
 ## [1.43.1](https://github.com/smykla-skalski/klaudiush/compare/v1.43.0...v1.43.1) (2026-10-04)
 
 ### Bug Fixes
