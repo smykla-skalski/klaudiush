@@ -62,7 +62,7 @@ func (w *astWalker) loopStartupNames(
 			text = anyStartupVar
 		}
 	case *syntax.ParamExp:
-		if indirectRef(n) || promptExpansion(n) {
+		if (n.Excl && assignsDefault(n)) || promptExpansion(n) {
 			text = anyStartupVar
 		}
 	}
@@ -78,25 +78,6 @@ func (w *astWalker) loopStartupNames(
 	}
 
 	return names
-}
-
-// indirectRef reports ${!v}, which reads or, with :=, writes the variable
-// v names; that name may be an element whose computed index assigns. Name
-// lists (${!pre@}) and key lists (${!a[@]}) are not indirect.
-func indirectRef(pe *syntax.ParamExp) bool {
-	return pe.Excl && pe.Names == 0 && !allIndex(pe.Index)
-}
-
-// allIndex reports the [@] or [*] index of ${!a[@]}, which lists keys.
-func allIndex(index syntax.ArithmExpr) bool {
-	word, ok := index.(*syntax.Word)
-	if !ok {
-		return false
-	}
-
-	lit := word.Lit()
-
-	return lit == "@" || lit == "*"
 }
 
 // promptExpansion reports ${x@P}, which expands the value of x again as a
@@ -271,15 +252,8 @@ func computedWord(word *syntax.Word) bool {
 }
 
 // expandingWord reports a literal word with an unquoted brace or glob
-// character, or a leading unquoted ~, which the shell may turn into other
-// words.
+// character, which the shell may turn into other words.
 func expandingWord(word *syntax.Word) bool {
-	if len(word.Parts) > 0 {
-		if lit, ok := word.Parts[0].(*syntax.Lit); ok && strings.HasPrefix(lit.Value, "~") {
-			return true
-		}
-	}
-
 	return slices.ContainsFunc(word.Parts, func(part syntax.WordPart) bool {
 		lit, ok := part.(*syntax.Lit)
 
@@ -287,16 +261,15 @@ func expandingWord(word *syntax.Word) bool {
 	})
 }
 
-// targetName matches a target a writer sets directly: a plain name, or an
-// element with a literal numeric index. Any other subscript is arithmetic
-// that may assign a variable it computes.
-var targetName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*(\[[0-9]+\])?$`)
+// literalElement matches an element with a literal numeric index. Any
+// other subscript may be arithmetic that assigns a variable it computes.
+var literalElement = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*\[[0-9]+\]$`)
 
 // joinTargets returns the targets as text, or every startup variable when
-// one is not a name the writer sets directly.
+// one is an element whose subscript is not a literal number.
 func joinTargets(names []string) string {
 	for _, name := range names {
-		if !targetName.MatchString(name) {
+		if strings.Contains(name, "[") && !literalElement.MatchString(name) {
 			return anyStartupVar
 		}
 	}
@@ -337,7 +310,7 @@ func writerTargets(name string, args []*syntax.Word) string {
 			words = append(words, argWord(arg))
 		}
 
-		return strings.Join(writtenVars(Command{Name: name, Args: words}), " ")
+		return joinTargets(writtenVars(Command{Name: name, Args: words}))
 	}
 
 	names, rest, ok := spec.optionTargets(args)
@@ -461,9 +434,21 @@ func quotedValue(cmd Command, i int) bool {
 }
 
 // unsureWord reports a word whose value or number of words the scan cannot
-// know: computed, or holding a brace or glob character.
+// know: computed, holding a brace or glob character, or starting with an
+// unquoted ~, which expands to a directory that may read as an option.
 func unsureWord(word *syntax.Word) bool {
-	return computedWord(word) || expandingWord(word)
+	return computedWord(word) || expandingWord(word) || tildeWord(word)
+}
+
+// tildeWord reports a word with a leading unquoted ~.
+func tildeWord(word *syntax.Word) bool {
+	if len(word.Parts) == 0 {
+		return false
+	}
+
+	lit, ok := word.Parts[0].(*syntax.Lit)
+
+	return ok && strings.HasPrefix(lit.Value, "~")
 }
 
 // singleWord reports a word that stays exactly one word: literal, or with
