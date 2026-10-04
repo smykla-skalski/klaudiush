@@ -113,6 +113,14 @@ func (*OSResolver) LookupEnv(name string) (string, bool) {
 	return os.LookupEnv(name)
 }
 
+// WorkingDir returns the directory the hook runs in, which is where the
+// command starts.
+func (*OSResolver) WorkingDir() (string, bool) {
+	dir, err := os.Getwd()
+
+	return dir, err == nil
+}
+
 // ReadScript reads a script file. A NUL in the first line of a file without
 // a shebang marks a compiled program, as bash sees it; NULs later on are
 // dropped. A script larger than maxScriptBytes, or one that cannot be read,

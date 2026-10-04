@@ -362,7 +362,7 @@ func containerRunFinding(o parser.Opacity) (message, required, repair string) {
 	switch o.Detail {
 	case parser.DetailWordSplit:
 		repair = `Quote expansions and globs in container options and the image ` +
-			`(-v "$(pwd)":/w, "img:$TAG")`
+			`(-v "$SRC":/w, "img:$TAG")`
 	case parser.DetailEntrypointOptions:
 		required = "container options klaudiush can read up to the image"
 		repair = "Attach option values with = (--opt=value), or drop options " +

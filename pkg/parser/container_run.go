@@ -16,7 +16,7 @@ const ContainerRunOperation = "container run"
 func (r *runReader) payloadImage(idx int, entrypoint bool) {
 	word := r.args[idx]
 
-	if detail := leadingExpansion(word); detail != "" {
+	if detail := leadingExpansion(word); detail != "" && !r.tagged(word) {
 		r.dynamic = detail
 
 		return
@@ -126,7 +126,7 @@ func (w *astWalker) containerRunCommands(cmd Command) []Command {
 	var cmds []Command
 
 	for _, reading := range readings {
-		r := readRuns(reading.args, cmd.mayShift)
+		r := readRuns(reading.args, cmd)
 
 		if !w.spendArgs(cmd, r.readings*len(reading.args)) {
 			return nil
@@ -211,8 +211,8 @@ func payloadCommand(cmd Command, reading argReading, image containerImage) (Comm
 
 // readRuns reads every run among a reading of a runner's arguments, up to
 // maxContainerRunWords of them.
-func readRuns(args []string, shifts func(string) bool) *runReader {
-	r := &runReader{all: true, shifts: shifts}
+func readRuns(args []string, cmd Command) *runReader {
+	r := &runReader{all: true, shifts: cmd.mayShift, tagged: cmd.tagged}
 
 	for from, scans := 0, 0; from >= 0 && r.dynamic == ""; scans++ {
 		if scans >= maxContainerRunWords {

@@ -126,6 +126,7 @@ type runReader struct {
 	runs      []containerRun
 	images    []containerImage
 	shifts    func(string) bool
+	tagged    func(string) bool
 	readings  int
 	offset    int
 	lastImage int
@@ -271,7 +272,7 @@ func (r *runReader) read(i int, entrypoints []string) {
 			i = r.skipValue(i, entrypoints, containerValueFlags[arg], unknown)
 		case strings.HasPrefix(arg, "-") && len(arg) > 1:
 			i = r.skipValue(i, entrypoints, shortClusterTakesNext(arg), false)
-		case leadingExpansion(arg) != "":
+		case leadingExpansion(arg) != "" && (!r.all || !r.tagged(arg)):
 			r.dynamic = leadingExpansion(arg)
 
 			return

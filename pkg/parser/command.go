@@ -82,6 +82,9 @@ type Command struct {
 	quoting      map[string]wordQuoting
 	// quotedWords are the rendered arguments the shell keeps one word each.
 	quotedWords map[string]bool
+	// taggedWords are the rendered arguments that start with literal text
+	// and take the rest only from known one-word output (img:$(id -un)).
+	taggedWords map[string]bool
 }
 
 // wordQuoting records how the words that rendered to one argument were

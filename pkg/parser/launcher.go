@@ -1036,5 +1036,6 @@ func childCommand(parent Command, name string, args []string) Command {
 		dynamicWords:     parent.dynamicWords,
 		quoting:          parent.quoting,
 		quotedWords:      parent.quotedWords,
+		taggedWords:      parent.taggedWords,
 	}
 }

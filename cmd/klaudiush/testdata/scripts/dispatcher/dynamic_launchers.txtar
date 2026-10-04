@@ -65,6 +65,19 @@ stdin xargs-echo.json
 exec klaudiush --hook-type PreToolUse
 ! stdout .
 
+stdin docker-pwd.json
+exec klaudiush --hook-type PreToolUse
+! stdout .
+
+stdin parallel-nproc.json
+exec klaudiush --hook-type PreToolUse
+! stdout .
+
+stdin docker-pwd-arg.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+
 -- file.go --
 package main
 
@@ -75,7 +88,7 @@ package main
 {"tool_name": "Bash", "tool_input": {"command": "docker run --rm img $KLAUDIUSH_TEST_UNSET push"}}
 
 -- docker-split.json --
-{"tool_name": "Bash", "tool_input": {"command": "docker run --rm -v $(pwd):/w img ls"}}
+{"tool_name": "Bash", "tool_input": {"command": "docker run --rm -v $(cat d):/w img ls"}}
 
 -- parallel-variable.json --
 {"tool_name": "Bash", "tool_input": {"command": "parallel $KLAUDIUSH_TEST_UNSET ::: a"}}
@@ -100,3 +113,12 @@ package main
 
 -- xargs-echo.json --
 {"tool_name": "Bash", "tool_input": {"command": "ls | xargs -I % echo %"}}
+
+-- docker-pwd.json --
+{"tool_name": "Bash", "tool_input": {"command": "docker run --rm -u $(id -u):$(id -g) -v $(pwd):/w -w /w img make"}}
+
+-- parallel-nproc.json --
+{"tool_name": "Bash", "tool_input": {"command": "parallel -j $(nproc) gzip ::: a.log"}}
+
+-- docker-pwd-arg.json --
+{"tool_name": "Bash", "tool_input": {"command": "docker run --rm -v $(pwd x):/w img ls"}}

@@ -185,7 +185,7 @@ var _ = Describe("Dynamic launch words", func() {
 		Entry("a command glob", "parallel echo * ::: a", parser.DetailWordSplit),
 		Entry(
 			"an unquoted option value",
-			"parallel -j $(nproc) gzip ::: a",
+			"parallel -j $(cmd) gzip ::: a",
 			parser.DetailWordSplit,
 		),
 		Entry("command lines from a variable", "parallel ::: $X", parser.DetailParallelInput),

@@ -648,7 +648,7 @@ func (w *astWalker) extractCommand(call *syntax.CallExpr) {
 	w.noteEvalSetup(call, seq)
 	w.notePiped(call, seq)
 
-	w.record(Command{
+	cmd := Command{
 		Name: name,
 		Args: args,
 		Location: Location{
@@ -666,8 +666,11 @@ func (w *astWalker) extractCommand(call *syntax.CallExpr) {
 		startup:          prefixStartup(call),
 		dynamicWords:     dynamicArgs(call.Args[1:]),
 		quoting:          argQuoting(call.Args[1:]),
-		quotedWords:      quotedArgs(call.Args[1:]),
-	}, w.depth, view)
+	}
+
+	cmd.quotedWords, cmd.taggedWords = w.quotedArgs(call.Args[1:])
+
+	w.record(cmd, w.depth, view)
 }
 
 // recordCommand stores cmd under the program it really runs, then follows
