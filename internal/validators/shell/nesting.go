@@ -212,6 +212,8 @@ func causeSummary(cause parser.OpacityCause) string {
 		return "it uses a glob that runs code klaudiush cannot inspect"
 	case parser.OpacitySourcedStream:
 		return "it sources a script klaudiush cannot see"
+	case parser.OpacityFunctionChain:
+		return "it defines a function whose body klaudiush cannot tell apart from what follows it"
 	default:
 		return "part of it is opaque"
 	}
@@ -288,6 +290,11 @@ func opacityFinding(o parser.Opacity) validator.Finding {
 		f.Message, f.Required, f.Repair = globCodeFinding(o)
 	case parser.OpacitySourcedStream:
 		f.Message, f.Required, f.Repair = sourcedStreamFinding(o)
+	case parser.OpacityFunctionChain:
+		f.Message = o.Operation + " has a body no shell accepts, so where it ends " +
+			"and what runs after it is unknown"
+		f.Required = "a function body that is one compound command, such as { ...; }"
+		f.Repair = "Fix the function definition, or run its commands directly"
 	default:
 		f.Message = o.Operation + " cannot be inspected"
 		f.Repair = validator.GetSuggestion(validator.RefShellNesting)

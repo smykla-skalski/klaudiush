@@ -612,6 +612,10 @@ func markChainedAssigns(stmt *syntax.Stmt, chained map[*syntax.Assign]bool) {
 
 // walkStmt walks one statement, then forgets what its && chain assigned.
 func (w *astWalker) walkStmt(stmt *syntax.Stmt) {
+	if name, ok := splitFuncChains(stmt); !ok {
+		w.opaque(OpacityFunctionChain, w.shownWord(name), "")
+	}
+
 	w.prepare(stmt)
 	syntax.Walk(stmt, w.visit)
 
