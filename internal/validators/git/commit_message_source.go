@@ -58,8 +58,8 @@ const (
 	reasonMaybeRun   = "the message file is written earlier only on a branch or in a " +
 		"background job that may not run before the commit"
 	reasonRepeated = "the commit has more than one -F/--file, and git reads only the last"
-	reasonAbbrev   = "the commit abbreviates --file or --message, which klaudiush does " +
-		"not expand"
+	reasonAbbrev   = "the commit abbreviates a message option (--file, --message, " +
+		"--edit, ...), which klaudiush does not expand"
 )
 
 const (
@@ -203,7 +203,9 @@ func checkMessageFlags(gitCmd *parser.GitCommand) error {
 		switch {
 		case slices.Contains(commitFileFlags, flag), flag == noFileFlag:
 			fileFlags++
-		case abbreviates(flag, "--file"), abbreviates(flag, "--message"):
+		case slices.ContainsFunc(abbreviatedOptions, func(option string) bool {
+			return abbreviates(flag, option)
+		}):
 			return opaqueSourceWith(reasonAbbrev, repairOneSource)
 		}
 	}
@@ -217,7 +219,8 @@ func checkMessageFlags(gitCmd *parser.GitCommand) error {
 
 // abbreviates reports a long flag git would expand to option.
 func abbreviates(flag, option string) bool {
-	return len(flag) >= minAbbrevLen && flag != option && strings.HasPrefix(option, flag)
+	return !slices.Contains(exactOptions, flag) && len(flag) >= minAbbrevLen && flag != option &&
+		strings.HasPrefix(option, flag)
 }
 
 // isStdinPath reports a path that reads the commit's stdin.
@@ -260,7 +263,11 @@ func (v *CommitValidator) readMessageStdin(
 	gitCmd *parser.GitCommand,
 	src messageSource,
 ) (string, error) {
-	stdin := strings.TrimSpace(gitCmd.Stdin)
+	stdin, err := src.stdinMessage(gitCmd)
+	if err != nil {
+		return "", err
+	}
+
 	file := src.cmd.StdinFile
 
 	switch {

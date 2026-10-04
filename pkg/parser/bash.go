@@ -18,8 +18,8 @@ var (
 )
 
 // ParseResult contains the results of parsing a Bash command. Opacities keeps
-// at most MaxOpacities entries, and MoreOpacities reports that some were
-// dropped.
+// at most MaxOpacities entries that name no setup tool and MaxSetupOpacities
+// that do, and MoreOpacities reports that some were dropped.
 type ParseResult struct {
 	Commands      []Command         // All commands found
 	FileWrites    []FileWrite       // All file write operations
@@ -29,7 +29,8 @@ type ParseResult struct {
 	// what it finally runs is unknown and it must fail closed.
 	Truncated bool
 	// Opacities explains what could not be inspected and why. It lists at
-	// most a few entries and may be empty only when Truncated is false.
+	// most MaxOpacities plus MaxSetupOpacities entries, and may be empty
+	// only when Truncated is false.
 	Opacities     []Opacity
 	MoreOpacities bool
 	// DynamicWrites counts output redirects whose target name comes from
@@ -84,8 +85,7 @@ func (p *BashParser) Parse(command string) (*ParseResult, error) {
 	walker := newAstWalker(p.resolver)
 
 	for _, stmt := range file.Stmts {
-		walker.prepare(stmt)
-		syntax.Walk(stmt, walker.visit)
+		walker.walkStmt(stmt)
 	}
 
 	// Extract git operations

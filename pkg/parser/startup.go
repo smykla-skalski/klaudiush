@@ -451,8 +451,7 @@ func (w *astWalker) walkStartupPart(part startupScript) {
 			break
 		}
 
-		w.prepare(stmt)
-		syntax.Walk(stmt, w.visit)
+		w.walkStmt(stmt)
 	}
 
 	clear(w.startupPending)

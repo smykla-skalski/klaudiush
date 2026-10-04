@@ -43,10 +43,33 @@ type GitCommand struct {
 	Flags            []string          // Command flags
 	Args             []string          // Positional arguments
 	FlagMap          map[string]string // Flag values (e.g., "-m" -> "commit message")
+	Values           []FlagValue
 	GlobalOptions    map[string]string // Global git options (e.g., "-C" -> "/path/to/repo")
 	WorkingDirectory string            // Working directory from preceding cd commands
 	Stdin            string            // Content fed to stdin (heredoc or piped echo/printf)
 	Location         Location          // Position of the command in source
+}
+
+// FlagValue is one value given to a flag, in command order. Arg is the
+// argument it came from: the value itself, or the whole token when the value
+// is glued to the flag ("-mtext", "--message=text").
+type FlagValue struct {
+	Flag  string
+	Value string
+	Arg   string
+}
+
+// ValuesOf returns every value given to any of flags, in command order.
+func (g *GitCommand) ValuesOf(flags ...string) []FlagValue {
+	var values []FlagValue
+
+	for _, v := range g.Values {
+		if slices.Contains(flags, v.Flag) {
+			values = append(values, v)
+		}
+	}
+
+	return values
 }
 
 // globalValueOptions are the global git options that take the next argument
@@ -67,6 +90,12 @@ var flagsWithValues = map[string]bool{
 // the commit reference: -c/--reedit-message edits the reused message, -C/
 // --reuse-message keeps it as-is.
 var commitReuseFlags = []string{flagLowerC, "--reedit-message", flagUpperC, "--reuse-message"}
+
+const flagTemplate = "-t"
+
+// commitSourceFlags name a template, fixup or squash source for "git commit"
+// and consume the file or commit that follows.
+var commitSourceFlags = []string{flagTemplate, "--template", "--fixup", "--squash", "--cleanup"}
 
 // checkoutCreationFlags and switchCreationFlags consume the following token as
 // the new branch name for their own subcommand ("git checkout -b feat/x",
@@ -114,8 +143,7 @@ func flagTakesValue(flag, subcommand string) bool {
 			return false
 		}
 	case subcmdCommit:
-		// -c/-C reuse another commit's message and consume the commit ref.
-		if slices.Contains(commitReuseFlags, flag) {
+		if slices.Contains(commitReuseFlags, flag) || slices.Contains(commitSourceFlags, flag) {
 			return true
 		}
 	}
@@ -241,6 +269,8 @@ func addFlag(flag string, args []string, idx int, gitCmd *GitCommand) int {
 				gitCmd.FlagMap[flag] = args[idx+1]
 			}
 
+			gitCmd.Values = append(gitCmd.Values, FlagValue{flag, args[idx+1], args[idx+1]})
+
 			return skipFlagAndValue
 		}
 	}
@@ -259,6 +289,8 @@ func parseLongFlag(flag string, args []string, idx int, gitCmd *GitCommand) int 
 		if _, alreadySet := gitCmd.FlagMap[name]; !alreadySet {
 			gitCmd.FlagMap[name] = value
 		}
+
+		gitCmd.Values = append(gitCmd.Values, FlagValue{name, value, flag})
 
 		return idx + skipFlagOnly
 	}
@@ -288,12 +320,16 @@ func parseCombinedFlags(combined string, args []string, idx int, gitCmd *GitComm
 		if j != len(flags)-1 {
 			// Not last flag: rest of string is the inline value
 			gitCmd.FlagMap[flag] = flags[j+1:]
+			gitCmd.Values = append(gitCmd.Values, FlagValue{flag, flags[j+1:], combined})
+
 			return idx + skipFlagOnly
 		}
 
 		// Last flag: consume next arg if available
 		if idx+1 < len(args) {
 			gitCmd.FlagMap[flag] = args[idx+1]
+			gitCmd.Values = append(gitCmd.Values, FlagValue{flag, args[idx+1], args[idx+1]})
+
 			return idx + skipFlagAndValue
 		}
 	}

@@ -139,10 +139,12 @@ func keepsEmpty(cmd Command, i, idx int, sub string) bool {
 // than resolved. Commands in a loop see variables a later iteration may
 // change, so they resolve none.
 func (w *astWalker) prepare(stmt *syntax.Stmt) {
-	markSafeAssigns(stmt, w.safeAssigns)
+	markSafeAssigns(stmt, w.safeAssigns, w.chainAssigns)
 	markCertainStmts(stmt, w.certain)
 
 	syntax.Walk(stmt, func(node syntax.Node) bool {
+		w.noteArithmetic(node)
+
 		switch n := node.(type) {
 		case *syntax.WhileClause, *syntax.ForClause:
 			params := make(map[*syntax.Lit]bool)
@@ -249,7 +251,7 @@ func (w *astWalker) forgetAssigned(exp *syntax.ParamExp) {
 // markSafeAssigns records the assignments stmt always makes in the current
 // shell: a statement of plain assignments, export or declare without -n,
 // and either of those leading an && chain.
-func markSafeAssigns(stmt *syntax.Stmt, safe map[*syntax.Assign]bool) {
+func markSafeAssigns(stmt *syntax.Stmt, safe, chained map[*syntax.Assign]bool) {
 	if stmt == nil || stmt.Background || stmt.Coprocess {
 		return
 	}
@@ -271,7 +273,8 @@ func markSafeAssigns(stmt *syntax.Stmt, safe map[*syntax.Assign]bool) {
 		}
 	case *syntax.BinaryCmd:
 		if c.Op == syntax.AndStmt {
-			markSafeAssigns(c.X, safe)
+			markSafeAssigns(c.X, safe, chained)
+			markChainedAssigns(c.Y, chained)
 		}
 	}
 }
@@ -292,6 +295,12 @@ func namesReference(a *syntax.Assign) bool {
 // forgetUnlessSafe forgets a variable assigned somewhere its value may not
 // hold.
 func (w *astWalker) forgetUnlessSafe(assign *syntax.Assign) {
+	if assign.Name != nil && w.chainAssigns[assign] {
+		w.chained = append(w.chained, assign.Name.Value)
+
+		return
+	}
+
 	if assign.Name != nil && !w.safeAssigns[assign] {
 		w.forget(assign.Name.Value)
 	}

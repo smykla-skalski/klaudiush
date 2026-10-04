@@ -39,10 +39,10 @@ const OpacityUnresolvedWord OpacityCause = "unresolved-word"
 
 // Opacity describes one operation the parser could not see through: why
 // (Cause), what (Operation), the programs that led to it, outermost first
-// (Origin), for some causes a fixed explanation (Detail), and for eval of a
-// known tool's printed shell setup that tool, one of EvalSetupTools (Tool).
-// It names programs, scripts and subcommands only, never their arguments,
-// so it is safe to show.
+// (Origin), for some causes a fixed explanation (Detail), and for a known
+// tool's printed shell setup that tool, one of EvalSetupTools (Tool), which
+// has its own bound (see MaxSetupOpacities). It names programs, scripts and
+// subcommands only, never their arguments, so it is safe to show.
 type Opacity struct {
 	Cause     OpacityCause
 	Operation string
@@ -51,9 +51,18 @@ type Opacity struct {
 	Tool      string
 }
 
-// MaxOpacities bounds the opacities one parse keeps. One slot is held for an
-// exhausted work budget, so it is reported however many came before.
+// MaxOpacities bounds the opacities one parse keeps that name no setup tool.
+// One slot is held for an exhausted work budget, so it is reported however
+// many came before. Opacities naming a setup tool are bounded apart, so many
+// setup evals never hide another finding: up to MaxOpacities of them, then
+// only tools not yet listed, up to MaxSetupOpacities, so every tool's repair
+// is shown.
 const MaxOpacities = 8
+
+// MaxSetupOpacities bounds the opacities one parse keeps that name a setup
+// tool. It leaves room for every EvalSetupTools entry after MaxOpacities-1
+// repeats of one tool.
+const MaxSetupOpacities = 3 * MaxOpacities
 
 // maxShownNameLen bounds a name shown in an opacity.
 const maxShownNameLen = 32
@@ -164,17 +173,42 @@ func (w *astWalker) addOpacity(o Opacity) {
 		return
 	}
 
+	if o.Tool != "" {
+		w.addSetupOpacity(o)
+
+		return
+	}
+
 	limit := MaxOpacities - 1
 	if w.state.budgetReported {
 		limit = MaxOpacities
 	}
 
-	if len(w.state.opacities) >= limit {
+	if len(w.state.opacities)-w.state.setupOpacities >= limit {
 		w.state.moreOpacities = true
 
 		return
 	}
 
+	w.state.opacities = append(w.state.opacities, o)
+}
+
+// addSetupOpacity keeps an opacity naming a setup tool outside the limit on
+// other opacities. A tool not yet listed is kept up to MaxSetupOpacities, so
+// its repair is shown.
+func (w *astWalker) addSetupOpacity(o Opacity) {
+	shown := slices.ContainsFunc(w.state.opacities, func(kept Opacity) bool {
+		return kept.Tool == o.Tool
+	})
+
+	if w.state.setupOpacities >= MaxSetupOpacities ||
+		shown && w.state.setupOpacities >= MaxOpacities {
+		w.state.moreOpacities = true
+
+		return
+	}
+
+	w.state.setupOpacities++
 	w.state.opacities = append(w.state.opacities, o)
 }
 
