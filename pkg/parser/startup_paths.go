@@ -139,8 +139,9 @@ func printfMayWriteAny(args []*syntax.Word) bool {
 
 // assigningWord reports a word whose expansion may assign a variable it
 // names only at run time: arithmetic, a computed index or slice, an
-// indirect ${!n}, whose target may be an element with a computed index, or
-// ${x@P}, which expands the value again. A command substitution runs in a
+// indirect ${!n}, whose target may be an element with a computed index, a
+// default assignment ${x:=v}, whose x may be a nameref, or ${x@P}, which
+// expands the value again. A command substitution runs in a
 // subshell, so what it assigns does not reach the loop; ${ cmd;} and
 // ${|cmd;} run in the current shell and count as assigning.
 func assigningWord(word *syntax.Word) bool {
@@ -158,7 +159,7 @@ func assigningWord(word *syntax.Word) bool {
 			found = true
 		case *syntax.ParamExp:
 			found = found || !literalIndex(n.Index) || n.Slice != nil ||
-				indirect(n) || promptExpansion(n)
+				indirect(n) || assignsDefault(n) || promptExpansion(n)
 		}
 
 		return !found
@@ -170,7 +171,19 @@ func assigningWord(word *syntax.Word) bool {
 // indirect reports ${!n}, which expands the variable n names, as opposed to
 // listing names with ${!pre@} or keys with ${!a[@]}.
 func indirect(pe *syntax.ParamExp) bool {
-	return pe.Excl && pe.Names == 0 && pe.Index == nil
+	return pe.Excl && pe.Names == 0 && !allIndex(pe.Index)
+}
+
+// allIndex reports the [@] or [*] index of ${!a[@]}, which lists keys.
+func allIndex(index syntax.ArithmExpr) bool {
+	word, ok := index.(*syntax.Word)
+	if !ok {
+		return false
+	}
+
+	lit := word.Lit()
+
+	return lit == "@" || lit == "*"
 }
 
 // tildeWord reports a word with a leading unquoted ~, which expands to a
