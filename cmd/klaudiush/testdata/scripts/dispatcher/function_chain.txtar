@@ -20,17 +20,17 @@ stdout 'GIT010'
 stdin or-push.json
 exec klaudiush --hook-type PreToolUse
 stdout '"permissionDecision":"deny"'
-stdout 'Force push is blocked'
+stdout 'GIT007'
 
 stdin pipe-push.json
 exec klaudiush --hook-type PreToolUse
 stdout '"permissionDecision":"deny"'
-stdout 'Force push is blocked'
+stdout 'GIT007'
 
 stdin nested-push.json
 exec klaudiush --hook-type PreToolUse
 stdout '"permissionDecision":"deny"'
-stdout 'Force push is blocked'
+stdout 'GIT007'
 
 stdin startup.json
 exec klaudiush --hook-type PreToolUse
