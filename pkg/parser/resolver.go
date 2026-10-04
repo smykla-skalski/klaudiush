@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -575,7 +576,7 @@ func sameContent(a, b string) bool {
 // returns its trimmed output, remembering it for the parse. go is kept from
 // downloading another toolchain, and git from taking optional locks.
 func (r *OSResolver) CommandOutput(dir string, argv []string) (string, bool) {
-	if !AllowedLookup(argv) {
+	if !AllowedLookup(argv) && !ArgumentLookup(argv) {
 		return "", false
 	}
 
@@ -601,6 +602,17 @@ func (r *OSResolver) CommandOutput(dir string, argv []string) (string, bool) {
 	return out, out != ""
 }
 
+// workingDir is what pwd prints in dir, or in the hook's own directory when
+// no cd moved the command elsewhere.
+func workingDir(dir string) string {
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return ""
+	}
+
+	return abs
+}
+
 // runLookup runs an allowed lookup, spelled out so no other program runs.
 func runLookup(dir string, argv []string) string {
 	ctx, cancel := context.WithTimeout(context.Background(), lookupTimeout)
@@ -609,6 +621,12 @@ func runLookup(dir string, argv []string) string {
 	var cmd *exec.Cmd
 
 	switch {
+	case argv[0] == pwdBuiltin:
+		return workingDir(dir)
+	case slices.Equal(argv, branchShowCurrent):
+		cmd = exec.CommandContext(ctx, "git", "branch", "--show-current")
+	case slices.Equal(argv, revParseAbbrevHead):
+		cmd = exec.CommandContext(ctx, "git", "rev-parse", "--abbrev-ref", "HEAD")
 	case argv[0] == gitProgram:
 		cmd = exec.CommandContext(ctx, "git", "rev-parse", "--show-toplevel")
 	case argv[2] == "GOBIN":

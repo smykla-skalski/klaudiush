@@ -314,7 +314,7 @@ func (v *CommitValidator) checkStagingArea(gitCmd *parser.GitCommand) *validator
 	}
 
 	// Check if -a, -A, or --all flags are present
-	hasStageFlag := gitCmd.HasFlag("-a") || gitCmd.HasFlag("-A") || gitCmd.HasFlag("--all")
+	hasStageFlag := gitCmd.HasFlag("-a") || gitCmd.HasFlag("-A") || gitCmd.HasFlag(flagAll)
 	if hasStageFlag {
 		return validator.Pass()
 	}

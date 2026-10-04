@@ -96,6 +96,7 @@ type astWalker struct {
 	startupPending  map[string]syntax.Pos
 	startupDeferred map[string]bool
 	caseChanged     bool
+	forwarded       map[string]writtenArg
 }
 
 // parseState is shared by a walker and all the child walkers of one parse.
@@ -687,6 +688,7 @@ func (w *astWalker) extractCommand(call *syntax.CallExpr) {
 		StdinFile:        w.stdinFileByCall[call],
 		startup:          prefixStartup(call),
 		dynamicWords:     dynamicArgs(call.Args[1:]),
+		written:          writtenArgs(call.Args[1:]),
 		argTexts:         argTexts,
 		stdinText:        prefixGaps(w.stdinTextByCall[call], call),
 		env:              env,
@@ -724,6 +726,10 @@ func (w *astWalker) record(cmd Command, depth int, view string) {
 	}
 
 	cmd, nested := w.resolveProgram(cmd)
+	if cmd.Name == gitProgram {
+		cmd = w.resolveGitArgs(cmd)
+	}
+
 	followed := cmd
 	cmd.Args, cmd.SubstitutedArgs = storedArgs(cmd)
 
@@ -777,7 +783,12 @@ func (w *astWalker) record(cmd Command, depth int, view string) {
 func (w *astWalker) walkNested(script nestedScript, cmd Command, depth int) {
 	untrusted := w.state.untrusted
 
-	w.walkScript(script.text, cmd, depth, scriptWalk{name: script.name})
+	w.walkScript(
+		script.text,
+		cmd,
+		depth,
+		scriptWalk{name: script.name, forwarded: script.forward},
+	)
 
 	if script.splitArgs && (untrusted || w.state.untrusted) {
 		w.opaque(OpacityUnresolvedArgs, w.shownWord(script.name), "")

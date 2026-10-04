@@ -53,7 +53,7 @@ var (
 	// Branch query/list flags for git branch (non-creation operations).
 	branchQueryFlags = []string{
 		// List flags
-		"-a", "--all",
+		"-a", flagAll,
 		"-r", "--remotes",
 		"-l", "--list",
 

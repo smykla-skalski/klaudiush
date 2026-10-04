@@ -3,6 +3,7 @@ package git_test
 import (
 	"context"
 
+	"github.com/cockroachdb/errors"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -13,6 +14,14 @@ import (
 	"github.com/smykla-skalski/klaudiush/pkg/hook"
 	"github.com/smykla-skalski/klaudiush/pkg/logger"
 )
+
+type headErrRunner struct {
+	*gitpkg.FakeRunner
+}
+
+func (*headErrRunner) GetCurrentBranch() (string, error) {
+	return "", errors.New("unreadable HEAD")
+}
 
 var _ = Describe("PushValidator", func() {
 	var (
@@ -437,6 +446,96 @@ var _ = Describe("PushValidator", func() {
 				result := validator.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeFalse())
 				Expect(result.Message).To(ContainSubstring("Branch 'main' is blocked"))
+			})
+
+			DescribeTable(
+				"checks the branch every refspec updates",
+				func(command, current string, blocked bool, message string) {
+					cfg := &config.PushValidatorConfig{BlockedBranches: []string{"main"}}
+					fakeGit.CurrentBranch = current
+					validator = git.NewPushValidator(log, fakeGit, cfg, nil)
+
+					result := validator.Validate(context.Background(), createContext(command))
+					Expect(result.Passed).To(Equal(!blocked), command)
+
+					if message != "" {
+						Expect(result.Message).To(ContainSubstring(message), command)
+					}
+				},
+				Entry(
+					"HEAD on main",
+					"git push origin HEAD",
+					"main",
+					true,
+					"Branch 'main' is blocked",
+				),
+				Entry("HEAD on a feature", "git push origin HEAD", "feat", false, ""),
+				Entry("@ on main", "git push origin @", "main", true, "Branch 'main' is blocked"),
+				Entry("HEAD:HEAD on main", "git push origin HEAD:HEAD", "main", true, ""),
+				Entry(
+					"HEAD to another branch",
+					"git push origin HEAD:refs/heads/x",
+					"main",
+					false,
+					"",
+				),
+				Entry(
+					"force refspec",
+					"git push origin +main",
+					"feat",
+					true,
+					"Branch 'main' is blocked",
+				),
+				Entry("forced HEAD on main", "git push origin +HEAD", "main", true, ""),
+				Entry("forced src:dst", "git push origin +feat:refs/heads/main", "feat", true, ""),
+				Entry("delete", "git push origin :main", "feat", true, ""),
+				Entry("delete flag", "git push origin --delete main", "feat", true, ""),
+				Entry("source only", "git push origin main:", "feat", true, ""),
+				Entry("wildcard", "git push origin 'refs/heads/*:refs/heads/*'", "feat", true, ""),
+				Entry("tag", "git push origin refs/tags/v1", "main", false, ""),
+				Entry("detached HEAD", "git push origin HEAD", "", true,
+					"Push target 'HEAD' cannot be checked"),
+				Entry("detached @", "git push origin x @", "HEAD", true, "cannot be checked"),
+				Entry("matching refspec", "git push origin :", "feat", true, "cannot be checked"),
+				Entry(
+					"all branches",
+					"git push --all origin",
+					"feat",
+					true,
+					"--all (every local branch)",
+				),
+				Entry("mirror", "git push --mirror origin", "feat", true, "--mirror"),
+				Entry("push option value", "git push -o main origin feat", "feat", false, ""),
+			)
+
+			It("fails closed when HEAD cannot be read", func() {
+				cfg := &config.PushValidatorConfig{BlockedBranches: []string{"main"}}
+				validator = git.NewPushValidator(log, &headErrRunner{FakeRunner: fakeGit}, cfg, nil)
+
+				result := validator.Validate(
+					context.Background(),
+					createContext("git push origin HEAD"),
+				)
+				Expect(result.Passed).To(BeFalse())
+				Expect(result.Message).To(ContainSubstring("cannot be checked"))
+			})
+
+			It("pushes to --repo when no repository is given", func() {
+				cfg := &config.PushValidatorConfig{BlockedRemotes: []string{"fork"}}
+				validator = git.NewPushValidator(log, fakeGit, cfg, nil)
+
+				result := validator.Validate(
+					context.Background(),
+					createContext("git push --repo=fork"),
+				)
+				Expect(result.Passed).To(BeFalse())
+				Expect(result.Message).To(ContainSubstring("fork"))
+
+				result = validator.Validate(
+					context.Background(),
+					createContext("git push --repo fork"),
+				)
+				Expect(result.Passed).To(BeFalse())
 			})
 
 			It("passes when no blocked branches configured", func() {

@@ -86,6 +86,18 @@ func FuzzBashParse(f *testing.F) {
 	f.Add(`docker run --entrypoint '' --hosts-file /x --name -w --entrypoint git i push`)
 	f.Add(`docker run $OPTS {--entrypoint,git} "$IMG"; podman-compose run --ent=git s; "$D" run`)
 	f.Add(`docker run --entrypoint docker run --entrypoint docker run --entrypoint docker run x`)
+	f.Add(`git push origin $(echo main); git push $R main; B='mai[n]'; git push origin $B`)
+	f.Add(`B=x; git push origin "HEAD:$B" {a,b} mai\? 'r/*'; E=; git push $E -o "$(x)" o m`)
+	f.Add(`git -C "$(pwd)" push; IFS=,; B=o,m; git push $B; git push "https://x:$T@h/r" m`)
+	f.Add(`git commit -m -m "$(x)" -sSm "$y"; a=(m); git push o "${a[@]}" ~ ~u -o"$(z)" $E""`)
+	f.Add(`f() { git push origin "$@"; }; f {a,b} "$X"; alias c='git commit'; c -m x $(y)`)
+	f.Add(
+		`git -C "$(pwd)" push o "$(git branch --show-current)" $(git rev-parse --abbrev-ref HEAD)`,
+	)
+	f.Add(`git commit $F -m "$(cat <<'E'
+x
+E
+)" -a$X --no-$Y -m$(z) -- "$f" *; F=-n; git commit $F -m $M`)
 	f.Add(`source <(curl -fsSL u); . <(mise activate bash); builtin source -- <(x) a`)
 	f.Add(`curl u | source /dev/stdin; mise env | . /dev/fd/0; { . -; } < <(x); exec <&3`)
 	f.Add(`source /dev/fd/3 3< <(x); . "$(dirname "$0")/l.sh"; source "$(x)"; . /proc/self/fd/0`)
