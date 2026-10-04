@@ -139,6 +139,7 @@ func (r *ParseResult) ExpandVars(s string) string {
 type VarScope struct {
 	Assignments map[string]string // Literal NAME=value assignments
 	DynamicVars map[string]bool   // Variables whose value comes from command output
+	unknown     map[string]bool
 }
 
 // ExpandVars substitutes the assignments of the scope into s, leaving
@@ -153,6 +154,12 @@ func (v *VarScope) ExpandVars(s string) string {
 
 		return value, ok
 	})
+}
+
+// unknownName reports whether name had been set in a way the parser does
+// not follow (read, unset, a loop) when the scope was taken.
+func (v *VarScope) unknownName(name string) bool {
+	return v != nil && v.unknown[name]
 }
 
 // IsDynamic reports whether name held a value from command output,

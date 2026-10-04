@@ -72,9 +72,10 @@ func newAstWalker(resolver Resolver) *astWalker {
 		scriptFiles:     make(map[string]string),
 		startupUnset:    make(map[string]bool),
 		state: &parseState{
-			work:     maxParseWork,
-			distinct: make(map[string]bool),
-			repeated: make(map[string]bool),
+			work:        maxParseWork,
+			lenientWork: maxParseWork,
+			distinct:    make(map[string]bool),
+			repeated:    make(map[string]bool),
 		},
 		expanding: make(map[string]bool),
 	}
@@ -88,6 +89,7 @@ func (w *astWalker) child(dir string, depth int) *astWalker {
 	child.currentDir = dir
 	child.dirUnknown = w.dirUnknown
 	child.dirComputed = w.dirComputed
+	child.lenient = w.lenient
 	child.depth = depth
 	child.scriptFiles = w.scriptFiles
 	child.state = w.state
@@ -916,6 +918,12 @@ func (w *astWalker) follow(cmd Command, l launch, depth int, startup []startupSc
 // shells read. Each run is walked on its own, since the directory and
 // variables it sees may differ; the work budget bounds repetition.
 func (w *astWalker) walkStartup(cmd Command, startup []startupScript, depth int) {
+	if shells[cmd.Name] && len(startup) > 0 {
+		w.walkScript("", cmd, depth, scriptWalk{prelude: startup})
+
+		return
+	}
+
 	for _, script := range startup {
 		w.walkScript("", cmd, depth, scriptWalk{prelude: []startupScript{script}})
 	}
@@ -941,7 +949,7 @@ func (w *astWalker) followFile(
 		src := scriptSourceText{path: file.path, text: text, literal: literal}
 		if !literal {
 			src.run = w.fileRun(cmd, file, depth)
-			src.prelude = startup
+			src.prelude = w.shebangStartup(cmd, file, text, startup)
 		}
 
 		key := w.sourceKey(cmd, src)
@@ -1110,7 +1118,7 @@ func (w *astWalker) walkScript(script string, parent Command, depth int, sw scri
 	child.launchSeq = parent.Location.Seq
 	child.stdinFed = w.feedsStdin(parent)
 	child.seedStartup(parent)
-	child.walkPrelude(sw.prelude)
+	movedLeniently := child.walkPrelude(sw.prelude, parent)
 
 	if sw.name != "" {
 		child.expanding[sw.name] = true
@@ -1139,6 +1147,8 @@ func (w *astWalker) walkScript(script string, parent Command, depth int, sw scri
 
 		child.walkStmt(stmt)
 	}
+
+	child.walkEpilogue(sw.prelude, parent, movedLeniently)
 
 	// Commands report the line of the command that ran the script, keeping
 	// their own place in execution order.

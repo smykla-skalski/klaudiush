@@ -47,6 +47,7 @@ type astWalker struct {
 	inLoop       bool
 	outerLoop    bool
 	distrust     bool
+	lenient      bool
 	scriptRun    scriptRun
 	launchSeq    int
 	// depth counts the launchers, scripts and aliases that led here.
@@ -117,6 +118,7 @@ type parseState struct {
 	opacities      []Opacity
 	moreOpacities  bool
 	budgetReported bool
+	lenientWork    int
 	setupOpacities int
 	// work is how many more commands and scripts may be followed. Fan-out
 	// through functions, aliases or scripts would otherwise grow without
@@ -1056,6 +1058,7 @@ func (w *astWalker) varScope() *VarScope {
 	w.scope = &VarScope{
 		Assignments: maps.Clone(w.assignments),
 		DynamicVars: w.unknownDirVars(maps.Clone(w.state.dynamicVars)),
+		unknown:     maps.Clone(w.unknownVars),
 	}
 	w.scopeDynamic = w.state.dynamicVersion
 

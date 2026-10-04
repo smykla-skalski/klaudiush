@@ -147,13 +147,18 @@ func scriptName(path string) string {
 
 // opaque records that something could not be inspected, so the parse fails
 // closed. Only the first opacities are kept; the parse is marked truncated
-// regardless.
+// regardless. Inside a startup file the line never touched nothing is
+// recorded: the user's own dotfiles do not block a command.
 func (w *astWalker) opaque(cause OpacityCause, operation, detail string) {
 	w.addOpacity(Opacity{Cause: cause, Operation: operation, Detail: detail})
 }
 
 // addOpacity records o, reached through the programs being walked.
 func (w *astWalker) addOpacity(o Opacity) {
+	if w.lenient {
+		return
+	}
+
 	w.state.truncated = true
 
 	if o.Cause == OpacityWorkBudget {

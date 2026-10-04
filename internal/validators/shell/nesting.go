@@ -281,8 +281,8 @@ func opacityFinding(o parser.Opacity) validator.Finding {
 			f.Message, f.Required, f.Repair = unresolvedWordFinding(o)
 		}
 	case parser.OpacityStartupFile:
-		f.Message = "the startup file " + o.Operation + " names cannot be inspected: " + o.Detail
-		f.Required = "a literal path to a readable file, or no startup file"
+		f.Message = startupFileMessage(o)
+		f.Required = startupFileRequired(o)
 		f.Repair = startupFileRepair(o)
 	case parser.OpacityZshGlobQualifier:
 		f.Message, f.Required, f.Repair = globCodeFinding(o)
@@ -545,11 +545,42 @@ var evalSetupRepairs = map[string]string{
 	"fnm": "Run the command with fnm's Node instead: fnm exec --using=<version> <command>",
 }
 
+// startupFileMessage says which startup file cannot be inspected: one a
+// variable names, the files under the directory HOME or ZDOTDIR names, or
+// a file such as .zshenv read from there.
+func startupFileMessage(o parser.Opacity) string {
+	switch {
+	case homeVariable(o.Operation):
+		return "the startup files under " + o.Operation + " cannot be inspected: " + o.Detail
+	case homeFile(o.Operation):
+		return "the startup file " + o.Operation + " cannot be inspected: " + o.Detail
+	default:
+		return "the startup file " + o.Operation + " names cannot be inspected: " + o.Detail
+	}
+}
+
+// homeVariable reports HOME or ZDOTDIR, which name the directory a shell
+// reads its own startup files from.
+func homeVariable(operation string) bool {
+	return operation == "HOME" || operation == "ZDOTDIR"
+}
+
+// homeFile reports a startup file read from HOME or ZDOTDIR, such as
+// .zshenv or .bashrc.
+func homeFile(operation string) bool {
+	return strings.HasPrefix(operation, ".")
+}
+
 func startupFileRepair(o parser.Opacity) string {
 	unknownValue := o.Detail == parser.DetailStartupValue ||
 		o.Detail == parser.DetailScriptVariable || o.Detail == parser.DetailStartupExpansion
 
 	switch {
+	case unknownValue && homeVariable(o.Operation):
+		return "Assign " + o.Operation + " a literal directory earlier on the same line, " +
+			"or leave it as it is before starting the shell"
+	case o.Detail == parser.DetailScriptDirectory && homeFile(o.Operation):
+		return "Set HOME or ZDOTDIR to an absolute directory, or cd to a literal directory first"
 	case unknownValue && o.Operation == parser.RCFileOption:
 		return "Pass --rcfile a literal path of a readable file, or drop the option"
 	case unknownValue:
@@ -633,4 +664,14 @@ func originLocation(origin []string) string {
 	}
 
 	return "via " + strings.Join(origin, originSeparator)
+}
+
+// startupFileRequired says what makes a startup file inspectable: a literal
+// directory for HOME or ZDOTDIR, a readable file otherwise.
+func startupFileRequired(o parser.Opacity) string {
+	if homeVariable(o.Operation) {
+		return "a literal directory, or the one the shell already has"
+	}
+
+	return "a literal path to a readable file, or no startup file"
 }

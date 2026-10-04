@@ -15,6 +15,10 @@ var fixedOperations = []string{
 }
 
 func FuzzBashParse(f *testing.F) {
+	home := f.TempDir()
+	f.Setenv("HOME", home)
+	f.Setenv("ZDOTDIR", home)
+
 	// Seed from bash_test.go and common patterns
 	f.Add("git status")
 	f.Add("git commit -sS -m 'test message'")
@@ -68,6 +72,9 @@ func FuzzBashParse(f *testing.F) {
 	f.Add(`BASH_ENV=./x.sh bash -c true; env BASH_ENV=/x sh; ENV=/x dash -ic true`)
 	f.Add(`export BASH_ENV=$(mktemp); bash --rcfile "$RC" -i; BASH_ENV='$(id)' git status`)
 	f.Add(`for i in 1 2; do bash -c true; BASH_ENV=/x; done; unset BASH_ENV; read ENV`)
+	f.Add(`echo 'git push' > ~/.zshenv; zsh -c true; HOME=. bash -lic true; ZDOTDIR=$X zsh -l`)
+	f.Add(`cd; echo x >> .bashrc; bash -i; HOME=$(mktemp -d) sh -l; unset HOME; zsh -fo rcs`)
+	f.Add(`for d in a; do zsh -c "$HOME"; : ${ZDOTDIR:=/z}; done; env HOME=/x zsh --no-rcs`)
 	f.Add(`ln -st d a b; sed -nEi.bak -e x f; dd of=o; install -m 7 a b; cp --targ=d a`)
 	f.Add(`curl -sSLo o -O https://x/a.sh?q --output-dir d -J -K c; unzip -l z; patch -p1`)
 	f.Add(`git stash -m x && git reset --hard && cp a "$(echo d)" && bash "$PWD/x.sh"`)

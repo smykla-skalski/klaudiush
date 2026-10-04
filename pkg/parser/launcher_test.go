@@ -72,7 +72,7 @@ var _ = Describe("Command resolution", func() {
 		Entry("bash -c", `bash -c "git commit -S -m x"`),
 		Entry("bash -lc", `bash -lc "git commit -S -m x"`),
 		Entry("sh -c with path", `sh -c "/usr/bin/git commit -S -m x"`),
-		Entry("zsh -c", `zsh -c "git commit -S -m x"`),
+		Entry("zsh -c", `ZDOTDIR=/nonexistent zsh -c "git commit -S -m x"`),
 		Entry("shell with -o before -c", `bash -o pipefail -c "git commit -S -m x"`),
 		Entry("shell by path", `/bin/bash -c "git commit -S -m x"`),
 		Entry("shell reading a pipe", `echo "git commit -S -m x" | bash`),
