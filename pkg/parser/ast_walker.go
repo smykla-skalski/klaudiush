@@ -98,6 +98,7 @@ type astWalker struct {
 
 	startupUnset    map[string]bool
 	loopStartup     map[string]bool
+	stmtFuncs       map[string][]string
 	startupPending  map[string]syntax.Pos
 	startupDeferred map[string]bool
 	caseChanged     bool

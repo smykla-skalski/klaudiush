@@ -141,6 +141,7 @@ func keepsEmpty(cmd Command, i, idx int, sub string) bool {
 func (w *astWalker) prepare(stmt *syntax.Stmt) {
 	markSafeAssigns(stmt, w.safeAssigns, w.chainAssigns)
 	markCertainStmts(stmt, w.certain)
+	w.stmtFuncs = funcBodies(stmt)
 
 	syntax.Walk(stmt, func(node syntax.Node) bool {
 		w.noteArithmetic(node)
