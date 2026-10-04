@@ -1,0 +1,68 @@
+exec git init --initial-branch=main
+exec git config user.email "test@test.com"
+exec git config user.name "Test User"
+
+stdin and-commit.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'GIT010'
+
+stdin semicolon-commit.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'GIT010'
+
+stdin keyword-commit.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'GIT010'
+
+stdin or-push.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'Force push is blocked'
+
+stdin pipe-push.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'Force push is blocked'
+
+stdin startup.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+stdout 'startup file BASH_ENV names cannot be inspected'
+
+stdin call.json
+exec klaudiush --hook-type PreToolUse
+! stdout 'deny'
+
+stdin negated.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'SHELL002'
+stdout 'f has a body no shell accepts'
+
+-- and-commit.json --
+{"tool_name": "Bash", "tool_input": {"command": "f() { :; } && git commit -m 'bad title'"}}
+
+-- semicolon-commit.json --
+{"tool_name": "Bash", "tool_input": {"command": "f() { :; }; git commit -m 'bad title'"}}
+
+-- keyword-commit.json --
+{"tool_name": "Bash", "tool_input": {"command": "function f { :; } > /dev/null && git commit -m 'bad title'"}}
+
+-- or-push.json --
+{"tool_name": "Bash", "tool_input": {"command": "f() { :; } || git push --force origin main"}}
+
+-- pipe-push.json --
+{"tool_name": "Bash", "tool_input": {"command": "f() ( : ) | git push --force origin main"}}
+
+-- startup.json --
+{"tool_name": "Bash", "tool_input": {"command": "f() { :; } && BASH_ENV=$(mktemp) bash -c true"}}
+
+-- call.json --
+{"tool_name": "Bash", "tool_input": {"command": "f() { git status; } && f"}}
+
+-- negated.json --
+{"tool_name": "Bash", "tool_input": {"command": "f() ! { :; } && git status"}}

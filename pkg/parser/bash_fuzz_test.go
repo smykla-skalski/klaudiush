@@ -132,6 +132,9 @@ E
 	f.Add(`xargs -I % sh -c %; xargs -i% % push; xargs -0I@ git @; echo p | xargs -a f -tI % git %`)
 	f.Add(`sudo -u "" git push --force; docker run --entrypoint git --name '' i push; "" git`)
 	f.Add(`git -C "" -c '' push $'' ""''; X=; $X git push; env -u "" "$X" git push`)
+	f.Add(`f() { :; } && git commit -m 'bad title'; g() { :; } || git push --force; h() ( : ) | x`)
+	f.Add(`f() { :; } && BASH_ENV=$(mktemp) bash -c true; function k { :; } >/dev/null && k`)
+	f.Add(`f() ! { :; } && g() if :; then :; fi || a && h() [[ x ]] |& b; ( i() { :; } && c ) &`)
 
 	f.Fuzz(func(t *testing.T, command string) {
 		p := parser.NewBashParser()
