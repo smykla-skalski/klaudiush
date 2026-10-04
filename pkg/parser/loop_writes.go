@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"regexp"
 	"slices"
 	"strings"
 
@@ -61,7 +62,7 @@ func (w *astWalker) loopStartupNames(
 			text = anyStartupVar
 		}
 	case *syntax.ParamExp:
-		if n.Excl && assignsDefault(n) {
+		if (n.Excl && assignsDefault(n)) || promptExpansion(n) {
 			text = anyStartupVar
 		}
 	}
@@ -77,6 +78,13 @@ func (w *astWalker) loopStartupNames(
 	}
 
 	return names
+}
+
+// promptExpansion reports ${x@P}, which expands the value of x again as a
+// prompt string.
+func promptExpansion(pe *syntax.ParamExp) bool {
+	return pe.Exp != nil && pe.Exp.Op == syntax.OtherParamOps &&
+		pe.Exp.Word != nil && pe.Exp.Word.Lit() == "P"
 }
 
 // namerefOption reports a declaration option making a nameref, through
@@ -253,6 +261,22 @@ func expandingWord(word *syntax.Word) bool {
 	})
 }
 
+// literalElement matches an element with a literal numeric index. Any
+// other subscript may be arithmetic that assigns a variable it computes.
+var literalElement = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*\[[0-9]+\]$`)
+
+// joinTargets returns the targets as text, or every startup variable when
+// one is an element whose subscript is not a literal number.
+func joinTargets(names []string) string {
+	for _, name := range names {
+		if strings.Contains(name, "[") && !literalElement.MatchString(name) {
+			return anyStartupVar
+		}
+	}
+
+	return strings.Join(names, " ")
+}
+
 // writerSpec describes the options of a variable writer: the letters taking
 // a value, the letters taking a target name, and how many operands are
 // targets (all when negative).
@@ -286,7 +310,7 @@ func writerTargets(name string, args []*syntax.Word) string {
 			words = append(words, argWord(arg))
 		}
 
-		return strings.Join(writtenVars(Command{Name: name, Args: words}), " ")
+		return joinTargets(writtenVars(Command{Name: name, Args: words}))
 	}
 
 	names, rest, ok := spec.optionTargets(args)
@@ -310,7 +334,7 @@ func writerTargets(name string, args []*syntax.Word) string {
 		names = append(names, argWord(arg))
 	}
 
-	return strings.Join(names, " ")
+	return joinTargets(names)
 }
 
 // printfTargets adds the arguments a printf format assigns through %n to
@@ -318,7 +342,7 @@ func writerTargets(name string, args []*syntax.Word) string {
 // assigns nothing only when it stays one word with no arguments after it.
 func printfTargets(names []string, rest []*syntax.Word) string {
 	if len(rest) == 0 {
-		return strings.Join(names, " ")
+		return joinTargets(names)
 	}
 
 	if unsureWord(rest[0]) && (len(rest) > 1 || !singleWord(rest[0])) {
@@ -326,7 +350,7 @@ func printfTargets(names []string, rest []*syntax.Word) string {
 	}
 
 	if !printfAssigns(argWord(rest[0])) {
-		return strings.Join(names, " ")
+		return joinTargets(names)
 	}
 
 	for _, arg := range rest[1:] {
@@ -337,7 +361,7 @@ func printfTargets(names []string, rest []*syntax.Word) string {
 		names = append(names, argWord(arg))
 	}
 
-	return strings.Join(names, " ")
+	return joinTargets(names)
 }
 
 // optionTargets returns the targets the options of a writer name and the
@@ -347,7 +371,9 @@ func (spec writerSpec) optionTargets(args []*syntax.Word) ([]string, []*syntax.W
 	var names []string
 
 	for i := 0; i < len(args); i++ {
-		if unsureWord(args[i]) {
+		// A leading ~ is left to the operands: alone it never becomes an
+		// option the writer acts on.
+		if computedWord(args[i]) || expandingWord(args[i]) {
 			return nil, nil, false
 		}
 
@@ -410,9 +436,28 @@ func quotedValue(cmd Command, i int) bool {
 }
 
 // unsureWord reports a word whose value or number of words the scan cannot
-// know: computed, or holding a brace or glob character.
+// know: computed, holding a brace or glob character, or starting with an
+// unquoted ~, which expands to a directory that may read as an option.
 func unsureWord(word *syntax.Word) bool {
-	return computedWord(word) || expandingWord(word)
+	return computedWord(word) || expandingWord(word) || tildeWord(word)
+}
+
+// tildeWord reports a word the shell tilde-expands: one whose tilde prefix,
+// the text from a leading ~ up to the first unquoted slash, has no quoted
+// character.
+func tildeWord(word *syntax.Word) bool {
+	if len(word.Parts) == 0 {
+		return false
+	}
+
+	lit, ok := word.Parts[0].(*syntax.Lit)
+	if !ok || !strings.HasPrefix(lit.Value, "~") {
+		return false
+	}
+
+	prefix, _, slash := strings.Cut(lit.Value, "/")
+
+	return !strings.Contains(prefix, `\`) && (slash || len(word.Parts) == 1)
 }
 
 // singleWord reports a word that stays exactly one word: literal, or with

@@ -1016,6 +1016,12 @@ func (w *astWalker) noteDynamic(assign *syntax.Assign) {
 	}
 
 	w.state.dynamicVersion++
+
+	// export NAME keeps whatever value NAME already holds.
+	if assign.Naked {
+		return
+	}
+
 	w.noteStartupDeferred(assign)
 
 	if assign.Append || (assign.Value != nil && wordDynamic(assign.Value)) ||
