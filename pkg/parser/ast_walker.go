@@ -1039,6 +1039,7 @@ func (w *astWalker) varScope() *VarScope {
 	w.scope = &VarScope{
 		Assignments: maps.Clone(w.assignments),
 		DynamicVars: maps.Clone(w.state.dynamicVars),
+		unknown:     maps.Clone(w.unknownVars),
 	}
 	w.scopeDynamic = w.state.dynamicVersion
 

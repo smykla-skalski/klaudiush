@@ -534,6 +534,7 @@ func (w *astWalker) forget(name string) {
 
 	for p := w; p != nil; p = p.parent {
 		p.unknownVars[name] = true
+		p.scope = nil
 		delete(p.startupUnset, name)
 	}
 }

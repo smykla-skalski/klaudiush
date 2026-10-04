@@ -23,6 +23,9 @@ const (
 // zshFiles are the startup files zsh reads from ZDOTDIR, HOME when unset.
 var zshFiles = nameSet(zshenvFile + " .zprofile .zshrc .zlogin .zlogout")
 
+// logoutFiles run when a login shell exits, after its script.
+var logoutFiles = nameSet(".zlogout .bash_logout .logout")
+
 // cshShells read .cshrc on every start unless given -f.
 var cshShells = nameSet("csh tcsh")
 
@@ -40,7 +43,9 @@ type shellMode struct {
 }
 
 // shellOptions reads the options a shell named name is given before its
-// first operand. Anything after it, -c's command included, is an operand.
+// first operand. Anything after it, -c's command included, is an operand. A
+// word klaudiush cannot resolve may be -l or -i, so the shell is taken as
+// both.
 func shellOptions(name string, args []string) shellMode {
 	var mode shellMode
 
@@ -49,6 +54,10 @@ func shellOptions(name string, args []string) shellMode {
 
 		switch {
 		case arg == endOfOptions || arg == "-" || arg == "+":
+			return mode
+		case marked(arg) || HasUnresolvedVars(arg):
+			mode.login, mode.interactive = true, true
+
 			return mode
 		case arg == emulateOpt:
 			if i+1 < len(args) {
@@ -76,6 +85,17 @@ func shellOptions(name string, args []string) shellMode {
 	}
 
 	return mode
+}
+
+// optionWords expands the variables in a shell's arguments that the line
+// sets literally, so a -l held in a variable still makes a login shell.
+func (w *astWalker) optionWords(args []string) []string {
+	words := make([]string, len(args))
+	for i, arg := range args {
+		words[i] = w.expandName(arg)
+	}
+
+	return words
 }
 
 // takesOptionName reports an option cluster whose -o or -O takes the next
@@ -253,27 +273,30 @@ func cshStartupFiles(mode shellMode) (before, after []string) {
 }
 
 // homeScripts reads the startup files a shell started by cmd reads from its
-// home directory. A zsh file after .zshenv is preceded by a placeholder, so
-// it is read again from the directory .zshenv may have moved ZDOTDIR to.
-func (w *astWalker) homeScripts(cmd Command, files []string) []startupScript {
+// home directory. Unless now, a zsh file after .zshenv and a logout file
+// only get a placeholder: the shell reads them once the files before them,
+// or its script, have run, which may move ZDOTDIR, cd or write them.
+func (w *astWalker) homeScripts(cmd Command, files []string, now bool) []startupScript {
 	var scripts []startupScript
 
 	for _, file := range files {
 		zdot := zshFiles[file]
-		lazy := zdot && file != zshenvFile
 
 		dirs, ok := w.homeDirs(cmd, zdot)
 		if !ok {
 			continue
 		}
 
-		if lazy {
-			scripts = append(scripts, startupScript{label: file, lazy: true})
+		if !now && ((zdot && file != zshenvFile) || logoutFiles[file]) {
+			scripts = append(scripts, startupScript{
+				label: file, lazy: true, logout: logoutFiles[file],
+			})
+
+			continue
 		}
 
 		for _, dir := range dirs {
 			if script, found := w.homeScript(cmd, file, dir); found {
-				script.lazy = lazy
 				scripts = append(scripts, script)
 			}
 		}
@@ -327,8 +350,8 @@ type homeDir struct {
 }
 
 // startupDir returns the directory a startup directory variable holds for
-// cmd, and whether it is set. A shell whose HOME is unset takes it from the
-// user database, which klaudiush does not read.
+// cmd, and whether it is set. A shell whose HOME is unset (unset, env -u,
+// env -i) takes it from the user database, which klaudiush does not read.
 func (w *astWalker) startupDir(cmd Command, name string) (homeDir, bool) {
 	inherited := func() (homeDir, bool) {
 		path, set := w.resolver.LookupEnv(name)
@@ -341,7 +364,9 @@ func (w *astWalker) startupDir(cmd Command, name string) (homeDir, bool) {
 			return homeDir{}, true
 		}
 
-		return inherited()
+		w.opaque(OpacityStartupFile, name, DetailStartupValue)
+
+		return homeDir{}, false
 	}
 
 	v, set := w.startupSetting(cmd, name)
@@ -382,8 +407,9 @@ func (w *astWalker) startupDir(cmd Command, name string) (homeDir, bool) {
 // checked strictly; one in an inherited directory that the line never
 // touched is lenient, and skipped when it cannot be read.
 func (w *astWalker) homeScript(cmd Command, file string, dir homeDir) (startupScript, bool) {
-	clean := resolvePath(cmd.WorkingDirectory, dir.path+"/"+file)
-	relative := !filepath.IsAbs(clean)
+	path := dir.path + "/" + file
+	clean := resolvePath(cmd.WorkingDirectory, path)
+	relative := !filepath.IsAbs(path)
 	touched := w.homeTouched(clean, dir.path, cmd)
 
 	if dir.inherited && !touched && !w.lenient {
@@ -395,7 +421,7 @@ func (w *astWalker) homeScript(cmd Command, file string, dir homeDir) (startupSc
 	switch {
 	case relative && (cmd.DirUnknown || w.dirUnknown || cmd.DirComputed || w.dirComputed):
 		detail = DetailScriptDirectory
-	case specialPath(clean) || (relative && specialPath(filepath.Join("/", clean))):
+	case specialPath(clean) || (!filepath.IsAbs(clean) && specialPath(filepath.Join("/", clean))):
 		detail = DetailScriptRead
 	}
 
@@ -405,7 +431,7 @@ func (w *astWalker) homeScript(cmd Command, file string, dir homeDir) (startupSc
 		return startupScript{}, false
 	}
 
-	text, status, detail := w.homeFileSource(clean, cmd)
+	text, status, detail := w.homeFileSource(clean)
 
 	switch status {
 	case ScriptText:
@@ -429,7 +455,7 @@ func (w *astWalker) homeScript(cmd Command, file string, dir homeDir) (startupSc
 // homeFileSource returns the text of a home startup file: the content
 // written to it earlier on the line, or the file on disk. A write whose
 // target may be the file but cannot be resolved makes it opaque.
-func (w *astWalker) homeFileSource(target string, cmd Command) (string, ScriptStatus, string) {
+func (w *astWalker) homeFileSource(target string) (string, ScriptStatus, string) {
 	text, found, captured, unsure := w.homeWrite(target)
 
 	switch {
@@ -437,9 +463,18 @@ func (w *astWalker) homeFileSource(target string, cmd Command) (string, ScriptSt
 		return "", ScriptOpaque, DetailScriptWritten
 	case found:
 		return text, ScriptText, ""
-	default:
-		return w.scriptSource(target, cmd)
 	}
+
+	if stored, ok := w.scriptFiles[target]; ok {
+		return stored, ScriptText, ""
+	}
+
+	text, status := w.resolver.ReadScript(target)
+	if status == ScriptOpaque {
+		return "", ScriptOpaque, DetailScriptRead
+	}
+
+	return text, status, ""
 }
 
 // homeWrite finds the last write on the line to target, matching each
@@ -502,7 +537,7 @@ func (w *astWalker) writtenWord(fw FileWrite, word string) (string, bool) {
 	known := true
 
 	lookup := func(name string) (string, bool) {
-		if fw.Vars.IsDynamic(name) {
+		if fw.Vars.IsDynamic(name) || fw.Vars.unknownName(name) {
 			known = false
 
 			return "", false
@@ -547,7 +582,7 @@ func (w *astWalker) shebangStartup(
 		return startup
 	}
 
-	name, args, ok := shebangShell(text)
+	name, launcherArgs, args, ok := shebangShell(text)
 	if !ok {
 		return startup
 	}
@@ -557,28 +592,31 @@ func (w *astWalker) shebangStartup(
 		return startup
 	}
 
-	scripts := w.homeScripts(cmd, before)
+	cmd = withEnvUnset(cmd, launcherArgs)
+	cmd = withEnvOperands(cmd, Command{}, launcherArgs)
+
+	scripts := w.homeScripts(cmd, before, false)
 	scripts = append(scripts, startup...)
 
-	return append(scripts, w.homeScripts(cmd, after)...)
+	return append(scripts, w.homeScripts(cmd, after, false)...)
 }
 
-// shebangShell returns the shell a script's shebang runs and the words
-// after it.
-func shebangShell(text string) (string, []string, bool) {
+// shebangShell returns the shell a script's shebang runs, the words before
+// it (env's options and NAME=value operands) and the words after it.
+func shebangShell(text string) (name string, launcher, args []string, ok bool) {
 	line, _, _ := strings.Cut(text, "\n")
 	if !strings.HasPrefix(line, "#!") {
-		return "", nil, false
+		return "", nil, nil, false
 	}
 
 	words := strings.Fields(strings.TrimPrefix(line, "#!"))
 	for i, word := range words {
 		if name := commandName(word); shells[name] {
-			return name, words[i+1:], true
+			return name, words[min(1, i):i], words[i+1:], true
 		}
 	}
 
-	return "", nil, false
+	return "", nil, nil, false
 }
 
 // homeState is what decides the directory zsh reads its later startup
@@ -602,37 +640,41 @@ func (w *astWalker) currentHomeState() homeState {
 	}
 }
 
-// lazyStartup returns the parts to walk for a zsh startup file after
-// .zshenv: those read up front while HOME and ZDOTDIR stand as they did,
-// otherwise the file read again from where they point now.
-func (w *astWalker) lazyStartup(
-	part startupScript,
-	parent Command,
-	start homeState,
-	lenient bool,
-) []startupScript {
-	switch changed := w.currentHomeState() != start; {
-	case !changed:
-		return []startupScript{part}
-	case part.key != "":
-		return nil
-	default:
-		parent.startup = nil
-		parent.WorkingDirectory = w.currentDir
-		parent.DirUnknown, parent.DirComputed = w.dirUnknown, w.dirComputed
+// lazyStartup reads a startup file the shell reaches after others have run,
+// from where HOME and ZDOTDIR point now. When only lenient files moved them,
+// the file stays lenient unless the line touched it.
+func (w *astWalker) lazyStartup(part startupScript, parent Command, lenient bool) []startupScript {
+	parent.startup = nil
+	parent.WorkingDirectory = w.currentDir
+	parent.DirUnknown, parent.DirComputed = w.dirUnknown, w.dirComputed
 
-		if !lenient || w.lenient {
-			return w.homeScripts(parent, []string{part.label})
+	if !lenient || w.lenient {
+		return w.homeScripts(parent, []string{part.label}, true)
+	}
+
+	defer w.enterLenient()()
+
+	scripts := w.homeScripts(parent, []string{part.label}, true)
+	for i := range scripts {
+		scripts[i].lenient = !scripts[i].touched
+	}
+
+	return scripts
+}
+
+// walkEpilogue walks the logout files a login shell runs when its script
+// ends, read with the directory, variables and writes the script left.
+func (w *astWalker) walkEpilogue(prelude []startupScript, parent Command, lenient bool) {
+	for _, part := range prelude {
+		if !part.logout {
+			continue
 		}
 
-		defer w.enterLenient()()
-
-		scripts := w.homeScripts(parent, []string{part.label})
-		for i := range scripts {
-			scripts[i].lenient = !scripts[i].touched
+		for _, script := range w.lazyStartup(part, parent, lenient) {
+			if script.key != "" {
+				w.walkStartupPart(script)
+			}
 		}
-
-		return scripts
 	}
 }
 

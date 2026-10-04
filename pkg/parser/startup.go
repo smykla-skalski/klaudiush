@@ -60,6 +60,7 @@ type startupScript struct {
 	key     string
 	text    string
 	lazy    bool
+	logout  bool
 	touched bool
 	lenient bool
 }
@@ -173,11 +174,11 @@ func (w *astWalker) startupScripts(cmd Command, args []string) []startupScript {
 		return scripts
 	}
 
-	mode := shellOptions(cmd.Name, args)
+	mode := shellOptions(cmd.Name, w.optionWords(args))
 	mode.login = mode.login || cmd.loginArgv0
 	named := rcfiles(args)
 	before, after := homeStartupFiles(cmd.Name, mode, len(named) > 0)
-	scripts = append(scripts, w.homeScripts(cmd, before)...)
+	scripts = append(scripts, w.homeScripts(cmd, before, false)...)
 
 	v, set := w.startupSetting(cmd, bashEnvVar)
 	add(bashEnvVar, v, set)
@@ -193,7 +194,7 @@ func (w *astWalker) startupScripts(cmd Command, args []string) []startupScript {
 		}
 	}
 
-	return append(scripts, w.homeScripts(cmd, after)...)
+	return append(scripts, w.homeScripts(cmd, after, false)...)
 }
 
 // bashShells read --rcfile and --init-file.
@@ -392,15 +393,19 @@ func (w *astWalker) startupPath(v startupValue) (path, detail string) {
 }
 
 // walkPrelude walks the startup files in the shell the walker stands for, so
-// what they define is in place for the script that follows.
-func (w *astWalker) walkPrelude(prelude []startupScript, parent Command) {
-	start := w.currentHomeState()
+// what they define is in place for the script that follows. It reports
+// whether only lenient files moved HOME or ZDOTDIR.
+func (w *astWalker) walkPrelude(prelude []startupScript, parent Command) bool {
 	moved := homeMove{}
 
 	for _, part := range prelude {
+		if part.logout {
+			continue
+		}
+
 		parts := []startupScript{part}
 		if part.lazy {
-			parts = w.lazyStartup(part, parent, start, moved.lenient)
+			parts = w.lazyStartup(part, parent, moved.lenient)
 		}
 
 		for _, part := range parts {
@@ -417,6 +422,8 @@ func (w *astWalker) walkPrelude(prelude []startupScript, parent Command) {
 			}
 		}
 	}
+
+	return moved.lenient
 }
 
 // homeMove records whether the startup files that moved HOME or ZDOTDIR

@@ -1086,7 +1086,7 @@ func (w *astWalker) walkScript(script string, parent Command, depth int, sw scri
 	child.launchSeq = parent.Location.Seq
 	child.stdinFed = w.feedsStdin(parent)
 	child.seedStartup(parent)
-	child.walkPrelude(sw.prelude, parent)
+	movedLeniently := child.walkPrelude(sw.prelude, parent)
 
 	if sw.name != "" {
 		child.expanding[sw.name] = true
@@ -1113,6 +1113,8 @@ func (w *astWalker) walkScript(script string, parent Command, depth int, sw scri
 
 		child.walkStmt(stmt)
 	}
+
+	child.walkEpilogue(sw.prelude, parent, movedLeniently)
 
 	// Commands report the line of the command that ran the script, keeping
 	// their own place in execution order.
