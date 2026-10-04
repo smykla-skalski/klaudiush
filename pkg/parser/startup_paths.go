@@ -108,11 +108,12 @@ func (w *astWalker) loopMayWriteAny(call *syntax.CallExpr) bool {
 }
 
 // printfMayWriteAny reports a printf that may write a computed name: one
-// whose -v target or options are not literal. Only -v names a variable, so
-// the format and the values after it never do.
+// whose options or -v target are not literal, may glob, or name something
+// other than a plain variable. Only -v names a variable, so the format and
+// the values after it never do.
 func printfMayWriteAny(args []*syntax.Word) bool {
 	for i := 0; i < len(args); i++ {
-		if !isLiteralWord(args[i]) {
+		if computedPrintfWord(args[i]) {
 			return true
 		}
 
@@ -122,7 +123,12 @@ func printfMayWriteAny(args []*syntax.Word) bool {
 		case arg == "-v":
 			i++
 
-			if i < len(args) && !isLiteralWord(args[i]) {
+			if i < len(args) &&
+				(computedPrintfWord(args[i]) || !variableName.MatchString(argWord(args[i]))) {
+				return true
+			}
+		case strings.HasPrefix(arg, "-v"):
+			if !variableName.MatchString(arg[2:]) {
 				return true
 			}
 		case arg == endOfOptions || !strings.HasPrefix(arg, "-"):
@@ -131,6 +137,12 @@ func printfMayWriteAny(args []*syntax.Word) bool {
 	}
 
 	return false
+}
+
+// computedPrintfWord reports a printf word the shell may turn into other
+// words: an expansion or a file name glob.
+func computedPrintfWord(word *syntax.Word) bool {
+	return !isLiteralWord(word) || globWord(globView(word))
 }
 
 // computedOperand reports a declaration operand that is not a literal
