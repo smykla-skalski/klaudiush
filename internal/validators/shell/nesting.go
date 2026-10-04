@@ -510,6 +510,8 @@ func startupFileRepair(o parser.Opacity) string {
 		return "Use an absolute path for " + o.Operation + ", or cd to a literal directory first"
 	case parser.DetailScriptWritten:
 		return "Write the startup file in a separate command before starting the shell"
+	case parser.DetailScriptUnplacedWrite:
+		return "Run the command that changes files in a separate command before starting the shell"
 	default:
 		return "Keep the startup file a readable regular file within the size limit, " +
 			"or run its commands directly"
@@ -563,6 +565,9 @@ func unreadableScriptRepair(detail string) string {
 	case parser.DetailScriptWritten:
 		return "Write the script with literal content, or write it in a separate " +
 			"command before running it"
+	case parser.DetailScriptUnplacedWrite:
+		return "Run the command that changes files (unzip, patch, git reset --hard, " +
+			"git stash) in a separate command before running the script"
 	default:
 		return "Run the script's commands directly, or keep the script a readable " +
 			"regular file within the size limit"

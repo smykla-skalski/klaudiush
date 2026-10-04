@@ -84,6 +84,7 @@ type Command struct {
 	stdinText    *ShellText
 	env          map[string]EnvValue
 	quoting      map[string]wordQuoting
+	lookedUpDir  string
 }
 
 // wordQuoting records how the words that rendered to one argument were

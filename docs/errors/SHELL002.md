@@ -27,6 +27,8 @@ Each finding names the operation klaudiush could not see through, the programs t
 | Script path from a variable           | `bash "$DIR/run.sh"`                            | Use a literal script path                                 |
 | Relative script after an unknown `cd` | `cd "$DIR" && bash run.sh`                      | Use an absolute path or a literal `cd`                    |
 | Script written with unknown content   | `echo "$BODY" > s.sh && bash s.sh`              | Write literal content, or write it in a separate command  |
+| Script changed by another program     | `sed -i s/a/b/ s.sh && bash s.sh`               | Change the script in a separate command                   |
+| Script after an unplaced write        | `git stash pop && bash s.sh`                    | Run the command that changes files separately             |
 | Script that cannot be read in full    | a script over 256 KiB, or unreadable            | Run its commands directly, or keep it small and readable  |
 | Nested script that does not parse     | `bash -c 'git status && ('`                     | Fix the nested script's syntax                            |
 | Unknown git subcommand                | `HOME=/x git cm`                                | Use the builtin, or define the alias in git config first  |
