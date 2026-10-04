@@ -175,9 +175,15 @@ func promptExpansion(pe *syntax.ParamExp) bool {
 }
 
 // computedPrintfWord reports a printf word the shell may turn into other
-// words: an expansion or a file name glob.
+// words: an expansion, a brace expansion or a file name glob.
 func computedPrintfWord(word *syntax.Word) bool {
-	return !isLiteralWord(word) || globWord(globView(word))
+	if !isLiteralWord(word) || globWord(globView(word)) {
+		return true
+	}
+
+	clone := &syntax.Word{Parts: slices.Clone(word.Parts)}
+
+	return syntax.SplitBraces(clone)
 }
 
 // computedOperand reports a declaration operand that is not a literal
