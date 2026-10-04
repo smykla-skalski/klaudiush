@@ -60,15 +60,27 @@ func (*NestingValidator) Validate(_ context.Context, hookCtx *hook.Context) *val
 		return validator.Pass()
 	}
 
-	findings := make([]validator.Finding, 0, len(parsed.Opacities))
-	for _, o := range parsed.Opacities {
-		findings = append(findings, opacityFinding(o))
-	}
-
 	return validator.FailWithRef(
 		validator.RefShellNesting,
 		truncatedSummary(parsed.Opacities, parsed.MoreOpacities),
-	).AddFinding(findings...)
+	).AddFinding(opacityFindings(parsed.Opacities)...)
+}
+
+// opacityFindings lists findings without a setup tool first, so when the
+// output is shortened the setup repairs, which share one repair per tool,
+// are folded before a different finding is.
+func opacityFindings(opacities []parser.Opacity) []validator.Finding {
+	findings := make([]validator.Finding, 0, len(opacities))
+
+	for _, setup := range []bool{false, true} {
+		for _, o := range opacities {
+			if (o.Tool != "") == setup {
+				findings = append(findings, opacityFinding(o))
+			}
+		}
+	}
+
+	return findings
 }
 
 // Category returns the validator category for parallel execution.
@@ -140,8 +152,8 @@ func truncatedSummary(opacities []parser.Opacity, more bool) string {
 	switch {
 	case more:
 		return fmt.Sprintf(
-			"Command cannot be fully inspected: more than %d parts are opaque, the first are listed",
-			len(opacities),
+			"Command cannot be fully inspected: more than %d parts are opaque, %d are listed",
+			len(opacities), len(opacities),
 		)
 	case len(opacities) == 0:
 		return truncatedText
