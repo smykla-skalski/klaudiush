@@ -5,6 +5,12 @@ All notable changes to klaudiush will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.43.3](https://github.com/smykla-skalski/klaudiush/compare/v1.43.2...v1.43.3) (2026-10-05)
+
+### Bug Fixes
+
+* **parser:** close BASH_ENV gaps in loop scan ([#766](https://github.com/smykla-skalski/klaudiush/issues/766)) ([832a380](https://github.com/smykla-skalski/klaudiush/commit/832a3801daf5081cd9797955e92e08b3b9b8f407))
+
 ## [1.43.2](https://github.com/smykla-skalski/klaudiush/compare/v1.43.1...v1.43.2) (2026-10-04)
 
 ### Bug Fixes
