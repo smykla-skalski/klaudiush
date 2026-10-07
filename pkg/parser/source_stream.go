@@ -24,6 +24,7 @@ const (
 	DetailSourceDescriptor   = "it reads a file descriptor or device klaudiush cannot follow"
 	DetailSourceOutput       = "it reads a file whose path comes from command output"
 	DetailSourceOption       = "it takes an option klaudiush does not follow"
+	DetailShellOperand       = "it runs a script whose path comes from command output or a process substitution"
 )
 
 // unseenInfix marks the stand-in path of a process substitution whose
@@ -518,6 +519,75 @@ func (w *astWalker) sourceStdin(cmd Command) (string, Opacity) {
 	default:
 		return "", Opacity{}
 	}
+}
+
+// shellStreamLaunch returns what a shell reads after shellLaunch found no
+// literal input. Pipes and redirects whose contents are not captured are
+// opaque because the shell executes them as code.
+func (w *astWalker) shellStreamLaunch(cmd Command, visible launch) launch {
+	operand, isScript, ok := shellOperand(cmd.Args)
+	if !ok {
+		return w.shellStdinLaunch(cmd, visible)
+	}
+
+	return w.shellOperandLaunch(cmd, operand, isScript, visible)
+}
+
+func (w *astWalker) shellOperandLaunch(
+	cmd Command,
+	operand string,
+	isScript bool,
+	visible launch,
+) launch {
+	if isScript {
+		return visible
+	}
+
+	if marked(operand) {
+		w.addOpacity(sourceOpacity(cmd, DetailShellOperand, ""))
+
+		return launch{}
+	}
+
+	if operand == "-" {
+		return w.shellStdinLaunch(cmd, visible)
+	}
+
+	path, opacity := w.sourcePath(cmd, operand)
+	if opacity.Cause != "" {
+		w.addOpacity(opacity)
+
+		return launch{}
+	}
+
+	if path == "" {
+		return launch{}
+	}
+
+	if path != operand {
+		return launch{files: []scriptFile{{path: path, explicit: true}}}
+	}
+
+	return visible
+}
+
+func (w *astWalker) shellStdinLaunch(cmd Command, visible launch) launch {
+	path, opacity := w.sourceStdin(cmd)
+	if opacity.Cause != "" {
+		w.addOpacity(opacity)
+
+		return launch{}
+	}
+
+	if path == devStdin {
+		return launch{scripts: []string{cmd.Stdin}}
+	}
+
+	if path != "" {
+		return launch{files: []scriptFile{{path: path, explicit: true}}}
+	}
+
+	return visible
 }
 
 // referencedVar matches a variable a rendered word refers to.
