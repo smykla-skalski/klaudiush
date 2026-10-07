@@ -42,12 +42,15 @@ const (
 // files whose language is not known, accepts both "//" and "#" but only at line
 // start or after whitespace. commentHash accepts only "#", also only at line
 // start or after whitespace; a "#" right after code is an unspaced comment
-// that is not reported, and scanning of the line stops there.
+// that is not reported, and scanning of the line stops there. commentSlash
+// accepts only "//", at line start or after whitespace, for languages where
+// "#" starts code such as a Rust attribute or a C preprocessor directive.
 type commentStyle uint8
 
 const (
 	commentLoose commentStyle = iota
 	commentHash
+	commentSlash
 )
 
 // langSyntax is the comment and string syntax the scanner applies to a file.
@@ -82,9 +85,44 @@ var langSyntaxByExt = map[string]langSyntax{
 	},
 }
 
+// slashCommentSyntax is the syntax of languages whose only line comment is
+// "//" and that have no triple-quoted strings the scanner follows.
+var slashCommentSyntax = langSyntax{comment: commentSlash}
+
+// slashCommentExts lists extensions of languages whose only line comment is
+// "//". In them "#" starts code: Rust attributes, C, C++, Objective-C, shader
+// and C# preprocessor directives, F# and Swift compiler directives,
+// JavaScript private members, CSS selectors and colours, and Vue slot
+// shorthands. ".m" is read as Objective-C, not Octave.
+var slashCommentExts = map[string]bool{
+	".rs": true,
+	".c":  true, ".h": true, ".cc": true, ".cpp": true, ".cxx": true, ".c++": true,
+	".hh": true, ".hpp": true, ".hxx": true, ".h++": true, ".inl": true, ".ipp": true,
+	".tpp": true, ".cppm": true, ".ixx": true, ".ino": true, ".m": true, ".mm": true,
+	".cu": true, ".cuh": true, ".glsl": true, ".vert": true, ".frag": true, ".hlsl": true,
+	".metal": true, ".fs": true, ".fsi": true, ".fsx": true, ".csx": true,
+	".cs": true, ".swift": true, ".go": true, ".java": true, ".kt": true, ".kts": true,
+	".scala": true, ".dart": true,
+	".js": true, ".jsx": true, ".mjs": true, ".cjs": true,
+	".ts": true, ".tsx": true, ".mts": true, ".cts": true,
+	".css": true, ".scss": true, ".sass": true, ".less": true,
+	".vue": true, ".svelte": true, ".astro": true,
+}
+
 // langSyntaxForPath returns the comment and string syntax for path.
 func langSyntaxForPath(path string) langSyntax {
-	return langSyntaxByExt[strings.ToLower(filepath.Ext(path))]
+	ext := strings.ToLower(filepath.Ext(path))
+	if slashCommentExts[ext] {
+		return slashCommentSyntax
+	}
+
+	return langSyntaxByExt[ext]
+}
+
+// followsFileStrings reports whether the language has triple-quoted strings,
+// whose state at an Edit's position is read from the file on disk.
+func (s langSyntax) followsFileStrings() bool {
+	return s.python || s.double != tripleNone || s.single != tripleNone
 }
 
 // hasTripleQuote reports whether line holds three q bytes starting at i.
@@ -145,10 +183,11 @@ func scanMultiLineString(
 	}
 }
 
-// isCommentMarker reports whether a loose line-comment marker ("//" or "#")
-// starts at line[i]. Loose markers must sit at line start or after whitespace.
-func isCommentMarker(line string, i int) bool {
-	isHash := line[i] == '#'
+// isCommentMarker reports whether a line-comment marker of style starts at
+// line[i]: "//", or with commentLoose also "#". Markers must sit at line start
+// or after whitespace.
+func isCommentMarker(line string, i int, style commentStyle) bool {
+	isHash := style == commentLoose && line[i] == '#'
 	isSlash := line[i] == '/' && i+1 < len(line) && line[i+1] == '/'
 
 	return (isHash || isSlash) && afterSpace(line, i)
@@ -225,7 +264,7 @@ func scanSegment(
 			}
 		case c == '`':
 			state = stateBacktick
-		case isCommentMarker(line, i):
+		case isCommentMarker(line, i, syntax.comment):
 			return i, state, false
 		}
 	}
@@ -537,7 +576,7 @@ func newCommentScan(hookCtx *hook.Context) commentScan {
 		}
 	}
 
-	if scan.syntax == (langSyntax{}) && !detectShebang {
+	if !scan.syntax.followsFileStrings() && !detectShebang {
 		return scan
 	}
 

@@ -336,12 +336,12 @@ func findLeadViolations(
 			continue
 		}
 
-		if allowTestPhaseMarkers && isFullLineComment(line) &&
+		if allowTestPhaseMarkers && isFullLineComment(line, idx) &&
 			aiTestPhaseMarker.MatchString(body) {
 			continue
 		}
 
-		if isFullLineComment(line) && precedesDocDecl(docLines, i) &&
+		if isFullLineComment(line, idx) && precedesDocDecl(docLines, i) &&
 			!aiGenericDocComment.MatchString(body) {
 			continue
 		}
@@ -356,7 +356,7 @@ func findLeadViolations(
 		}
 
 		for _, pattern := range patterns {
-			if match := pattern.FindString(line); match != "" {
+			if match := commentMatch(pattern, line, idx); match != "" {
 				violations = append(violations, violation{
 					line:      i + 1,
 					directive: strings.TrimSpace(match),
@@ -409,17 +409,30 @@ func withFollowingSource(lines []string, suffix string) []string {
 	return append(out, rest[1:]...)
 }
 
-// isFullLineComment reports whether the line is a standalone comment rather
-// than a trailing (inline) comment; only standalone comments can document a
-// declaration.
-func isFullLineComment(line string) bool {
-	trimmed := strings.TrimSpace(line)
+// commentMatch returns the first match of pattern on line that reaches the
+// comment starting at idx. A match that ends before the comment lies in code,
+// such as a C "#define" or a JavaScript "#count", and is skipped.
+func commentMatch(pattern *regexp.Regexp, line string, idx int) string {
+	for _, loc := range pattern.FindAllStringIndex(line, -1) {
+		if loc[1] > idx {
+			return line[loc[0]:loc[1]]
+		}
+	}
 
-	return strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#")
+	return ""
+}
+
+// isFullLineComment reports whether the comment starting at line[idx] is a
+// standalone comment rather than a trailing (inline) one, such as a comment
+// after a Rust attribute; only standalone comments can document a declaration.
+func isFullLineComment(line string, idx int) bool {
+	return strings.TrimSpace(line[:idx]) == ""
 }
 
 // precedesDocDecl reports whether the comment at index i is part of a leading
-// comment block whose first non-comment line declares a symbol or package. A
+// comment block whose first non-comment line declares a symbol or package.
+// Lines starting with "#" do not end the block, so a Rust attribute or a
+// preprocessor directive may sit between a comment and its declaration. A
 // blank line breaks the association (it is no longer a doc comment).
 func precedesDocDecl(lines []string, i int) bool {
 	for j := i + 1; j < len(lines); j++ {
