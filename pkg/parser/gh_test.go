@@ -166,6 +166,38 @@ var _ = Describe("GHMergeCommand", func() {
 			})
 		})
 
+		DescribeTable("reads shorthands combined the way gh does",
+			func(args []string, expected parser.GHMergeCommand) {
+				ghCmd, err := parser.ParseGHMergeCommand(parser.Command{
+					Name: "gh",
+					Args: append([]string{"pr", "merge"}, args...),
+				})
+				Expect(err).NotTo(HaveOccurred())
+				Expect(ghCmd.PRNumber).To(Equal(expected.PRNumber))
+				Expect(ghCmd.Squash).To(Equal(expected.Squash))
+				Expect(ghCmd.Delete).To(Equal(expected.Delete))
+				Expect(ghCmd.Subject).To(Equal(expected.Subject))
+				Expect(ghCmd.Body).To(Equal(expected.Body))
+				Expect(ghCmd.AuthorEmail).To(Equal(expected.AuthorEmail))
+			},
+			Entry("booleans", []string{"42", "-sd"},
+				parser.GHMergeCommand{PRNumber: 42, Squash: true, Delete: true}),
+			Entry("a value shorthand last, value in the next argument",
+				[]string{"42", "-st", "feat(api): add"},
+				parser.GHMergeCommand{PRNumber: 42, Squash: true, Subject: "feat(api): add"}),
+			Entry("a value attached to its shorthand", []string{"-tfeat(api): add"},
+				parser.GHMergeCommand{Subject: "feat(api): add"}),
+			Entry("a value after = in a cluster", []string{"-st=feat(api): add"},
+				parser.GHMergeCommand{Squash: true, Subject: "feat(api): add"}),
+			Entry("a body attached to its shorthand", []string{"-dbBody text"},
+				parser.GHMergeCommand{Delete: true, Body: "Body text"}),
+			Entry("--author-email keeps the PR number",
+				[]string{"42", "--author-email", "a@b.c"},
+				parser.GHMergeCommand{PRNumber: 42, AuthorEmail: "a@b.c"}),
+			Entry("-A keeps the PR number", []string{"42", "-A", "a@b.c"},
+				parser.GHMergeCommand{PRNumber: 42, AuthorEmail: "a@b.c"}),
+		)
+
 		Context("with value flags", func() {
 			It("parses --subject flag", func() {
 				cmd := parser.Command{

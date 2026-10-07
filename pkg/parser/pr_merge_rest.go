@@ -130,10 +130,12 @@ func parseRequestItems(body string) (map[string]string, bool) {
 	return fields, true
 }
 
-// QueryFields returns the query string parameters of a raw endpoint or URL.
-// GitHub reads request parameters from the query too, and gh api moves its
-// fields there when --input carries the body.
-func QueryFields(raw string) map[string]string {
+// QueryFields returns every value of each query string parameter of a raw
+// endpoint or URL, in order. GitHub reads request parameters from the query
+// too, and gh api moves its fields there when --input carries the body. A key
+// can repeat, and which value the API reads is not documented, so all are
+// kept.
+func QueryFields(raw string) map[string][]string {
 	_, query, found := strings.Cut(raw, "?")
 	if !found {
 		return nil
@@ -144,13 +146,5 @@ func QueryFields(raw string) map[string]string {
 		return nil
 	}
 
-	fields := make(map[string]string, len(values))
-
-	for key, value := range values {
-		if len(value) > 0 {
-			fields[key] = value[len(value)-1]
-		}
-	}
-
-	return fields
+	return values
 }

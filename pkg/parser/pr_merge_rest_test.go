@@ -27,9 +27,9 @@ var _ = Describe("REST pull request merge", func() {
 		Entry("issues instead of pulls", "repos/o/r/issues/1/merge", "", false),
 	)
 
-	It("QueryFields reads the query string", func() {
-		Expect(parser.QueryFields("repos/o/r/pulls/1/merge?merge_method=squash&a=1")).
-			To(Equal(map[string]string{"merge_method": "squash", "a": "1"}))
+	It("QueryFields reads every value of the query string", func() {
+		Expect(parser.QueryFields("repos/o/r/pulls/1/merge?merge_method=squash&a=1&a=2")).
+			To(Equal(map[string][]string{"merge_method": {"squash"}, "a": {"1", "2"}}))
 		Expect(parser.QueryFields("repos/o/r/pulls/1/merge")).To(BeNil())
 	})
 
