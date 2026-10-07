@@ -163,35 +163,7 @@ func (*PushValidator) extractRemote(
 	runner GitRunner,
 ) (string, *validator.Result) {
 	if len(gitCmd.Args) == 0 {
-		if repo := pushRepo(gitCmd); repo != "" {
-			return repo, nil
-		}
-
-		branch, err := runner.GetCurrentBranch()
-		if err != nil {
-			if unavailable := runnerUnavailable(
-				err,
-				"Could not determine the current git branch",
-			); unavailable != nil {
-				return "", unavailable
-			}
-
-			return defaultRemote, nil
-		}
-
-		remote, err := runner.GetBranchRemote(branch)
-		if err != nil {
-			if unavailable := runnerUnavailable(
-				err,
-				"Could not determine the branch's git remote",
-			); unavailable != nil {
-				return "", unavailable
-			}
-
-			return defaultRemote, nil
-		}
-
-		return remote, nil
+		return extractImplicitRemote(gitCmd, runner)
 	}
 
 	for _, arg := range gitCmd.Args {
@@ -201,6 +173,41 @@ func (*PushValidator) extractRemote(
 	}
 
 	return "", nil
+}
+
+func extractImplicitRemote(
+	gitCmd *parser.GitCommand,
+	runner GitRunner,
+) (string, *validator.Result) {
+	if repo := pushRepo(gitCmd); repo != "" {
+		return repo, nil
+	}
+
+	branch, err := runner.GetCurrentBranch()
+	if err != nil {
+		if unavailable := runnerUnavailable(
+			err,
+			"Could not determine the current git branch",
+		); unavailable != nil {
+			return "", unavailable
+		}
+
+		return defaultRemote, nil
+	}
+
+	remote, err := runner.GetBranchRemote(branch)
+	if err != nil {
+		if unavailable := runnerUnavailable(
+			err,
+			"Could not determine the branch's git remote",
+		); unavailable != nil {
+			return "", unavailable
+		}
+
+		return defaultRemote, nil
+	}
+
+	return remote, nil
 }
 
 func runnerUnavailable(err error, message string) *validator.Result {
