@@ -120,6 +120,13 @@ var _ = Describe("Commands chained after a function definition", func() {
 		Expect(result.Truncated).To(BeFalse())
 	})
 
+	It("walks an AND branch when a negated redefinition fails", func() {
+		result := parse("f() { :; }; readonly -f f; ! f() { :; } && git commit -m bad")
+
+		Expect(gitLines(result)).To(ConsistOf("commit -m bad"))
+		Expect(result.Truncated).To(BeFalse())
+	})
+
 	DescribeTable("follows mixed lists after a negated definition",
 		func(command string, expected ...string) {
 			result := parse(command)
