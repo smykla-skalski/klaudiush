@@ -929,6 +929,10 @@ const maxScannedRunners = 8
 // command that is not a known launcher, covering runners such as mise exec,
 // nix run, docker run and ssh without listing each one.
 func scanLaunch(cmd Command) launch {
+	if child, ok := remoteDynamicContainer(cmd); ok {
+		return launch{commands: []Command{child}}
+	}
+
 	runners := 0
 
 	for i, arg := range cmd.Args {
@@ -960,6 +964,137 @@ func scanLaunch(cmd Command) launch {
 	}
 
 	return launch{}
+}
+
+// remoteDynamicContainer reports a container subcommand built dynamically
+// after a remote launcher has reached its command operand.
+func remoteDynamicContainer(cmd Command) (Command, bool) {
+	for at, arg := range cmd.Args {
+		if !remoteCommandAt(cmd, at) {
+			continue
+		}
+
+		name := arg
+		rest := cmd.Args[at+1:]
+
+		if fields := remoteShellFields(arg); len(fields) > 1 {
+			name = fields[0]
+			rest = slices.Concat(fields[1:], rest)
+		}
+
+		if !isContainerRunner(commandName(name)) {
+			continue
+		}
+
+		_, detail := runSubcommand(rest, mayBeDynamic)
+		if detail != "" {
+			return childCommand(cmd, name, rest), true
+		}
+	}
+
+	return Command{}, false
+}
+
+var remoteParam = regexp.MustCompile(`^"?\$([A-Za-z_][A-Za-z0-9_]*|[0-9@*#?!$-])`)
+
+// remoteShellFields marks expansions interpreted by the remote shell.
+func remoteShellFields(command string) []string {
+	fields := strings.Fields(command)
+
+	for i, field := range fields {
+		match := remoteParam.FindStringSubmatch(field)
+		switch {
+		case len(match) > 1:
+			fields[i] = "${" + match[1] + "}"
+		case strings.HasPrefix(field, "$("), strings.HasPrefix(field, "`"):
+			fields[i] = unresolvedWord
+		}
+	}
+
+	return fields
+}
+
+func remoteCommandAt(cmd Command, at int) bool {
+	switch cmd.Name {
+	case "ssh":
+		idx, ok := commandIndex(launcher{
+			valueFlags: strings.Fields(
+				"-B -b -c -D -E -e -F -I -i -J -L -l -m -O -o -P -p -Q -R -S -W -w",
+			),
+			stopFlags:   strings.Fields("-G -N -O -Q -V"),
+			shortValues: "BbcDEeFIiJLlmOopQRSWw",
+			operands:    1,
+		}, cmd.Args)
+
+		return ok && idx == at
+	case "mosh":
+		idx, ok := commandIndex(launcher{
+			valueFlags:  strings.Fields("-p --bind-server --family --predict --ssh"),
+			stopFlags:   strings.Fields("--help --version"),
+			shortValues: "p",
+			operands:    1,
+		}, cmd.Args)
+
+		return ok && idx == at
+	case "kubectl", "oc":
+		return kubectlRemoteCommandAt(cmd.Args, at)
+	case "gcloud":
+		return gcloudRemoteCommandAt(cmd.Args, at)
+	default:
+		return false
+	}
+}
+
+func kubectlRemoteCommandAt(args []string, at int) bool {
+	idx, ok := commandIndex(launcher{valueFlags: strings.Fields(
+		"-n -s --namespace --context --cluster --user --kubeconfig --server --token " +
+			"--request-timeout --cache-dir --as --as-group --as-uid " +
+			"--certificate-authority --client-certificate --client-key --password " +
+			"--profile --profile-output --tls-server-name --username",
+	)}, args)
+	if !ok || args[idx] != execBuiltin {
+		return false
+	}
+
+	return separatedRemoteCommandAt(args, idx, at)
+}
+
+func gcloudRemoteCommandAt(args []string, at int) bool {
+	compute, ok := commandIndex(launcher{valueFlags: gcloudValueFlags()}, args)
+	if !ok || args[compute] != "compute" {
+		return false
+	}
+
+	sshOffset, ok := commandIndex(launcher{valueFlags: append(
+		gcloudValueFlags(), "--zone",
+	)}, args[compute+1:])
+	if !ok {
+		return false
+	}
+
+	ssh := compute + 1 + sshOffset
+	if args[ssh] != "ssh" {
+		return false
+	}
+
+	return separatedRemoteCommandAt(args, ssh, at)
+}
+
+func gcloudValueFlags() []string {
+	return strings.Fields(
+		"--account --access-token-file --billing-project --configuration --flags-file " +
+			"--flatten --format --impersonate-service-account --project --trace-token --verbosity",
+	)
+}
+
+func separatedRemoteCommandAt(args []string, launcherAt, commandAt int) bool {
+	for i := launcherAt + 1; i < commandAt; i++ {
+		if args[i] == endOfOptions {
+			return i > launcherAt+1 && i+1 == commandAt
+		}
+	}
+
+	return false
 }
 
 // launchesTracked reports whether arg followed by rest runs something worth

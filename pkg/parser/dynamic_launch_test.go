@@ -128,6 +128,51 @@ var _ = Describe("Dynamic launch words", func() {
 			parser.ProgramWordOperation, parser.DetailWordVariable, "docker")
 	})
 
+	It("follows a literal container entrypoint behind ssh", func() {
+		result := parse("ssh host docker run --entrypoint git img push --force")
+
+		Expect(result.Truncated).To(BeFalse())
+		Expect(pushes(result)).To(BeNumerically(">", 0))
+	})
+
+	DescribeTable(
+		"fails closed on dynamic container subcommands behind remote launchers",
+		func(command string) {
+			failsClosed(
+				command,
+				parser.ContainerRunOperation,
+				parser.DetailWordVariable,
+				"docker",
+			)
+		},
+		Entry("ssh", "ssh host docker $SUB img push"),
+		Entry("quoted ssh", `ssh host 'docker $SUB img push'`),
+		Entry("mosh", "mosh host docker $SUB img push"),
+		Entry("kubectl exec", "kubectl exec pod -- docker $SUB img push"),
+		Entry("kubectl value option",
+			"kubectl --certificate-authority ca exec pod -- docker $SUB img push"),
+		Entry("oc exec", "oc exec pod -- docker $SUB img push"),
+		Entry("gcloud compute ssh", "gcloud compute ssh host -- docker $SUB img push"),
+		Entry("gcloud value option",
+			"gcloud --impersonate-service-account svc compute ssh host -- docker $SUB img push"),
+		Entry("gcloud group value option",
+			"gcloud compute --project p ssh host -- docker $SUB img push"),
+	)
+
+	DescribeTable(
+		"leaves container words outside remote commands alone",
+		func(command string) {
+			result := parse(command)
+
+			Expect(result.Truncated).To(BeFalse(), command)
+		},
+		Entry("systemctl data", `systemctl restart docker "$SUB"`),
+		Entry("ssh option value", `ssh -i docker "$SUB"`),
+		Entry("ssh no command", `ssh -N host docker $SUB`),
+		Entry("kubectl argument", `kubectl get exec pod -- docker $SUB`),
+		Entry("gcloud argument", `gcloud storage compute ssh host -- docker $SUB`),
+	)
+
 	It("passes unseen xargs input to git add as {}", func() {
 		result := parse("ls -m | xargs git add")
 
