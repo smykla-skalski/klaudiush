@@ -81,6 +81,20 @@ func ParseRequestFields(body string) (map[string]string, bool) {
 	return parseRequestItems(trimmed)
 }
 
+// StripQueryItems drops httpie and xh "key==value" query items from request
+// body text, since they go to the URL rather than the body.
+func StripQueryItems(body string) string {
+	var lines []string
+
+	for line := range strings.SplitSeq(body, "\n") {
+		if _, _, isQuery := parseQueryItem(line); !isQuery {
+			lines = append(lines, line)
+		}
+	}
+
+	return strings.Join(lines, "\n")
+}
+
 // parseJSONFields reads the string values of a JSON object body.
 func parseJSONFields(body string) (map[string]string, bool) {
 	var raw map[string]json.RawMessage
@@ -102,18 +116,12 @@ func parseJSONFields(body string) (map[string]string, bool) {
 	return fields, true
 }
 
-// parseRequestItems reads "key=value" and "key:=<JSON string>" items. A
-// "key==value" query item is not part of the body and is skipped; callers read
-// it from the request query. Any other item form makes the whole body unknown
-// rather than partly read.
+// parseRequestItems reads "key=value" and "key:=<JSON string>" items. Any other
+// item form makes the whole body unknown rather than partly read.
 func parseRequestItems(body string) (map[string]string, bool) {
 	fields := map[string]string{}
 
 	for line := range strings.SplitSeq(body, "\n") {
-		if _, _, isQuery := parseQueryItem(line); isQuery {
-			continue
-		}
-
 		if key, rawJSON, found := strings.Cut(line, ":="); found && !strings.Contains(key, "=") {
 			var text string
 			if err := json.Unmarshal([]byte(rawJSON), &text); err != nil {

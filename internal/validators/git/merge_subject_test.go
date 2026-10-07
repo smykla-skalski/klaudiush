@@ -160,6 +160,29 @@ var _ = Describe("MergeValidator squash commit subject", func() {
 		Expect(result.Message).To(ContainSubstring(subjectLabel))
 	})
 
+	DescribeTable("reads a body sent on stdin next to httpie query items or from a redirect",
+		func(command string) {
+			result := validate(command)
+
+			Expect(result.ShouldBlock).To(BeTrue())
+			Expect(result.Reference).To(Equal(validator.RefGitMergeMessage))
+			Expect(result.Message).To(ContainSubstring(subjectLabel))
+		},
+		Entry("httpie with a query item and a heredoc body",
+			`http PUT `+restMergeURL+" page==1 <<'EOF'\n"+
+				`{"merge_method":"squash","commit_message":"Body. `+signoff+`","commit_title":"Add endpoint"}`+
+				"\nEOF"),
+		Entry(
+			"xh with a query item and a piped body",
+			`echo '{"merge_method":"squash","commit_message":"Body. `+signoff+`","commit_title":"Add endpoint"}' | `+
+				`xh PUT `+restMergeURL+` page==1`,
+		),
+		Entry("httpie with a body redirected from a file written by a heredoc",
+			"cat > body.json <<'EOF'\n"+
+				`{"merge_method":"squash","commit_message":"Body. `+signoff+`","commit_title":"Add endpoint"}`+
+				"\nEOF\nhttp PUT "+restMergeURL+" < body.json"),
+	)
+
 	It("checks the PR title as well as a valid subject", func() {
 		runner.stdout = invalidPRDetails
 		result := validate(ghSquash + `--subject "feat(api): add endpoint"`)

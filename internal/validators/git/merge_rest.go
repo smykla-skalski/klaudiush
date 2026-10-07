@@ -83,7 +83,7 @@ func (v *MergeValidator) restMerges(result *parser.ParseResult, cmd parser.Comma
 		var targets []mergeTarget
 
 		for _, req := range parser.ParseHTTPClientCommands(cmd) {
-			if target, ok := v.httpClientMerge(result, req, cmd.Stdin); ok {
+			if target, ok := v.httpClientMerge(result, req, cmd); ok {
 				targets = append(targets, target)
 			}
 		}
@@ -123,7 +123,7 @@ func (v *MergeValidator) ghAPIMerge(
 			result, apiCmd.InputFile, apiCmd.WorkingDirectory, apiCmd.Location,
 		)
 	case readsStdinBody(apiCmd.RawArgs):
-		body = fieldsFromText(cmd.Stdin)
+		body = v.stdinFields(result, cmd)
 	}
 
 	body.addFields(expandFields(result, apiCmd.Fields), apiCmd.FieldFiles)
@@ -182,7 +182,7 @@ func readsStdinBody(args []string) bool {
 func (v *MergeValidator) httpClientMerge(
 	result *parser.ParseResult,
 	req *parser.HTTPRequest,
-	stdin string,
+	cmd parser.Command,
 ) (mergeTarget, bool) {
 	rawURL := result.ExpandVars(req.URL)
 	host, path := parser.SplitRequestURL(rawURL)
@@ -197,15 +197,21 @@ func (v *MergeValidator) httpClientMerge(
 		return mergeTarget{}, false
 	}
 
+	// httpie and xh query items sit in the body text but go to the URL.
+	bodyText := req.Body
+	if len(req.Query) > 0 {
+		bodyText = parser.StripQueryItems(bodyText)
+	}
+
 	var body restMergeFields
 
 	switch {
 	case req.BodyFile != "":
 		body = v.readFieldsFromFile(result, req.BodyFile, req.WorkingDirectory, req.Location)
-	case req.Body != "":
-		body = fieldsFromText(result.ExpandVars(req.Body))
+	case bodyText != "":
+		body = fieldsFromText(result.ExpandVars(bodyText))
 	default:
-		body = fieldsFromText(stdin)
+		body = v.stdinFields(result, cmd)
 	}
 
 	body.addQuery(rawURL)
@@ -338,6 +344,19 @@ func (v *MergeValidator) readFieldsFromFile(
 	}
 
 	return fieldsFromText(content)
+}
+
+// stdinFields reads a request body sent on stdin: a heredoc or pipe, or a file
+// redirected with <.
+func (v *MergeValidator) stdinFields(
+	result *parser.ParseResult,
+	cmd parser.Command,
+) restMergeFields {
+	if cmd.Stdin == "" && cmd.StdinFile != "" {
+		return v.readFieldsFromFile(result, cmd.StdinFile, cmd.WorkingDirectory, cmd.Location)
+	}
+
+	return fieldsFromText(cmd.Stdin)
 }
 
 func fieldsFromText(text string) restMergeFields {

@@ -27,6 +27,12 @@ var _ = Describe("REST pull request merge", func() {
 		Entry("issues instead of pulls", "repos/o/r/issues/1/merge", "", false),
 	)
 
+	It("StripQueryItems drops only httpie query items", func() {
+		Expect(parser.StripQueryItems("a=1\npage==2\nb:=\"x\"\nc\\==3")).
+			To(Equal("a=1\nb:=\"x\"\nc\\==3"))
+		Expect(parser.StripQueryItems("page==2")).To(BeEmpty())
+	})
+
 	It("QueryFields reads every value of the query string", func() {
 		Expect(parser.QueryFields("repos/o/r/pulls/1/merge?merge_method=squash&a=1&a=2")).
 			To(Equal(map[string][]string{"merge_method": {"squash"}, "a": {"1", "2"}}))
@@ -55,9 +61,7 @@ var _ = Describe("REST pull request merge", func() {
 		Entry("httpie items",
 			"merge_method=squash\ncommit_message:=\"body\"",
 			map[string]string{"merge_method": "squash", "commit_message": "body"}, true),
-		Entry("httpie query item, which is not a body field, is skipped",
-			"page==2\nmerge_method=squash", map[string]string{"merge_method": "squash"}, true),
-		Entry("an escaped separator is not a query item", "page\\==2", nil, false),
+		Entry("httpie query item is not a body field", "page==2", nil, false),
 		Entry("non-string JSON item", "draft:=true", nil, false),
 		Entry("free text", "hello world", nil, false),
 	)
