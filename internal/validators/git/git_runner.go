@@ -111,15 +111,8 @@ func (r *CLIGitRunnerWithPath) GetRemoteURL(remote string) (string, error) {
 	defer cancel()
 
 	result := r.runner.Run(ctx, "git", "-C", r.path, "remote", "get-url", remote)
-	if result.Err != nil {
-		if result.ExitCode == 2 && strings.Contains(result.Stderr, "No such remote") {
-			return "", errors.Wrapf(gitpkg.ErrRemoteNotFound, "remote %q", remote)
-		}
 
-		return "", result.Err
-	}
-
-	return strings.TrimSpace(result.Stdout), nil
+	return remoteURLResult(remote, result)
 }
 
 // GetCurrentBranch returns the current branch name
@@ -127,16 +120,9 @@ func (r *CLIGitRunnerWithPath) GetCurrentBranch() (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), r.timeout)
 	defer cancel()
 
-	result := r.runner.Run(ctx, "git", "-C", r.path, "symbolic-ref", "--short", "HEAD")
-	if result.Err != nil {
-		if result.ExitCode == 1 && result.Stderr == "" {
-			return "", gitpkg.ErrDetachedHead
-		}
+	result := r.runner.Run(ctx, "git", "-C", r.path, "symbolic-ref", "--quiet", "--short", "HEAD")
 
-		return "", result.Err
-	}
-
-	return strings.TrimSpace(result.Stdout), nil
+	return currentBranchResult(result)
 }
 
 // GetBranchRemote returns the tracking remote for the given branch
@@ -147,15 +133,8 @@ func (r *CLIGitRunnerWithPath) GetBranchRemote(branch string) (string, error) {
 	configKey := "branch." + branch + ".remote"
 
 	result := r.runner.Run(ctx, "git", "-C", r.path, "config", configKey)
-	if result.Err != nil {
-		if result.ExitCode == 1 && result.Stderr == "" {
-			return "", errors.Wrapf(gitpkg.ErrNoTracking, "branch %q", branch)
-		}
 
-		return "", result.Err
-	}
-
-	return strings.TrimSpace(result.Stdout), nil
+	return branchRemoteResult(branch, result)
 }
 
 // GetRemotes returns the list of all remotes with their URLs
@@ -336,6 +315,33 @@ func (r *CLIGitRunner) GetRemoteURL(remote string) (string, error) {
 	defer cancel()
 
 	result := r.runner.Run(ctx, "git", "remote", "get-url", remote)
+
+	return remoteURLResult(remote, result)
+}
+
+// GetCurrentBranch returns the current branch name
+func (r *CLIGitRunner) GetCurrentBranch() (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), r.timeout)
+	defer cancel()
+
+	result := r.runner.Run(ctx, "git", "symbolic-ref", "--quiet", "--short", "HEAD")
+
+	return currentBranchResult(result)
+}
+
+// GetBranchRemote returns the tracking remote for the given branch
+func (r *CLIGitRunner) GetBranchRemote(branch string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), r.timeout)
+	defer cancel()
+
+	configKey := "branch." + branch + ".remote"
+
+	result := r.runner.Run(ctx, "git", "config", configKey)
+
+	return branchRemoteResult(branch, result)
+}
+
+func remoteURLResult(remote string, result exec.CommandResult) (string, error) {
 	if result.Err != nil {
 		if result.ExitCode == 2 && strings.Contains(result.Stderr, "No such remote") {
 			return "", errors.Wrapf(gitpkg.ErrRemoteNotFound, "remote %q", remote)
@@ -347,12 +353,7 @@ func (r *CLIGitRunner) GetRemoteURL(remote string) (string, error) {
 	return strings.TrimSpace(result.Stdout), nil
 }
 
-// GetCurrentBranch returns the current branch name
-func (r *CLIGitRunner) GetCurrentBranch() (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), r.timeout)
-	defer cancel()
-
-	result := r.runner.Run(ctx, "git", "symbolic-ref", "--short", "HEAD")
+func currentBranchResult(result exec.CommandResult) (string, error) {
 	if result.Err != nil {
 		if result.ExitCode == 1 && result.Stderr == "" {
 			return "", gitpkg.ErrDetachedHead
@@ -364,14 +365,7 @@ func (r *CLIGitRunner) GetCurrentBranch() (string, error) {
 	return strings.TrimSpace(result.Stdout), nil
 }
 
-// GetBranchRemote returns the tracking remote for the given branch
-func (r *CLIGitRunner) GetBranchRemote(branch string) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), r.timeout)
-	defer cancel()
-
-	configKey := "branch." + branch + ".remote"
-
-	result := r.runner.Run(ctx, "git", "config", configKey)
+func branchRemoteResult(branch string, result exec.CommandResult) (string, error) {
 	if result.Err != nil {
 		if result.ExitCode == 1 && result.Stderr == "" {
 			return "", errors.Wrapf(gitpkg.ErrNoTracking, "branch %q", branch)

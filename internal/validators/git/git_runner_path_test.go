@@ -7,6 +7,7 @@ import (
 	"github.com/cockroachdb/errors"
 	gogit "github.com/go-git/go-git/v6"
 	"github.com/go-git/go-git/v6/config"
+	"github.com/go-git/go-git/v6/plumbing"
 	"github.com/go-git/go-git/v6/plumbing/object"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -264,6 +265,17 @@ var _ = Describe("CLIGitRunnerWithPath", func() {
 			branch, err := runner.GetCurrentBranch()
 			Expect(err).NotTo(HaveOccurred())
 			Expect(branch).To(Equal("master"))
+		})
+
+		It("returns ErrDetachedHead for a detached HEAD", func() {
+			head, err := repo.Head()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(repo.Storer.SetReference(
+				plumbing.NewHashReference(plumbing.HEAD, head.Hash()),
+			)).To(Succeed())
+
+			_, err = runner.GetCurrentBranch()
+			Expect(errors.Is(err, gitpkg.ErrDetachedHead)).To(BeTrue())
 		})
 	})
 
