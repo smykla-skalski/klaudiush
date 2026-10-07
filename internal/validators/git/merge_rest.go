@@ -209,7 +209,7 @@ func (v *MergeValidator) httpClientMerge(
 	case req.BodyFile != "":
 		body = v.readFieldsFromFile(result, req.BodyFile, req.WorkingDirectory, req.Location)
 	case len(req.DataItems) > 0:
-		body = v.fieldsFromItems(result, cmd, req)
+		body = fieldsFromItems(result, cmd, req)
 	case req.DataBody != "":
 		var variants []restMergeFields
 
@@ -381,9 +381,10 @@ func (v *MergeValidator) stdinFields(
 }
 
 // fieldsFromItems reads httpie and xh items one by one. A "field=@path" item
-// embeds the file, which is read when it can be; otherwise its value is the
-// literal text, as httpie items were read before.
-func (v *MergeValidator) fieldsFromItems(
+// embeds the file. Only content written earlier on the line is read, since a
+// file on disk may be replaced by a write the parser does not follow before
+// the request runs; otherwise the value is the literal text, as before.
+func fieldsFromItems(
 	result *parser.ParseResult,
 	cmd parser.Command,
 	req *parser.HTTPRequest,
@@ -399,7 +400,7 @@ func (v *MergeValidator) fieldsFromItems(
 		}
 
 		for key, path := range files {
-			content, read := v.readText(result, path, req.WorkingDirectory, req.Location)
+			content, read := result.InlineFileContent(path, req.WorkingDirectory, req.Location)
 			if !read {
 				content = "@" + path
 			}

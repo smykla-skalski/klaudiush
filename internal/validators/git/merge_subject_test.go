@@ -241,6 +241,10 @@ var _ = Describe("MergeValidator squash commit subject", func() {
 		Entry("xh commit_message from a missing file, read literally as before",
 			`xh PUT `+restMergeURL+` merge_method=squash commit_message=@missing-body.txt`,
 			validator.RefGitMergeSignoff),
+		Entry("httpie merge_method from a file on disk, read literally as before",
+			`http PUT `+restMergeURL+` merge_method=@go.mod "commit_message=Body. `+signoff+`" `+
+				`commit_title="Add endpoint"`,
+			validator.RefGitMergeMessage),
 	)
 
 	DescribeTable("checks the values a loop or trap sends after a later assignment",
