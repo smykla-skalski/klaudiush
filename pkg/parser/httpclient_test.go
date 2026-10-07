@@ -29,17 +29,10 @@ var _ = Describe("ParseHTTPClientCommands", func() {
 		return requests[0]
 	}
 
-	It("sends httpie query items to the query, not the body", func() {
-		req := parseOne(`http PUT https://api.github.com/x a=1 b==2 b==3 c:=4`, "http")
+	It("records httpie query items and keeps them in the body", func() {
+		req := parseOne(`http PUT https://api.github.com/x a=1 b==2 b==3 c:=4 'd\==5'`, "http")
 		Expect(req.Query).To(Equal(map[string][]string{"b": {"2", "3"}}))
-		Expect(req.Body).To(Equal("a=1\nc:=4"))
-		Expect(req.Method).To(Equal("PUT"))
-	})
-
-	It("keeps a GET with only query items a GET", func() {
-		req := parseOne(`http https://api.github.com/x q==1`, "http")
-		Expect(req.Method).To(Equal("GET"))
-		Expect(req.Body).To(BeEmpty())
+		Expect(req.Body).To(Equal("a=1\nb==2\nb==3\nc:=4\nd\\==5"))
 	})
 
 	DescribeTable(

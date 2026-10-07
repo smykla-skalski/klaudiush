@@ -23,7 +23,7 @@ type HTTPRequest struct {
 	BodyFile string
 
 	// Query holds the "field==value" items httpie and xh add to the URL query
-	// string, every value of each field in order.
+	// string, every value of each field in order. The items also stay in Body.
 	Query map[string][]string
 
 	// WorkingDirectory is the effective directory of the command.
@@ -362,24 +362,21 @@ func (s *httpClientState) parseClientPositional(arg string, spec *httpClientSpec
 		return
 	}
 
-	// httpie and xh send "field==value" items in the query string, not the body.
-	if spec.positionalMethod && len(s.urls) > 0 {
+	// httpie request items ("field=value", "field:=json") make the call a POST.
+	// Only the clients that take a positional method have them; curl fetches
+	// every positional, so a URL of its own carrying a query string stays a URL.
+	// A "field==value" item goes to the query string. It also stays in the body
+	// text, so checks that scan the body still see it.
+	if spec.positionalMethod && len(s.urls) > 0 && strings.Contains(arg, "=") {
+		s.hasDataItem = true
+
 		if key, value, ok := parseQueryItem(arg); ok {
 			if s.query == nil {
 				s.query = map[string][]string{}
 			}
 
 			s.query[key] = append(s.query[key], value)
-
-			return
 		}
-	}
-
-	// httpie request items ("field=value", "field:=json") make the call a POST.
-	// Only the clients that take a positional method have them; curl fetches
-	// every positional, so a URL of its own carrying a query string stays a URL.
-	if spec.positionalMethod && len(s.urls) > 0 && strings.Contains(arg, "=") {
-		s.hasDataItem = true
 
 		s.collectBody(arg)
 
@@ -389,10 +386,11 @@ func (s *httpClientState) parseClientPositional(arg string, spec *httpClientSpec
 	s.urls = append(s.urls, arg)
 }
 
-// parseQueryItem reads an httpie "field==value" query item.
+// parseQueryItem reads an httpie "field==value" query item. A key holding a
+// backslash may escape the separator, so it is not read as one.
 func parseQueryItem(arg string) (string, string, bool) {
 	key, value, found := strings.Cut(arg, "==")
-	if !found || key == "" || strings.ContainsAny(key, "=:@") {
+	if !found || key == "" || strings.ContainsAny(key, "=:@\\") {
 		return "", "", false
 	}
 

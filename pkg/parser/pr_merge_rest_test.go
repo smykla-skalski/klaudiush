@@ -55,7 +55,9 @@ var _ = Describe("REST pull request merge", func() {
 		Entry("httpie items",
 			"merge_method=squash\ncommit_message:=\"body\"",
 			map[string]string{"merge_method": "squash", "commit_message": "body"}, true),
-		Entry("httpie query item is not a body field", "page==2", nil, false),
+		Entry("httpie query item, which is not a body field, is skipped",
+			"page==2\nmerge_method=squash", map[string]string{"merge_method": "squash"}, true),
+		Entry("an escaped separator is not a query item", "page\\==2", nil, false),
 		Entry("non-string JSON item", "draft:=true", nil, false),
 		Entry("free text", "hello world", nil, false),
 	)
