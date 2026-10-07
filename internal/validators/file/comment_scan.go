@@ -100,7 +100,7 @@ var slashCommentExts = map[string]bool{
 	".hh": true, ".hpp": true, ".hxx": true, ".h++": true, ".inl": true, ".ipp": true,
 	".tpp": true, ".cppm": true, ".ixx": true, ".ino": true, ".m": true, ".mm": true,
 	".cu": true, ".cuh": true, ".glsl": true, ".vert": true, ".frag": true, ".hlsl": true,
-	".metal": true, ".fs": true, ".fsx": true,
+	".metal": true, ".fs": true, ".fsi": true, ".fsx": true, ".csx": true,
 	".cs": true, ".swift": true, ".go": true, ".java": true, ".kt": true, ".kts": true,
 	".scala": true, ".dart": true,
 	".js": true, ".jsx": true, ".mjs": true, ".cjs": true,

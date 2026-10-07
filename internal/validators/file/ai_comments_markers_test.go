@@ -95,6 +95,8 @@ var _ = Describe("AICommentValidator in languages where # is code", func() {
 		Entry("arduino include", "/repo/sketch/sketch.ino", "#include <Arduino.h>"),
 		Entry("f# compiler directive", "/repo/src/App.fs",
 			"#if DEBUG\nlet level = 1\n#endif"),
+		Entry("c# script directives", "/repo/build.csx",
+			"#r \"nuget: Newtonsoft.Json, 13.0.3\"\n#load \"common.csx\""),
 	)
 
 	DescribeTable(
@@ -110,27 +112,32 @@ var _ = Describe("AICommentValidator in languages where # is code", func() {
 	)
 
 	DescribeTable(
-		"strict mode still reports real comments",
-		func(path, content string) {
+		"strict mode still reports real comments and only them",
+		func(path, content, reported string) {
 			result := strict.Validate(context.Background(), writeCtx(path, content))
 			Expect(result.Passed).To(BeFalse())
+			Expect(result.Message).To(HaveSuffix("\n\n" + reported))
 		},
 		Entry("rust line comment", "/repo/src/lib.rs",
-			"fn f() {}\n// holds the running total"),
+			"fn f() {}\n// holds the running total", "Line 2: // holds the running total"),
 		Entry("rust comment after an attribute", "/repo/src/lib.rs",
-			"#[test] // checks the empty case\nfn empty() {}"),
-		Entry("rust comment after an attribute above a const", "/repo/src/lib.rs",
-			"#[must_use] // Limit caps retries\nconst LIMIT: u8 = 3;"),
+			"#[test] // checks the empty case\nfn empty() {}", "Line 1: // checks the empty case"),
+		Entry(
+			"rust comment after an attribute above a const",
+			"/repo/src/lib.rs",
+			"#[must_use] // Limit caps retries\nconst LIMIT: u8 = 3;",
+			"Line 1: // Limit caps retries",
+		),
 		Entry("c comment after a directive", "/repo/src/main.c",
-			"#define MAX 10 // holds the cap"),
+			"#define MAX 10 // holds the cap", "Line 1: // holds the cap"),
 		Entry("typescript comment after a private field", "/repo/src/counter.ts",
-			"class C {\n  #count = 0; // holds the total\n}"),
+			"class C {\n  #count = 0; // holds the total\n}", "Line 2: // holds the total"),
 		Entry("python hash comment", "/repo/app.py",
-			"x = 1\n# holds the total"),
+			"x = 1\n# holds the total", "Line 2: # holds the total"),
 		Entry("ruby hash comment", "/repo/app.rb",
-			"x = 1\n# holds the total"),
+			"x = 1\n# holds the total", "Line 2: # holds the total"),
 		Entry("hash comment in a file of unknown language", "/repo/app.unknown",
-			"x = 1\n# holds the total"),
+			"x = 1\n# holds the total", "Line 2: # holds the total"),
 	)
 
 	DescribeTable(
@@ -147,17 +154,18 @@ var _ = Describe("AICommentValidator in languages where # is code", func() {
 	)
 
 	DescribeTable(
-		"filler mode still reports filler comments",
-		func(path, content string) {
+		"filler mode still reports filler comments and only them",
+		func(path, content, reported string) {
 			result := filler.Validate(context.Background(), writeCtx(path, content))
 			Expect(result.Passed).To(BeFalse())
+			Expect(result.Message).To(HaveSuffix("\n\n" + reported))
 		},
 		Entry("rust filler line comment", "/repo/src/lib.rs",
-			"#[test]\nfn empty() {\n    // Set the value\n    let v = 1;\n}"),
+			"#[test]\nfn empty() {\n    // Set the value\n    let v = 1;\n}", "Line 3: // Set"),
 		Entry("c filler comment after a directive", "/repo/src/main.c",
-			"#define CAP 10 // Set the cap"),
+			"#define CAP 10 // Set the cap", "Line 1: // Set"),
 		Entry("shell filler hash comment", "/repo/run.sh",
-			"# Set the value\nX=1"),
+			"# Set the value\nX=1", "Line 1: # Set"),
 	)
 
 	DescribeTable(
