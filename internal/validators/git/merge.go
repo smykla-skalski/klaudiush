@@ -163,6 +163,10 @@ func (v *MergeValidator) findMerges(result *parser.ParseResult) []mergeTarget {
 				continue
 			}
 
+			// Read variables set earlier on the line, as the REST fields are.
+			mergeCmd.Subject = result.ExpandVars(mergeCmd.Subject)
+			mergeCmd.Body = result.ExpandVars(mergeCmd.Body)
+
 			targets = append(targets, mergeTarget{cmd: mergeCmd, signoffHint: ghMergeSignoffHint})
 
 			continue
@@ -393,14 +397,21 @@ func (v *MergeValidator) validateSubjects(mergeCmd *parser.GHMergeCommand) *vali
 
 // mergeSubjects returns the squash commit subjects a merge sets in place of
 // the PR title: gh pr merge --subject, or each REST commit_title value. An
-// empty subject leaves the PR title in place, so it is skipped.
+// empty subject leaves the PR title in place, so it is skipped. A subject
+// holding a variable that cannot be resolved cannot be read, and is skipped
+// like --body-file. Trailing newlines are dropped, as command substitution
+// drops them.
 func mergeSubjects(mergeCmd *parser.GHMergeCommand) []string {
 	var subjects []string
 
 	for _, subject := range append([]string{mergeCmd.Subject}, mergeCmd.AltSubjects...) {
-		if subject != "" && !slices.Contains(subjects, subject) {
-			subjects = append(subjects, subject)
+		subject = strings.TrimRight(subject, "\n")
+		if subject == "" || parser.HasUnresolvedVars(subject) ||
+			slices.Contains(subjects, subject) {
+			continue
 		}
+
+		subjects = append(subjects, subject)
 	}
 
 	return subjects

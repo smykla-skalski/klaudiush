@@ -202,6 +202,8 @@ func (v *MergeValidator) httpClientMerge(
 	switch {
 	case req.BodyFile != "":
 		body = v.readFieldsFromFile(result, req.BodyFile, req.WorkingDirectory, req.Location)
+	case len(req.DataItems) > 0:
+		body = fieldsFromItems(result, req.DataItems)
 	case req.DataBody != "":
 		body = fieldsFromText(result.ExpandVars(req.DataBody))
 	default:
@@ -351,6 +353,24 @@ func (v *MergeValidator) stdinFields(
 	}
 
 	return fieldsFromText(cmd.Stdin)
+}
+
+func fieldsFromItems(result *parser.ParseResult, items []string) restMergeFields {
+	expanded := make([]string, 0, len(items))
+	for _, item := range items {
+		expanded = append(expanded, result.ExpandVars(item))
+	}
+
+	fields, ok := parser.ParseRequestItemList(expanded)
+	if !ok {
+		return restMergeFields{unreadable: true}
+	}
+
+	var body restMergeFields
+
+	body.addFields(fields, nil)
+
+	return body
 }
 
 func fieldsFromText(text string) restMergeFields {

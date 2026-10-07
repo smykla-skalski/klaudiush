@@ -187,6 +187,34 @@ var _ = Describe("MergeValidator squash commit subject", func() {
 				"\nEOF\nhttp PUT "+restMergeURL+" < body.json"),
 	)
 
+	DescribeTable("reads a subject from a variable or a heredoc, in both forms",
+		func(command string, wantPass bool) {
+			Expect(validate(command).Passed).To(Equal(wantPass))
+		},
+		Entry("gh pr merge with a valid subject variable",
+			`T="feat(api): add endpoint"; `+ghSquash+`--subject "$T"`, true),
+		Entry("gh pr merge with a bad subject variable",
+			`T="Add endpoint"; `+ghSquash+`--subject "$T"`, false),
+		Entry("gh pr merge with a body variable carrying the signoff",
+			`B="Body. `+signoff+`"; gh pr merge 42 --squash --body "$B"`, true),
+		Entry("gh pr merge with an unresolved subject variable, which is not inspected",
+			ghSquash+`--subject "$UNSET"`, true),
+		Entry("gh api with a bad commit_title variable",
+			`T="Add endpoint"; `+ghAPISquash+`-f commit_title="$T"`, false),
+		Entry("gh pr merge with a heredoc subject",
+			ghSquash+"--subject \"$(cat <<'X'\nfeat(api): add endpoint\nX\n)\"", true),
+		Entry("gh pr merge with a bad heredoc subject",
+			ghSquash+"--subject \"$(cat <<'X'\nAdd endpoint\nX\n)\"", false),
+	)
+
+	It("reads httpie items whose value spans lines one by one", func() {
+		result := validate(`http PUT ` + restMergeURL + ` merge_method=squash commit_title=bad ` +
+			`commit_message="x` + "\n\n" + signoff + `" note="a` + "\n" + `b"`)
+
+		Expect(result.Reference).To(Equal(validator.RefGitMergeMessage))
+		Expect(result.Message).To(ContainSubstring(subjectLabel))
+	})
+
 	It("checks the PR title as well as a valid subject", func() {
 		runner.stdout = invalidPRDetails
 		result := validate(ghSquash + `--subject "feat(api): add endpoint"`)

@@ -102,25 +102,21 @@ func parseJSONFields(body string) (map[string]string, bool) {
 	return fields, true
 }
 
-// parseRequestItems reads "key=value" and "key:=<JSON string>" items. Any other
-// item form makes the whole body unknown rather than partly read.
+// parseRequestItems reads "key=value" and "key:=<JSON string>" items, one per
+// line. Any other item form makes the whole body unknown rather than partly
+// read.
 func parseRequestItems(body string) (map[string]string, bool) {
+	return ParseRequestItemList(strings.Split(body, "\n"))
+}
+
+// ParseRequestItemList reads httpie and xh request items given one by one, so
+// a value may hold newlines. The bool is false when an item has another form.
+func ParseRequestItemList(items []string) (map[string]string, bool) {
 	fields := map[string]string{}
 
-	for line := range strings.SplitSeq(body, "\n") {
-		if key, rawJSON, found := strings.Cut(line, ":="); found && !strings.Contains(key, "=") {
-			var text string
-			if err := json.Unmarshal([]byte(rawJSON), &text); err != nil {
-				return nil, false
-			}
-
-			fields[key] = text
-
-			continue
-		}
-
-		key, value, found := strings.Cut(line, "=")
-		if !found || key == "" || strings.HasPrefix(value, "=") {
+	for _, item := range items {
+		key, value, ok := parseRequestItem(item)
+		if !ok {
 			return nil, false
 		}
 
@@ -128,6 +124,25 @@ func parseRequestItems(body string) (map[string]string, bool) {
 	}
 
 	return fields, true
+}
+
+// parseRequestItem reads one "key=value" or "key:=<JSON string>" item.
+func parseRequestItem(item string) (string, string, bool) {
+	if key, rawJSON, found := strings.Cut(item, ":="); found && !strings.Contains(key, "=") {
+		var text string
+		if err := json.Unmarshal([]byte(rawJSON), &text); err != nil {
+			return "", "", false
+		}
+
+		return key, text, true
+	}
+
+	key, value, found := strings.Cut(item, "=")
+	if !found || key == "" || strings.HasPrefix(value, "=") {
+		return "", "", false
+	}
+
+	return key, value, true
 }
 
 // QueryFields returns every value of each query string parameter of a raw

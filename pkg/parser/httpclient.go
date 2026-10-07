@@ -30,6 +30,11 @@ type HTTPRequest struct {
 	// request body.
 	DataBody string
 
+	// DataItems holds the httpie and xh "field=value" and "field:=json" items
+	// one by one, when they are the whole body. A value may span lines, which
+	// the joined DataBody cannot tell apart from separate items.
+	DataItems []string
+
 	// WorkingDirectory is the effective directory of the command.
 	WorkingDirectory string
 
@@ -248,6 +253,7 @@ func parseClientSegment(cmd Command, spec *httpClientSpec, args []string) []*HTT
 			BodyFile:         state.bodyFile,
 			Query:            state.query,
 			DataBody:         state.dataBody,
+			DataItems:        state.wholeBodyItems(),
 			WorkingDirectory: cmd.WorkingDirectory,
 			Location:         cmd.Location,
 		})
@@ -265,8 +271,19 @@ type httpClientState struct {
 	urls             []string
 	body             string
 	dataBody         string
+	dataItems        []string
+	flagBody         bool
 	bodyFile         string
 	query            map[string][]string
+}
+
+// wholeBodyItems returns the data items when nothing else adds to the body.
+func (s *httpClientState) wholeBodyItems() []string {
+	if s.flagBody || s.bodyFile != "" {
+		return nil
+	}
+
+	return s.dataItems
 }
 
 // resolveMethod applies the precedence every client shares: an explicit method
@@ -329,6 +346,7 @@ func (s *httpClientState) applyClientFlag(flag clientFlag, value string) {
 	case roleBodyFile:
 		s.setBodyFile(value)
 	case roleBody:
+		s.flagBody = true
 		s.collectBody(value)
 	case roleNone:
 	}
@@ -392,6 +410,7 @@ func (s *httpClientState) parseClientPositional(arg string, spec *httpClientSpec
 			return
 		}
 
+		s.dataItems = append(s.dataItems, arg)
 		s.collectBody(arg)
 
 		return
