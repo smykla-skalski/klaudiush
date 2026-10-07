@@ -63,7 +63,9 @@ func newAstWalker(resolver Resolver) *astWalker {
 		assignments:     make(map[string]string),
 		unknownVars:     make(map[string]bool),
 		safeAssigns:     make(map[*syntax.Assign]bool),
+		safeNamerefs:    make(map[*syntax.Assign]bool),
 		chainAssigns:    make(map[*syntax.Assign]bool),
+		namerefs:        make(map[string]string),
 		certain:         make(map[*syntax.Stmt]certainty),
 		loopCalls:       make(map[*syntax.CallExpr]bool),
 		resolver:        resolver,
@@ -84,7 +86,7 @@ func newAstWalker(resolver Resolver) *astWalker {
 // child returns a walker for a script run by a command at depth. It sees the
 // variables, aliases and functions defined so far without leaking its own,
 // and shares the parse's work budget and outcome.
-func (w *astWalker) child(dir string, depth int) *astWalker {
+func (w *astWalker) child(dir string, depth int, inheritNamerefs bool) *astWalker {
 	child := newAstWalker(w.resolver)
 	child.currentDir = dir
 	child.dirUnknown = w.dirUnknown
@@ -98,6 +100,10 @@ func (w *astWalker) child(dir string, depth int) *astWalker {
 
 	maps.Copy(child.assignments, w.assignments)
 	maps.Copy(child.unknownVars, w.unknownVars)
+
+	if inheritNamerefs {
+		maps.Copy(child.namerefs, w.namerefs)
+	}
 
 	child.outerLoop = w.inLoop
 	child.loopStartup = maps.Clone(w.loopStartup)
@@ -1154,14 +1160,16 @@ func (w *astWalker) walkScript(script string, parent Command, depth int, sw scri
 		return
 	}
 
-	child := w.child(parent.WorkingDirectory, depth)
-	if runsInShell(parent, sw) {
+	sameShell := runsInShell(parent, sw)
+
+	child := w.child(parent.WorkingDirectory, depth, sameShell)
+	if sameShell {
 		child.restoreDirectory(w.directoryState())
 	}
 
 	child.literal = sw.literal
 	child.prose = sw.prose
-	child.distrust = w.distrust || !runsInShell(parent, sw)
+	child.distrust = w.distrust || !sameShell
 	child.scriptRun = w.childRun(parent, sw)
 	child.launchSeq = parent.Location.Seq
 	child.stdinFed = w.feedsStdin(parent)

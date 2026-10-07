@@ -140,6 +140,7 @@ func keepsEmpty(cmd Command, i, idx int, sub string) bool {
 // change, so they resolve none.
 func (w *astWalker) prepare(stmt *syntax.Stmt) {
 	markSafeAssigns(stmt, w.safeAssigns, w.chainAssigns)
+	markSafeNamerefs(stmt, w.safeNamerefs)
 	markCertainStmts(stmt, w.certain)
 	w.stmtFuncs = funcBodies(stmt)
 
@@ -165,6 +166,25 @@ func (w *astWalker) prepare(stmt *syntax.Stmt) {
 			return true
 		}
 	})
+}
+
+// markSafeNamerefs records nameref assignments made by a plain declaration.
+// A declaration nested in control flow may not run, so its target is unknown.
+func markSafeNamerefs(stmt *syntax.Stmt, safe map[*syntax.Assign]bool) {
+	if stmt == nil || stmt.Background || stmt.Coprocess || stmt.Negated {
+		return
+	}
+
+	decl, ok := stmt.Cmd.(*syntax.DeclClause)
+	if !ok || !slices.ContainsFunc(decl.Args, namerefOption) {
+		return
+	}
+
+	for _, assign := range decl.Args {
+		if assign.Name != nil {
+			safe[assign] = true
+		}
+	}
 }
 
 // elementAssign reports an assignment to one element (a[1]=x) or an array
@@ -235,7 +255,7 @@ func (w *astWalker) forgetAssigned(exp *syntax.ParamExp) {
 	}
 
 	if exp.Exp.Op == syntax.AssignUnset || exp.Exp.Op == syntax.AssignUnsetOrNull {
-		w.forget(exp.Param.Value)
+		w.forgetName(exp.Param.Value)
 	}
 }
 
@@ -672,7 +692,11 @@ func (w *astWalker) forgetWritten(cmd Command) {
 func (w *astWalker) forgetName(name string) {
 	switch {
 	case variableName.MatchString(name):
-		w.forget(name)
+		if target, ok := w.namerefTarget(name); ok {
+			w.forget(target)
+		} else {
+			w.forget(name)
+		}
 	case strings.ContainsAny(name, "$[") || marked(name):
 		w.distrustNames()
 	}
@@ -695,14 +719,110 @@ var variableName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 // not a literal assignment (declare "$v", export $v=x) or whose options
 // change values or make references (-l, -u, -c, -n).
 func (w *astWalker) distrustDecl(decl *syntax.DeclClause) {
+	tracked := w.trackNamerefs(decl)
+
 	for _, a := range decl.Args {
 		if a.Name != nil || a.Value == nil {
 			continue
 		}
 
 		option := wordToString(a.Value)
+		if isNamerefOption(option) && tracked {
+			continue
+		}
+
 		w.distrustOption(option)
 	}
+}
+
+// trackNamerefs records literal targets from a plain nameref declaration.
+// Reads through a nameref stay unknown; writes can still be attributed.
+func (w *astWalker) trackNamerefs(decl *syntax.DeclClause) bool {
+	remove := slices.ContainsFunc(decl.Args, func(a *syntax.Assign) bool {
+		if a.Name != nil || a.Value == nil {
+			return false
+		}
+
+		option := wordToString(a.Value)
+
+		return strings.HasPrefix(option, "+") && isNamerefOption(option)
+	})
+
+	tracked := false
+
+	for _, assign := range decl.Args {
+		if assign.Name == nil {
+			continue
+		}
+
+		if !w.safeNamerefs[assign] {
+			return false
+		}
+
+		if remove {
+			delete(w.namerefs, assign.Name.Value)
+
+			tracked = true
+
+			continue
+		}
+
+		if assign.Value == nil || !isLiteralWord(assign.Value) {
+			return false
+		}
+
+		target := wordToString(assign.Value)
+		if !variableName.MatchString(target) {
+			return false
+		}
+
+		w.namerefs[assign.Name.Value] = target
+		tracked = true
+	}
+
+	return tracked
+}
+
+// namerefTarget resolves chained namerefs and rejects cycles.
+func (w *astWalker) namerefTarget(name string) (string, bool) {
+	seen := make(map[string]bool)
+
+	for {
+		target, ok := w.namerefs[name]
+		if !ok {
+			return name, len(seen) > 0
+		}
+
+		if seen[name] {
+			w.distrustNames()
+
+			return "", false
+		}
+
+		seen[name] = true
+		name = target
+	}
+}
+
+// forgetNamerefAssign attributes an assignment through a known nameref to
+// its target. The value stays unknown because nameref reads are not modeled.
+func (w *astWalker) forgetNamerefAssign(assign *syntax.Assign) bool {
+	if assign.Name == nil {
+		return false
+	}
+
+	target, ok := w.namerefTarget(assign.Name.Value)
+	if !ok {
+		return false
+	}
+
+	if target == pathVar {
+		w.state.pathChanged = true
+	}
+
+	w.forget(target)
+
+	return true
 }
 
 // writtenVars returns the words cmd may write to: every operand and flag

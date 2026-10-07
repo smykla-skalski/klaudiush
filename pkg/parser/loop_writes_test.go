@@ -97,6 +97,18 @@ var _ = Describe("Startup variables a loop may set", func() {
 			"readarray with a computed count",
 			`for i in 1 2; do readarray -n "$i" lines < f; gh x; done`,
 		),
+		Entry(
+			"assignment through a nameref to an unrelated variable",
+			`declare -n r=OTHER; for f in a b; do r=$f; bash /abs/run.sh; done`,
+		),
+		Entry(
+			"assignment in a child shell does not use the parent nameref",
+			`declare -n r=BASH_ENV; bash -c 'r=/tmp/x'; bash /abs/run.sh`,
+		),
+		Entry(
+			"removed nameref",
+			`declare -n r=BASH_ENV; declare +n r; r=/tmp/x; bash /abs/run.sh`,
+		),
 	)
 
 	DescribeTable(
@@ -198,6 +210,30 @@ var _ = Describe("Startup variables a loop may set", func() {
 		Entry("declare -n then assign in a function",
 			`f() { declare -n q; q="$1"; q=/tmp/p; }; for i in 1 2; do gh x; f "$i"; done`),
 		Entry("nameref in the loop", `for i in 1 2; do gh x; declare -n q="$i"; q=/tmp/p; done`),
+		Entry(
+			"assignment through a nameref declared before the loop",
+			`declare -n r=BASH_ENV; for f in a b; do r=$f; bash /abs/run.sh; done`,
+		),
+		Entry(
+			"later loop assignment through a nameref",
+			`declare -n r=BASH_ENV; for f in a b; do bash /abs/run.sh; r=$f; done`,
+		),
+		Entry(
+			"later loop declaration assignment through a nameref",
+			`declare -n r=BASH_ENV; for f in a b; do bash /abs/run.sh; export r=$f; done`,
+		),
+		Entry(
+			"later loop builtin assignment through a nameref",
+			`declare -n r=BASH_ENV; for f in a b; do bash /abs/run.sh; read r; done`,
+		),
+		Entry(
+			"assignment through a nameref with a computed target",
+			`declare -n r="$target"; for f in a b; do r=$f; bash /abs/run.sh; done`,
+		),
+		Entry(
+			"same-shell assignment through a nameref",
+			`declare -n r=BASH_ENV; eval 'r=/tmp/x'; bash /abs/run.sh`,
+		),
 		Entry(
 			"mapfile callback",
 			`g() { read -r "$1"; }; for i in 1 2; do gh x; mapfile -C g -c 1 a <<< y; done`,
