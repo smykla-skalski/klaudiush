@@ -146,10 +146,17 @@ var _ = Describe("Dynamic launch words", func() {
 			)
 		},
 		Entry("ssh", "ssh host docker $SUB img push"),
+		Entry("quoted ssh", `ssh host 'docker $SUB img push'`),
 		Entry("mosh", "mosh host docker $SUB img push"),
 		Entry("kubectl exec", "kubectl exec pod -- docker $SUB img push"),
+		Entry("kubectl value option",
+			"kubectl --certificate-authority ca exec pod -- docker $SUB img push"),
 		Entry("oc exec", "oc exec pod -- docker $SUB img push"),
 		Entry("gcloud compute ssh", "gcloud compute ssh host -- docker $SUB img push"),
+		Entry("gcloud value option",
+			"gcloud --impersonate-service-account svc compute ssh host -- docker $SUB img push"),
+		Entry("gcloud group value option",
+			"gcloud compute --project p ssh host -- docker $SUB img push"),
 	)
 
 	DescribeTable(
@@ -161,6 +168,7 @@ var _ = Describe("Dynamic launch words", func() {
 		},
 		Entry("systemctl data", `systemctl restart docker "$SUB"`),
 		Entry("ssh option value", `ssh -i docker "$SUB"`),
+		Entry("ssh no command", `ssh -N host docker $SUB`),
 		Entry("kubectl argument", `kubectl get exec pod -- docker $SUB`),
 		Entry("gcloud argument", `gcloud storage compute ssh host -- docker $SUB`),
 	)
