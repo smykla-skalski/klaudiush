@@ -91,6 +91,8 @@ type astWalker struct {
 	// dirSynced records that a cd set PWD, which then no longer holds a
 	// value assigned on the line.
 	dirSynced bool
+	// dirConditional records that the last directory mutation may not run.
+	dirConditional bool
 	// scope caches the variable snapshot until an assignment changes it;
 	// scopeDynamic is the dynamicVersion it was taken at.
 	scope        *VarScope
@@ -206,6 +208,14 @@ func (w *astWalker) visit(node syntax.Node) bool {
 		}
 	case *syntax.CmdSubst:
 		w.noteOutputRoute()
+
+		if n.TempFile || n.ReplyVar {
+			return true
+		}
+
+		w.walkIsolated(n.Stmts)
+
+		return false
 	case *syntax.CallExpr:
 		w.extractCommand(n)
 	case *syntax.ProcSubst:
@@ -240,11 +250,21 @@ func (w *astWalker) visit(node syntax.Node) bool {
 			w.opaque(OpacityZshGlobQualifier, form, "")
 		}
 	case *syntax.Subshell:
-		// Subshells are handled recursively by syntax.Walk
-		return true
+		w.walkIsolated(n.Stmts)
+
+		return false
 	}
 
 	return true
+}
+
+func (w *astWalker) walkIsolated(stmts []*syntax.Stmt) {
+	dir := w.directoryState()
+	defer w.restoreDirectory(dir)
+
+	for _, stmt := range stmts {
+		syntax.Walk(stmt, w.visit)
+	}
 }
 
 // recordStdin associates stdin content with a CallExpr so it can be attached
@@ -701,6 +721,7 @@ func (w *astWalker) extractCommand(call *syntax.CallExpr) {
 		env:              env,
 		quoting:          argQuoting(call.Args[1:]),
 		lookedUpDir:      w.lookupDir(name, words),
+		unconditional:    w.commandUnconditional(call),
 	}, w.depth, view)
 }
 
@@ -845,16 +866,19 @@ func (w *astWalker) trackShellState(cmd Command) {
 	case cdBuiltin:
 		defer w.syncDirVars()()
 
+		w.dirConditional = !cmd.unconditional
 		w.moveDir(cmd)
 	case "pushd":
 		defer w.syncDirVars()()
 
+		w.dirConditional = !cmd.unconditional
 		w.dirStack = append(w.dirStack, w.currentDir)
 		w.dirStackUnknown = append(w.dirStackUnknown, w.dirUnknown)
 		w.moveDir(cmd)
 	case "popd":
 		defer w.syncDirVars()()
 
+		w.dirConditional = !cmd.unconditional
 		if n := len(w.dirStack); n > 0 {
 			w.currentDir, w.dirStack = w.dirStack[n-1], w.dirStack[:n-1]
 			w.dirUnknown, w.dirStackUnknown = w.dirStackUnknown[n-1], w.dirStackUnknown[:n-1]

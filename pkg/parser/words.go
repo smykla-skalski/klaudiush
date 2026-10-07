@@ -577,7 +577,7 @@ func callbackFlag(arg string) bool {
 // process, which sees only exported variables and may first source a file
 // named by BASH_ENV or ENV, so no variable resolves inside it.
 var sameShellRunners = nameSet(strings.Join(
-	[]string{evalBuiltin, sourceBuiltin, dotBuiltin, "trap"}, " ",
+	[]string{evalBuiltin, sourceBuiltin, dotBuiltin, trapBuiltin}, " ",
 ))
 
 // runsInShell reports whether the script parent runs shares its shell: eval,

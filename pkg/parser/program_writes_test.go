@@ -421,6 +421,46 @@ var _ = Describe("The shell's directory", func() {
 		Expect(vars.Assignments).To(HaveKeyWithValue("OLDPWD", "/a"))
 	})
 
+	DescribeTable(
+		"restores directory variables after isolated shells",
+		func(command string) {
+			vars := last(parse(command)).Vars
+
+			Expect(vars.Assignments).To(HaveKeyWithValue("PWD", "/a"))
+			Expect(vars.Assignments).To(HaveKeyWithValue("OLDPWD", "/start"))
+		},
+		Entry("subshell", `cd /a; (cd /repo); cat y`),
+		Entry("command substitution", `cd /a; x=$(cd /repo; pwd); cat y`),
+	)
+
+	It("inherits directory variables from a function", func() {
+		vars := last(parse(`cd /a; f(){ cd /repo; }; f; cat y`)).Vars
+
+		Expect(vars.Assignments).To(HaveKeyWithValue("PWD", "/repo"))
+		Expect(vars.Assignments).To(HaveKeyWithValue("OLDPWD", "/a"))
+	})
+
+	It("preserves the directory stack through a function", func() {
+		vars := last(parse(`pushd /a; f(){ :; }; f; popd; cat y`)).Vars
+
+		Expect(vars.Assignments).To(HaveKeyWithValue("PWD", "/start"))
+		Expect(vars.Assignments).To(HaveKeyWithValue("OLDPWD", "/a"))
+	})
+
+	It("leaves the directory unknown after a conditional change in a function", func() {
+		cmd := last(parse(`f(){ test -d /repo && cd /repo; }; f; cat y`))
+
+		Expect(cmd.DirUnknown).To(BeTrue())
+		Expect(cmd.Vars.IsDynamic("PWD")).To(BeTrue())
+	})
+
+	It("leaves the directory unknown after a conditional function", func() {
+		cmd := last(parse(`f(){ cd /repo; }; false && f; cat y`))
+
+		Expect(cmd.DirUnknown).To(BeTrue())
+		Expect(cmd.Vars.IsDynamic("PWD")).To(BeTrue())
+	})
+
 	It("keeps $PWD known after leaving a computed directory", func() {
 		vars := last(parse(`cd "$(mktemp -d)"; cd /repo; cat y`)).Vars
 

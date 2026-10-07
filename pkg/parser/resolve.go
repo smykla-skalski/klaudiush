@@ -1155,6 +1155,10 @@ func (w *astWalker) walkScript(script string, parent Command, depth int, sw scri
 	}
 
 	child := w.child(parent.WorkingDirectory, depth)
+	if runsInShell(parent, sw) {
+		child.restoreDirectory(w.directoryState())
+	}
+
 	child.literal = sw.literal
 	child.prose = sw.prose
 	child.distrust = w.distrust || !runsInShell(parent, sw)
@@ -1193,6 +1197,10 @@ func (w *astWalker) walkScript(script string, parent Command, depth int, sw scri
 	}
 
 	child.walkEpilogue(sw.prelude, parent, movedLeniently)
+
+	if runsInShell(parent, sw) && parent.Name != trapBuiltin {
+		w.inheritDirectory(child, parent.unconditional)
+	}
 
 	// Commands report the line of the command that ran the script, keeping
 	// their own place in execution order.

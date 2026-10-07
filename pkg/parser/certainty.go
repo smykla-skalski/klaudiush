@@ -78,7 +78,22 @@ func walkCertainCmd(cmd syntax.Command, c certainty, out map[*syntax.Stmt]certai
 		}
 	case *syntax.FuncDecl:
 		walkCertain(x.Body, certainty{never: true}, out)
+	case *syntax.CallExpr:
+		walkCertainSubstitutions(x, c, out)
 	}
+}
+
+func walkCertainSubstitutions(node syntax.Node, c certainty, out map[*syntax.Stmt]certainty) {
+	syntax.Walk(node, func(inner syntax.Node) bool {
+		subst, ok := inner.(*syntax.CmdSubst)
+		if !ok {
+			return true
+		}
+
+		walkCertainStmts(subst.Stmts, c, out)
+
+		return false
+	})
 }
 
 // boundedBy limits c to consumers that come before node ends.
@@ -106,6 +121,16 @@ func (w *astWalker) markCertainty(stmt *syntax.Stmt, from int) {
 			w.fileWrites[i].CertainUntil = c.until
 		}
 	}
+}
+
+func (w *astWalker) commandUnconditional(call *syntax.CallExpr) bool {
+	for stmt, c := range w.certain {
+		if callExprOf(stmt) == call {
+			return !c.never && !c.bounded
+		}
+	}
+
+	return false
 }
 
 // Certain reports whether the write is sure to have run by the time a
