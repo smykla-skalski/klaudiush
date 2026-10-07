@@ -88,6 +88,8 @@ func (p *BashParser) Parse(command string) (*ParseResult, error) {
 		walker.walkStmt(stmt)
 	}
 
+	walker.validateStartupWrites()
+
 	// Extract git operations
 	gitOps := make([]Command, 0)
 

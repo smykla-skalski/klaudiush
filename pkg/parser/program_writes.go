@@ -209,6 +209,8 @@ var (
 	curlDirOutputOps = nameSet("-o --output")
 )
 
+const cpProgram = "cp"
+
 // minDestOperands is the fewest operands of a copy that names a destination.
 const minDestOperands = 2
 
@@ -223,7 +225,7 @@ func writesOf(cmd Command) programWrite {
 	switch cmd.Name {
 	case "tee":
 		return programWrite{op: WriteOpTee, targets: extractTeeTargets(cmd.Args)}
-	case "cp", "copy":
+	case cpProgram, "copy":
 		return programWrite{op: WriteOpCopy, targets: destination(cmd.Args, copySpec)}
 	case "mv", "move":
 		return programWrite{op: WriteOpMove, targets: destination(cmd.Args, copySpec)}

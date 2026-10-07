@@ -449,6 +449,26 @@ func literalCommandOutput(call *syntax.CallExpr) (string, bool) {
 	return printfOutput(args) // name == "printf"
 }
 
+func (w *astWalker) literalRedirectOutput(call *syntax.CallExpr) (string, bool) {
+	if call == nil || len(call.Args) == 0 {
+		return "", false
+	}
+
+	if w.defined(wordToString(call.Args[0])) || w.state.pathChanged {
+		return "", false
+	}
+
+	return literalCommandOutput(call)
+}
+
+func heredocRedirectContent(info redirInfo, captured bool, emitted string) string {
+	if captured {
+		return emitted
+	}
+
+	return info.heredocContent
+}
+
 // literalArgs converts words to strings only when every word is strictly
 // literal. It returns false as soon as any word contains a shell expansion.
 func literalArgs(words []*syntax.Word) ([]string, bool) {
@@ -1322,17 +1342,24 @@ func (w *astWalker) extractRedirect(stmt *syntax.Stmt) {
 		// copies stdin to stdout verbatim (cat). A transforming command such as
 		// "grep foo > f <<EOF" writes filtered output, not the heredoc body, so
 		// that content must not be treated as captured.
-		captured := info.outputOp == WriteOpRedirect && copiesStdinVerbatim(callExprOf(stmt))
+		copies := copiesStdinVerbatim(callExprOf(stmt)) &&
+			!w.defined("cat") && !w.state.pathChanged
+		emitted, gap := w.resolveText(info.heredocText).Value()
+		captured := info.outputOp == WriteOpRedirect && copies && gap == ""
+
 		w.fileWrites = append(w.fileWrites, FileWrite{
-			Path:             info.outputPath,
-			Dynamic:          info.outputDynamic,
-			Operation:        WriteOpHeredoc,
-			Content:          info.heredocContent,
-			ContentCaptured:  captured,
-			Location:         info.heredocLoc,
-			WorkingDirectory: w.currentDir,
-			DirUnknown:       w.dirUnknown,
-			Vars:             w.varScope(),
+			Path:                   info.outputPath,
+			Dynamic:                info.outputDynamic,
+			Operation:              WriteOpHeredoc,
+			Content:                heredocRedirectContent(info, captured, emitted),
+			ContentCaptured:        captured,
+			emittedContent:         emitted,
+			emittedContentCaptured: copies && gap == "",
+			emittedContentAppended: info.outputOp == WriteOpAppend,
+			Location:               info.heredocLoc,
+			WorkingDirectory:       w.currentDir,
+			DirUnknown:             w.dirUnknown,
+			Vars:                   w.varScope(),
 		})
 	case info.hasOutput:
 		// Just output redirection without heredoc. A literal overwrite's output
@@ -1351,8 +1378,12 @@ func (w *astWalker) extractRedirect(stmt *syntax.Stmt) {
 			Vars:             w.varScope(),
 		}
 
-		if info.outputOp == WriteOpRedirect {
-			if content, ok := literalCommandOutput(callExprOf(stmt)); ok {
+		if content, ok := w.literalRedirectOutput(callExprOf(stmt)); ok {
+			fw.emittedContent = content
+			fw.emittedContentCaptured = true
+			fw.emittedContentAppended = info.outputOp == WriteOpAppend
+
+			if info.outputOp == WriteOpRedirect {
 				fw.RedirectContent = content
 				fw.RedirectContentCaptured = true
 			}
