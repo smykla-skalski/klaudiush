@@ -636,6 +636,17 @@ func (v *APIValidator) checkScriptText(command string) *validator.Result {
 				req.Method, endpoint, bypassExplanation,
 			))
 		}
+
+		// gh api and HTTP clients may merge a pull request because the merge
+		// validator reads their fields; a script's request body is opaque to it.
+		if parser.IsPRMergeRequest(req.Method, endpoint) {
+			return v.fail(fmt.Sprintf(
+				"the script sends %s %s, which merges a pull request where the "+
+					"gh pr merge checks cannot read the merge commit, %s. "+
+					"Use gh pr merge or gh api instead",
+				req.Method, endpoint, bypassExplanation,
+			))
+		}
 	}
 
 	return nil

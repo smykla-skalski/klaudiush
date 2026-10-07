@@ -62,10 +62,6 @@ var _ = Describe("APIValidator", func() {
 				`gh api repos/o/r/merges -f base=main -f head=topic`,
 			),
 			Entry(
-				"pull request merge PUT",
-				`gh api --method PUT repos/o/r/pulls/42/merge`,
-			),
-			Entry(
 				"full URL form",
 				`gh api -X PUT https://api.github.com/repos/o/r/contents/x.txt -f message=x`,
 			),
@@ -143,6 +139,27 @@ var _ = Describe("APIValidator", func() {
 				`gh api -X POST repos/o/r/pulls -f title=x -f head=topic -f base=main`,
 			),
 			Entry(
+				"merging a pull request, checked like gh pr merge instead",
+				`gh api -X PUT repos/o/r/pulls/42/merge -f merge_method=squash`,
+			),
+			Entry(
+				"merging a pull request with --method",
+				`gh api --method PUT repos/o/r/pulls/42/merge`,
+			),
+			Entry(
+				"merging a pull request with curl",
+				`curl -X PUT https://api.github.com/repos/o/r/pulls/42/merge `+
+					`-d '{"merge_method":"squash"}'`,
+			),
+			Entry(
+				"merging a pull request with httpie",
+				`http PUT https://api.github.com/repos/o/r/pulls/42/merge merge_method=squash`,
+			),
+			Entry(
+				"merging a pull request on GitHub Enterprise Server",
+				`curl -X PUT https://ghe.example.com/api/v3/repos/o/r/pulls/42/merge -d '{}'`,
+			),
+			Entry(
 				"a harmless graphql query",
 				`gh api graphql -f query='query { viewer { login } }'`,
 			),
@@ -217,6 +234,14 @@ var _ = Describe("APIValidator", func() {
 			Entry(
 				"an inline octokit request call",
 				`node -e 'await octokit.request("PUT /repos/{owner}/{repo}/contents/{path}", opts)'`,
+			),
+			Entry(
+				"an inline octokit pull request merge",
+				`node -e 'await octokit.rest.pulls.merge({owner, repo, pull_number: 42})'`,
+			),
+			Entry(
+				"an inline request merging a pull request",
+				`python3 -c 'requests.put("https://api.github.com/repos/o/r/pulls/42/merge", json=b)'`,
 			),
 			Entry(
 				"an inline python request",

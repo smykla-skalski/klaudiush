@@ -74,14 +74,15 @@ type IssueValidatorConfig struct {
 
 // DefaultBlockedGHAPIEndpoints returns the REST endpoints that create a commit
 // without running git: writing or deleting repository contents, creating a git
-// commit object, merging a branch, and merging a pull request.
+// commit object, and merging a branch. Merging a pull request is left to the
+// merge validator, which checks PUT .../pulls/{number}/merge the way it checks
+// gh pr merge.
 func DefaultBlockedGHAPIEndpoints() []string {
 	return []string{
 		"PUT **/contents/**",
 		"DELETE **/contents/**",
 		"POST **/git/commits",
 		"POST **/merges",
-		"PUT **/pulls/*/merge",
 	}
 }
 
@@ -97,7 +98,8 @@ func DefaultGitHubAPIHosts() []string {
 }
 
 // DefaultBlockedGHAPIClientCalls returns the API client library methods that
-// create a commit, named the way Octokit exposes them.
+// create a commit, named the way Octokit exposes them. pulls.merge stays here:
+// a merge made from script code carries no fields the merge validator can read.
 func DefaultBlockedGHAPIClientCalls() []string {
 	return []string{
 		"repos.createOrUpdateFileContents",

@@ -8,6 +8,7 @@ import (
 	"github.com/smykla-skalski/klaudiush/pkg/config"
 	"github.com/smykla-skalski/klaudiush/pkg/hook"
 	"github.com/smykla-skalski/klaudiush/pkg/logger"
+	"github.com/smykla-skalski/klaudiush/pkg/parser"
 )
 
 // GitValidatorFactory creates git validators from configuration.
@@ -297,7 +298,8 @@ func (f *GitValidatorFactory) createMergeValidator(
 
 	return ValidatorWithPredicate{
 		Validator: wrapValidatorWithSeverity(
-			gitvalidators.NewMergeValidator(f.log, f.getGitRunner(), cfg, rc),
+			gitvalidators.NewMergeValidator(f.log, f.getGitRunner(), cfg, rc).
+				WithAPIHosts(f.githubAPIHosts()),
 			cfg,
 		),
 		Predicate: validator.And(
@@ -306,7 +308,41 @@ func (f *GitValidatorFactory) createMergeValidator(
 			validator.Or(
 				validator.CommandContains("gh pr merge"),
 				validator.GHCommandIs("pr", "merge"),
+				validator.CommandMatches(gitvalidators.RESTPRMergePattern),
+				validator.GHCommandIs("api"),
+				runsHTTPClient(),
 			),
 		),
+	}
+}
+
+// githubAPIHosts returns the GitHub API hosts configured for the gh api
+// validator, so a REST merge is recognised on the same hosts it checks.
+func (f *GitValidatorFactory) githubAPIHosts() []string {
+	if f.cfg == nil || f.cfg.Validators == nil || f.cfg.Validators.GitHub == nil ||
+		f.cfg.Validators.GitHub.API == nil {
+		return nil
+	}
+
+	return f.cfg.Validators.GitHub.API.Hosts
+}
+
+// runsHTTPClient matches a command line that runs curl, wget, httpie or xh,
+// as the parser resolves it, so a request URL that is quoted in pieces or
+// built from variables still reaches the validators that resolve it.
+func runsHTTPClient() validator.Predicate {
+	return func(ctx *hook.Context) bool {
+		result, err := ctx.ParsedCommand()
+		if err != nil {
+			return false
+		}
+
+		for _, cmd := range result.Commands {
+			if parser.IsHTTPClient(&cmd) {
+				return true
+			}
+		}
+
+		return false
 	}
 }
