@@ -568,13 +568,30 @@ var _ = Describe("PushValidator", func() {
 				Entry("push option value", "git push -o main origin feat", "feat", false, ""),
 			)
 
-			It("fails closed when HEAD cannot be read", func() {
+			It("reports an unreadable HEAD as unavailable", func() {
 				cfg := &config.PushValidatorConfig{BlockedBranches: []string{"main"}}
 				validator = git.NewPushValidator(log, &headErrRunner{FakeRunner: fakeGit}, cfg, nil)
 
 				result := validator.Validate(
 					context.Background(),
 					createContext("git push origin HEAD"),
+				)
+				Expect(result.Unavailable).To(BeTrue())
+				Expect(result.ReasonOf()).To(Equal(validatorpkg.ReasonError))
+			})
+
+			It("fails closed when HEAD is detached", func() {
+				ctrl := gomock.NewController(GinkgoT())
+				runner := gitpkg.NewMockRunner(ctrl)
+				runner.EXPECT().IsInRepo().Return(true, nil)
+				runner.EXPECT().GetCurrentBranch().Return("", gitpkg.ErrDetachedHead)
+
+				cfg := &config.PushValidatorConfig{BlockedBranches: []string{"main"}}
+				validator = git.NewPushValidator(log, runner, cfg, nil)
+
+				result := validator.Validate(
+					context.Background(),
+					createContext("git push origin"),
 				)
 				Expect(result.Passed).To(BeFalse())
 				Expect(result.Message).To(ContainSubstring("cannot be checked"))

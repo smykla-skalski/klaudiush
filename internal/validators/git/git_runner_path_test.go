@@ -4,12 +4,14 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/cockroachdb/errors"
 	gogit "github.com/go-git/go-git/v6"
 	"github.com/go-git/go-git/v6/config"
 	"github.com/go-git/go-git/v6/plumbing/object"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	gitpkg "github.com/smykla-skalski/klaudiush/internal/git"
 	"github.com/smykla-skalski/klaudiush/internal/validators/git"
 )
 
@@ -285,7 +287,8 @@ var _ = Describe("CLIGitRunnerWithPath", func() {
 		Context("when remote does not exist", func() {
 			It("should return an error", func() {
 				_, err := runner.GetRemoteURL("nonexistent")
-				Expect(err).To(HaveOccurred())
+				Expect(err).To(MatchError(ContainSubstring("remote not found")))
+				Expect(errors.Is(err, gitpkg.ErrRemoteNotFound)).To(BeTrue())
 			})
 		})
 	})
@@ -342,7 +345,8 @@ var _ = Describe("CLIGitRunnerWithPath", func() {
 		Context("when branch has no tracking remote", func() {
 			It("should return an error", func() {
 				_, err := runner.GetBranchRemote("master")
-				Expect(err).To(HaveOccurred())
+				Expect(err).To(MatchError(ContainSubstring("no tracking remote")))
+				Expect(errors.Is(err, gitpkg.ErrNoTracking)).To(BeTrue())
 			})
 		})
 	})

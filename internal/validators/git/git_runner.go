@@ -112,6 +112,10 @@ func (r *CLIGitRunnerWithPath) GetRemoteURL(remote string) (string, error) {
 
 	result := r.runner.Run(ctx, "git", "-C", r.path, "remote", "get-url", remote)
 	if result.Err != nil {
+		if result.ExitCode == 2 && strings.Contains(result.Stderr, "No such remote") {
+			return "", errors.Wrapf(gitpkg.ErrRemoteNotFound, "remote %q", remote)
+		}
+
 		return "", result.Err
 	}
 
@@ -125,6 +129,10 @@ func (r *CLIGitRunnerWithPath) GetCurrentBranch() (string, error) {
 
 	result := r.runner.Run(ctx, "git", "-C", r.path, "symbolic-ref", "--short", "HEAD")
 	if result.Err != nil {
+		if result.ExitCode == 1 && result.Stderr == "" {
+			return "", gitpkg.ErrDetachedHead
+		}
+
 		return "", result.Err
 	}
 
@@ -140,6 +148,10 @@ func (r *CLIGitRunnerWithPath) GetBranchRemote(branch string) (string, error) {
 
 	result := r.runner.Run(ctx, "git", "-C", r.path, "config", configKey)
 	if result.Err != nil {
+		if result.ExitCode == 1 && result.Stderr == "" {
+			return "", errors.Wrapf(gitpkg.ErrNoTracking, "branch %q", branch)
+		}
+
 		return "", result.Err
 	}
 
@@ -325,6 +337,10 @@ func (r *CLIGitRunner) GetRemoteURL(remote string) (string, error) {
 
 	result := r.runner.Run(ctx, "git", "remote", "get-url", remote)
 	if result.Err != nil {
+		if result.ExitCode == 2 && strings.Contains(result.Stderr, "No such remote") {
+			return "", errors.Wrapf(gitpkg.ErrRemoteNotFound, "remote %q", remote)
+		}
+
 		return "", result.Err
 	}
 
@@ -338,6 +354,10 @@ func (r *CLIGitRunner) GetCurrentBranch() (string, error) {
 
 	result := r.runner.Run(ctx, "git", "symbolic-ref", "--short", "HEAD")
 	if result.Err != nil {
+		if result.ExitCode == 1 && result.Stderr == "" {
+			return "", gitpkg.ErrDetachedHead
+		}
+
 		return "", result.Err
 	}
 
@@ -353,6 +373,10 @@ func (r *CLIGitRunner) GetBranchRemote(branch string) (string, error) {
 
 	result := r.runner.Run(ctx, "git", "config", configKey)
 	if result.Err != nil {
+		if result.ExitCode == 1 && result.Stderr == "" {
+			return "", errors.Wrapf(gitpkg.ErrNoTracking, "branch %q", branch)
+		}
+
 		return "", result.Err
 	}
 

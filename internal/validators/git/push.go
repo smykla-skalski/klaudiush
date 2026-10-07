@@ -2,13 +2,13 @@ package git
 
 import (
 	"context"
-	"os/exec"
 	"path"
 	"slices"
 	"strings"
 
 	"github.com/cockroachdb/errors"
 
+	gitpkg "github.com/smykla-skalski/klaudiush/internal/git"
 	"github.com/smykla-skalski/klaudiush/internal/templates"
 	"github.com/smykla-skalski/klaudiush/internal/validator"
 	"github.com/smykla-skalski/klaudiush/pkg/config"
@@ -211,23 +211,28 @@ func extractImplicitRemote(
 }
 
 func runnerUnavailable(err error, message string) *validator.Result {
-	var reason validator.UnavailableReason
+	if isBenignLookupError(err) {
+		return nil
+	}
+
+	reason := validator.ReasonError
 
 	switch {
 	case errors.Is(err, context.DeadlineExceeded):
 		reason = validator.ReasonTimeout
 	case errors.Is(err, context.Canceled):
 		reason = validator.ReasonCanceled
-	default:
-		var exitErr *exec.ExitError
-		if !errors.As(err, &exitErr) || exitErr.ExitCode() != -1 {
-			return nil
-		}
-
-		reason = validator.ReasonError
 	}
 
 	return validator.Unavailable(reason, message)
+}
+
+func isBenignLookupError(err error) bool {
+	return errors.Is(err, gitpkg.ErrNoHead) ||
+		errors.Is(err, gitpkg.ErrDetachedHead) ||
+		errors.Is(err, gitpkg.ErrRemoteNotFound) ||
+		errors.Is(err, gitpkg.ErrBranchNotFound) ||
+		errors.Is(err, gitpkg.ErrNoTracking)
 }
 
 // validateNotBlockedRemote checks if the remote is blocked
@@ -351,7 +356,7 @@ func (v *PushValidator) validateBlockedBranches(
 				return unavailable
 			}
 
-			return validator.Pass()
+			return v.uncheckedBranch("current branch")
 		}
 
 		return v.validateNotBlockedBranch(branch)
