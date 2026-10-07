@@ -198,7 +198,8 @@ var _ = Describe("DefaultValidatorFactory", func() {
 			Expect(len(validators)).To(BeNumerically(">=", 1))
 		})
 
-		DescribeTable("registers the merge validator for REST pull request merges",
+		DescribeTable(
+			"registers the merge validator for REST pull request merges",
 			func(command string) {
 				cfg := &config.Config{
 					Validators: &config.ValidatorsConfig{
@@ -219,6 +220,10 @@ var _ = Describe("DefaultValidatorFactory", func() {
 			Entry("gh pr merge", `gh pr merge 42 --squash`),
 			Entry("gh api", `gh api -X PUT repos/o/r/pulls/42/merge -f merge_method=squash`),
 			Entry("curl", `curl -X PUT https://api.github.com/repos/o/r/pulls/42/merge -d '{}'`),
+			Entry(
+				"gh api with the path in a variable",
+				`P=pulls; gh api -X PUT "repos/o/r/$P/42/merge"`,
+			),
 		)
 
 		It("should create no-verify validator when enabled", func() {

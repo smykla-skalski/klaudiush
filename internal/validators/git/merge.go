@@ -106,31 +106,89 @@ func (v *MergeValidator) Validate(ctx context.Context, hookCtx *hook.Context) *v
 		return validator.Warn(fmt.Sprintf("Failed to parse command: %v", err))
 	}
 
-	// Find gh pr merge commands
-	for _, cmd := range result.Commands {
-		if !parser.IsGHPRMerge(&cmd) {
-			continue
-		}
+	targets := v.findMerges(result)
+	if len(targets) == 0 {
+		log.Debug("No gh pr merge commands found")
 
-		// Parse the merge command
-		mergeCmd, err := parser.ParseGHMergeCommand(cmd)
-		if err != nil {
-			log.Debug("Failed to parse merge command", "error", err)
-
-			continue
-		}
-
-		// Validate the merge command
-		return v.validateMerge(ctx, mergeCmd, ghMergeSignoffHint)
+		return validator.Pass()
 	}
 
-	if mergeCmd, ok := v.findRESTMerge(result); ok {
-		return v.validateMerge(ctx, mergeCmd, restMergeSignoffHint)
+	// Every merge on the line is checked, so a harmless first merge cannot
+	// carry an unchecked second one past the validator.
+	var warning *validator.Result
+
+	for _, target := range targets {
+		res := v.validateTarget(ctx, target)
+
+		switch {
+		case res.ShouldBlock:
+			return res
+		case !res.Passed && warning == nil:
+			warning = res
+		}
 	}
 
-	log.Debug("No gh pr merge commands found")
+	if warning != nil {
+		return warning
+	}
 
 	return validator.Pass()
+}
+
+// mergeTarget is one pull request merge on the command line, from gh pr merge
+// or from the REST API, with what is needed to check it.
+type mergeTarget struct {
+	cmd         *parser.GHMergeCommand
+	signoffHint string
+
+	// unlistedHost is a REST host outside the configured GitHub API hosts.
+	// Its pull request is not fetched, so gh never sends a token there.
+	unlistedHost string
+}
+
+// findMerges returns every gh pr merge and REST pull request merge, in order.
+func (v *MergeValidator) findMerges(result *parser.ParseResult) []mergeTarget {
+	var targets []mergeTarget
+
+	for _, cmd := range result.Commands {
+		if parser.IsGHPRMerge(&cmd) {
+			mergeCmd, err := parser.ParseGHMergeCommand(cmd)
+			if err != nil {
+				v.Logger().Debug("Failed to parse merge command", "error", err)
+
+				continue
+			}
+
+			targets = append(targets, mergeTarget{cmd: mergeCmd, signoffHint: ghMergeSignoffHint})
+
+			continue
+		}
+
+		targets = append(targets, v.restMerges(result, cmd)...)
+	}
+
+	return targets
+}
+
+// validateTarget checks one merge.
+func (v *MergeValidator) validateTarget(ctx context.Context, target mergeTarget) *validator.Result {
+	if target.unlistedHost == "" {
+		return v.validateMerge(ctx, target.cmd, target.signoffHint)
+	}
+
+	if !target.cmd.IsSquashMerge() {
+		return validator.Pass()
+	}
+
+	if res := v.validateMergeCommandSignoff(target.cmd, target.signoffHint); !res.Passed {
+		return res
+	}
+
+	return validator.Warn(fmt.Sprintf(
+		"Pull request title and body not checked: %s is not a configured GitHub API host "+
+			"(validators.github.api.hosts), so its pull request is not fetched",
+		target.unlistedHost,
+	))
 }
 
 // validateMerge validates a gh pr merge command.
@@ -217,7 +275,7 @@ func (*MergeValidator) buildAPIArgs(mergeCmd *parser.GHMergeCommand) []string {
 	args := []string{"api"}
 
 	if mergeCmd.Hostname != "" {
-		args = append(args, "--hostname", mergeCmd.Hostname)
+		args = append(args, "--hostname="+mergeCmd.Hostname)
 	}
 
 	if mergeCmd.Repo != "" {

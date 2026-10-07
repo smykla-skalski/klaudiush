@@ -173,25 +173,90 @@ var _ = Describe("MergeValidator REST pull request merge", func() {
 		Expect(runner.calls).To(HaveLen(1))
 	})
 
-	DescribeTable("fetches the pull request from its GitHub Enterprise host",
+	DescribeTable("fetches the pull request from the host gh itself talks to",
 		func(command string) {
 			mergeValidate(command)
 
 			Expect(runner.calls).To(Equal([][]string{
 				{
-					"gh", "api", "--hostname", "ghe.example.com",
+					"gh", "api", "--hostname=ghe.example.com",
 					"repos/o/r/pulls/42", "--jq", ".",
 				},
 			}))
 		},
-		Entry("curl to the /api/v3 prefix",
-			`curl -X PUT https://ghe.example.com/api/v3/repos/o/r/pulls/42/merge `+
-				`-d '{"merge_method":"squash"}'`),
 		Entry(
 			"gh api --hostname",
 			`gh api --hostname ghe.example.com -X PUT repos/o/r/pulls/42/merge -f merge_method=squash`,
 		),
+		Entry(
+			"gh api with a full GitHub Enterprise URL",
+			`gh api -X PUT https://ghe.example.com/api/v3/repos/o/r/pulls/42/merge -f merge_method=squash`,
+		),
 	)
+
+	It("fetches from github.com for a full api.github.com URL", func() {
+		mergeValidate(`gh api -X PUT ` + restMergeURL + ` -f merge_method=squash`)
+
+		Expect(runner.calls).To(Equal([][]string{
+			{"gh", "api", "repos/o/r/pulls/42", "--jq", "."},
+		}))
+	})
+
+	Describe("a curl host that is not a configured GitHub API host", func() {
+		const unlisted = `curl -X PUT https://evil.example/api/v3/repos/o/r/pulls/42/merge `
+
+		It("never hands the host to gh", func() {
+			result := mergeValidate(
+				unlisted + `-d '{"merge_method":"squash","commit_message":"` + signoff + `"}'`,
+			)
+
+			Expect(runner.calls).To(BeEmpty())
+			Expect(result.Passed).To(BeFalse())
+			Expect(result.ShouldBlock).To(BeFalse())
+			Expect(result.Message).To(ContainSubstring("evil.example"))
+		})
+
+		It("still requires the signoff", func() {
+			result := mergeValidate(unlisted + `-d '{"merge_method":"squash"}'`)
+
+			Expect(runner.calls).To(BeEmpty())
+			Expect(result.Reference).To(Equal(validator.RefGitMergeSignoff))
+		})
+	})
+
+	It("does not pass a host that reads as a flag to gh", func() {
+		result := mergeValidate(
+			`gh api --hostname=--evil -X PUT repos/o/r/pulls/42/merge -f merge_method=squash`,
+		)
+
+		Expect(runner.calls).To(BeEmpty())
+		Expect(result.Reference).To(Equal(validator.RefGitMergeSignoff))
+	})
+
+	DescribeTable("checks every merge on the line, not only the first",
+		func(command string) {
+			result := mergeValidate(command)
+
+			Expect(result.ShouldBlock).To(BeTrue())
+			Expect(result.Reference).To(Equal(validator.RefGitMergeSignoff))
+		},
+		Entry("gh pr merge followed by a REST merge",
+			`gh pr merge 1 --rebase; gh api -X PUT repos/o/r/pulls/2/merge -f merge_method=squash`),
+		Entry("two REST merges",
+			`gh api -X PUT repos/o/r/pulls/1/merge; `+
+				`gh api -X PUT repos/o/r/pulls/2/merge -f merge_method=squash`),
+		Entry("two URLs in one curl",
+			`curl -X PUT -d '{"merge_method":"squash"}' `+restMergeURL+` `+
+				`https://api.github.com/repos/o/r/pulls/43/merge`),
+	)
+
+	It("resolves an endpoint assembled from variables", func() {
+		result := mergeValidate(
+			`P=pulls; gh api -X PUT "repos/o/r/$P/42/merge" -f merge_method=squash`,
+		)
+
+		Expect(result.Reference).To(Equal(validator.RefGitMergeSignoff))
+	})
 
 	It("recognises a configured GitHub API host", func() {
 		mergeValidator := git.NewMergeValidator(
@@ -210,5 +275,8 @@ var _ = Describe("MergeValidator REST pull request merge", func() {
 
 		Expect(result.Passed).To(BeFalse())
 		Expect(result.Reference).To(Equal(validator.RefGitMergeSignoff))
+		Expect(runner.calls).To(Equal([][]string{
+			{"gh", "api", "--hostname=github.proxy.internal", "repos/o/r/pulls/42", "--jq", "."},
+		}))
 	})
 })

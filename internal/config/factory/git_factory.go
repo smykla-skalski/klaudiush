@@ -308,6 +308,7 @@ func (f *GitValidatorFactory) createMergeValidator(
 				validator.CommandContains("gh pr merge"),
 				validator.GHCommandIs("pr", "merge"),
 				validator.CommandMatches(gitvalidators.RESTPRMergePattern),
+				validator.GHCommandIs("api"),
 			),
 		),
 	}

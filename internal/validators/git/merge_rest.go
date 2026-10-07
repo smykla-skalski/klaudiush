@@ -3,6 +3,7 @@ package git
 import (
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/smykla-skalski/klaudiush/internal/validators"
 	"github.com/smykla-skalski/klaudiush/pkg/config"
@@ -15,7 +16,8 @@ import (
 const RESTPRMergePattern = `pulls/[^/\s"']+/merge\b`
 
 const (
-	defaultAPIHost = "api.github.com"
+	defaultAPIHost    = "api.github.com"
+	defaultGitHubHost = "github.com"
 
 	mergeMethodField   = "merge_method"
 	commitMessageField = "commit_message"
@@ -54,43 +56,46 @@ func (v *MergeValidator) githubAPIHosts() []string {
 	return config.DefaultGitHubAPIHosts()
 }
 
-// findRESTMerge returns the first REST pull request merge in the command line,
-// shaped as the gh pr merge it is equivalent to, so both go through the same
-// checks.
-func (v *MergeValidator) findRESTMerge(result *parser.ParseResult) (*parser.GHMergeCommand, bool) {
-	for _, cmd := range result.Commands {
-		switch {
-		case parser.IsGHAPI(&cmd):
-			if mergeCmd, ok := v.ghAPIMerge(result, cmd); ok {
-				return mergeCmd, true
-			}
-		case parser.IsHTTPClient(&cmd):
-			for _, req := range parser.ParseHTTPClientCommands(cmd) {
-				if mergeCmd, ok := v.httpClientMerge(result, req, cmd.Stdin); ok {
-					return mergeCmd, true
-				}
+// restMerges returns the REST pull request merges one command sends, shaped
+// as the gh pr merge each is equivalent to, so both go through the same checks.
+func (v *MergeValidator) restMerges(result *parser.ParseResult, cmd parser.Command) []mergeTarget {
+	switch {
+	case parser.IsGHAPI(&cmd):
+		if target, ok := v.ghAPIMerge(result, cmd); ok {
+			return []mergeTarget{target}
+		}
+	case parser.IsHTTPClient(&cmd):
+		var targets []mergeTarget
+
+		for _, req := range parser.ParseHTTPClientCommands(cmd) {
+			if target, ok := v.httpClientMerge(result, req, cmd.Stdin); ok {
+				targets = append(targets, target)
 			}
 		}
+
+		return targets
 	}
 
-	return nil, false
+	return nil
 }
 
 // ghAPIMerge reads a gh api call that merges a pull request. With --input, gh
 // sends that file or stdin as the whole body and moves the fields to the query
-// string, so the fields are not the body then.
+// string, so the fields are not the body then. The host gh talks to - the one
+// in a URL endpoint, or --hostname - is trusted: the command itself already
+// sends gh's token there.
 func (v *MergeValidator) ghAPIMerge(
 	result *parser.ParseResult,
 	cmd parser.Command,
-) (*parser.GHMergeCommand, bool) {
+) (mergeTarget, bool) {
 	apiCmd, err := parser.ParseGHAPICommand(cmd)
 	if err != nil {
-		return nil, false
+		return mergeTarget{}, false
 	}
 
 	repo, number, ok := prMergeTarget(result, apiCmd.Method, apiCmd.Endpoint)
 	if !ok {
-		return nil, false
+		return mergeTarget{}, false
 	}
 
 	var body restMergeFields
@@ -110,7 +115,40 @@ func (v *MergeValidator) ghAPIMerge(
 		}
 	}
 
-	return restMergeCommand(repo, number, apiCmd.Hostname, body), true
+	hostname := apiCmd.Hostname
+	if hostname == "" {
+		hostname = endpointHost(result.ExpandVars(ghAPIEndpointArg(apiCmd)))
+	}
+
+	target := mergeTarget{
+		cmd:         restMergeCommand(repo, number, gitHubHostname(hostname), body),
+		signoffHint: restMergeSignoffHint,
+	}
+
+	if !safeHostname(hostname) {
+		target.cmd.Hostname = ""
+		target.unlistedHost = hostname
+	}
+
+	return target, true
+}
+
+// ghAPIEndpointArg returns the endpoint as written, before normalization drops
+// its host.
+func ghAPIEndpointArg(apiCmd *parser.GHAPICommand) string {
+	for _, arg := range apiCmd.RawArgs[1:] {
+		if parser.NormalizeAPIEndpoint(arg) == apiCmd.Endpoint && apiCmd.Endpoint != "" {
+			return arg
+		}
+	}
+
+	return ""
+}
+
+func endpointHost(endpoint string) string {
+	host, _ := parser.SplitURL(endpoint)
+
+	return host
 }
 
 func readsStdinBody(args []string) bool {
@@ -124,20 +162,24 @@ func readsStdinBody(args []string) bool {
 }
 
 // httpClientMerge reads a curl, wget, httpie or xh request that merges a pull
-// request on a GitHub API host.
+// request on a GitHub API host. Only a configured host is fetched from: any
+// other host was named by the command text alone, and gh would send its token
+// to it.
 func (v *MergeValidator) httpClientMerge(
 	result *parser.ParseResult,
 	req *parser.HTTPRequest,
 	stdin string,
-) (*parser.GHMergeCommand, bool) {
+) (mergeTarget, bool) {
 	host, path := parser.SplitRequestURL(result.ExpandVars(req.URL))
-	if !slices.Contains(v.githubAPIHosts(), host) && !parser.IsGHESAPIPath(path) {
-		return nil, false
+	listed := slices.Contains(v.githubAPIHosts(), host)
+
+	if !listed && !parser.IsGHESAPIPath(path) {
+		return mergeTarget{}, false
 	}
 
 	repo, number, ok := prMergeTarget(result, req.Method, path)
 	if !ok {
-		return nil, false
+		return mergeTarget{}, false
 	}
 
 	var body restMergeFields
@@ -151,12 +193,47 @@ func (v *MergeValidator) httpClientMerge(
 		body = fieldsFromText(stdin)
 	}
 
-	hostname := host
-	if host == defaultAPIHost {
-		hostname = ""
+	target := mergeTarget{
+		cmd:         restMergeCommand(repo, number, "", body),
+		signoffHint: restMergeSignoffHint,
 	}
 
-	return restMergeCommand(repo, number, hostname, body), true
+	if listed && safeHostname(host) {
+		target.cmd.Hostname = gitHubHostname(host)
+	} else {
+		target.unlistedHost = host
+	}
+
+	return target, true
+}
+
+// gitHubHostname maps the API host to the hostname gh expects, which is empty
+// for github.com.
+func gitHubHostname(host string) string {
+	if host == defaultAPIHost || host == defaultGitHubHost {
+		return ""
+	}
+
+	return host
+}
+
+// safeHostname reports whether a host can be handed to gh. A leading dash would
+// read as a flag, and anything outside hostname characters is not a host.
+func safeHostname(host string) bool {
+	if strings.HasPrefix(host, "-") {
+		return false
+	}
+
+	return strings.IndexFunc(host, isNotHostnameRune) == -1
+}
+
+func isNotHostnameRune(r rune) bool {
+	switch {
+	case r == '.', r == '-', r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+		return false
+	default:
+		return true
+	}
 }
 
 // prMergeTarget resolves the repository and number of a REST merge request.
