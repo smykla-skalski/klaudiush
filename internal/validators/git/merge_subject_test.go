@@ -271,6 +271,16 @@ var _ = Describe("MergeValidator squash commit subject", func() {
 			`M=merge; for i in 1 2; do http PUT `+restMergeURL+` "merge_method=$M" `+
 				`"commit_message=Body. `+signoff+`"; M=squash; done`,
 			validator.RefGitMergeMessage),
+		Entry("curl body unreadable first, then a squash without a message",
+			`B='nojson'; for i in 1 2; do curl -X PUT `+restMergeURL+` -d "$B"; `+
+				`B='{"merge_method":"squash"}'; done`,
+			validator.RefGitMergeSignoff),
+		Entry(
+			"curl squash without a message first, then a signed one",
+			`B='{"merge_method":"squash"}'; for i in 1 2; do curl -X PUT `+restMergeURL+` -d "$B"; `+
+				`B='{"merge_method":"squash","commit_message":"x `+signoff+`"}'; done`,
+			validator.RefGitMergeSignoff,
+		),
 		Entry(
 			"gh pr merge subject reassigned in a loop",
 			`S="feat(api): add endpoint"; for i in 1 2; do `+ghSquash+`--subject "$S"; S="Add endpoint"; done`,

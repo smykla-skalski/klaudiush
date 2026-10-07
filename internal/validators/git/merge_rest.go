@@ -211,9 +211,13 @@ func (v *MergeValidator) httpClientMerge(
 	case len(req.DataItems) > 0:
 		body = v.fieldsFromItems(result, cmd, req)
 	case req.DataBody != "":
+		var variants []restMergeFields
+
 		for _, text := range expansions(result, cmd, req.DataBody) {
-			body.merge(fieldsFromText(text))
+			variants = append(variants, fieldsFromText(text))
 		}
+
+		body = combineVariants(variants)
 	default:
 		body = v.stdinFields(result, cmd)
 	}
@@ -384,12 +388,12 @@ func (v *MergeValidator) fieldsFromItems(
 	cmd parser.Command,
 	req *parser.HTTPRequest,
 ) restMergeFields {
-	var body restMergeFields
+	var variants []restMergeFields
 
 	for _, items := range itemExpansions(result, cmd, req.DataItems) {
 		fields, files, ok := parser.ParseRequestItemList(items)
 		if !ok {
-			body.unreadable = true
+			variants = append(variants, restMergeFields{unreadable: true})
 
 			continue
 		}
@@ -403,10 +407,13 @@ func (v *MergeValidator) fieldsFromItems(
 			fields[key] = content
 		}
 
-		body.addFields(fields, nil)
+		var variant restMergeFields
+
+		variant.addFields(fields, nil)
+		variants = append(variants, variant)
 	}
 
-	return body
+	return combineVariants(variants)
 }
 
 // itemExpansions returns the items with variables expanded each way
@@ -439,6 +446,34 @@ func expansions(result *parser.ParseResult, cmd parser.Command, s string) []stri
 	}
 
 	return []string{scoped, final}
+}
+
+// combineVariants joins the bodies one request sends under different variable
+// values. A readable body that leaves out a merge field sends that field's
+// default, so an empty value stands for it: a merge commit, no message, or the
+// PR title.
+func combineVariants(variants []restMergeFields) restMergeFields {
+	if len(variants) == 1 {
+		return variants[0]
+	}
+
+	var body restMergeFields
+
+	for _, variant := range variants {
+		body.merge(variant)
+
+		if variant.unreadable {
+			continue
+		}
+
+		for _, key := range []string{mergeMethodField, commitMessageField, commitTitleField} {
+			if len(variant.values[key]) == 0 {
+				body.add(key, fieldValue{})
+			}
+		}
+	}
+
+	return body
 }
 
 // merge adds every value of other, and its unreadable state.
