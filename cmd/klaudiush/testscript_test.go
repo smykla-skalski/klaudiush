@@ -62,8 +62,28 @@ func setupTestEnv(env *testscript.Env) error {
 		return err
 	}
 
-	// Set HOME to the work directory so logger can create the log file
-	env.Setenv("HOME", env.WorkDir)
+	homeDir := env.WorkDir
+	xdgDirs := map[string]string{
+		"XDG_CACHE_HOME":  filepath.Join(homeDir, ".cache"),
+		"XDG_CONFIG_HOME": filepath.Join(homeDir, ".config"),
+		"XDG_DATA_HOME":   filepath.Join(homeDir, ".local", "share"),
+		"XDG_RUNTIME_DIR": filepath.Join(homeDir, ".runtime"),
+		"XDG_STATE_HOME":  filepath.Join(homeDir, ".local", "state"),
+	}
+
+	if err := os.MkdirAll(homeDir, 0o755); err != nil {
+		return err
+	}
+
+	env.Setenv("HOME", homeDir)
+
+	for name, dir := range xdgDirs {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return err
+		}
+
+		env.Setenv(name, dir)
+	}
 
 	// The directory testscript installs klaudiush into, so a script can run
 	// it with a PATH that holds nothing else
@@ -77,51 +97,40 @@ func setupTestEnv(env *testscript.Env) error {
 	return nil
 }
 
+func scriptParams(t *testing.T, dir string) testscript.Params {
+	t.Helper()
+
+	return testscript.Params{
+		Dir:         dir,
+		Setup:       setupTestEnv,
+		WorkdirRoot: t.TempDir(),
+	}
+}
+
 func TestScriptDispatcher(t *testing.T) {
-	testscript.Run(t, testscript.Params{
-		Dir:   "testdata/scripts/dispatcher",
-		Setup: setupTestEnv,
-	})
+	testscript.Run(t, scriptParams(t, "testdata/scripts/dispatcher"))
 }
 
 func TestScriptInit(t *testing.T) {
-	testscript.Run(t, testscript.Params{
-		Dir:   "testdata/scripts/init",
-		Setup: setupTestEnv,
-	})
+	testscript.Run(t, scriptParams(t, "testdata/scripts/init"))
 }
 
 func TestScriptDoctor(t *testing.T) {
-	testscript.Run(t, testscript.Params{
-		Dir:   "testdata/scripts/doctor",
-		Setup: setupTestEnv,
-	})
+	testscript.Run(t, scriptParams(t, "testdata/scripts/doctor"))
 }
 
 func TestScriptMarkdown(t *testing.T) {
-	testscript.Run(t, testscript.Params{
-		Dir:   "testdata/scripts/markdown",
-		Setup: setupTestEnv,
-	})
+	testscript.Run(t, scriptParams(t, "testdata/scripts/markdown"))
 }
 
 func TestScriptDebug(t *testing.T) {
-	testscript.Run(t, testscript.Params{
-		Dir:   "testdata/scripts/debug",
-		Setup: setupTestEnv,
-	})
+	testscript.Run(t, scriptParams(t, "testdata/scripts/debug"))
 }
 
 func TestScriptMetrics(t *testing.T) {
-	testscript.Run(t, testscript.Params{
-		Dir:   "testdata/scripts/metrics",
-		Setup: setupTestEnv,
-	})
+	testscript.Run(t, scriptParams(t, "testdata/scripts/metrics"))
 }
 
 func TestScriptBypass(t *testing.T) {
-	testscript.Run(t, testscript.Params{
-		Dir:   "testdata/scripts/bypass",
-		Setup: setupTestEnv,
-	})
+	testscript.Run(t, scriptParams(t, "testdata/scripts/bypass"))
 }
