@@ -415,7 +415,7 @@ func (w *astWalker) startupDir(cmd Command, name string) (homeDir, bool) {
 // touched is lenient, and skipped when it cannot be read.
 func (w *astWalker) homeScript(cmd Command, file string, dir homeDir) (startupScript, bool) {
 	path := dir.path + "/" + file
-	clean := resolvePath(cmd.WorkingDirectory, path)
+	clean := w.trackedPath(cmd.WorkingDirectory, path)
 	relative := !filepath.IsAbs(path)
 	touched := w.homeTouched(clean, dir.path, cmd)
 
