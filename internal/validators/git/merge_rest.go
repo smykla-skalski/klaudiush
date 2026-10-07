@@ -386,10 +386,9 @@ func (v *MergeValidator) stdinFields(
 }
 
 // fieldsFromItems reads httpie and xh items one by one. A "field=@path" item
-// embeds the file. Only content written earlier on the line is read, since a
-// file on disk may be replaced by a write the parser does not follow before
-// the request runs. Otherwise a commit_title is treated as unread, like
-// --body-file, and any other value is the literal text, as before.
+// embeds a file, which is not read: the file can change before the request
+// runs. A commit_title from a file is treated as unread, like --body-file, and
+// any other value is the literal text, as before.
 func fieldsFromItems(
 	result *parser.ParseResult,
 	cmd parser.Command,
@@ -408,17 +407,14 @@ func fieldsFromItems(
 		unread := map[string]string{}
 
 		for key, path := range files {
-			content, read := result.InlineFileContent(path, req.WorkingDirectory, req.Location)
-
-			switch {
-			case read:
-				fields[key] = content
-			case key == commitTitleField:
+			if key == commitTitleField {
 				// An unread subject is skipped, the PR title still checked.
 				unread[key] = path
-			default:
-				fields[key] = "@" + path
+
+				continue
 			}
+
+			fields[key] = "@" + path
 		}
 
 		var variant restMergeFields

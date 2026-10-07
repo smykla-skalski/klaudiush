@@ -218,7 +218,7 @@ var _ = Describe("MergeValidator squash commit subject", func() {
 		Expect(result.Reference).To(Equal(validator.RefGitMergeSignoff))
 	})
 
-	DescribeTable("reads the file an httpie or xh item embeds, or else its literal text",
+	DescribeTable("does not read the file an httpie or xh item embeds",
 		func(command string, reference validator.Reference) {
 			result := validate(command)
 
@@ -230,14 +230,14 @@ var _ = Describe("MergeValidator squash commit subject", func() {
 
 			Expect(result.Reference).To(Equal(reference))
 		},
-		Entry("httpie commit_title from a heredoc file",
-			"cat > title.txt <<'EOF'\nfeat(api): add endpoint\nEOF\n"+
-				`http PUT `+restMergeURL+` merge_method=squash commit_title=@title.txt `+
-				`"commit_message=Body. `+signoff+`"`, validator.Reference("")),
-		Entry("httpie bad commit_title from a heredoc file",
+		Entry("httpie bad commit_title from a heredoc file, not read",
 			"cat > title.txt <<'EOF'\nAdd endpoint\nEOF\n"+
 				`http PUT `+restMergeURL+` merge_method=squash commit_title=@title.txt `+
-				`"commit_message=Body. `+signoff+`"`, validator.RefGitMergeMessage),
+				`"commit_message=Body. `+signoff+`"`, validator.Reference("")),
+		Entry("httpie signed commit_message from a heredoc file, read literally as before",
+			"cat > body.txt <<'EOF'\nBody. "+signoff+"\nEOF\n"+
+				`http PUT `+restMergeURL+` merge_method=squash commit_message=@body.txt`,
+			validator.RefGitMergeSignoff),
 		Entry("xh commit_message from a missing file, read literally as before",
 			`xh PUT `+restMergeURL+` merge_method=squash commit_message=@missing-body.txt`,
 			validator.RefGitMergeSignoff),
