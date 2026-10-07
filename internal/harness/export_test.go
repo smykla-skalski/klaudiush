@@ -21,6 +21,19 @@ const CodexCatalog = codexCatalog
 // SessionCount returns how many session ids the sandbox still records.
 func (s *Sandbox) SessionCount() int { return len(s.trackedSessions()) }
 
+// SetProcessWatchInterval changes the process polling interval for a test.
+func (s *Sandbox) SetProcessWatchInterval(interval time.Duration) { s.watchEvery = interval }
+
+// KnowsProcess reports whether a process was recorded by an earlier listing.
+func (s *Sandbox) KnowsProcess(pid int) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	_, ok := s.known[pid]
+
+	return ok
+}
+
 // KeeperPID returns the pid of the sandbox keeper, or 0 before one runs.
 func (s *Sandbox) KeeperPID() int {
 	s.mu.Lock()

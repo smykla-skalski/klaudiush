@@ -278,7 +278,6 @@ var _ = Describe("Home startup files", func() {
 		Entry("bash -c reads no home file", `HOME=/b bash -c true`),
 		Entry("bash -c with HOME from command output", `HOME=$(mktemp -d) bash -c true`),
 		Entry("program with HOME from command output", `HOME=$(mktemp -d) git status`),
-		Entry("zshenv written for bash -c", `echo 'git push' > ~/.zshenv; bash -c true`),
 		Entry("bashrc for a login bash", `HOME=/b bash -l -i -c true`),
 		Entry("bashrc with --norc", `HOME=/b bash --norc -i -c true`),
 		Entry("bashrc replaced by --rcfile", `HOME=/b bash --rcfile /dev/null -i -c true`),
@@ -471,19 +470,19 @@ var _ = Describe("Other shell startup files", func() {
 		Entry("su login", `su --login user`, "su"),
 	)
 
-	It("honors fish no-config", func() {
+	It("validates planted fish configs even with no-config", func() {
 		result := parse(`echo x > ~/.config/fish/config.fish; `+
 			`echo x > ~/.config/fish/conf.d/test.fish; fish --no-config -c true`,
 			fakeResolver{env: map[string]string{"HOME": "/home/u"}})
 
-		Expect(result.Truncated).To(BeFalse())
+		Expect(result.Truncated).To(BeTrue())
 	})
 
-	It("honors xonsh no-rc", func() {
+	It("validates planted xonsh configs even with no-rc", func() {
 		result := parse(`echo x > ~/.config/xonsh/rc.xsh; xonsh --no-rc -c true`,
 			fakeResolver{env: map[string]string{"HOME": "/home/u"}})
 
-		Expect(result.Truncated).To(BeFalse())
+		Expect(result.Truncated).To(BeTrue())
 	})
 
 	DescribeTable("blocks written system configs with unsupported syntax",
