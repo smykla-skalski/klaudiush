@@ -74,6 +74,10 @@ type GHMergeCommand struct {
 	// for the default host. gh pr merge carries any host inside Repo instead.
 	Hostname string
 
+	// APIPath is the REST path of the pull request a REST merge targets, such
+	// as repos/o/r/pulls/42. gh pr merge leaves it empty.
+	APIPath string
+
 	// RawArgs contains all the raw arguments for debugging.
 	RawArgs []string
 }

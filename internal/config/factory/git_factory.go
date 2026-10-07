@@ -8,6 +8,7 @@ import (
 	"github.com/smykla-skalski/klaudiush/pkg/config"
 	"github.com/smykla-skalski/klaudiush/pkg/hook"
 	"github.com/smykla-skalski/klaudiush/pkg/logger"
+	"github.com/smykla-skalski/klaudiush/pkg/parser"
 )
 
 // GitValidatorFactory creates git validators from configuration.
@@ -309,6 +310,7 @@ func (f *GitValidatorFactory) createMergeValidator(
 				validator.GHCommandIs("pr", "merge"),
 				validator.CommandMatches(gitvalidators.RESTPRMergePattern),
 				validator.GHCommandIs("api"),
+				runsHTTPClient(),
 			),
 		),
 	}
@@ -323,4 +325,24 @@ func (f *GitValidatorFactory) githubAPIHosts() []string {
 	}
 
 	return f.cfg.Validators.GitHub.API.Hosts
+}
+
+// runsHTTPClient matches a command line that runs curl, wget, httpie or xh,
+// as the parser resolves it, so a request URL that is quoted in pieces or
+// built from variables still reaches the validators that resolve it.
+func runsHTTPClient() validator.Predicate {
+	return func(ctx *hook.Context) bool {
+		result, err := ctx.ParsedCommand()
+		if err != nil {
+			return false
+		}
+
+		for _, cmd := range result.Commands {
+			if parser.IsHTTPClient(&cmd) {
+				return true
+			}
+		}
+
+		return false
+	}
 }

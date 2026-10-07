@@ -2,39 +2,55 @@ package parser
 
 import (
 	"encoding/json"
+	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 )
 
 const (
-	prMergeEndpointSegments = 6
-	reposSegment            = "repos"
-	pullsSegment            = "pulls"
+	reposSegment        = "repos"
+	repositoriesSegment = "repositories"
+	pullsSegment        = "pulls"
 )
 
 // ParsePRMergeEndpoint reports whether a normalized REST endpoint is the one
-// that merges a pull request, repos/{owner}/{repo}/pulls/{number}/merge, and
-// returns its owner/repo and pull request number.
-func ParsePRMergeEndpoint(endpoint string) (string, int, bool) {
-	segments := strings.Split(endpoint, "/")
-	if len(segments) != prMergeEndpointSegments {
-		return "", 0, false
+// that merges a pull request - repos/{owner}/{repo}/pulls/{number}/merge, or
+// repositories/{id}/pulls/{number}/merge, its numeric-ID alias - and returns
+// the API path of that pull request (the endpoint without /merge).
+func ParsePRMergeEndpoint(endpoint string) (string, bool) {
+	prPath, found := strings.CutSuffix(endpoint, "/"+mergeSubCmd)
+	if !found {
+		return "", false
 	}
 
-	if segments[0] != reposSegment || segments[3] != pullsSegment || segments[5] != mergeSubCmd {
-		return "", 0, false
+	segments := strings.Split(prPath, "/")
+
+	var repo []string
+
+	switch {
+	case len(segments) == 5 && segments[0] == reposSegment:
+		repo = segments[1:3]
+	case len(segments) == 4 && segments[0] == repositoriesSegment:
+		repo = segments[1:2]
+
+		if _, err := strconv.Atoi(repo[0]); err != nil {
+			return "", false
+		}
+	default:
+		return "", false
 	}
 
-	if segments[1] == "" || segments[2] == "" {
-		return "", 0, false
+	if slices.Contains(repo, "") || segments[len(segments)-2] != pullsSegment {
+		return "", false
 	}
 
-	number, err := strconv.Atoi(segments[4])
+	number, err := strconv.Atoi(segments[len(segments)-1])
 	if err != nil || number <= 0 {
-		return "", 0, false
+		return "", false
 	}
 
-	return segments[1] + "/" + segments[2], number, true
+	return prPath, true
 }
 
 // IsPRMergeRequest reports whether a method and normalized endpoint merge a
@@ -44,7 +60,7 @@ func IsPRMergeRequest(method, endpoint string) bool {
 		return false
 	}
 
-	_, _, ok := ParsePRMergeEndpoint(endpoint)
+	_, ok := ParsePRMergeEndpoint(endpoint)
 
 	return ok
 }
@@ -112,4 +128,29 @@ func parseRequestItems(body string) (map[string]string, bool) {
 	}
 
 	return fields, true
+}
+
+// QueryFields returns the query string parameters of a raw endpoint or URL.
+// GitHub reads request parameters from the query too, and gh api moves its
+// fields there when --input carries the body.
+func QueryFields(raw string) map[string]string {
+	_, query, found := strings.Cut(raw, "?")
+	if !found {
+		return nil
+	}
+
+	values, err := url.ParseQuery(query)
+	if err != nil {
+		return nil
+	}
+
+	fields := make(map[string]string, len(values))
+
+	for key, value := range values {
+		if len(value) > 0 {
+			fields[key] = value[len(value)-1]
+		}
+	}
+
+	return fields
 }

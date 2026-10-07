@@ -224,6 +224,8 @@ var _ = Describe("DefaultValidatorFactory", func() {
 				"gh api with the path in a variable",
 				`P=pulls; gh api -X PUT "repos/o/r/$P/42/merge"`,
 			),
+			Entry("curl with a quoted path segment",
+				`curl -X PUT https://api.github.com/repos/o/r/pulls/42/'merge' -d '{}'`),
 		)
 
 		It("should create no-verify validator when enabled", func() {

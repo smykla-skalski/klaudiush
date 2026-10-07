@@ -80,9 +80,11 @@ var _ = Describe("MergeValidator REST pull request merge", func() {
 			Expect(result.Passed).To(BeFalse())
 			Expect(result.Reference).To(Equal(validator.RefGitMergeSignoff))
 			Expect(result.Details["errors"]).To(ContainSubstring("commit_message"))
-			Expect(runner.calls).To(Equal([][]string{
-				{"gh", "api", "repos/o/r/pulls/42", "--jq", "."},
-			}))
+			Expect(runner.calls).To(HaveLen(1))
+			Expect(runner.calls[0]).To(Or(
+				Equal([]string{"gh", "api", "repos/o/r/pulls/42", "--jq", "."}),
+				Equal([]string{"gh", "api", "repositories/123/pulls/42", "--jq", "."}),
+			))
 		},
 		Entry("gh api -X PUT",
 			`gh api -X PUT repos/o/r/pulls/42/merge -f merge_method=squash`),
@@ -102,6 +104,19 @@ var _ = Describe("MergeValidator REST pull request merge", func() {
 			`env GH_TOKEN=x gh api -X PUT repos/o/r/pulls/42/merge -f merge_method=squash`),
 		Entry("gh api inside bash -c",
 			`bash -c 'gh api -X PUT repos/o/r/pulls/42/merge -f merge_method=squash'`),
+		Entry("the numeric repository ID alias",
+			`curl -X PUT -d '{"merge_method":"squash"}' `+
+				`https://api.github.com/repositories/123/pulls/42/merge`),
+		Entry("merge_method in the query string",
+			`gh api -X PUT 'repos/o/r/pulls/42/merge?merge_method=squash'`),
+		Entry(
+			"a quoted path segment",
+			`curl -X PUT https://api.github.com/repos/o/r/pulls/42/'merge' -d '{"merge_method":"squash"}'`,
+		),
+		Entry(
+			"a URL built from a variable",
+			`u=https://api.github.com/repos/o/r/pulls/42/; curl -X PUT "${u}merge" -d '{"merge_method":"squash"}'`,
+		),
 		Entry("httpie request items",
 			`http PUT `+restMergeURL+` merge_method=squash`),
 		Entry("gh api with a heredoc body file",
@@ -187,6 +202,10 @@ var _ = Describe("MergeValidator REST pull request merge", func() {
 		Entry(
 			"gh api --hostname",
 			`gh api --hostname ghe.example.com -X PUT repos/o/r/pulls/42/merge -f merge_method=squash`,
+		),
+		Entry(
+			"gh api --hostname in another case",
+			`gh api --hostname GHE.example.com -X PUT repos/o/r/pulls/42/merge -f merge_method=squash`,
 		),
 		Entry(
 			"gh api with a full GitHub Enterprise URL",

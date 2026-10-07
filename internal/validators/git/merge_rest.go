@@ -93,10 +93,12 @@ func (v *MergeValidator) ghAPIMerge(
 		return mergeTarget{}, false
 	}
 
-	repo, number, ok := prMergeTarget(result, apiCmd.Method, apiCmd.Endpoint)
+	prPath, ok := prMergeTarget(result, apiCmd.Method, apiCmd.Endpoint)
 	if !ok {
 		return mergeTarget{}, false
 	}
+
+	rawEndpoint := result.ExpandVars(ghAPIEndpointArg(apiCmd))
 
 	var body restMergeFields
 
@@ -115,13 +117,15 @@ func (v *MergeValidator) ghAPIMerge(
 		}
 	}
 
-	hostname := apiCmd.Hostname
+	body.addQuery(rawEndpoint)
+
+	hostname := strings.ToLower(apiCmd.Hostname)
 	if hostname == "" {
-		hostname = endpointHost(result.ExpandVars(ghAPIEndpointArg(apiCmd)))
+		hostname = endpointHost(rawEndpoint)
 	}
 
 	target := mergeTarget{
-		cmd:         restMergeCommand(repo, number, gitHubHostname(hostname), body),
+		cmd:         restMergeCommand(prPath, gitHubHostname(hostname), body),
 		signoffHint: restMergeSignoffHint,
 	}
 
@@ -170,14 +174,15 @@ func (v *MergeValidator) httpClientMerge(
 	req *parser.HTTPRequest,
 	stdin string,
 ) (mergeTarget, bool) {
-	host, path := parser.SplitRequestURL(result.ExpandVars(req.URL))
+	rawURL := result.ExpandVars(req.URL)
+	host, path := parser.SplitRequestURL(rawURL)
 	listed := slices.Contains(v.githubAPIHosts(), host)
 
 	if !listed && !parser.IsGHESAPIPath(path) {
 		return mergeTarget{}, false
 	}
 
-	repo, number, ok := prMergeTarget(result, req.Method, path)
+	prPath, ok := prMergeTarget(result, req.Method, path)
 	if !ok {
 		return mergeTarget{}, false
 	}
@@ -193,8 +198,10 @@ func (v *MergeValidator) httpClientMerge(
 		body = fieldsFromText(stdin)
 	}
 
+	body.addQuery(rawURL)
+
 	target := mergeTarget{
-		cmd:         restMergeCommand(repo, number, "", body),
+		cmd:         restMergeCommand(prPath, "", body),
 		signoffHint: restMergeSignoffHint,
 	}
 
@@ -229,24 +236,48 @@ func safeHostname(host string) bool {
 
 func isNotHostnameRune(r rune) bool {
 	switch {
-	case r == '.', r == '-', r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+	case r == '.', r == '-', r == ':', r >= 'a' && r <= 'z', r >= '0' && r <= '9':
 		return false
 	default:
 		return true
 	}
 }
 
-// prMergeTarget resolves the repository and number of a REST merge request.
+// prMergeTarget resolves the pull request path of a REST merge request.
 func prMergeTarget(
 	result *parser.ParseResult,
 	method, endpoint string,
-) (string, int, bool) {
+) (string, bool) {
 	expanded := parser.NormalizeAPIEndpoint(result.ExpandVars(endpoint))
 	if !parser.IsPRMergeRequest(method, expanded) {
-		return "", 0, false
+		return "", false
 	}
 
 	return parser.ParsePRMergeEndpoint(expanded)
+}
+
+// addQuery adds the query parameters of the request target to fields the
+// body does not set itself.
+func (b *restMergeFields) addQuery(raw string) {
+	if !b.known {
+		return
+	}
+
+	for key, value := range parser.QueryFields(raw) {
+		if _, set := b.fields[key]; set {
+			continue
+		}
+
+		if _, set := b.fieldFiles[key]; set {
+			continue
+		}
+
+		if b.fields == nil {
+			b.fields = map[string]string{}
+		}
+
+		b.fields[key] = value
+	}
 }
 
 // readFieldsFromFile reads a request body file, preferring content written
@@ -295,14 +326,12 @@ func expandFields(result *parser.ParseResult, fields map[string]string) map[stri
 // validated as a squash. A commit message that cannot be read is treated like
 // --body-file, whose content the gh pr merge checks cannot see either.
 func restMergeCommand(
-	repo string,
-	number int,
+	prPath string,
 	hostname string,
 	body restMergeFields,
 ) *parser.GHMergeCommand {
 	mergeCmd := &parser.GHMergeCommand{
-		PRNumber: number,
-		Repo:     repo,
+		APIPath:  prPath,
 		Hostname: hostname,
 	}
 

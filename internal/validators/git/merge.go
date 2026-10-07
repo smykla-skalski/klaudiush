@@ -262,7 +262,7 @@ func (v *MergeValidator) fetchPRDetails(
 // buildGHArgs builds the gh command arguments for fetching PR details.
 func (v *MergeValidator) buildGHArgs(mergeCmd *parser.GHMergeCommand) ([]string, error) {
 	// If PR number is specified, use gh api
-	if mergeCmd.PRNumber > 0 {
+	if mergeCmd.PRNumber > 0 || mergeCmd.APIPath != "" {
 		return v.buildAPIArgs(mergeCmd), nil
 	}
 
@@ -278,9 +278,12 @@ func (*MergeValidator) buildAPIArgs(mergeCmd *parser.GHMergeCommand) []string {
 		args = append(args, "--hostname="+mergeCmd.Hostname)
 	}
 
-	if mergeCmd.Repo != "" {
+	switch {
+	case mergeCmd.APIPath != "":
+		args = append(args, mergeCmd.APIPath)
+	case mergeCmd.Repo != "":
 		args = append(args, fmt.Sprintf("repos/%s/pulls/%d", mergeCmd.Repo, mergeCmd.PRNumber))
-	} else {
+	default:
 		args = append(args, fmt.Sprintf("repos/{owner}/{repo}/pulls/%d", mergeCmd.PRNumber))
 	}
 

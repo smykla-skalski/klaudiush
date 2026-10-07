@@ -9,20 +9,29 @@ import (
 
 var _ = Describe("REST pull request merge", func() {
 	DescribeTable("ParsePRMergeEndpoint",
-		func(endpoint, wantRepo string, wantNumber int, wantOK bool) {
-			repo, number, ok := parser.ParsePRMergeEndpoint(endpoint)
+		func(endpoint, wantPath string, wantOK bool) {
+			prPath, ok := parser.ParsePRMergeEndpoint(endpoint)
 			Expect(ok).To(Equal(wantOK))
-			Expect(repo).To(Equal(wantRepo))
-			Expect(number).To(Equal(wantNumber))
+			Expect(prPath).To(Equal(wantPath))
 		},
-		Entry("merge endpoint", "repos/o/r/pulls/42/merge", "o/r", 42, true),
-		Entry("pull request itself", "repos/o/r/pulls/42", "", 0, false),
-		Entry("non-numeric number", "repos/o/r/pulls/x/merge", "", 0, false),
-		Entry("zero number", "repos/o/r/pulls/0/merge", "", 0, false),
-		Entry("branch merges", "repos/o/r/merges", "", 0, false),
-		Entry("missing owner", "repos//r/pulls/1/merge", "", 0, false),
-		Entry("extra segment", "repos/o/r/pulls/1/merge/x", "", 0, false),
+		Entry("merge endpoint", "repos/o/r/pulls/42/merge", "repos/o/r/pulls/42", true),
+		Entry("numeric repository ID alias",
+			"repositories/123/pulls/42/merge", "repositories/123/pulls/42", true),
+		Entry("non-numeric repository ID", "repositories/x/pulls/42/merge", "", false),
+		Entry("pull request itself", "repos/o/r/pulls/42", "", false),
+		Entry("non-numeric number", "repos/o/r/pulls/x/merge", "", false),
+		Entry("zero number", "repos/o/r/pulls/0/merge", "", false),
+		Entry("branch merges", "repos/o/r/merges", "", false),
+		Entry("missing owner", "repos//r/pulls/1/merge", "", false),
+		Entry("extra segment", "repos/o/r/pulls/1/merge/x", "", false),
+		Entry("issues instead of pulls", "repos/o/r/issues/1/merge", "", false),
 	)
+
+	It("QueryFields reads the query string", func() {
+		Expect(parser.QueryFields("repos/o/r/pulls/1/merge?merge_method=squash&a=1")).
+			To(Equal(map[string]string{"merge_method": "squash", "a": "1"}))
+		Expect(parser.QueryFields("repos/o/r/pulls/1/merge")).To(BeNil())
+	})
 
 	It("IsPRMergeRequest needs PUT", func() {
 		Expect(parser.IsPRMergeRequest("PUT", "repos/o/r/pulls/1/merge")).To(BeTrue())
