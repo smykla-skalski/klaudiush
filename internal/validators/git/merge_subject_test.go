@@ -195,12 +195,8 @@ var _ = Describe("MergeValidator squash commit subject", func() {
 			`T="feat(api): add endpoint"; `+ghSquash+`--subject "$T"`, true),
 		Entry("gh pr merge with a bad subject variable",
 			`T="Add endpoint"; `+ghSquash+`--subject "$T"`, false),
-		Entry("gh pr merge with a body variable carrying the signoff",
-			`B="Body. `+signoff+`"; gh pr merge 42 --squash --body "$B"`, true),
 		Entry("gh pr merge with a bad subject variable reassigned after the merge",
 			`T="Add endpoint"; `+ghSquash+`--subject "$T"; T="feat(api): add endpoint"`, false),
-		Entry("gh pr merge with an unsigned body variable reassigned after the merge",
-			`B="no signoff"; gh pr merge 42 --squash --body "$B"; B="Body. `+signoff+`"`, false),
 		Entry(
 			"gh api with a bad commit_title variable reassigned after the merge",
 			`T="Add endpoint"; `+ghAPISquash+`-f commit_title="$T"; T="feat(api): add endpoint"`,
@@ -214,6 +210,28 @@ var _ = Describe("MergeValidator squash commit subject", func() {
 			ghSquash+"--subject \"$(cat <<'X'\nfeat(api): add endpoint\nX\n)\"", true),
 		Entry("gh pr merge with a bad heredoc subject",
 			ghSquash+"--subject \"$(cat <<'X'\nAdd endpoint\nX\n)\"", false),
+	)
+
+	It("leaves a gh pr merge body variable as written, as before", func() {
+		result := validate(`B="Body. ` + signoff + `" gh pr merge 42 --squash --body "$B"`)
+
+		Expect(result.Reference).To(Equal(validator.RefGitMergeSignoff))
+	})
+
+	DescribeTable("treats an httpie or xh item that embeds a file as unread",
+		func(command string) {
+			Expect(validate(command).Passed).To(BeTrue())
+
+			runner.stdout = invalidPRDetails
+			result := validate(command)
+
+			Expect(result.Reference).To(Equal(validator.RefGitMergeMessage))
+		},
+		Entry("httpie commit_title=@file",
+			`http PUT `+restMergeURL+` merge_method=squash commit_title=@title.txt `+
+				`"commit_message=Body. `+signoff+`"`),
+		Entry("xh commit_message=@file",
+			`xh PUT `+restMergeURL+` merge_method=squash commit_message=@body.txt`),
 	)
 
 	It("reads httpie items whose value spans lines one by one", func() {

@@ -103,27 +103,52 @@ func parseJSONFields(body string) (map[string]string, bool) {
 }
 
 // parseRequestItems reads "key=value" and "key:=<JSON string>" items, one per
-// line. Any other item form makes the whole body unknown rather than partly
-// read.
+// line, taking every value literally. Any other item form makes the whole body
+// unknown rather than partly read.
 func parseRequestItems(body string) (map[string]string, bool) {
-	return ParseRequestItemList(strings.Split(body, "\n"))
+	fields, files, ok := ParseRequestItemList(strings.Split(body, "\n"))
+	if !ok {
+		return nil, false
+	}
+
+	for key, path := range files {
+		fields[key] = "@" + path
+	}
+
+	return fields, true
 }
 
 // ParseRequestItemList reads httpie and xh request items given one by one, so
-// a value may hold newlines. The bool is false when an item has another form.
-func ParseRequestItemList(items []string) (map[string]string, bool) {
+// a value may hold newlines. A "key=@path" item embeds a file's content, so it
+// is returned among the files, by path. The bool is false when an item has
+// another form.
+func ParseRequestItemList(items []string) (map[string]string, map[string]string, bool) {
 	fields := map[string]string{}
+	files := map[string]string{}
 
 	for _, item := range items {
 		key, value, ok := parseRequestItem(item)
 		if !ok {
-			return nil, false
+			return nil, nil, false
+		}
+
+		// key:="@x" is the JSON string "@x", not a file.
+		if path, isFile := strings.CutPrefix(
+			value,
+			"@",
+		); isFile &&
+			!strings.HasPrefix(item, key+":=") {
+			files[key] = path
+			delete(fields, key)
+
+			continue
 		}
 
 		fields[key] = value
+		delete(files, key)
 	}
 
-	return fields, true
+	return fields, files, true
 }
 
 // parseRequestItem reads one "key=value" or "key:=<JSON string>" item.

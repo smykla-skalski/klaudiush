@@ -163,10 +163,9 @@ func (v *MergeValidator) findMerges(result *parser.ParseResult) []mergeTarget {
 				continue
 			}
 
-			// Read variables as they stood when the command ran, as the REST
-			// fields are.
+			// Read subject variables as they stood when the command ran, as the
+			// REST commit_title is. The body is left as written, as before.
 			mergeCmd.Subject = cmd.Vars.ExpandVars(mergeCmd.Subject)
-			mergeCmd.Body = cmd.Vars.ExpandVars(mergeCmd.Body)
 
 			targets = append(targets, mergeTarget{cmd: mergeCmd, signoffHint: ghMergeSignoffHint})
 

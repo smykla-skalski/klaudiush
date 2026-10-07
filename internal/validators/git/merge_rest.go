@@ -363,14 +363,14 @@ func fieldsFromItems(vars *parser.VarScope, items []string) restMergeFields {
 		expanded = append(expanded, vars.ExpandVars(item))
 	}
 
-	fields, ok := parser.ParseRequestItemList(expanded)
+	fields, files, ok := parser.ParseRequestItemList(expanded)
 	if !ok {
 		return restMergeFields{unreadable: true}
 	}
 
 	var body restMergeFields
 
-	body.addFields(fields, nil)
+	body.addFields(fields, files)
 
 	return body
 }
