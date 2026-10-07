@@ -929,6 +929,10 @@ const maxScannedRunners = 8
 // command that is not a known launcher, covering runners such as mise exec,
 // nix run, docker run and ssh without listing each one.
 func scanLaunch(cmd Command) launch {
+	if child, ok := remoteDynamicContainer(cmd); ok {
+		return launch{commands: []Command{child}}
+	}
+
 	runners := 0
 
 	for i, arg := range cmd.Args {
@@ -960,6 +964,92 @@ func scanLaunch(cmd Command) launch {
 	}
 
 	return launch{}
+}
+
+// remoteDynamicContainer reports a container subcommand built dynamically
+// after a remote launcher has reached its command operand.
+func remoteDynamicContainer(cmd Command) (Command, bool) {
+	for at, arg := range cmd.Args {
+		if !isContainerRunner(commandName(arg)) || !remoteCommandAt(cmd, at) {
+			continue
+		}
+
+		rest := cmd.Args[at+1:]
+
+		_, detail := runSubcommand(rest, mayBeDynamic)
+		if detail != "" {
+			return childCommand(cmd, arg, rest), true
+		}
+	}
+
+	return Command{}, false
+}
+
+func remoteCommandAt(cmd Command, at int) bool {
+	switch cmd.Name {
+	case "ssh", "mosh":
+		idx, ok := commandIndex(launcher{
+			valueFlags: strings.Fields(
+				"-B -b -c -D -E -e -F -I -i -J -L -l -m -O -o -P -p -Q -R -S -W -w",
+			),
+			shortValues: "BbcDEeFIiJLlmOopQRSWw",
+			operands:    1,
+		}, cmd.Args)
+
+		return ok && idx == at
+	case "kubectl", "oc":
+		return kubectlRemoteCommandAt(cmd.Args, at)
+	case "gcloud":
+		return gcloudRemoteCommandAt(cmd.Args, at)
+	default:
+		return false
+	}
+}
+
+func kubectlRemoteCommandAt(args []string, at int) bool {
+	idx, ok := commandIndex(launcher{valueFlags: strings.Fields(
+		"-n -s --namespace --context --cluster --user --kubeconfig --server --token " +
+			"--request-timeout --cache-dir --as --as-group --as-uid",
+	)}, args)
+	if !ok || args[idx] != execBuiltin {
+		return false
+	}
+
+	return separatedRemoteCommandAt(args, idx, at)
+}
+
+func gcloudRemoteCommandAt(args []string, at int) bool {
+	compute, ok := commandIndex(launcher{valueFlags: strings.Fields(
+		"--account --billing-project --configuration --flags-file --flatten --format " +
+			"--project --trace-token --verbosity",
+	)}, args)
+	if !ok || args[compute] != "compute" {
+		return false
+	}
+
+	sshOffset, ok := commandIndex(launcher{valueFlags: strings.Fields(
+		"--project --zone",
+	)}, args[compute+1:])
+	if !ok {
+		return false
+	}
+
+	ssh := compute + 1 + sshOffset
+	if args[ssh] != "ssh" {
+		return false
+	}
+
+	return separatedRemoteCommandAt(args, ssh, at)
+}
+
+func separatedRemoteCommandAt(args []string, launcherAt, commandAt int) bool {
+	for i := launcherAt + 1; i < commandAt; i++ {
+		if args[i] == endOfOptions {
+			return i > launcherAt+1 && i+1 == commandAt
+		}
+	}
+
+	return false
 }
 
 // launchesTracked reports whether arg followed by rest runs something worth
