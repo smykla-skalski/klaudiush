@@ -90,14 +90,17 @@ var langSyntaxByExt = map[string]langSyntax{
 var slashCommentSyntax = langSyntax{comment: commentSlash}
 
 // slashCommentExts lists extensions of languages whose only line comment is
-// "//". In them "#" starts code: Rust attributes, C, C++, Objective-C and C#
-// preprocessor directives, Swift compiler directives, JavaScript private
-// members, CSS selectors and colours, and Vue slot shorthands.
+// "//". In them "#" starts code: Rust attributes, C, C++, Objective-C, shader
+// and C# preprocessor directives, F# and Swift compiler directives,
+// JavaScript private members, CSS selectors and colours, and Vue slot
+// shorthands. ".m" is read as Objective-C, not Octave.
 var slashCommentExts = map[string]bool{
 	".rs": true,
 	".c":  true, ".h": true, ".cc": true, ".cpp": true, ".cxx": true, ".c++": true,
 	".hh": true, ".hpp": true, ".hxx": true, ".h++": true, ".inl": true, ".ipp": true,
-	".tpp": true, ".m": true, ".mm": true, ".cu": true, ".cuh": true,
+	".tpp": true, ".cppm": true, ".ixx": true, ".ino": true, ".m": true, ".mm": true,
+	".cu": true, ".cuh": true, ".glsl": true, ".vert": true, ".frag": true, ".hlsl": true,
+	".metal": true, ".fs": true, ".fsx": true,
 	".cs": true, ".swift": true, ".go": true, ".java": true, ".kt": true, ".kts": true,
 	".scala": true, ".dart": true,
 	".js": true, ".jsx": true, ".mjs": true, ".cjs": true,

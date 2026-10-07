@@ -356,7 +356,7 @@ func findLeadViolations(
 		}
 
 		for _, pattern := range patterns {
-			if match := pattern.FindString(line[idx:]); match != "" {
+			if match := commentMatch(pattern, line, idx); match != "" {
 				violations = append(violations, violation{
 					line:      i + 1,
 					directive: strings.TrimSpace(match),
@@ -407,6 +407,19 @@ func withFollowingSource(lines []string, suffix string) []string {
 	out[len(out)-1] += rest[0]
 
 	return append(out, rest[1:]...)
+}
+
+// commentMatch returns the first match of pattern on line that reaches the
+// comment starting at idx. A match that ends before the comment lies in code,
+// such as a C "#define" or a JavaScript "#count", and is skipped.
+func commentMatch(pattern *regexp.Regexp, line string, idx int) string {
+	for _, loc := range pattern.FindAllStringIndex(line, -1) {
+		if loc[1] > idx {
+			return line[loc[0]:loc[1]]
+		}
+	}
+
+	return ""
 }
 
 // isFullLineComment reports whether the comment starting at line[idx] is a

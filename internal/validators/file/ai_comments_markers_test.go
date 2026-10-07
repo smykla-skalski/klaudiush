@@ -90,6 +90,11 @@ var _ = Describe("AICommentValidator in languages where # is code", func() {
 			"#main {\n  color: #fff;\n}"),
 		Entry("vue slot shorthand", "/repo/src/App.vue",
 			"<template>\n  <Card #header>Title</Card>\n</template>"),
+		Entry("glsl version and define", "/repo/shaders/blur.frag",
+			"#version 330 core\n#define TAPS 9"),
+		Entry("arduino include", "/repo/sketch/sketch.ino", "#include <Arduino.h>"),
+		Entry("f# compiler directive", "/repo/src/App.fs",
+			"#if DEBUG\nlet level = 1\n#endif"),
 	)
 
 	DescribeTable(
@@ -153,6 +158,25 @@ var _ = Describe("AICommentValidator in languages where # is code", func() {
 			"#define CAP 10 // Set the cap"),
 		Entry("shell filler hash comment", "/repo/run.sh",
 			"# Set the value\nX=1"),
+	)
+
+	DescribeTable(
+		"filler mode custom patterns match the line but only report the comment",
+		func(pattern, path, content string, passes bool) {
+			custom := file.NewAICommentValidator(
+				logger.NewNoOpLogger(),
+				&config.AICommentValidatorConfig{Patterns: []string{pattern}},
+				nil,
+			)
+			result := custom.Validate(context.Background(), writeCtx(path, content))
+			Expect(result.Passed).To(Equal(passes), result.Message)
+		},
+		Entry("pattern needing whitespace before the marker",
+			`(?i)\s//\s*set\b`, "/repo/main.go", "x := 1 // set x", false),
+		Entry("pattern anchored at line start",
+			`(?i)^\s+//\s*set\b`, "/repo/main.go", "\t// set x", false),
+		Entry("pattern matching only code before the comment",
+			`(?i)#define`, "/repo/src/main.c", "#define CAP 10 // matches the kernel limit", true),
 	)
 
 	It("allows an Edit that adds a Rust test module", func() {
