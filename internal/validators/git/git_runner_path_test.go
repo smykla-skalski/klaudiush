@@ -363,6 +363,48 @@ var _ = Describe("CLIGitRunnerWithPath", func() {
 		})
 	})
 
+	Describe("CLIGitRunner", func() {
+		It("uses the current directory", func() {
+			_, err := repo.CreateRemote(&config.RemoteConfig{
+				Name: "origin",
+				URLs: []string{"https://github.com/test/repo.git"},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			cfg, err := repo.Config()
+			Expect(err).NotTo(HaveOccurred())
+
+			cfg.Branches["master"] = &config.Branch{
+				Name:   "master",
+				Remote: "origin",
+				Merge:  "refs/heads/master",
+			}
+			Expect(repo.SetConfig(cfg)).To(Succeed())
+
+			cwd, err := os.Getwd()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(os.Chdir(tempDir)).To(Succeed())
+			DeferCleanup(func() { Expect(os.Chdir(cwd)).To(Succeed()) })
+
+			currentDirRunner := git.NewCLIGitRunner()
+			inRepo, err := currentDirRunner.IsInRepo()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(inRepo).To(BeTrue())
+
+			remoteURL, err := currentDirRunner.GetRemoteURL("origin")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(remoteURL).To(Equal("https://github.com/test/repo.git"))
+
+			branch, err := currentDirRunner.GetCurrentBranch()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(branch).To(Equal("master"))
+
+			remote, err := currentDirRunner.GetBranchRemote(branch)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(remote).To(Equal("origin"))
+		})
+	})
+
 	Describe("GetRemotes", func() {
 		Context("when no remotes exist", func() {
 			It("should return empty map", func() {
