@@ -87,6 +87,7 @@ type Command struct {
 	quoting       map[string]wordQuoting
 	lookedUpDir   string
 	unconditional bool
+	isolated      bool
 }
 
 // wordQuoting records how the words that rendered to one argument were

@@ -221,6 +221,9 @@ func (w *astWalker) visit(node syntax.Node) bool {
 	case *syntax.ProcSubst:
 		w.noteOutputRoute()
 		w.markOutputSubst(n)
+		w.walkIsolated(n.Stmts)
+
+		return false
 	case *syntax.FuncDecl:
 		// The body runs only when the function is called, and each call is
 		// followed with its arguments, so it is not walked here.
@@ -261,6 +264,9 @@ func (w *astWalker) visit(node syntax.Node) bool {
 func (w *astWalker) walkIsolated(stmts []*syntax.Stmt) {
 	dir := w.directoryState()
 	defer w.restoreDirectory(dir)
+
+	funcs := maps.Clone(w.funcs)
+	defer func() { w.funcs = funcs }()
 
 	for _, stmt := range stmts {
 		syntax.Walk(stmt, w.visit)
@@ -722,6 +728,7 @@ func (w *astWalker) extractCommand(call *syntax.CallExpr) {
 		quoting:          argQuoting(call.Args[1:]),
 		lookedUpDir:      w.lookupDir(name, words),
 		unconditional:    w.commandUnconditional(call),
+		isolated:         w.commandIsolated(call),
 	}, w.depth, view)
 }
 
@@ -816,11 +823,7 @@ func (w *astWalker) walkNested(script nestedScript, cmd Command, depth int) {
 		script.text,
 		cmd,
 		depth,
-		scriptWalk{
-			name:         script.name,
-			forwarded:    script.forward,
-			publishFuncs: script.publishFuncs,
-		},
+		scriptWalk{name: script.name, forwarded: script.forward},
 	)
 
 	if script.splitArgs && (untrusted || w.state.untrusted) {

@@ -102,6 +102,51 @@ var _ = Describe("Commands chained after a function definition", func() {
 		Expect(result.Truncated).To(BeFalse())
 	})
 
+	It("records a function defined through eval by a function call", func() {
+		result := parse(`f() { eval 'g() { git push --force origin main; }'; }; f; g`)
+
+		Expect(gitLines(result)).To(ConsistOf("push --force origin main"))
+		Expect(result.Truncated).To(BeFalse())
+	})
+
+	It("records a function sourced by a function call", func() {
+		result := parse(`printf 'g() { git push --force origin main; }\n' > defs.sh; ` +
+			`f() { source defs.sh; }; f; g`)
+
+		Expect(gitLines(result)).To(ConsistOf("push --force origin main"))
+		Expect(result.Truncated).To(BeFalse())
+	})
+
+	It("keeps functions from a new shell isolated", func() {
+		result := parse(`f() { bash -c 'g() { git push --force origin main; }'; }; f; g`)
+
+		Expect(gitLines(result)).To(BeEmpty())
+		Expect(result.Truncated).To(BeFalse())
+	})
+
+	DescribeTable("keeps functions from subshells isolated",
+		func(command string) {
+			result := parse(command)
+
+			Expect(gitLines(result)).To(BeEmpty())
+			Expect(result.Truncated).To(BeFalse())
+		},
+		Entry("subshell", `f() { ( g() { git push --force; } ); }; f; g`),
+		Entry("command substitution", `f() { x=$(g() { git push --force; }); }; f; g`),
+		Entry("process substitution", `f() { cat <(g() { git push --force; }); }; f; g`),
+	)
+
+	DescribeTable("keeps functions from asynchronous calls isolated",
+		func(command string) {
+			result := parse(command)
+
+			Expect(gitLines(result)).To(BeEmpty())
+			Expect(result.Truncated).To(BeFalse())
+		},
+		Entry("pipeline", `f() { g() { git push --force; }; }; f | cat; g`),
+		Entry("background", `f() { g() { git push --force; }; }; f & wait; g`),
+	)
+
 	It("does not record a nested function until its parent is called", func() {
 		result := parse("f() { g() { git push --force origin main; }; }; g")
 
