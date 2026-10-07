@@ -110,13 +110,10 @@ func (v *MergeValidator) ghAPIMerge(
 	case readsStdinBody(apiCmd.RawArgs):
 		body = fieldsFromText(cmd.Stdin)
 	default:
-		body = restMergeFields{
-			fields:     expandFields(result, apiCmd.Fields),
-			fieldFiles: apiCmd.FieldFiles,
-			known:      true,
-		}
+		body = restMergeFields{known: true}
 	}
 
+	body.addUnset(expandFields(result, apiCmd.Fields), apiCmd.FieldFiles)
 	body.addQuery(rawEndpoint)
 
 	hostname := strings.ToLower(apiCmd.Hostname)
@@ -259,16 +256,18 @@ func prMergeTarget(
 // addQuery adds the query parameters of the request target to fields the
 // body does not set itself.
 func (b *restMergeFields) addQuery(raw string) {
+	b.addUnset(parser.QueryFields(raw), nil)
+}
+
+// addUnset adds fields, and fields read from files, that the body does not
+// set itself. A key the body sends wins, the way GitHub reads it.
+func (b *restMergeFields) addUnset(fields, fieldFiles map[string]string) {
 	if !b.known {
 		return
 	}
 
-	for key, value := range parser.QueryFields(raw) {
-		if _, set := b.fields[key]; set {
-			continue
-		}
-
-		if _, set := b.fieldFiles[key]; set {
+	for key, value := range fields {
+		if b.has(key) {
 			continue
 		}
 
@@ -278,6 +277,25 @@ func (b *restMergeFields) addQuery(raw string) {
 
 		b.fields[key] = value
 	}
+
+	for key, path := range fieldFiles {
+		if b.has(key) {
+			continue
+		}
+
+		if b.fieldFiles == nil {
+			b.fieldFiles = map[string]string{}
+		}
+
+		b.fieldFiles[key] = path
+	}
+}
+
+func (b *restMergeFields) has(key string) bool {
+	_, inFields := b.fields[key]
+	_, inFiles := b.fieldFiles[key]
+
+	return inFields || inFiles
 }
 
 // readFieldsFromFile reads a request body file, preferring content written

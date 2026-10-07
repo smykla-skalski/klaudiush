@@ -107,6 +107,9 @@ var _ = Describe("MergeValidator REST pull request merge", func() {
 		Entry("the numeric repository ID alias",
 			`curl -X PUT -d '{"merge_method":"squash"}' `+
 				`https://api.github.com/repositories/123/pulls/42/merge`),
+		Entry("fields gh sends in the query string next to an --input body",
+			"gh api -X PUT repos/o/r/pulls/42/merge --input - -f merge_method=squash "+
+				"-f commit_message=bad <<< '{}'"),
 		Entry("merge_method in the query string",
 			`gh api -X PUT 'repos/o/r/pulls/42/merge?merge_method=squash'`),
 		Entry(
