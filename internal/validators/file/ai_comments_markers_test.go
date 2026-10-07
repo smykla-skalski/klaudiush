@@ -122,6 +122,8 @@ var _ = Describe("AICommentValidator in languages where # is code", func() {
 			"fn f() {}\n// holds the running total", "Line 2: // holds the running total"),
 		Entry("rust comment after an attribute", "/repo/src/lib.rs",
 			"#[test] // checks the empty case\nfn empty() {}", "Line 1: // checks the empty case"),
+		Entry("rust comment after an inner attribute", "/repo/src/lib.rs",
+			"#![deny(missing_docs)] // Set x\nfn main() {}", "Line 1: // Set x"),
 		Entry(
 			"rust comment after an attribute above a const",
 			"/repo/src/lib.rs",

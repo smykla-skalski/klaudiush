@@ -69,6 +69,6 @@ var _ = Describe("Dispatcher Bash heredoc appending to a Rust file", func() {
 		errs := dispatch("#[must_use]\npub fn two() -> u8 {\n    2 // holds the second value\n}\n")
 		Expect(errs).To(HaveLen(1))
 		Expect(errs[0].Validator).To(Equal("validate-ai-comments"))
-		Expect(errs[0].Message).To(ContainSubstring("Line 3: // holds the second value"))
+		Expect(errs[0].Message).To(HaveSuffix("\n\nLine 3: // holds the second value"))
 	})
 })
