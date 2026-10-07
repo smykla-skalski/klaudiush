@@ -89,7 +89,7 @@ func (w *astWalker) loopAssignWrite(assign *syntax.Assign) string {
 
 func (w *astWalker) loopDeclWrites(decl *syntax.DeclClause) string {
 	if slices.ContainsFunc(decl.Args, computedOperand) ||
-		slices.ContainsFunc(decl.Args, namerefOption) {
+		declHasNameref(decl) {
 		return anyStartupVar
 	}
 
@@ -136,6 +136,15 @@ func namerefOption(assign *syntax.Assign) bool {
 	return isNamerefOption(option)
 }
 
+func declHasNameref(decl *syntax.DeclClause) bool {
+	return decl.Variant != nil && supportsNameref(decl.Variant.Value) &&
+		slices.ContainsFunc(decl.Args, namerefOption)
+}
+
+func supportsNameref(name string) bool {
+	return name == "declare" || name == "typeset" || name == "local"
+}
+
 // isNamerefOption reports an option cluster with n in it, such as -n or -gn.
 func isNamerefOption(option string) bool {
 	return (strings.HasPrefix(option, "-") || strings.HasPrefix(option, "+")) &&
@@ -173,15 +182,88 @@ func (w *astWalker) commandWrites(name string, args []*syntax.Word, seen map[str
 		return callbackFlag(argWord(arg))
 	}):
 		return anyStartupVar
+	case name == unsetBuiltin && removesNameref(args):
+		return unsetNamerefWrites(args)
 	case varWriters[name]:
 		return w.namerefWrites(writerTargets(name, args))
-	case declWriters[name] && slices.ContainsFunc(args, func(arg *syntax.Word) bool {
-		return computedWord(arg) || isNamerefOption(argWord(arg))
-	}):
-		return anyStartupVar
+	case declWriters[name]:
+		return w.declCommandWrites(name, args)
 	default:
 		return ""
 	}
+}
+
+func unsetNamerefWrites(args []*syntax.Word) string {
+	var names []string
+
+	options := true
+
+	for _, arg := range args {
+		if unsureWord(arg) {
+			return anyStartupVar
+		}
+
+		value := argWord(arg)
+		switch {
+		case options && value == endOfOptions:
+			options = false
+		case options && strings.HasPrefix(value, "-"):
+			continue
+		default:
+			options = false
+
+			names = append(names, value)
+		}
+	}
+
+	return joinTargets(names)
+}
+
+func removesNameref(args []*syntax.Word) bool {
+	for _, arg := range args {
+		if !isLiteralWord(arg) {
+			return false
+		}
+
+		option := argWord(arg)
+		if option == endOfOptions || !strings.HasPrefix(option, "-") {
+			return false
+		}
+
+		if strings.Contains(option[1:], "n") {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (w *astWalker) declCommandWrites(name string, args []*syntax.Word) string {
+	var names []string
+
+	for _, arg := range args {
+		if computedWord(arg) || expandingWord(arg) {
+			return anyStartupVar
+		}
+
+		value := argWord(arg)
+		if strings.HasPrefix(value, "-") || strings.HasPrefix(value, "+") {
+			if supportsNameref(name) && isNamerefOption(value) {
+				return anyStartupVar
+			}
+
+			continue
+		}
+
+		variable, _, _ := strings.Cut(value, "=")
+		if !variableName.MatchString(variable) {
+			return anyStartupVar
+		}
+
+		names = append(names, variable)
+	}
+
+	return w.namerefWrites(strings.Join(names, " "))
 }
 
 // namerefWrites replaces literal nameref names with their final targets.

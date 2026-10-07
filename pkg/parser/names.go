@@ -13,6 +13,8 @@ const (
 	sourceBuiltin  = "source"
 	dotBuiltin     = "."
 	getoptsBuiltin = "getopts"
+	exportBuiltin  = "export"
+	unsetBuiltin   = "unset"
 	builtinCommand = "builtin"
 	commandBuiltin = "command"
 	execBuiltin    = "exec"

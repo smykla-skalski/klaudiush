@@ -471,6 +471,7 @@ type nestedScript struct {
 	name      string
 	text      string
 	splitArgs bool
+	scoped    bool
 	forward   map[string]writtenArg
 }
 
@@ -870,6 +871,7 @@ func (w *astWalker) definitionScripts(cmd Command) []nestedScript {
 			name:      cmd.Invoked,
 			text:      text,
 			splitArgs: split,
+			scoped:    true,
 			forward:   w.forwardPositional(cmd, body),
 		})
 	}
@@ -1134,6 +1136,8 @@ type scriptWalk struct {
 	// prose marks a plain string literal from interpreter code, where an
 	// unknown git word is a message rather than a command.
 	prose bool
+	// scoped marks a function body, whose local declarations do not escape.
+	scoped bool
 	// label names the script in diagnostics.
 	label string
 	// run is the $0 and positional parameters of a script file, set when
@@ -1206,6 +1210,7 @@ func (w *astWalker) walkScript(script string, parent Command, depth int, sw scri
 
 	child.walkEpilogue(sw.prelude, parent, movedLeniently)
 	w.publishFunctions(child, parent, sw)
+	w.publishNamerefs(child, parent, sw)
 
 	if runsInShell(parent, sw) && parent.Name != trapBuiltin {
 		w.inheritDirectory(child, parent.unconditional)
@@ -1222,6 +1227,21 @@ func (w *astWalker) walkScript(script string, parent Command, depth int, sw scri
 	w.dynamicWrites += child.dynamicWrites
 	w.dynamicWriteLocs = append(w.dynamicWriteLocs, child.dynamicWriteLocs...)
 	w.stdinReplaced = w.stdinReplaced || (child.stdinReplaced && runsInShell(parent, sw))
+}
+
+func (w *astWalker) publishNamerefs(child *astWalker, parent Command, sw scriptWalk) {
+	if !runsInShell(parent, sw) || parent.isolated ||
+		maps.Equal(w.namerefs, child.namerefs) {
+		return
+	}
+
+	if sw.scoped || !parent.unconditional {
+		w.distrustNames()
+
+		return
+	}
+
+	w.namerefs = maps.Clone(child.namerefs)
 }
 
 func (w *astWalker) publishFunctions(child *astWalker, parent Command, sw scriptWalk) {

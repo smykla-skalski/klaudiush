@@ -274,6 +274,7 @@ func (w *astWalker) walkIsolated(stmts []*syntax.Stmt) {
 	defer func() { w.namerefs = namerefs }()
 
 	for _, stmt := range stmts {
+		markSafeNamerefs(stmt, w.safeNamerefs)
 		syntax.Walk(stmt, w.visit)
 	}
 }
@@ -828,7 +829,7 @@ func (w *astWalker) walkNested(script nestedScript, cmd Command, depth int) {
 		script.text,
 		cmd,
 		depth,
-		scriptWalk{name: script.name, forwarded: script.forward},
+		scriptWalk{name: script.name, scoped: script.scoped, forwarded: script.forward},
 	)
 
 	if script.splitArgs && (untrusted || w.state.untrusted) {
@@ -1040,7 +1041,7 @@ func (w *astWalker) gitEnvScripts(cmd Command) []string {
 func (w *astWalker) extractDecl(decl *syntax.DeclClause) {
 	w.noteExports(decl)
 	w.distrustDecl(decl)
-	changesNameref := slices.ContainsFunc(decl.Args, namerefOption)
+	changesNameref := declHasNameref(decl)
 
 	for _, assign := range decl.Args {
 		if assign.Name == nil {

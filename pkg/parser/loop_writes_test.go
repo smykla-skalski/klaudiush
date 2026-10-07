@@ -109,6 +109,22 @@ var _ = Describe("Startup variables a loop may set", func() {
 			"removed nameref",
 			`declare -n r=BASH_ENV; declare +n r; r=/tmp/x; bash /abs/run.sh`,
 		),
+		Entry(
+			"nameref removed through unset",
+			`declare -n r=BASH_ENV; unset -n r; r=/tmp/x; bash /abs/run.sh`,
+		),
+		Entry(
+			"nameref removed by same-shell eval",
+			`declare -n r=BASH_ENV; eval 'declare +n r'; r=/tmp/x; bash /abs/run.sh`,
+		),
+		Entry(
+			"nameref declared in isolated subshell",
+			`export BASH_ENV=; (declare -n r=BASH_ENV); r=/tmp/x; bash /abs/run.sh`,
+		),
+		Entry(
+			"export n option is not a nameref",
+			`export -n r=BASH_ENV; r=/tmp/x; bash /abs/run.sh`,
+		),
 	)
 
 	DescribeTable(
@@ -233,6 +249,34 @@ var _ = Describe("Startup variables a loop may set", func() {
 		Entry(
 			"same-shell assignment through a nameref",
 			`declare -n r=BASH_ENV; eval 'r=/tmp/x'; bash /abs/run.sh`,
+		),
+		Entry(
+			"nameref declared by same-shell eval",
+			`export BASH_ENV=; eval 'declare -n r=BASH_ENV'; r=/tmp/x; bash /abs/run.sh`,
+		),
+		Entry(
+			"nameref retargeted by same-shell eval",
+			`export BASH_ENV=; declare -n r=OTHER; eval 'declare -n r=BASH_ENV'; r=/tmp/x; bash /abs/run.sh`,
+		),
+		Entry(
+			"wrapped declaration assignment through a nameref",
+			`export BASH_ENV=; declare -n r=BASH_ENV; builtin export r=/tmp/x; bash /abs/run.sh`,
+		),
+		Entry(
+			"later wrapped declaration assignment through a nameref",
+			`export BASH_ENV=; declare -n r=BASH_ENV; for i in 1 2; do bash /abs/run.sh; builtin export r=/tmp/x; done`,
+		),
+		Entry(
+			"nameref removal unsets startup variable directly",
+			`for i in 1 2; do bash /abs/run.sh; unset -n BASH_ENV; done`,
+		),
+		Entry(
+			"global nameref declared in function",
+			`export BASH_ENV=; f() { declare -gn r=BASH_ENV; }; f; r=/tmp/x; bash /abs/run.sh`,
+		),
+		Entry(
+			"appended nameref target",
+			`export BASH_ENV=; declare -n r=BA; declare -n r+=SH_ENV; r=/tmp/x; bash /abs/run.sh`,
 		),
 		Entry(
 			"mapfile callback",

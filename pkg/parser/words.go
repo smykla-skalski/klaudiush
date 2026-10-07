@@ -176,7 +176,7 @@ func markSafeNamerefs(stmt *syntax.Stmt, safe map[*syntax.Assign]bool) {
 	}
 
 	decl, ok := stmt.Cmd.(*syntax.DeclClause)
-	if !ok || !slices.ContainsFunc(decl.Args, namerefOption) {
+	if !ok || !declHasNameref(decl) {
 		return
 	}
 
@@ -617,6 +617,10 @@ func runsInShell(parent Command, sw scriptWalk) bool {
 func (w *astWalker) forgetDeclared(cmd Command) {
 	for _, arg := range cmd.Args {
 		if strings.HasPrefix(arg, "-") || strings.HasPrefix(arg, "+") {
+			if cmd.Name == exportBuiltin && isNamerefOption(arg) {
+				continue
+			}
+
 			if strings.ContainsAny(arg[1:], "lucn") {
 				w.distrustOption(arg)
 			}
@@ -631,8 +635,51 @@ func (w *astWalker) forgetDeclared(cmd Command) {
 			continue
 		}
 
+		w.forgetName(name)
+	}
+}
+
+func (w *astWalker) forgetRemovedNamerefs(cmd Command) bool {
+	remove := false
+	options := true
+
+	var names []string
+
+	for _, arg := range cmd.Args {
+		switch {
+		case options && arg == endOfOptions:
+			options = false
+		case options && strings.HasPrefix(arg, "-"):
+			remove = remove || strings.Contains(arg[1:], "n")
+		default:
+			options = false
+
+			names = append(names, arg)
+		}
+	}
+
+	if !remove {
+		return false
+	}
+
+	if !cmd.unconditional {
+		w.distrustNames()
+
+		return true
+	}
+
+	for _, name := range names {
+		if !variableName.MatchString(name) {
+			w.distrustNames()
+
+			continue
+		}
+
+		delete(w.namerefs, name)
 		w.forget(name)
 	}
+
+	return true
 }
 
 // defaultVars are the variables a writer sets when it names none.
@@ -651,6 +698,10 @@ func (w *astWalker) forgetWritten(cmd Command) {
 		cmd.Name == sourceBuiltin || cmd.Name == dotBuiltin {
 		w.state.untrusted = true
 
+		return
+	}
+
+	if cmd.Name == unsetBuiltin && w.forgetRemovedNamerefs(cmd) {
 		return
 	}
 
@@ -727,6 +778,10 @@ func (w *astWalker) distrustDecl(decl *syntax.DeclClause) {
 		}
 
 		option := wordToString(a.Value)
+		if decl.Variant != nil && decl.Variant.Value == exportBuiltin && isNamerefOption(option) {
+			continue
+		}
+
 		if isNamerefOption(option) && tracked {
 			continue
 		}
@@ -738,6 +793,10 @@ func (w *astWalker) distrustDecl(decl *syntax.DeclClause) {
 // trackNamerefs records literal targets from a plain nameref declaration.
 // Reads through a nameref stay unknown; writes can still be attributed.
 func (w *astWalker) trackNamerefs(decl *syntax.DeclClause) bool {
+	if !declHasNameref(decl) {
+		return false
+	}
+
 	remove := slices.ContainsFunc(decl.Args, func(a *syntax.Assign) bool {
 		if a.Name != nil || a.Value == nil {
 			return false
@@ -767,7 +826,7 @@ func (w *astWalker) trackNamerefs(decl *syntax.DeclClause) bool {
 			continue
 		}
 
-		if assign.Value == nil || !isLiteralWord(assign.Value) {
+		if assign.Append || assign.Value == nil || !isLiteralWord(assign.Value) {
 			return false
 		}
 
