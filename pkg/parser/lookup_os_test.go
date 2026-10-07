@@ -31,6 +31,37 @@ var _ = Describe("OSResolver argument lookups", func() {
 		resolver = &parser.OSResolver{}
 	})
 
+	It("runs the allowed environment path lookups", func() {
+		bin := GinkgoT().TempDir()
+		tools := map[string]string{
+			"brew":   "#!/bin/sh\nif [ \"$#\" -eq 1 ]; then printf '/brew\\n'; else printf '/brew/%s\\n' \"$2\"; fi\n",
+			"poetry": "#!/bin/sh\nprintf '/poetry-env\\n'\n",
+			"conda":  "#!/bin/sh\nprintf '/conda-base\\n'\n",
+		}
+
+		for name, text := range tools {
+			Expect(os.WriteFile(filepath.Join(bin, name), []byte(text), 0o755)).To(Succeed())
+		}
+
+		GinkgoT().Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+		lookups := []struct {
+			argv []string
+			want string
+		}{
+			{[]string{"brew", "--prefix"}, "/brew"},
+			{[]string{"brew", "--prefix", "jq"}, "/brew/jq"},
+			{[]string{"poetry", "env", "info", "--path"}, "/poetry-env"},
+			{[]string{"conda", "info", "--base"}, "/conda-base"},
+		}
+
+		for _, lookup := range lookups {
+			out, ok := resolver.CommandOutput(repo, lookup.argv)
+			Expect(ok).To(BeTrue(), lookup.argv)
+			Expect(out).To(Equal(lookup.want), lookup.argv)
+		}
+	})
+
 	It("prints the current branch", func() {
 		out, ok := resolver.CommandOutput(repo, []string{"git", "branch", "--show-current"})
 		Expect(ok).To(BeTrue())
@@ -57,6 +88,12 @@ var _ = Describe("OSResolver argument lookups", func() {
 
 	It("runs nothing else", func() {
 		_, ok := resolver.CommandOutput(repo, []string{"git", "branch", "-a"})
+		Expect(ok).To(BeFalse())
+
+		_, ok = resolver.CommandOutput(repo, []string{"brew", "--prefix", "--installed"})
+		Expect(ok).To(BeFalse())
+
+		_, ok = resolver.CommandOutput(repo, []string{"poetry", "env", "info", "--path", "x"})
 		Expect(ok).To(BeFalse())
 	})
 })

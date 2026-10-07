@@ -13,17 +13,17 @@ import (
 // through eval ("$(mise activate bash)"), each with a check of the
 // arguments that make it print setup.
 var evalSetupTools = map[string]func(args []string) bool{
-	"ssh-agent": agentSetup,
-	"mise":      subcommandIn("activate", "env", "hook-env"),
-	"direnv":    subcommandIn("export", "hook"),
-	"rbenv":     subcommandIn("init"),
-	"pyenv":     subcommandIn("init", "virtualenv-init"),
-	"nodenv":    subcommandIn("init"),
-	"conda":     condaSetup,
-	"brew":      subcommandIn("shellenv"),
-	"starship":  subcommandIn("init"),
-	"zoxide":    subcommandIn("init"),
-	"fnm":       subcommandIn("env"),
+	"ssh-agent":  agentSetup,
+	"mise":       subcommandIn("activate", "env", "hook-env"),
+	"direnv":     subcommandIn("export", "hook"),
+	"rbenv":      subcommandIn("init"),
+	"pyenv":      subcommandIn("init", "virtualenv-init"),
+	"nodenv":     subcommandIn("init"),
+	condaProgram: condaSetup,
+	brewProgram:  subcommandIn("shellenv"),
+	"starship":   subcommandIn("init"),
+	"zoxide":     subcommandIn("init"),
+	"fnm":        subcommandIn("env"),
 }
 
 // EvalSetupTools returns the programs whose printed shell setup an eval or

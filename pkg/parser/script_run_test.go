@@ -165,8 +165,18 @@ var _ = Describe("Program word allowances", func() {
 	})
 
 	It("allows only the fixed lookups", func() {
+		Expect(parser.AllowedLookup([]string{"brew", "--prefix"})).To(BeTrue())
+		Expect(parser.AllowedLookup([]string{"brew", "--prefix", "jq"})).To(BeTrue())
+		Expect(parser.AllowedLookup([]string{"brew", "--prefix", "homebrew/core/jq"})).To(BeTrue())
+		Expect(parser.AllowedLookup([]string{"poetry", "env", "info", "--path"})).To(BeTrue())
+		Expect(parser.AllowedLookup([]string{"conda", "info", "--base"})).To(BeTrue())
 		Expect(parser.AllowedLookup([]string{"go", "env", "GOPATH"})).To(BeTrue())
 		Expect(parser.AllowedLookup([]string{"go", "env", "GOROOT"})).To(BeFalse())
+		Expect(parser.AllowedLookup([]string{"brew", "--prefix", "--installed"})).To(BeFalse())
+		Expect(parser.AllowedLookup([]string{"brew", "--prefix", "jq", "extra"})).To(BeFalse())
+		Expect(parser.AllowedLookup([]string{"poetry", "env", "info", "--path", "extra"})).
+			To(BeFalse())
+		Expect(parser.AllowedLookup([]string{"conda", "info", "--base", "extra"})).To(BeFalse())
 		Expect(parser.AllowedLookup([]string{"git", "rev-parse", "--show-toplevel", "x"})).
 			To(BeFalse())
 	})

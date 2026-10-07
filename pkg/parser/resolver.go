@@ -622,7 +622,8 @@ func sameContent(a, b string) bool {
 
 // CommandOutput runs one of AllowedLookups in dir without a shell and
 // returns its trimmed output, remembering it for the parse. go is kept from
-// downloading another toolchain, and git from taking optional locks.
+// downloading another toolchain, git from taking optional locks, and brew
+// from auto-updating.
 func (r *OSResolver) CommandOutput(dir string, argv []string) (string, bool) {
 	if !AllowedLookup(argv) && !ArgumentLookup(argv) {
 		return "", false
@@ -671,6 +672,15 @@ func runLookup(dir string, argv []string) string {
 	switch {
 	case argv[0] == pwdBuiltin:
 		return workingDir(dir)
+	case argv[0] == brewProgram:
+		cmd = exec.CommandContext(ctx, brewProgram, "--prefix")
+		if len(argv) == brewFormulaArgs {
+			cmd.Args = append(cmd.Args, argv[2])
+		}
+	case argv[0] == poetryProgram:
+		cmd = exec.CommandContext(ctx, poetryProgram, "env", "info", "--path")
+	case argv[0] == condaProgram:
+		cmd = exec.CommandContext(ctx, condaProgram, "info", "--base")
 	case slices.Equal(argv, branchShowCurrent):
 		cmd = exec.CommandContext(ctx, "git", "branch", "--show-current")
 	case slices.Equal(argv, revParseAbbrevHead):
@@ -685,7 +695,12 @@ func runLookup(dir string, argv []string) string {
 
 	cmd.Dir = dir
 
-	cmd.Env = append(os.Environ(), "GOTOOLCHAIN=local", "GIT_OPTIONAL_LOCKS=0")
+	cmd.Env = append(
+		os.Environ(),
+		"GOTOOLCHAIN=local",
+		"GIT_OPTIONAL_LOCKS=0",
+		"HOMEBREW_NO_AUTO_UPDATE=1",
+	)
 
 	out, err := cmd.Output()
 	if err != nil {

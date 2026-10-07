@@ -30,23 +30,39 @@ type OutputResolver interface {
 // AllowedLookups are the only command substitutions whose output a program
 // word is built from: they print a fixed directory and change nothing.
 var AllowedLookups = [][]string{
+	{brewProgram, "--prefix"},
+	{poetryProgram, "env", "info", "--path"},
+	{condaProgram, "info", "--base"},
 	{"go", goEnv, "GOPATH"},
 	{"go", goEnv, "GOBIN"},
 	revParseToplevel,
 }
 
 const (
-	goEnv    = "env"
-	revParse = "rev-parse"
+	brewProgram     = "brew"
+	brewFormulaArgs = 3
+	poetryProgram   = "poetry"
+	condaProgram    = "conda"
+	goEnv           = "env"
+	revParse        = "rev-parse"
 )
 
 var revParseToplevel = []string{gitProgram, revParse, "--show-toplevel"}
 
+var brewFormula = regexp.MustCompile(
+	`^[A-Za-z0-9][A-Za-z0-9@+_.-]*(/[A-Za-z0-9][A-Za-z0-9@+_.-]*){0,2}$`,
+)
+
 // AllowedLookup reports whether argv is one of AllowedLookups.
 func AllowedLookup(argv []string) bool {
-	return slices.ContainsFunc(AllowedLookups, func(allowed []string) bool {
+	if slices.ContainsFunc(AllowedLookups, func(allowed []string) bool {
 		return slices.Equal(allowed, argv)
-	})
+	}) {
+		return true
+	}
+
+	return len(argv) == brewFormulaArgs && argv[0] == brewProgram && argv[1] == "--prefix" &&
+		brewFormula.MatchString(argv[2])
 }
 
 // plainPath matches lookup output safe to put in a program word: one
@@ -57,12 +73,14 @@ var plainPath = regexp.MustCompile(`^/[A-Za-z0-9_./@+:,=-]*$`)
 // prints.
 var setupCommands = nameSet("cd pushd popd pwd set true : echo printf test [")
 
-// lookupEnvPrefixes and lookupEnvNames are the variables git and go read,
+// lookupEnvPrefixes and lookupEnvNames are variables allowed lookups read,
 // which an assignment on the line would change for the shell but not for
 // klaudiush's own lookup.
 var (
-	lookupEnvPrefixes = []string{"GIT_", "GO", "CGO_"}
-	lookupEnvNames    = nameSet("HOME XDG_CONFIG_HOME PATH BASH_ENV ENV CDPATH")
+	lookupEnvPrefixes = []string{"GIT_", "GO", "CGO_", "HOMEBREW_", "POETRY_", "CONDA_"}
+	lookupEnvNames    = nameSet(
+		"HOME XDG_CONFIG_HOME XDG_DATA_HOME XDG_CACHE_HOME PATH BASH_ENV ENV CDPATH VIRTUAL_ENV",
+	)
 )
 
 // substitutedProgram returns what a command substitution in a program word
@@ -112,7 +130,7 @@ func (w *astWalker) lookupOutput(words []*syntax.Word) (string, bool) {
 		argv := wordsToStrings(words)
 
 		resolver, ok := w.resolver.(OutputResolver)
-		if !ok || !AllowedLookup(argv) || !w.lookupUnchanged() {
+		if !ok || !AllowedLookup(argv) || !w.lookupUnchanged(argv[0]) {
 			return "", false
 		}
 
@@ -127,11 +145,11 @@ func (w *astWalker) lookupOutput(words []*syntax.Word) (string, bool) {
 
 // lookupUnchanged reports whether a lookup klaudiush runs now prints what
 // the shell's would: the directory is known, no loop repeats it, and nothing
-// earlier on the line changes the environment, PATH, git or go, or the files
+// earlier on the line changes the environment, PATH, lookup program, or files
 // a lookup reads. Commands that launched this script are part of running it.
-func (w *astWalker) lookupUnchanged() bool {
+func (w *astWalker) lookupUnchanged(program string) bool {
 	if w.inLoop || w.dirUnknown || w.dirComputed || w.state.pathChanged || w.state.untrusted ||
-		w.defined(gitProgram) || w.defined("go") || w.lookupEnvChanged() {
+		w.defined(program) || w.lookupEnvChanged() {
 		return false
 	}
 

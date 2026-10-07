@@ -130,7 +130,7 @@ func lookupArgv(word *syntax.Word) []string {
 // line can change it, as lookupOutput does for program words.
 func (w *astWalker) argumentLookup(argv []string) (string, bool) {
 	resolver, ok := w.resolver.(OutputResolver)
-	if !ok || !ArgumentLookup(argv) || !w.lookupUnchanged() {
+	if !ok || !ArgumentLookup(argv) || !w.lookupUnchanged(argv[0]) {
 		return "", false
 	}
 
