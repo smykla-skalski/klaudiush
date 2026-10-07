@@ -57,6 +57,7 @@ type startupValue struct {
 // inspected in it does not block.
 type startupScript struct {
 	label   string
+	path    string
 	key     string
 	text    string
 	lazy    bool
@@ -153,6 +154,12 @@ func unknownOperand(name string, hasValue bool, arg string) bool {
 // and the --rcfile of bash. A file whose path or content cannot be known is
 // recorded as opaque instead.
 func (w *astWalker) startupScripts(cmd Command, args []string) []startupScript {
+	if loginProgram(cmd.Name, args) {
+		w.opaque(OpacityStartupFile, cmd.Name, DetailLoginAccount)
+
+		return nil
+	}
+
 	_, isLauncher := launchers[cmd.Name]
 	if shellBuiltins[cmd.Name] || dataCommands[cmd.Name] || isLauncher ||
 		w.defined(cmd.Invoked) {
@@ -177,8 +184,30 @@ func (w *astWalker) startupScripts(cmd Command, args []string) []startupScript {
 	mode := shellOptions(cmd.Name, w.optionWords(args))
 	mode.login = mode.login || cmd.loginArgv0
 	named := rcfiles(args)
-	before, after := homeStartupFiles(cmd.Name, mode, len(named) > 0)
-	scripts = append(scripts, w.homeScripts(cmd, before, false)...)
+
+	var after, systemAfter []string
+
+	if cmd.Name == zshShell && mode.emulate == "" {
+		scripts = append(scripts, w.zshStartupScripts(cmd, mode)...)
+	} else {
+		before, homeAfter := homeStartupFiles(cmd.Name, mode, len(named) > 0)
+		after = homeAfter
+
+		systemName := cmd.Name
+		if cmd.Name == zshShell {
+			systemName = zshEmulation(mode.emulate)
+		}
+
+		systemBefore, lateSystem := systemStartupFiles(systemName, mode, len(named) > 0)
+		systemAfter = lateSystem
+
+		scripts = append(scripts, w.systemScripts(cmd, systemBefore)...)
+		scripts = append(scripts, w.homeScripts(cmd, before, false)...)
+	}
+
+	if cmd.Name == fishShell && !mode.noRC {
+		w.checkFishConfScripts(cmd)
+	}
 
 	v, set := w.startupSetting(cmd, bashEnvVar)
 	add(bashEnvVar, v, set)
@@ -193,6 +222,8 @@ func (w *astWalker) startupScripts(cmd Command, args []string) []startupScript {
 			add(rcfileLabel, literalRCFile(rcfile), true)
 		}
 	}
+
+	scripts = append(scripts, w.systemScripts(cmd, systemAfter)...)
 
 	return append(scripts, w.homeScripts(cmd, after, false)...)
 }
@@ -551,6 +582,7 @@ const OpacityStartupFile OpacityCause = "startup-file"
 const (
 	DetailStartupValue     = "its value comes from command output or a write klaudiush cannot follow"
 	DetailStartupExpansion = "the shell expands its value when it starts, which may run commands"
+	DetailLoginAccount     = "the target account's home directory and shell cannot be resolved"
 )
 
 // noteStartupPending remembers where the value of a startup variable
