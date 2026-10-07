@@ -429,7 +429,7 @@ func literalCommandOutput(call *syntax.CallExpr) (string, bool) {
 	}
 
 	name := wordToString(call.Args[0])
-	if name != "echo" && name != printfBuiltin {
+	if name != echoProgram && name != printfBuiltin {
 		return "", false
 	}
 
@@ -442,23 +442,44 @@ func literalCommandOutput(call *syntax.CallExpr) (string, bool) {
 		return "", false
 	}
 
-	if name == "echo" {
+	if name == echoProgram {
 		return echoOutput(args)
 	}
 
 	return printfOutput(args) // name == "printf"
 }
 
-func (w *astWalker) literalRedirectOutput(call *syntax.CallExpr) (string, bool) {
+func (w *astWalker) literalRedirectOutput(call *syntax.CallExpr) (string, string, bool) {
 	if call == nil || len(call.Args) == 0 {
-		return "", false
+		return "", "", false
 	}
 
 	if w.defined(wordToString(call.Args[0])) || w.state.pathChanged {
-		return "", false
+		return "", "", false
 	}
 
-	return literalCommandOutput(call)
+	normalized, ok := literalCommandOutput(call)
+	if !ok {
+		return "", "", false
+	}
+
+	args, ok := literalArgs(call.Args[1:])
+	if !ok {
+		return "", "", false
+	}
+
+	switch wordToString(call.Args[0]) {
+	case echoProgram:
+		exact, ok := exactEchoOutput(args)
+
+		return normalized, exact, ok
+	case printfBuiltin:
+		exact, ok := expandPrintf(args[0], args[1:])
+
+		return normalized, exact, ok
+	default:
+		return "", "", false
+	}
 }
 
 func heredocRedirectContent(info redirInfo, captured bool, emitted string) string {
@@ -546,6 +567,31 @@ func echoOutput(args []string) (string, bool) {
 	}
 
 	return strings.Join(args[i:], " "), true
+}
+
+func exactEchoOutput(args []string) (string, bool) {
+	i, newline := 0, true
+
+	for i < len(args) {
+		flag, ok := echoFlag(args[i])
+		if !ok {
+			break
+		}
+
+		if strings.ContainsRune(flag, 'e') {
+			return "", false
+		}
+
+		newline = newline && !strings.ContainsRune(flag, 'n')
+		i++
+	}
+
+	output := strings.Join(args[i:], " ")
+	if newline {
+		output += "\n"
+	}
+
+	return output, true
 }
 
 // echoFlag reports whether arg is an echo option like -n, -e, -E, or -ne and
@@ -1378,8 +1424,8 @@ func (w *astWalker) extractRedirect(stmt *syntax.Stmt) {
 			Vars:             w.varScope(),
 		}
 
-		if content, ok := w.literalRedirectOutput(callExprOf(stmt)); ok {
-			fw.emittedContent = content
+		if content, exact, ok := w.literalRedirectOutput(callExprOf(stmt)); ok {
+			fw.emittedContent = exact
 			fw.emittedContentCaptured = true
 			fw.emittedContentAppended = info.outputOp == WriteOpAppend
 

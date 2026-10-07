@@ -80,6 +80,9 @@ var _ = Describe("Startup file writes", func() {
 		},
 		Entry("destination operand", `cp /source/.zshenv ~`),
 		Entry("target directory option", `cp -t ~ /source/.zshenv`),
+		Entry("move", `mv /source/.zshenv ~`),
+		Entry("rsync", `rsync /source/.zshenv ~`),
+		Entry("install", `install /source/.zshenv ~`),
 	)
 
 	It("follows startup writes planted by startup content", func() {
@@ -116,7 +119,51 @@ var _ = Describe("Startup file writes", func() {
 			"cat >> ~/.zshenv <<'EOF'\npush --force origin main\nEOF",
 			map[string]string{"/home/u/.zshenv": "git "},
 		),
+		Entry(
+			"echo overwrite keeps its trailing newline",
+			`echo '# safe' > ~/.zshenv; echo 'git push --force origin main' >> ~/.zshenv`,
+			nil,
+		),
+		Entry(
+			"printf overwrite keeps its trailing newline",
+			`printf '# safe\n' > ~/.zshenv; printf 'git push --force origin main' >> ~/.zshenv`,
+			nil,
+		),
 	)
+
+	DescribeTable(
+		"uses inherited startup locations after temporary overrides",
+		func(command string, env map[string]string) {
+			result := parse(command, fakeResolver{env: env})
+
+			Expect(pushed(result)).To(BeTrue(), command)
+		},
+		Entry(
+			"HOME",
+			`HOME=/tmp; echo 'git push --force origin main' > /home/u/.zshenv`,
+			map[string]string{"HOME": "/home/u"},
+		),
+		Entry(
+			"BASH_ENV",
+			`BASH_ENV=/tmp/other; echo 'git push --force origin main' > /home/u/bash-env`,
+			map[string]string{"HOME": "/home/u", "BASH_ENV": "/home/u/bash-env"},
+		),
+		Entry(
+			"ZDOTDIR",
+			`ZDOTDIR=/tmp; echo 'git push --force origin main' > /home/u/zsh/.zshenv`,
+			map[string]string{"HOME": "/home/u", "ZDOTDIR": "/home/u/zsh"},
+		),
+	)
+
+	It("does not invent a newline for echo -n", func() {
+		result := parse(
+			`echo -n '# safe' > ~/.zshenv; echo 'git push --force origin main' >> ~/.zshenv`,
+			fakeResolver{env: map[string]string{"HOME": "/home/u"}},
+		)
+
+		Expect(pushed(result)).To(BeFalse())
+		Expect(result.Truncated).To(BeFalse())
+	})
 
 	DescribeTable("fails closed when planted content cannot be inspected",
 		func(command, cause, operation string) {
@@ -163,6 +210,12 @@ var _ = Describe("Startup file writes", func() {
 			".zshenv",
 		),
 		Entry("unreadable copy", `cp /missing ~/.zshenv`, "startup-file", ".zshenv"),
+		Entry(
+			"unresolved directory-copy source",
+			`SRC=$(printf /tmp/.zshenv); cp "$SRC" ~`,
+			"startup-file",
+			"HOME",
+		),
 		Entry("foreign shell syntax", `echo true > ~/.config/fish/config.fish`,
 			"script-syntax", "config.fish"),
 	)

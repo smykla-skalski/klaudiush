@@ -495,7 +495,7 @@ func (g *GitCommand) ExtractFilePaths() []string {
 		// All non-flag args are file paths
 		return g.Args
 
-	case "mv":
+	case mvProgram:
 		// Last arg is destination
 		if len(g.Args) >= 2 { //nolint:mnd // Trivial check for minimum args (source + dest)
 			return []string{g.Args[len(g.Args)-1]}

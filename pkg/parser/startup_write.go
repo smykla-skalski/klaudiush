@@ -24,6 +24,7 @@ type startupTarget struct {
 	path    string
 	label   string
 	foreign bool
+	opaque  bool
 }
 
 // validateStartupWrites follows content planted in startup files even when
@@ -39,6 +40,12 @@ func (w *astWalker) validateStartupWrites() {
 		fw := w.fileWrites[i]
 
 		for _, target := range w.startupWriteTargets(fw) {
+			if target.opaque {
+				w.opaque(OpacityStartupFile, target.label, DetailScriptWritten)
+
+				continue
+			}
+
 			if target.foreign {
 				w.opaque(OpacityScriptSyntax, target.label, "")
 
@@ -86,16 +93,21 @@ func (w *astWalker) startupWriteTargets(fw FileWrite) []startupTarget {
 		return []startupTarget{{path: path, label: label, foreign: foreign}}
 	}
 
-	_, sources, isCopy := w.startupCopySources(fw)
-	if !isCopy {
+	_, sources, isTransfer := w.startupTransferSources(fw)
+	if !isTransfer {
 		return nil
 	}
 
 	targets := make([]startupTarget, 0, len(sources))
+	directoryLabel, startupDirectory := w.startupDirectoryLabel(fw, path)
 
 	for _, source := range sources {
-		sourcePath, sourceKnown := w.startupCopySourcePath(fw, source)
+		sourcePath, sourceKnown := w.startupTransferSourcePath(fw, source)
 		if !sourceKnown {
+			if startupDirectory {
+				targets = append(targets, startupTarget{label: directoryLabel, opaque: true})
+			}
+
 			continue
 		}
 
@@ -123,12 +135,12 @@ func (w *astWalker) classifyStartupPath(
 	}
 
 	for _, variable := range []string{bashEnvVar, envVar} {
-		if candidate, set := w.startupWriteVariable(fw, variable); set && candidate == path {
+		if slices.Contains(w.startupWriteVariables(fw, variable), path) {
 			return variable, false, true
 		}
 	}
 
-	if home, set := w.startupWriteVariable(fw, homeVar); set {
+	for _, home := range w.startupWriteVariables(fw, homeVar) {
 		if relative, inside := relativeStartupPath(home, path); inside {
 			if foreign, startup := homeStartupPath(relative); startup {
 				return filepath.Base(path), foreign, true
@@ -136,7 +148,7 @@ func (w *astWalker) classifyStartupPath(
 		}
 	}
 
-	if zdot, set := w.startupWriteVariable(fw, zdotdirVar); set {
+	for _, zdot := range w.startupWriteVariables(fw, zdotdirVar) {
 		if relative, inside := relativeStartupPath(zdot, path); inside && zshFiles[relative] {
 			return filepath.Base(path), false, true
 		}
@@ -145,30 +157,110 @@ func (w *astWalker) classifyStartupPath(
 	return "", false, false
 }
 
-func (w *astWalker) startupWriteVariable(fw FileWrite, name string) (string, bool) {
-	if fw.Vars.IsDynamic(name) || fw.Vars.unknownName(name) {
-		return "", false
+func (w *astWalker) startupWriteVariables(fw FileWrite, name string) []string {
+	var values []string
+
+	if !fw.Vars.IsDynamic(name) && !fw.Vars.unknownName(name) && fw.Vars != nil {
+		if _, set := fw.Vars.Assignments[name]; set {
+			candidate := fw
+			candidate.Path = "${" + name + "}"
+			candidate.Dynamic = false
+			candidate.TargetUnknown = false
+
+			if path, known := w.writtenPath(candidate); known {
+				values = append(values, path)
+			}
+		}
 	}
 
-	value, set := "${"+name+"}", false
-	if fw.Vars != nil {
-		_, set = fw.Vars.Assignments[name]
+	if value, set := w.resolver.LookupEnv(name); set {
+		candidate := fw
+		candidate.Path = value
+		candidate.Dynamic = false
+		candidate.TargetUnknown = false
+
+		if path, known := w.writtenPath(candidate); known && !slices.Contains(values, path) {
+			values = append(values, path)
+		}
 	}
 
-	if !set {
-		_, set = w.resolver.LookupEnv(name)
+	return values
+}
+
+func (w *astWalker) startupDirectoryLabel(fw FileWrite, path string) (string, bool) {
+	path = filepath.Clean(path)
+
+	if systemStartupDirectory(path) {
+		return path, true
 	}
 
-	if !set {
-		return "", false
+	if variable, ok := w.envStartupDirectory(fw, path); ok {
+		return variable, true
 	}
 
-	candidate := fw
-	candidate.Path = value
-	candidate.Dynamic = false
-	candidate.TargetUnknown = false
+	if w.homeStartupDirectory(fw, path) {
+		return homeVar, true
+	}
 
-	return w.writtenPath(candidate)
+	if slices.Contains(w.startupWriteVariables(fw, zdotdirVar), path) {
+		return zdotdirVar, true
+	}
+
+	return "", false
+}
+
+func systemStartupDirectory(path string) bool {
+	for candidate := range supportedSystemStartupPaths {
+		if filepath.Dir(candidate) == path {
+			return true
+		}
+	}
+
+	for candidate := range foreignSystemStartupPaths {
+		if filepath.Dir(candidate) == path {
+			return true
+		}
+	}
+
+	return path == "/etc/fish/conf.d"
+}
+
+func (w *astWalker) envStartupDirectory(fw FileWrite, path string) (string, bool) {
+	for _, variable := range []string{bashEnvVar, envVar} {
+		for _, candidate := range w.startupWriteVariables(fw, variable) {
+			if filepath.Dir(candidate) == path {
+				return variable, true
+			}
+		}
+	}
+
+	return "", false
+}
+
+func (w *astWalker) homeStartupDirectory(fw FileWrite, path string) bool {
+	for _, home := range w.startupWriteVariables(fw, homeVar) {
+		if homeStartupDirectoryAt(home, path) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func homeStartupDirectoryAt(home, path string) bool {
+	for candidate := range supportedHomeStartupPaths {
+		if filepath.Dir(filepath.Join(home, filepath.FromSlash(candidate))) == path {
+			return true
+		}
+	}
+
+	for candidate := range foreignHomeStartupPaths {
+		if filepath.Dir(filepath.Join(home, filepath.FromSlash(candidate))) == path {
+			return true
+		}
+	}
+
+	return filepath.Join(home, ".config/fish/conf.d") == path
 }
 
 func relativeStartupPath(root, path string) (string, bool) {
@@ -234,7 +326,7 @@ func (w *astWalker) startupWriteContent(fw FileWrite, target string) (string, bo
 		return fw.emittedContent, true
 	}
 
-	cmd, sources, ok := w.startupCopySources(fw)
+	cmd, sources, ok := w.startupTransferSources(fw)
 	if !ok {
 		return "", false
 	}
@@ -249,7 +341,7 @@ func (w *astWalker) startupWriteContent(fw FileWrite, target string) (string, bo
 	}
 
 	for _, source := range sources {
-		path, sourceKnown := w.startupCopySourcePath(fw, source)
+		path, sourceKnown := w.startupTransferSourcePath(fw, source)
 		if !sourceKnown {
 			continue
 		}
@@ -267,40 +359,86 @@ func (w *astWalker) startupWriteContent(fw FileWrite, target string) (string, bo
 }
 
 func (w *astWalker) startupContentBefore(fw FileWrite, target string) (string, bool) {
+	text, status := w.resolver.ReadScript(target)
+	captured := status == ScriptText || status == ScriptMissing
+
+	var chain []*astWalker
 	for p := w; p != nil; p = p.parent {
-		writes := make([]FileWrite, 0, len(p.fileWrites))
-
-		for _, candidate := range p.fileWrites {
-			path, known := w.writtenPath(candidate)
-			if !known {
-				continue
-			}
-
-			candidate.Path, candidate.WorkingDirectory = path, ""
-			writes = append(writes, candidate)
-		}
-
-		if content, found, captured := lastWrite(writes, target, &fw.Location); found {
-			return content, captured
-		}
+		chain = append(chain, p)
 	}
 
-	text, status := w.resolver.ReadScript(target)
+	for _, walker := range slices.Backward(chain) {
+		text, captured = w.replayStartupWrites(
+			walker.fileWrites,
+			target,
+			fw.Location,
+			text,
+			captured,
+		)
+	}
 
-	return text, status == ScriptText || status == ScriptMissing
+	return text, captured
 }
 
-func (w *astWalker) startupCopySources(fw FileWrite) (Command, []string, bool) {
-	if fw.Operation != WriteOpCopy || fw.Source != cpProgram {
+func (w *astWalker) replayStartupWrites(
+	writes []FileWrite,
+	target string,
+	before Location,
+	text string,
+	captured bool,
+) (string, bool) {
+	for _, candidate := range writes {
+		if !locationBefore(candidate.Location, before) {
+			continue
+		}
+
+		path, known := w.writtenPath(candidate)
+		if !known || path != target {
+			continue
+		}
+
+		text, captured = applyStartupWrite(candidate, text, captured)
+	}
+
+	return text, captured
+}
+
+func applyStartupWrite(candidate FileWrite, text string, captured bool) (string, bool) {
+	if !candidate.emittedContentCaptured {
+		return "", false
+	}
+
+	if !candidate.emittedContentAppended {
+		return candidate.emittedContent, true
+	}
+
+	if captured {
+		text += candidate.emittedContent
+	}
+
+	return text, captured
+}
+
+func (w *astWalker) startupTransferSources(fw FileWrite) (Command, []string, bool) {
+	var spec optionSpec
+
+	switch fw.Source {
+	case cpProgram, "copy", mvProgram, "move":
+		spec = copySpec
+	case "rsync":
+		spec = rsyncSpec
+	case installProgram:
+		spec = installSpec
+	default:
 		return Command{}, nil, false
 	}
 
-	if w.defined(cpProgram) || w.state.pathChanged {
+	if w.defined(fw.Source) || w.state.pathChanged {
 		return Command{}, nil, false
 	}
 
 	cmdIndex := slices.IndexFunc(w.commands, func(cmd Command) bool {
-		return cmd.Name == cpProgram && cmd.Location == fw.Location
+		return cmd.Name == fw.Source && cmd.Location == fw.Location
 	})
 	if cmdIndex < 0 {
 		return Command{}, nil, false
@@ -310,7 +448,7 @@ func (w *astWalker) startupCopySources(fw FileWrite) (Command, []string, bool) {
 
 	cmd := w.commands[cmdIndex]
 
-	operands := scanArgs(cmd.Args, copySpec, func(name, value string) {
+	operands := scanArgs(cmd.Args, spec, func(name, value string) {
 		if targetDirOpts[name] {
 			dirs = append(dirs, value)
 		}
@@ -326,7 +464,7 @@ func (w *astWalker) startupCopySources(fw FileWrite) (Command, []string, bool) {
 	return cmd, operands[:len(operands)-1], true
 }
 
-func (w *astWalker) startupCopySourcePath(fw FileWrite, word string) (string, bool) {
+func (w *astWalker) startupTransferSourcePath(fw FileWrite, word string) (string, bool) {
 	source := fw
 	source.Path = word
 	source.Dynamic = marked(word) || HasUnresolvedVars(word)

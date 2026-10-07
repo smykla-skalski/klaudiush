@@ -86,7 +86,7 @@ func (w *astWalker) lineWriteAbove(target string) bool {
 			}
 
 			if placesIntoDirs[fw.Operation] &&
-				(fw.Operation != WriteOpOutput || fw.Source == "install") &&
+				(fw.Operation != WriteOpOutput || fw.Source == installProgram) &&
 				isBelow(target, dir) {
 				return true
 			}
