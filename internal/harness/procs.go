@@ -125,8 +125,8 @@ func (s *Sandbox) closeKeeper() error {
 	return k.close()
 }
 
-// watch lists the sandbox processes every watchPoll until the returned
-// function is first called.
+// watch periodically lists sandbox processes until the returned function is
+// first called.
 func (s *Sandbox) watch() func() {
 	stop := make(chan struct{})
 	done := make(chan struct{})
@@ -134,7 +134,7 @@ func (s *Sandbox) watch() func() {
 	go func() {
 		defer close(done)
 
-		ticker := time.NewTicker(watchPoll)
+		ticker := time.NewTicker(s.watchEvery)
 		defer ticker.Stop()
 
 		for {
