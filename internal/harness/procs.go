@@ -45,8 +45,9 @@ type process struct {
 // its environment cannot be read. On Linux the command dies with the caller,
 // and the sandbox keeper stops the rest. While the command runs its process
 // tree is listed every watchPoll, so a child that starts its own session
-// and outlives its parent is still known. The returned function ends that
-// watch; call it once the command has finished.
+// and outlives its parent is still known. macOS also wakes the listing on
+// fork events, before a fast child can leave that tree. The returned function
+// ends both watches; call it once the command has finished.
 // Keeper messages are sent under mu, so the keeper sees each session added
 // before it is forgotten.
 func (s *Sandbox) track(opts *execpkg.RunOptions) (func(), error) {
@@ -54,18 +55,28 @@ func (s *Sandbox) track(opts *execpkg.RunOptions) (func(), error) {
 		return nil, err
 	}
 
+	forks, err := newForkWatcher(s)
+	if err != nil {
+		return nil, err
+	}
+
 	opts.NewSession = true
 	opts.KillWithParent = true
 	opts.Started = func(pid int) {
 		s.mu.Lock()
-		defer s.mu.Unlock()
-
 		s.sessions[pid] = struct{}{}
-
 		_ = s.keeper.send(keeperMessage{Session: pid})
+		s.mu.Unlock()
+
+		forks.start(pid)
 	}
 
-	return s.watch(), nil
+	stopWatch := s.watch()
+
+	return sync.OnceFunc(func() {
+		stopWatch()
+		forks.close()
+	}), nil
 }
 
 // ensureKeeper starts the sandbox keeper on first use and tells it what the
