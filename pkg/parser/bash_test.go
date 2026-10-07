@@ -831,6 +831,41 @@ EOF`
 		})
 
 		Context("directory context tracking with cd commands", func() {
+			DescribeTable(
+				"restores the directory after isolated shells",
+				func(command string) {
+					result, err := p.Parse(command)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(result.Commands).NotTo(BeEmpty())
+					Expect(result.Commands[len(result.Commands)-1].WorkingDirectory).To(BeEmpty())
+				},
+				Entry("subshell", `(cd /b); bash run.sh`),
+				Entry("command substitution", `echo "$(cd /b; pwd)"; bash run.sh`),
+				Entry("deferred trap", `trap 'cd /b' EXIT; bash run.sh`),
+			)
+
+			DescribeTable(
+				"keeps directory changes from same-shell scripts",
+				func(command string) {
+					result, err := p.Parse(command)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(result.Commands).NotTo(BeEmpty())
+					Expect(result.Commands[len(result.Commands)-1].WorkingDirectory).To(Equal("/b"))
+				},
+				Entry("function", `f(){ cd /b; }; f; bash run.sh`),
+			)
+
+			It("keeps directory changes from sourced files", func() {
+				p = parser.NewBashParserWithResolver(fakeResolver{
+					files: map[string]string{"setdir.sh": "cd /b\n"},
+				})
+
+				result, err := p.Parse(`source setdir.sh; bash run.sh`)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result.Commands).NotTo(BeEmpty())
+				Expect(result.Commands[len(result.Commands)-1].WorkingDirectory).To(Equal("/b"))
+			})
+
 			It("tracks directory change from cd command", func() {
 				result, err := p.Parse("cd /tmp && git status")
 				Expect(err).NotTo(HaveOccurred())

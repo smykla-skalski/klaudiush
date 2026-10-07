@@ -206,6 +206,14 @@ func (w *astWalker) visit(node syntax.Node) bool {
 		}
 	case *syntax.CmdSubst:
 		w.noteOutputRoute()
+
+		if n.TempFile || n.ReplyVar {
+			return true
+		}
+
+		w.walkIsolated(n.Stmts)
+
+		return false
 	case *syntax.CallExpr:
 		w.extractCommand(n)
 	case *syntax.ProcSubst:
@@ -240,11 +248,21 @@ func (w *astWalker) visit(node syntax.Node) bool {
 			w.opaque(OpacityZshGlobQualifier, form, "")
 		}
 	case *syntax.Subshell:
-		// Subshells are handled recursively by syntax.Walk
-		return true
+		w.walkIsolated(n.Stmts)
+
+		return false
 	}
 
 	return true
+}
+
+func (w *astWalker) walkIsolated(stmts []*syntax.Stmt) {
+	dir := w.directoryState()
+	defer w.restoreDirectory(dir)
+
+	for _, stmt := range stmts {
+		syntax.Walk(stmt, w.visit)
+	}
 }
 
 // recordStdin associates stdin content with a CallExpr so it can be attached
@@ -701,6 +719,7 @@ func (w *astWalker) extractCommand(call *syntax.CallExpr) {
 		env:              env,
 		quoting:          argQuoting(call.Args[1:]),
 		lookedUpDir:      w.lookupDir(name, words),
+		unconditional:    w.commandUnconditional(call),
 	}, w.depth, view)
 }
 

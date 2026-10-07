@@ -286,7 +286,7 @@ func launchedBy(cmd Command) (launch, bool) {
 		return launch{}, true
 	case cmd.Name == "find":
 		return launch{commands: findExecCommands(cmd)}, true
-	case cmd.Name == "trap":
+	case cmd.Name == trapBuiltin:
 		// trap 'command line' SIGNAL... runs the line when the signal comes.
 		if operand := firstOperand(cmd.Args); operand != "" && operand != "-" {
 			return launch{scripts: []string{operand}}, true

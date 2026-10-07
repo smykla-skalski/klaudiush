@@ -77,15 +77,16 @@ type Command struct {
 	// Vars are the variables as they stood when the command ran.
 	Vars *VarScope
 
-	startup      map[string]startupValue
-	loginArgv0   bool
-	dynamicWords map[string]bool
-	written      map[string][]writtenArg
-	argTexts     map[string]ShellText
-	stdinText    *ShellText
-	env          map[string]EnvValue
-	quoting      map[string]wordQuoting
-	lookedUpDir  string
+	startup       map[string]startupValue
+	loginArgv0    bool
+	dynamicWords  map[string]bool
+	written       map[string][]writtenArg
+	argTexts      map[string]ShellText
+	stdinText     *ShellText
+	env           map[string]EnvValue
+	quoting       map[string]wordQuoting
+	lookedUpDir   string
+	unconditional bool
 }
 
 // wordQuoting records how the words that rendered to one argument were

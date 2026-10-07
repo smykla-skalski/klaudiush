@@ -1150,6 +1150,10 @@ func (w *astWalker) walkScript(script string, parent Command, depth int, sw scri
 
 	child.walkEpilogue(sw.prelude, parent, movedLeniently)
 
+	if runsInShell(parent, sw) && parent.Name != trapBuiltin {
+		w.inheritDirectory(child, parent.unconditional)
+	}
+
 	// Commands report the line of the command that ran the script, keeping
 	// their own place in execution order.
 	for _, cmd := range child.commands {
