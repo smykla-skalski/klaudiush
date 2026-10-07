@@ -106,6 +106,36 @@ var _ = Describe("Commands chained after a function definition", func() {
 		Expect(gitLines(result)).To(ConsistOf("push --force"))
 	})
 
+	It("keeps negation on a definition before an AND list", func() {
+		result := parse("! f() { :; } && git commit -m 'bad'")
+
+		Expect(gitLines(result)).To(BeEmpty())
+		Expect(result.Truncated).To(BeFalse())
+	})
+
+	It("keeps negation on a definition before an OR list", func() {
+		result := parse("! f() { :; } || git push --force")
+
+		Expect(gitLines(result)).To(ConsistOf("push --force"))
+		Expect(result.Truncated).To(BeFalse())
+	})
+
+	DescribeTable("follows mixed lists after a negated definition",
+		func(command string, expected ...string) {
+			result := parse(command)
+
+			Expect(gitLines(result)).To(ConsistOf(expected))
+			Expect(result.Truncated).To(BeFalse())
+		},
+		Entry("skips consecutive AND branches",
+			"! f() { :; } && git status && git commit -m bad"),
+		Entry("resumes at an OR branch",
+			"! f() { :; } && git status || git push --force", "push --force"),
+		Entry("walks an AND branch after OR",
+			"! f() { :; } || git push --force && git commit -m ok",
+			"push --force", "commit -m ok"),
+	)
+
 	DescribeTable("fails closed on a body no shell accepts",
 		func(command, name string) {
 			result := parse(command)

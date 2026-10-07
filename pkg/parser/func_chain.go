@@ -64,6 +64,7 @@ func splitFuncChain(stmt *syntax.Stmt, fn *syntax.FuncDecl) bool {
 		return false
 	}
 
+	links := []*syntax.BinaryCmd{head}
 	for {
 		next, isList := head.X.Cmd.(*syntax.BinaryCmd)
 		if !isList {
@@ -75,6 +76,7 @@ func splitFuncChain(stmt *syntax.Stmt, fn *syntax.FuncDecl) bool {
 		}
 
 		head = next
+		links = append(links, head)
 	}
 
 	body := head.X
@@ -83,10 +85,23 @@ func splitFuncChain(stmt *syntax.Stmt, fn *syntax.FuncDecl) bool {
 	}
 
 	fn.Body = body
-	head.X = &syntax.Stmt{Position: fn.Pos(), Cmd: fn}
+	head.X = &syntax.Stmt{Position: fn.Pos(), Cmd: fn, Negated: stmt.Negated}
+
 	stmt.Cmd = chain.Cmd
+	if stmt.Negated {
+		pruneFalseAndLinks(links)
+	}
+
+	stmt.Negated = false
 
 	return true
+}
+
+// pruneFalseAndLinks removes commands skipped after a negated definition.
+func pruneFalseAndLinks(links []*syntax.BinaryCmd) {
+	for i := len(links) - 1; i >= 0 && links[i].Op == syntax.AndStmt; i-- {
+		links[i].Y = &syntax.Stmt{Position: links[i].Y.Pos()}
+	}
 }
 
 // plainLink reports a statement inside the folded list that carries nothing
