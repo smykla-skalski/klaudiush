@@ -223,6 +223,19 @@ var _ = Describe("APIValidator", func() {
 				`xh DELETE https://api.github.com/repos/o/r/contents/README.md`,
 			),
 			Entry(
+				"httpie with a graphql mutation in a query item",
+				`http POST https://api.github.com/graphql `+
+					`query=='mutation { createCommitOnBranch(input: $i) { url } }' x=1`,
+			),
+			Entry(
+				"httpie with only a query item and a body on stdin",
+				"http api.github.com/repos/o/r/git/commits a==1 <<'EOF'\n{\"message\":\"x\"}\nEOF",
+			),
+			Entry(
+				"httpie with an escaped separator",
+				`http api.github.com/repos/o/r/git/commits 'message\==x'`,
+			),
+			Entry(
 				"curl posting a graphql mutation",
 				`curl -X POST https://api.github.com/graphql `+
 					`-d '{"query":"mutation { createCommitOnBranch(input: $i) { url } }"}'`,

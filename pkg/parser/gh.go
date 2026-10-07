@@ -27,6 +27,15 @@ const (
 	prSubCmd            = "pr"
 	mergeSubCmd         = "merge"
 	minGHPRMergeArgsLen = 2 // gh pr merge
+
+	// minShortClusterLen is a dash and two shorthands, such as -sd.
+	minShortClusterLen = 3
+
+	// argsPerValueFlag is a flag and its value given as separate arguments.
+	argsPerValueFlag = 2
+
+	// ghAuthorEmailShort is the gh pr merge shorthand for --author-email.
+	ghAuthorEmailShort = "-A"
 )
 
 // GHMergeCommand represents a parsed gh pr merge command.
@@ -58,14 +67,26 @@ type GHMergeCommand struct {
 	// Subject is the merge commit subject from --subject or -t flag.
 	Subject string
 
+	// AltSubjects holds the other commit_title values one REST merge sends,
+	// such as one in the body and one in the query string. GitHub does not
+	// say which one it reads, so each is checked like Subject.
+	AltSubjects []string
+
 	// Body is the merge commit body from --body or -b flag.
 	Body string
+
+	// AltBodies holds the other commit_message values one REST merge sends,
+	// checked like Body for the same reason as AltSubjects.
+	AltBodies []string
 
 	// BodyFile is the file path for merge commit body from --body-file or -F flag.
 	BodyFile string
 
 	// Match indicates if --match-head-commit flag is present.
 	Match string
+
+	// AuthorEmail is the merge commit author email from --author-email or -A.
+	AuthorEmail string
 
 	// Repo is the repository from --repo or -R flag.
 	Repo string
@@ -132,6 +153,11 @@ func (c *GHMergeCommand) parseArg(args []string, idx int) int {
 		return 1
 	}
 
+	// Check combined shorthands such as -sd or -tvalue
+	if skip := c.parseShortCluster(args, idx); skip > 0 {
+		return skip
+	}
+
 	// Positional argument (PR number or URL)
 	if !strings.HasPrefix(arg, "-") {
 		c.parsePositionalArg(arg)
@@ -170,24 +196,66 @@ func (c *GHMergeCommand) parseValueFlag(args []string, idx int) int {
 		return 0
 	}
 
-	arg := args[idx]
-
-	switch arg {
-	case "--subject", "-t":
-		c.Subject = args[idx+1]
-	case "--body", "-b":
-		c.Body = args[idx+1]
-	case "--body-file", "-F":
-		c.BodyFile = args[idx+1]
-	case "--match-head-commit":
-		c.Match = args[idx+1]
-	case "--repo", "-R":
-		c.Repo = args[idx+1]
-	default:
+	if !c.setValueFlag(args[idx], args[idx+1]) {
 		return 0
 	}
 
-	return 2 //nolint:mnd // Skip flag and its value
+	return argsPerValueFlag
+}
+
+// setValueFlag stores the value of a flag that takes one. Returns false for
+// any other flag.
+func (c *GHMergeCommand) setValueFlag(flag, value string) bool {
+	switch flag {
+	case "--subject", "-t":
+		c.Subject = value
+	case "--body", "-b":
+		c.Body = value
+	case "--body-file", "-F":
+		c.BodyFile = value
+	case "--match-head-commit":
+		c.Match = value
+	case "--author-email", ghAuthorEmailShort:
+		c.AuthorEmail = value
+	case "--repo", "-R":
+		c.Repo = value
+	default:
+		return false
+	}
+
+	return true
+}
+
+// parseShortCluster handles shorthands combined in one argument the way gh's
+// flag parser reads them: -sd sets both booleans, and in -st value, -stvalue
+// or -t=value the rest of the argument, or else the next one, is the value of
+// the value shorthand. Returns args to skip (0 if not a shorthand cluster).
+func (c *GHMergeCommand) parseShortCluster(args []string, idx int) int {
+	arg := args[idx]
+	if len(arg) < minShortClusterLen || arg[0] != '-' || arg[1] == '-' {
+		return 0
+	}
+
+	for i := 1; i < len(arg); i++ {
+		flag := "-" + arg[i:i+1]
+		if c.parseBooleanFlag(flag) {
+			continue
+		}
+
+		if rest := arg[i+1:]; rest != "" {
+			c.setValueFlag(flag, strings.TrimPrefix(rest, "="))
+
+			return 1
+		}
+
+		if idx+1 < len(args) && c.setValueFlag(flag, args[idx+1]) {
+			return argsPerValueFlag
+		}
+
+		return 1
+	}
+
+	return 1
 }
 
 // parseEqualFlag handles --flag=value format. Returns true if matched.
@@ -201,6 +269,8 @@ func (c *GHMergeCommand) parseEqualFlag(arg string) bool {
 		c.BodyFile = extractFlagValue(arg)
 	case strings.HasPrefix(arg, "--match-head-commit="):
 		c.Match = extractFlagValue(arg)
+	case strings.HasPrefix(arg, "--author-email="), strings.HasPrefix(arg, "-A="):
+		c.AuthorEmail = extractFlagValue(arg)
 	case strings.HasPrefix(arg, "--repo="), strings.HasPrefix(arg, "-R="):
 		c.Repo = extractFlagValue(arg)
 	default:

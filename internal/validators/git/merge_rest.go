@@ -21,6 +21,7 @@ const (
 
 	mergeMethodField   = "merge_method"
 	commitMessageField = "commit_message"
+	commitTitleField   = "commit_title"
 
 	mergeMethodSquash = "squash"
 	mergeMethodMerge  = "merge"
@@ -31,11 +32,25 @@ const (
 	unreadableBody = "(unreadable request body)"
 )
 
-// restMergeFields is what a REST merge request sends in its body.
+// fieldValue is one value a REST merge request sends for a field. file names
+// where a value read at request time comes from; its content is not read.
+type fieldValue struct {
+	text string
+	file string
+}
+
+// restMergeFields holds every value a REST merge request sends for each
+// field, from the body and from the query string. With --input, gh api sends
+// its -f/-F fields as query parameters next to the body, and a URL can carry
+// its own query. GitHub documents the merge fields only as body parameters and
+// does not say which value it reads when a key arrives more than once, so
+// every value is kept and checked rather than guessing a winner.
 type restMergeFields struct {
-	fields     map[string]string
-	fieldFiles map[string]string
-	known      bool
+	values map[string][]fieldValue
+
+	// unreadable is set when the request body cannot be read, so any field
+	// may also carry a value that is not seen here.
+	unreadable bool
 }
 
 // WithAPIHosts sets the hostnames treated as the GitHub API when a client
@@ -68,7 +83,7 @@ func (v *MergeValidator) restMerges(result *parser.ParseResult, cmd parser.Comma
 		var targets []mergeTarget
 
 		for _, req := range parser.ParseHTTPClientCommands(cmd) {
-			if target, ok := v.httpClientMerge(result, req, cmd.Stdin); ok {
+			if target, ok := v.httpClientMerge(result, req, cmd); ok {
 				targets = append(targets, target)
 			}
 		}
@@ -81,7 +96,7 @@ func (v *MergeValidator) restMerges(result *parser.ParseResult, cmd parser.Comma
 
 // ghAPIMerge reads a gh api call that merges a pull request. With --input, gh
 // sends that file or stdin as the whole body and moves the fields to the query
-// string, so the fields are not the body then. The host gh talks to - the one
+// string, so a key can then arrive twice and both values are checked. The host gh talks to - the one
 // in a URL endpoint, or --hostname - is trusted: the command itself already
 // sends gh's token there.
 func (v *MergeValidator) ghAPIMerge(
@@ -108,13 +123,20 @@ func (v *MergeValidator) ghAPIMerge(
 			result, apiCmd.InputFile, apiCmd.WorkingDirectory, apiCmd.Location,
 		)
 	case readsStdinBody(apiCmd.RawArgs):
-		body = fieldsFromText(cmd.Stdin)
-	default:
-		body = restMergeFields{known: true}
+		body = v.stdinFields(result, cmd)
 	}
 
-	body.addUnset(expandFields(result, apiCmd.Fields), apiCmd.FieldFiles)
-	body.addQuery(rawEndpoint)
+	for key, value := range apiCmd.Fields {
+		for _, text := range expansions(result, cmd, value) {
+			body.add(key, fieldValue{text: text})
+		}
+	}
+
+	body.addFields(nil, apiCmd.FieldFiles)
+
+	for _, endpoint := range expansions(result, cmd, ghAPIEndpointArg(apiCmd)) {
+		body.addQuery(endpoint)
+	}
 
 	hostname := strings.ToLower(apiCmd.Hostname)
 	if hostname == "" {
@@ -169,7 +191,7 @@ func readsStdinBody(args []string) bool {
 func (v *MergeValidator) httpClientMerge(
 	result *parser.ParseResult,
 	req *parser.HTTPRequest,
-	stdin string,
+	cmd parser.Command,
 ) (mergeTarget, bool) {
 	rawURL := result.ExpandVars(req.URL)
 	host, path := parser.SplitRequestURL(rawURL)
@@ -189,13 +211,31 @@ func (v *MergeValidator) httpClientMerge(
 	switch {
 	case req.BodyFile != "":
 		body = v.readFieldsFromFile(result, req.BodyFile, req.WorkingDirectory, req.Location)
-	case req.Body != "":
-		body = fieldsFromText(result.ExpandVars(req.Body))
+	case len(req.DataItems) > 0:
+		body = fieldsFromItems(result, cmd, req)
+	case req.DataBody != "":
+		var variants []restMergeFields
+
+		for _, text := range expansions(result, cmd, req.DataBody) {
+			variants = append(variants, fieldsFromText(text))
+		}
+
+		body = combineVariants(variants)
 	default:
-		body = fieldsFromText(stdin)
+		body = v.stdinFields(result, cmd)
 	}
 
-	body.addQuery(rawURL)
+	for _, target := range expansions(result, cmd, req.URL) {
+		body.addQuery(target)
+	}
+
+	for key, texts := range req.Query {
+		for _, text := range texts {
+			for _, expanded := range expansions(result, cmd, text) {
+				body.add(key, fieldValue{text: expanded})
+			}
+		}
+	}
 
 	target := mergeTarget{
 		cmd:         restMergeCommand(prPath, "", body),
@@ -253,49 +293,48 @@ func prMergeTarget(
 	return parser.ParsePRMergeEndpoint(expanded)
 }
 
-// addQuery adds the query parameters of the request target to fields the
-// body does not set itself.
-func (b *restMergeFields) addQuery(raw string) {
-	b.addUnset(parser.QueryFields(raw), nil)
-}
-
-// addUnset adds fields, and fields read from files, that the body does not
-// set itself. A key the body sends wins, the way GitHub reads it.
-func (b *restMergeFields) addUnset(fields, fieldFiles map[string]string) {
-	if !b.known {
+// add records one value of a field, once.
+func (b *restMergeFields) add(key string, value fieldValue) {
+	if slices.Contains(b.values[key], value) {
 		return
 	}
 
-	for key, value := range fields {
-		if b.has(key) {
-			continue
-		}
+	if b.values == nil {
+		b.values = map[string][]fieldValue{}
+	}
 
-		if b.fields == nil {
-			b.fields = map[string]string{}
-		}
+	b.values[key] = append(b.values[key], value)
+}
 
-		b.fields[key] = value
+// addFields records fields, and fields read from files.
+func (b *restMergeFields) addFields(fields, fieldFiles map[string]string) {
+	for key, text := range fields {
+		b.add(key, fieldValue{text: text})
 	}
 
 	for key, path := range fieldFiles {
-		if b.has(key) {
-			continue
-		}
-
-		if b.fieldFiles == nil {
-			b.fieldFiles = map[string]string{}
-		}
-
-		b.fieldFiles[key] = path
+		b.add(key, fieldValue{file: path})
 	}
 }
 
-func (b *restMergeFields) has(key string) bool {
-	_, inFields := b.fields[key]
-	_, inFiles := b.fieldFiles[key]
+// addQuery records the query parameters of the request target.
+func (b *restMergeFields) addQuery(raw string) {
+	for key, texts := range parser.QueryFields(raw) {
+		for _, text := range texts {
+			b.add(key, fieldValue{text: text})
+		}
+	}
+}
 
-	return inFields || inFiles
+// get returns every value sent for a field. An unreadable body adds one value
+// that cannot be read.
+func (b *restMergeFields) get(key string) []fieldValue {
+	values := b.values[key]
+	if b.unreadable {
+		values = append(slices.Clone(values), fieldValue{file: unreadableBody})
+	}
+
+	return values
 }
 
 // readFieldsFromFile reads a request body file, preferring content written
@@ -306,43 +345,179 @@ func (v *MergeValidator) readFieldsFromFile(
 	path, workDir string,
 	location parser.Location,
 ) restMergeFields {
+	content, ok := v.readText(result, path, workDir, location)
+	if !ok {
+		return restMergeFields{unreadable: true}
+	}
+
+	return fieldsFromText(content)
+}
+
+// readText reads a file the request sends, preferring content written earlier
+// on the same command line, since a heredoc file does not exist yet when the
+// hook runs.
+func (v *MergeValidator) readText(
+	result *parser.ParseResult,
+	path, workDir string,
+	location parser.Location,
+) (string, bool) {
 	if content, ok := result.InlineFileContent(path, workDir, location); ok {
-		return fieldsFromText(content)
+		return content, true
 	}
 
 	if !filepath.IsAbs(path) && workDir != "" {
 		path = filepath.Join(workDir, path)
 	}
 
-	content, ok := validators.ReadCapped(v.Logger(), filepath.Clean(path), maxMergeBodyBytes)
-	if !ok {
-		return restMergeFields{}
+	return validators.ReadCapped(v.Logger(), filepath.Clean(path), maxMergeBodyBytes)
+}
+
+// stdinFields reads a request body sent on stdin: a heredoc or pipe, or a file
+// redirected with <.
+func (v *MergeValidator) stdinFields(
+	result *parser.ParseResult,
+	cmd parser.Command,
+) restMergeFields {
+	if cmd.Stdin == "" && cmd.StdinFile != "" {
+		return v.readFieldsFromFile(result, cmd.StdinFile, cmd.WorkingDirectory, cmd.Location)
 	}
 
-	return fieldsFromText(content)
+	return fieldsFromText(cmd.Stdin)
+}
+
+// fieldsFromItems reads httpie and xh items one by one. A "field=@path" item
+// embeds a file, which is not read: the file can change before the request
+// runs. A commit_title from a file is treated as unread, like --body-file, and
+// any other value is the literal text, as before.
+func fieldsFromItems(
+	result *parser.ParseResult,
+	cmd parser.Command,
+	req *parser.HTTPRequest,
+) restMergeFields {
+	var variants []restMergeFields
+
+	for _, items := range itemExpansions(result, cmd, req.DataItems) {
+		fields, files, ok := parser.ParseRequestItemList(items)
+		if !ok {
+			variants = append(variants, restMergeFields{unreadable: true})
+
+			continue
+		}
+
+		unread := map[string]string{}
+
+		for key, path := range files {
+			if key == commitTitleField {
+				// An unread subject is skipped, the PR title still checked.
+				unread[key] = path
+
+				continue
+			}
+
+			fields[key] = "@" + path
+		}
+
+		var variant restMergeFields
+
+		variant.addFields(fields, unread)
+		variants = append(variants, variant)
+	}
+
+	return combineVariants(variants)
+}
+
+// itemExpansions returns the items with variables expanded each way
+// expansions does, one list per distinct result.
+func itemExpansions(result *parser.ParseResult, cmd parser.Command, items []string) [][]string {
+	scoped := make([]string, 0, len(items))
+	final := make([]string, 0, len(items))
+
+	for _, item := range items {
+		scoped = append(scoped, cmd.Vars.ExpandVars(item))
+		final = append(final, result.ExpandVars(item))
+	}
+
+	if slices.Equal(scoped, final) {
+		return [][]string{scoped}
+	}
+
+	return [][]string{scoped, final}
+}
+
+// expansions returns s with variables expanded both as they stood when the
+// command ran and as they end on the line. A loop body or trap can run the
+// command again after a later assignment, so each distinct value is checked.
+func expansions(result *parser.ParseResult, cmd parser.Command, s string) []string {
+	scoped := cmd.Vars.ExpandVars(s)
+	final := result.ExpandVars(s)
+
+	if scoped == final {
+		return []string{scoped}
+	}
+
+	return []string{scoped, final}
+}
+
+// combineVariants joins the bodies one request sends under different variable
+// values. A readable body that leaves out a merge field sends that field's
+// default, so an empty value stands for it: a merge commit, no message, or the
+// PR title.
+func combineVariants(variants []restMergeFields) restMergeFields {
+	if len(variants) == 1 {
+		return variants[0]
+	}
+
+	var body restMergeFields
+
+	for _, variant := range variants {
+		body.merge(variant)
+
+		if variant.unreadable {
+			continue
+		}
+
+		for _, key := range []string{mergeMethodField, commitMessageField, commitTitleField} {
+			if len(variant.values[key]) == 0 {
+				body.add(key, fieldValue{})
+			}
+		}
+	}
+
+	return body
+}
+
+// merge adds every value of other, and its unreadable state.
+func (b *restMergeFields) merge(other restMergeFields) {
+	for key, values := range other.values {
+		for _, value := range values {
+			b.add(key, value)
+		}
+	}
+
+	b.unreadable = b.unreadable || other.unreadable
 }
 
 func fieldsFromText(text string) restMergeFields {
 	fields, ok := parser.ParseRequestFields(text)
-
-	return restMergeFields{fields: fields, known: ok}
-}
-
-func expandFields(result *parser.ParseResult, fields map[string]string) map[string]string {
-	expanded := make(map[string]string, len(fields))
-
-	for key, value := range fields {
-		expanded[key] = result.ExpandVars(value)
+	if !ok {
+		return restMergeFields{unreadable: true}
 	}
 
-	return expanded
+	var body restMergeFields
+
+	body.addFields(fields, nil)
+
+	return body
 }
 
 // restMergeCommand shapes a REST merge request as a gh pr merge. REST merges
 // with a merge commit unless merge_method says otherwise. A merge method that
 // cannot be read is treated like gh pr merge with neither --merge nor --rebase:
-// validated as a squash. A commit message that cannot be read is treated like
-// --body-file, whose content the gh pr merge checks cannot see either.
+// validated as a squash. A commit message or title that cannot be read is
+// treated like --body-file, whose content the gh pr merge checks cannot see
+// either. When a field carries several values, the merge is validated as a
+// squash if any of them squashes, and every readable message and title is
+// checked.
 func restMergeCommand(
 	prPath string,
 	hostname string,
@@ -353,28 +528,76 @@ func restMergeCommand(
 		Hostname: hostname,
 	}
 
-	if !body.known {
-		mergeCmd.BodyFile = unreadableBody
+	setMergeMethod(mergeCmd, body.get(mergeMethodField))
 
-		return mergeCmd
+	messages, messageFile := splitFieldValues(body.get(commitMessageField))
+
+	switch {
+	case len(messages) > 0:
+		// Body and BodyFile together would let an unread file excuse a
+		// message that lacks the signoff, so a readable message stands alone.
+		mergeCmd.Body = messages[0]
+		mergeCmd.AltBodies = messages[1:]
+	case messageFile != "":
+		mergeCmd.BodyFile = messageFile
 	}
 
-	if _, fromFile := body.fieldFiles[mergeMethodField]; !fromFile {
-		switch body.fields[mergeMethodField] {
-		case "", mergeMethodMerge:
-			mergeCmd.Merge = true
-		case mergeMethodRebase:
-			mergeCmd.Rebase = true
-		case mergeMethodSquash:
-			mergeCmd.Squash = true
-		}
-	}
-
-	if path, fromFile := body.fieldFiles[commitMessageField]; fromFile {
-		mergeCmd.BodyFile = path
-	} else {
-		mergeCmd.Body = body.fields[commitMessageField]
+	if titles, _ := splitFieldValues(body.get(commitTitleField)); len(titles) > 0 {
+		mergeCmd.Subject = titles[0]
+		mergeCmd.AltSubjects = titles[1:]
 	}
 
 	return mergeCmd
+}
+
+// setMergeMethod marks the merge method. No value is a merge commit.
+func setMergeMethod(mergeCmd *parser.GHMergeCommand, methods []fieldValue) {
+	if len(methods) == 0 {
+		mergeCmd.Merge = true
+
+		return
+	}
+
+	rebase := false
+
+	for _, method := range methods {
+		switch {
+		case method.file != "":
+			return
+		case method.text == "", method.text == mergeMethodMerge:
+		case method.text == mergeMethodRebase:
+			rebase = true
+		default:
+			// squash, or a method that cannot be read
+			mergeCmd.Squash = method.text == mergeMethodSquash
+
+			return
+		}
+	}
+
+	if rebase {
+		mergeCmd.Rebase = true
+	} else {
+		mergeCmd.Merge = true
+	}
+}
+
+// splitFieldValues returns the readable values of a field, in order, and the
+// source of the first value that cannot be read.
+func splitFieldValues(values []fieldValue) ([]string, string) {
+	var (
+		texts []string
+		file  string
+	)
+
+	for _, value := range values {
+		switch {
+		case value.file == "":
+			texts = append(texts, value.text)
+		case file == "":
+			file = value.file
+		}
+	}
+
+	return texts, file
 }

@@ -22,6 +22,19 @@ type HTTPRequest struct {
 	// BodyFile is a body read from a file, from "-d @file" or "--body-file".
 	BodyFile string
 
+	// Query holds the "field==value" items httpie and xh add to the URL query
+	// string, every value of each field in order. The items also stay in Body.
+	Query map[string][]string
+
+	// DataBody is Body without the Query items: what the client sends as the
+	// request body.
+	DataBody string
+
+	// DataItems holds the httpie and xh "field=value" and "field:=json" items
+	// one by one, when they are the whole body. A value may span lines, which
+	// the joined DataBody cannot tell apart from separate items.
+	DataItems []string
+
 	// WorkingDirectory is the effective directory of the command.
 	WorkingDirectory string
 
@@ -238,6 +251,9 @@ func parseClientSegment(cmd Command, spec *httpClientSpec, args []string) []*HTT
 			URL:              url,
 			Body:             state.body,
 			BodyFile:         state.bodyFile,
+			Query:            state.query,
+			DataBody:         state.dataBody,
+			DataItems:        state.wholeBodyItems(),
 			WorkingDirectory: cmd.WorkingDirectory,
 			Location:         cmd.Location,
 		})
@@ -254,7 +270,20 @@ type httpClientState struct {
 	hasDataItem      bool
 	urls             []string
 	body             string
+	dataBody         string
+	dataItems        []string
+	flagBody         bool
 	bodyFile         string
+	query            map[string][]string
+}
+
+// wholeBodyItems returns the data items when nothing else adds to the body.
+func (s *httpClientState) wholeBodyItems() []string {
+	if s.flagBody || s.bodyFile != "" {
+		return nil
+	}
+
+	return s.dataItems
 }
 
 // resolveMethod applies the precedence every client shares: an explicit method
@@ -317,6 +346,7 @@ func (s *httpClientState) applyClientFlag(flag clientFlag, value string) {
 	case roleBodyFile:
 		s.setBodyFile(value)
 	case roleBody:
+		s.flagBody = true
 		s.collectBody(value)
 	case roleNone:
 	}
@@ -340,11 +370,16 @@ func (s *httpClientState) collectBody(value string) {
 		return
 	}
 
-	if s.body != "" {
-		s.body += "\n"
+	s.body = appendLine(s.body, value)
+	s.dataBody = appendLine(s.dataBody, value)
+}
+
+func appendLine(text, line string) string {
+	if text == "" {
+		return line
 	}
 
-	s.body += value
+	return text + "\n" + line
 }
 
 // parseClientPositional records a bare verb, a URL, or an httpie data item.
@@ -359,15 +394,40 @@ func (s *httpClientState) parseClientPositional(arg string, spec *httpClientSpec
 	// httpie request items ("field=value", "field:=json") make the call a POST.
 	// Only the clients that take a positional method have them; curl fetches
 	// every positional, so a URL of its own carrying a query string stays a URL.
+	// A "field==value" item goes to the query string. It also stays in the body
+	// text, so checks that scan the body still see it.
 	if spec.positionalMethod && len(s.urls) > 0 && strings.Contains(arg, "=") {
 		s.hasDataItem = true
 
+		if key, value, ok := parseQueryItem(arg); ok {
+			if s.query == nil {
+				s.query = map[string][]string{}
+			}
+
+			s.query[key] = append(s.query[key], value)
+			s.body = appendLine(s.body, arg)
+
+			return
+		}
+
+		s.dataItems = append(s.dataItems, arg)
 		s.collectBody(arg)
 
 		return
 	}
 
 	s.urls = append(s.urls, arg)
+}
+
+// parseQueryItem reads an httpie "field==value" query item. A key holding a
+// backslash may escape the separator, so it is not read as one.
+func parseQueryItem(arg string) (string, string, bool) {
+	key, value, found := strings.Cut(arg, "==")
+	if !found || key == "" || strings.ContainsAny(key, "=:@\\") {
+		return "", "", false
+	}
+
+	return key, value, true
 }
 
 // splitClientFlag splits --flag=value and a short flag with an attached value.

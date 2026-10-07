@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -20,6 +21,9 @@ import (
 const (
 	ghAPITimeout       = 30 * time.Second
 	minPRBodyLineCount = 2
+
+	prTitleLabel = "PR title"
+	subjectLabel = "Squash commit subject (--subject or commit_title)"
 
 	ghMergeSignoffHint = "Add --body flag with signoff:\n\n" +
 		"gh pr merge --body \"$(cat <<'EOF'\n" +
@@ -159,6 +163,12 @@ func (v *MergeValidator) findMerges(result *parser.ParseResult) []mergeTarget {
 				continue
 			}
 
+			// Read subject variables as the REST commit_title is, each way. The
+			// body is left as written, as before.
+			subjects := expansions(result, cmd, mergeCmd.Subject)
+			mergeCmd.Subject = subjects[0]
+			mergeCmd.AltSubjects = subjects[1:]
+
 			targets = append(targets, mergeTarget{cmd: mergeCmd, signoffHint: ghMergeSignoffHint})
 
 			continue
@@ -178,6 +188,10 @@ func (v *MergeValidator) validateTarget(ctx context.Context, target mergeTarget)
 
 	if !target.cmd.IsSquashMerge() {
 		return validator.Pass()
+	}
+
+	if res := v.validateSubjects(target.cmd); !res.Passed {
+		return res
 	}
 
 	if res := v.validateMergeCommandSignoff(target.cmd, target.signoffHint); !res.Passed {
@@ -213,6 +227,11 @@ func (v *MergeValidator) validateMerge(
 		return validator.Pass()
 	}
 
+	// The subject needs no fetch, so a failed fetch cannot let it through.
+	if res := v.validateSubjects(mergeCmd); !res.Passed {
+		return res
+	}
+
 	// Fetch PR details
 	prDetails, err := v.fetchPRDetails(ctx, mergeCmd)
 	if err != nil {
@@ -227,7 +246,7 @@ func (v *MergeValidator) validateMerge(
 	)
 
 	// Validate the merge message (PR title + body)
-	result := v.validateMergeMessage(prDetails)
+	result := v.validateMergeMessage(prDetails, mergeSubjects(mergeCmd))
 	if !result.Passed {
 		return result
 	}
@@ -321,8 +340,9 @@ func (v *MergeValidator) getCurrentBranch() string {
 	return branch
 }
 
-// validateMergeMessage validates the PR title + body as a commit message.
-func (v *MergeValidator) validateMergeMessage(pr *PRDetails) *validator.Result {
+// validateMergeMessage validates the PR title + body as a commit message. The
+// subjects, already checked, only name the commit in the preview.
+func (v *MergeValidator) validateMergeMessage(pr *PRDetails, subjects []string) *validator.Result {
 	log := v.Logger()
 
 	if !v.isMessageValidationEnabled() {
@@ -343,37 +363,95 @@ func (v *MergeValidator) validateMergeMessage(pr *PRDetails) *validator.Result {
 	bodyErrors := v.validateBody(pr.Body)
 	allErrors = append(allErrors, bodyErrors...)
 
-	// Build result
-	if len(allErrors) > 0 {
-		primaryMsg := allErrors[0]
+	preview := pr.Title
+	if len(subjects) > 0 {
+		preview = subjects[0]
+	}
 
-		var details strings.Builder
-
-		// Skip first error in details (already in Message)
-		if len(allErrors) > 1 {
-			for _, e := range allErrors[1:] {
-				details.WriteString(e)
-				details.WriteString("\n")
-			}
-		}
-
-		result := validator.FailWithRef(
-			validator.RefGitMergeMessage,
-			primaryMsg,
-		)
-
-		if details.Len() > 0 {
-			result = result.AddDetail("errors", details.String())
-		}
-
-		result = result.AddDetail("commit_preview", fmt.Sprintf("PR #%d: %s", pr.Number, pr.Title))
-
-		return result
+	commitPreview := fmt.Sprintf("PR #%d: %s", pr.Number, preview)
+	if res := mergeMessageResult(allErrors, commitPreview); res != nil {
+		return res
 	}
 
 	log.Debug("Merge message validation passed")
 
 	return validator.Pass()
+}
+
+// validateSubjects validates the subjects a merge sets in place of the PR
+// title. It needs no pull request fetch.
+func (v *MergeValidator) validateSubjects(mergeCmd *parser.GHMergeCommand) *validator.Result {
+	if !v.isMessageValidationEnabled() {
+		return validator.Pass()
+	}
+
+	subjects := mergeSubjects(mergeCmd)
+	if len(subjects) == 0 {
+		return validator.Pass()
+	}
+
+	if res := mergeMessageResult(v.subjectErrors(subjects), subjects[0]); res != nil {
+		return res
+	}
+
+	return validator.Pass()
+}
+
+// mergeSubjects returns the squash commit subjects a merge sets in place of
+// the PR title: gh pr merge --subject, or each REST commit_title value. An
+// empty subject leaves the PR title in place, so it is skipped. A subject
+// holding a variable that cannot be resolved cannot be read, and is skipped
+// like --body-file. Trailing newlines are dropped, as command substitution
+// drops them.
+func mergeSubjects(mergeCmd *parser.GHMergeCommand) []string {
+	var subjects []string
+
+	for _, subject := range append([]string{mergeCmd.Subject}, mergeCmd.AltSubjects...) {
+		subject = strings.TrimRight(subject, "\n")
+		if subject == "" || parser.HasUnresolvedVars(subject) ||
+			slices.Contains(subjects, subject) {
+			continue
+		}
+
+		subjects = append(subjects, subject)
+	}
+
+	return subjects
+}
+
+// subjectErrors applies the PR title rules to each subject.
+func (v *MergeValidator) subjectErrors(subjects []string) []string {
+	errs := make([]string, 0, len(subjects))
+
+	for _, subject := range subjects {
+		errs = append(errs, v.validateTitleAs(subjectLabel, subject)...)
+	}
+
+	return errs
+}
+
+// mergeMessageResult builds the GIT017 failure for the given errors, or nil
+// when there are none.
+func mergeMessageResult(allErrors []string, preview string) *validator.Result {
+	if len(allErrors) == 0 {
+		return nil
+	}
+
+	var details strings.Builder
+
+	// Skip first error in details (already in Message)
+	for _, e := range allErrors[1:] {
+		details.WriteString(e)
+		details.WriteString("\n")
+	}
+
+	result := validator.FailWithRef(validator.RefGitMergeMessage, allErrors[0])
+
+	if details.Len() > 0 {
+		result = result.AddDetail("errors", details.String())
+	}
+
+	return result.AddDetail("commit_preview", preview)
 }
 
 // validateMergeCommandSignoff validates that the merge command includes a signoff.
@@ -386,9 +464,25 @@ func (v *MergeValidator) validateMergeCommandSignoff(
 		return validator.Pass()
 	}
 
+	if res := v.checkBodySignoff(mergeCmd.Body, mergeCmd.BodyFile, signoffHint); !res.Passed {
+		return res
+	}
+
+	// Every other commit_message a REST merge sends must carry it too.
+	for _, body := range mergeCmd.AltBodies {
+		if res := v.checkBodySignoff(body, "", signoffHint); !res.Passed {
+			return res
+		}
+	}
+
+	return validator.Pass()
+}
+
+// checkBodySignoff checks one merge commit body for the signoff.
+func (v *MergeValidator) checkBodySignoff(body, bodyFile, signoffHint string) *validator.Result {
 	// Check if --body flag contains signoff
-	if mergeCmd.Body != "" {
-		signoffErrors := v.validateSignoffInText(mergeCmd.Body)
+	if body != "" {
+		signoffErrors := v.validateSignoffInText(body)
 		if len(signoffErrors) == 0 {
 			return validator.Pass()
 		}
@@ -405,7 +499,7 @@ func (v *MergeValidator) validateMergeCommandSignoff(
 
 	// If --body-file is used, we can't validate the content here
 	// Just warn that signoff should be included
-	if mergeCmd.BodyFile != "" {
+	if bodyFile != "" {
 		return validator.Pass() // Assume the file contains signoff
 	}
 
@@ -425,23 +519,28 @@ func (v *MergeValidator) validateMergeCommandSignoff(
 
 // validateTitle validates the PR title as a commit message title.
 func (v *MergeValidator) validateTitle(title string) []string {
+	return v.validateTitleAs(prTitleLabel, title)
+}
+
+// validateTitleAs validates a commit message title, naming it label in errors.
+func (v *MergeValidator) validateTitleAs(label, title string) []string {
 	if title == "" {
-		return []string{"PR title is empty"}
+		return []string{label + " is empty"}
 	}
 
 	var errs []string
 
 	// Check title length
-	errs = v.checkTitleLength(title, errs)
+	errs = v.checkTitleLength(label, title, errs)
 
 	// Check conventional commit format (skip for reverts)
-	errs = v.checkTitleConventionalFormat(title, errs)
+	errs = v.checkTitleConventionalFormat(label, title, errs)
 
 	return errs
 }
 
 // checkTitleLength validates the title length.
-func (v *MergeValidator) checkTitleLength(title string, errs []string) []string {
+func (v *MergeValidator) checkTitleLength(label, title string, errs []string) []string {
 	maxLength := v.getTitleMaxLength()
 	isRevert := isRevertCommit(title)
 	allowUnlimited := v.shouldAllowUnlimitedRevertTitle()
@@ -456,7 +555,7 @@ func (v *MergeValidator) checkTitleLength(title string, errs []string) []string 
 	}
 
 	errs = append(errs,
-		fmt.Sprintf("PR title exceeds %d characters (%d chars)", maxLength, len(title)),
+		fmt.Sprintf("%s exceeds %d characters (%d chars)", label, maxLength, len(title)),
 		fmt.Sprintf("Title: '%s'", title),
 	)
 
@@ -468,7 +567,10 @@ func (v *MergeValidator) checkTitleLength(title string, errs []string) []string 
 }
 
 // checkTitleConventionalFormat validates the title follows conventional commit format.
-func (v *MergeValidator) checkTitleConventionalFormat(title string, errs []string) []string {
+func (v *MergeValidator) checkTitleConventionalFormat(
+	label, title string,
+	errs []string,
+) []string {
 	if !v.shouldCheckConventionalCommits() {
 		return errs
 	}
@@ -486,7 +588,7 @@ func (v *MergeValidator) checkTitleConventionalFormat(title string, errs []strin
 	// Check format validity
 	if !parsed.Valid || parsed.ParseError != "" {
 		errs = append(errs,
-			"PR title doesn't follow conventional commits format: type(scope): description",
+			label+" doesn't follow conventional commits format: type(scope): description",
 			"Valid types: "+strings.Join(v.getValidTypes(), ", "),
 			fmt.Sprintf("Current title: '%s'", title),
 		)
@@ -497,7 +599,7 @@ func (v *MergeValidator) checkTitleConventionalFormat(title string, errs []strin
 	// Check scope requirement
 	if v.shouldRequireScope() && parsed.Scope == "" {
 		errs = append(errs,
-			"PR title requires a scope: type(scope): description",
+			label+" requires a scope: type(scope): description",
 			fmt.Sprintf("Current title: '%s'", title),
 		)
 	}

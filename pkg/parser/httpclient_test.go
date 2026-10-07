@@ -29,6 +29,29 @@ var _ = Describe("ParseHTTPClientCommands", func() {
 		return requests[0]
 	}
 
+	It("records httpie query items and keeps them in the body", func() {
+		req := parseOne(`http PUT https://api.github.com/x a=1 b==2 b==3 c:=4 'd\==5'`, "http")
+		Expect(req.Query).To(Equal(map[string][]string{"b": {"2", "3"}}))
+		Expect(req.Body).To(Equal("a=1\nb==2\nb==3\nc:=4\nd\\==5"))
+		Expect(req.DataBody).To(Equal("a=1\nc:=4\nd\\==5"))
+	})
+
+	It("keeps httpie data items apart only when they are the whole body", func() {
+		req := parseOne("http PUT https://api.github.com/x a=1 q==2 'b=x\ny'", "http")
+		Expect(req.DataItems).To(Equal([]string{"a=1", "b=x\ny"}))
+
+		req = parseOne("http PUT https://api.github.com/x a=1 --raw '{}'", "http")
+		Expect(req.DataItems).To(BeNil())
+	})
+
+	It("keeps a raw body intact in DataBody", func() {
+		req := parseOne(
+			"http PUT https://api.github.com/x page==1 --raw '{\"a\":\n\"b\", \"x==\":\n\"c\"}'",
+			"http",
+		)
+		Expect(req.DataBody).To(Equal("{\"a\":\n\"b\", \"x==\":\n\"c\"}"))
+	})
+
 	DescribeTable(
 		"resolves the method and URL",
 		func(command, tool, wantMethod, wantURL string) {
