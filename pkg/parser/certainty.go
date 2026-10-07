@@ -133,6 +133,16 @@ func (w *astWalker) commandUnconditional(call *syntax.CallExpr) bool {
 	return false
 }
 
+func (w *astWalker) commandIsolated(call *syntax.CallExpr) bool {
+	for stmt, c := range w.certain {
+		if callExprOf(stmt) == call {
+			return c.never
+		}
+	}
+
+	return false
+}
+
 // Certain reports whether the write is sure to have run by the time a
 // consumer at source position "at" runs.
 func (f FileWrite) Certain(at Location) bool {

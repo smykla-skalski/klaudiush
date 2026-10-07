@@ -1143,10 +1143,10 @@ type scriptWalk struct {
 }
 
 // walkScript records the commands of a script that parent runs. A cd inside
-// the script moves only the script, and its definitions stay inside it. A
-// shell runs the commands before a syntax error and what follows is unknown,
-// so a script that fails to parse fails closed; interpreter strings, which
-// are mostly prose, do not.
+// the script moves only the script. Its definitions stay inside it unless it
+// is a same-shell function call. A shell runs the commands before a syntax
+// error and what follows is unknown, so a script that fails to parse fails
+// closed; interpreter strings, which are mostly prose, do not.
 func (w *astWalker) walkScript(script string, parent Command, depth int, sw scriptWalk) {
 	if !w.state.spend() {
 		w.opaque(OpacityWorkBudget, sw.operation(), "")
@@ -1197,6 +1197,7 @@ func (w *astWalker) walkScript(script string, parent Command, depth int, sw scri
 	}
 
 	child.walkEpilogue(sw.prelude, parent, movedLeniently)
+	w.publishFunctions(child, parent, sw)
 
 	if runsInShell(parent, sw) && parent.Name != trapBuiltin {
 		w.inheritDirectory(child, parent.unconditional)
@@ -1213,6 +1214,12 @@ func (w *astWalker) walkScript(script string, parent Command, depth int, sw scri
 	w.dynamicWrites += child.dynamicWrites
 	w.dynamicWriteLocs = append(w.dynamicWriteLocs, child.dynamicWriteLocs...)
 	w.stdinReplaced = w.stdinReplaced || (child.stdinReplaced && runsInShell(parent, sw))
+}
+
+func (w *astWalker) publishFunctions(child *astWalker, parent Command, sw scriptWalk) {
+	if runsInShell(parent, sw) && !parent.isolated {
+		maps.Copy(w.funcs, child.funcs)
+	}
 }
 
 // argStrings converts argument words to strings. A process substitution fed

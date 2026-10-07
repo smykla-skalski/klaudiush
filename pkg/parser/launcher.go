@@ -1201,5 +1201,6 @@ func childCommand(parent Command, name string, args []string) Command {
 		argTexts:         parent.argTexts,
 		stdinText:        parent.stdinText,
 		quoting:          parent.quoting,
+		isolated:         parent.isolated,
 	}
 }
