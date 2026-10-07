@@ -452,23 +452,28 @@ var _ = Describe("Other shell startup files", func() {
 		Entry("interactive bash", `bash -i -c true`),
 	)
 
-	DescribeTable("treats login programs as login shells",
-		func(command string) {
+	DescribeTable("fails closed for login programs with unknown target accounts",
+		func(command, operation string) {
 			result := parse(command, fakeResolver{
 				env:   map[string]string{"HOME": "/home/u", "SHELL": "/bin/sh"},
 				files: map[string]string{"/home/u/.profile": payload},
 			})
 
-			Expect(result.Truncated).To(BeFalse(), command)
-			Expect(result.GitOperations).NotTo(BeEmpty(), command)
+			Expect(result.Truncated).To(BeTrue(), command)
+			Expect(result.Opacities).To(ContainElement(SatisfyAll(
+				HaveField("Cause", parser.OpacityStartupFile),
+				HaveField("Operation", operation),
+				HaveField("Detail", parser.DetailLoginAccount),
+			)), command)
 		},
-		Entry("login", `login`),
-		Entry("su dash", `su -`),
-		Entry("su login", `su --login user`),
+		Entry("login", `login`, "login"),
+		Entry("su dash", `su -`, "su"),
+		Entry("su login", `su --login user`, "su"),
 	)
 
 	It("honors fish no-config", func() {
-		result := parse(`echo x > ~/.config/fish/config.fish; fish --no-config -c true`,
+		result := parse(`echo x > ~/.config/fish/config.fish; `+
+			`echo x > ~/.config/fish/conf.d/test.fish; fish --no-config -c true`,
 			fakeResolver{env: map[string]string{"HOME": "/home/u"}})
 
 		Expect(result.Truncated).To(BeFalse())
@@ -479,5 +484,43 @@ var _ = Describe("Other shell startup files", func() {
 			fakeResolver{env: map[string]string{"HOME": "/home/u"}})
 
 		Expect(result.Truncated).To(BeFalse())
+	})
+
+	DescribeTable("blocks written system configs with unsupported syntax",
+		func(command, operation string) {
+			result := parse(command, fakeResolver{env: map[string]string{"HOME": "/home/u"}})
+
+			Expect(result.Opacities).To(ContainElement(SatisfyAll(
+				HaveField("Cause", parser.OpacityScriptSyntax),
+				HaveField("Operation", operation),
+			)), command)
+		},
+		Entry("csh rc", `echo x > /etc/csh.cshrc; csh -c true`, "csh.cshrc"),
+		Entry("csh login", `echo x > /etc/csh.login; csh -lc true`, "csh.login"),
+		Entry("fish conf.d", `echo x > /etc/fish/conf.d/test.fish; fish -c true`, "test.fish"),
+	)
+
+	It("preserves alternating zsh system and user startup order", func() {
+		result := parse(`HOME=/home zsh -ilc true`, fakeResolver{
+			env: map[string]string{"HOME": "/home/u"},
+			files: map[string]string{
+				"/home/.zshrc": `echo 'git push --force' > /etc/zlogin`,
+				"/etc/zlogin":  "true",
+			},
+		})
+
+		Expect(result.GitOperations).NotTo(BeEmpty())
+	})
+
+	It("reads the global zsh logout file after the user logout file", func() {
+		result := parse(`HOME=/home zsh -lc true`, fakeResolver{
+			env: map[string]string{"HOME": "/home/u"},
+			files: map[string]string{
+				"/home/.zlogout": `echo 'git push --force' > /etc/zlogout`,
+				"/etc/zlogout":   "true",
+			},
+		})
+
+		Expect(result.GitOperations).NotTo(BeEmpty())
 	})
 })

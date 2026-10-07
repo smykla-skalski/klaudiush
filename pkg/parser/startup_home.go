@@ -36,8 +36,8 @@ var logoutFiles = nameSet(".zlogout .bash_logout .logout")
 var cshShells = nameSet("csh tcsh")
 
 // foreignStartupFiles use shell syntaxes the bash parser cannot interpret.
-var foreignStartupFiles = nameSet(`.tcshrc .cshrc .login .logout config.fish
-	env.nu config.nu login.nu rc.elv .xonshrc rc.xsh xonshrc`)
+var foreignStartupFiles = nameSet(`.tcshrc .cshrc .login .logout csh.cshrc csh.login
+	config.fish env.nu config.nu login.nu rc.elv .xonshrc rc.xsh xonshrc`)
 
 // shellMode is how its options make a shell start: posix is bash --posix,
 // which reads ENV alone, noRCs is zsh or csh -f or NO_RCS, which reads no
@@ -284,6 +284,51 @@ func zshStartupFiles(mode shellMode) (before, after []string) {
 	}
 
 	return before, after
+}
+
+// zshStartupScripts preserves zsh's alternating global and user startup
+// order. All but /etc/zshenv stay lazy because earlier files can rewrite them.
+func (w *astWalker) zshStartupScripts(cmd Command, mode shellMode) []startupScript {
+	scripts := w.systemScripts(cmd, []string{"/etc/zshenv"})
+	if mode.noRCs {
+		return scripts
+	}
+
+	if _, known := w.homeDirs(cmd, true); !known {
+		return scripts
+	}
+
+	appendSystem := func(path string, logout bool) {
+		scripts = append(scripts, startupScript{
+			label: filepath.Base(path), path: path, lazy: true, logout: logout,
+		})
+	}
+	appendHome := func(file string) {
+		scripts = append(scripts, startupScript{
+			label: file, lazy: true, logout: logoutFiles[file],
+		})
+	}
+
+	appendHome(zshenvFile)
+
+	if mode.login {
+		appendSystem("/etc/zprofile", false)
+		appendHome(".zprofile")
+	}
+
+	if mode.interactive {
+		appendSystem("/etc/zshrc", false)
+		appendHome(".zshrc")
+	}
+
+	if mode.login {
+		appendSystem("/etc/zlogin", false)
+		appendHome(".zlogin")
+		appendHome(".zlogout")
+		appendSystem("/etc/zlogout", true)
+	}
+
+	return scripts
 }
 
 // kshStartupFiles returns the home startup files of ksh, mksh and yash:
@@ -552,11 +597,15 @@ func (w *astWalker) checkFishConfScripts(cmd Command) {
 		return
 	}
 
+	confDirs := []string{"/etc/fish/conf.d"}
+	for _, dir := range dirs {
+		confDirs = append(confDirs,
+			resolvePath(cmd.WorkingDirectory, dir.path+"/.config/fish/conf.d"))
+	}
+
 	seen := make(map[string]bool)
 
-	for _, dir := range dirs {
-		confDir := resolvePath(cmd.WorkingDirectory, dir.path+"/.config/fish/conf.d")
-
+	for _, confDir := range confDirs {
 		for p := w; p != nil; p = p.parent {
 			for _, fw := range p.fileWrites {
 				path, known := w.writtenPath(fw)
@@ -768,7 +817,19 @@ func (w *astWalker) currentHomeState() homeState {
 func (w *astWalker) lazyStartup(part startupScript, parent Command, lenient bool) []startupScript {
 	parent.startup = nil
 	parent.WorkingDirectory = w.currentDir
+
 	parent.DirUnknown, parent.DirComputed = w.dirUnknown, w.dirComputed
+
+	if part.path != "" {
+		script, found := w.systemScript(parent, part.path)
+		if !found {
+			return nil
+		}
+
+		script.logout = part.logout
+
+		return []startupScript{script}
+	}
 
 	if !lenient || w.lenient {
 		return w.homeScripts(parent, []string{part.label}, true)
@@ -1016,15 +1077,4 @@ func loginProgram(name string, args []string) bool {
 			strings.HasPrefix(arg, "-") && !strings.HasPrefix(arg, "--") &&
 				strings.Contains(arg[1:], "l")
 	})
-}
-
-// loginShell names the shell a login program starts when it is visible.
-func loginShell(resolver Resolver) string {
-	if value, ok := resolver.LookupEnv("SHELL"); ok {
-		if name := commandName(value); shells[name] {
-			return name
-		}
-	}
-
-	return shShell
 }

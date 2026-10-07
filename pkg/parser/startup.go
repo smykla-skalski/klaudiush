@@ -57,6 +57,7 @@ type startupValue struct {
 // inspected in it does not block.
 type startupScript struct {
 	label   string
+	path    string
 	key     string
 	text    string
 	lazy    bool
@@ -154,10 +155,9 @@ func unknownOperand(name string, hasValue bool, arg string) bool {
 // recorded as opaque instead.
 func (w *astWalker) startupScripts(cmd Command, args []string) []startupScript {
 	if loginProgram(cmd.Name, args) {
-		cmd.Name = loginShell(w.resolver)
-		cmd.Invoked = cmd.Name
-		cmd.loginArgv0 = true
-		args = nil
+		w.opaque(OpacityStartupFile, cmd.Name, DetailLoginAccount)
+
+		return nil
 	}
 
 	_, isLauncher := launchers[cmd.Name]
@@ -184,12 +184,28 @@ func (w *astWalker) startupScripts(cmd Command, args []string) []startupScript {
 	mode := shellOptions(cmd.Name, w.optionWords(args))
 	mode.login = mode.login || cmd.loginArgv0
 	named := rcfiles(args)
-	before, after := homeStartupFiles(cmd.Name, mode, len(named) > 0)
-	systemBefore, systemAfter := systemStartupFiles(cmd.Name, mode, len(named) > 0)
-	scripts = append(scripts, w.systemScripts(cmd, systemBefore)...)
 
-	scripts = append(scripts, w.homeScripts(cmd, before, false)...)
-	if cmd.Name == fishShell {
+	var after, systemAfter []string
+
+	if cmd.Name == zshShell && mode.emulate == "" {
+		scripts = append(scripts, w.zshStartupScripts(cmd, mode)...)
+	} else {
+		before, homeAfter := homeStartupFiles(cmd.Name, mode, len(named) > 0)
+		after = homeAfter
+
+		systemName := cmd.Name
+		if cmd.Name == zshShell {
+			systemName = zshEmulation(mode.emulate)
+		}
+
+		systemBefore, lateSystem := systemStartupFiles(systemName, mode, len(named) > 0)
+		systemAfter = lateSystem
+
+		scripts = append(scripts, w.systemScripts(cmd, systemBefore)...)
+		scripts = append(scripts, w.homeScripts(cmd, before, false)...)
+	}
+
+	if cmd.Name == fishShell && !mode.noRC {
 		w.checkFishConfScripts(cmd)
 	}
 
@@ -566,6 +582,7 @@ const OpacityStartupFile OpacityCause = "startup-file"
 const (
 	DetailStartupValue     = "its value comes from command output or a write klaudiush cannot follow"
 	DetailStartupExpansion = "the shell expands its value when it starts, which may run commands"
+	DetailLoginAccount     = "the target account's home directory and shell cannot be resolved"
 )
 
 // noteStartupPending remembers where the value of a startup variable
