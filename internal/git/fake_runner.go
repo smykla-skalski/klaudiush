@@ -1,5 +1,7 @@
 package git
 
+import "github.com/cockroachdb/errors"
+
 // FakeRunner implements Runner for testing without executing git commands.
 // This is a struct-based fake (not a mock) that allows tests to set state directly.
 // For expectation-based testing, use the generated MockRunner from runner_mock.go.
@@ -12,6 +14,7 @@ type FakeRunner struct {
 	Remotes        map[string]string
 	CurrentBranch  string
 	BranchRemotes  map[string]string
+	IsInRepoErr    error
 	Err            error
 }
 
@@ -36,8 +39,8 @@ func NewFakeRunner() *FakeRunner {
 }
 
 // IsInRepo checks if we're in a git repository.
-func (f *FakeRunner) IsInRepo() bool {
-	return f.InRepo
+func (f *FakeRunner) IsInRepo() (bool, error) {
+	return f.InRepo, f.IsInRepoErr
 }
 
 // GetStagedFiles returns the list of staged files.
@@ -86,7 +89,7 @@ func (f *FakeRunner) GetRemoteURL(remote string) (string, error) {
 		return url, nil
 	}
 
-	return "", &FakeRunnerError{Msg: "remote not found"}
+	return "", errors.Wrapf(ErrRemoteNotFound, "remote %q", remote)
 }
 
 // GetCurrentBranch returns the current branch name.
@@ -108,7 +111,7 @@ func (f *FakeRunner) GetBranchRemote(branch string) (string, error) {
 		return remote, nil
 	}
 
-	return "", &FakeRunnerError{Msg: "branch remote not found"}
+	return "", errors.Wrapf(ErrNoTracking, "branch %q", branch)
 }
 
 // GetRemotes returns the list of all remotes with their URLs.

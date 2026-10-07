@@ -27,7 +27,9 @@ var _ = Describe("RepositoryAdapter", func() {
 		It("should delegate to repository", func() {
 			mockRepo.isInRepoResult = true
 
-			Expect(adapter.IsInRepo()).To(BeTrue())
+			inRepo, err := adapter.IsInRepo()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(inRepo).To(BeTrue())
 			Expect(mockRepo.isInRepoCalled).To(BeTrue())
 		})
 	})
@@ -267,7 +269,9 @@ var _ = Describe("NewSDKRunnerForPath", func() {
 			runner, err := internalgit.NewSDKRunnerForPath(tempDir)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(runner).NotTo(BeNil())
-			Expect(runner.IsInRepo()).To(BeTrue())
+			inRepo, repoErr := runner.IsInRepo()
+			Expect(repoErr).NotTo(HaveOccurred())
+			Expect(inRepo).To(BeTrue())
 		})
 
 		It("should return correct repo root", func() {

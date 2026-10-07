@@ -15,7 +15,7 @@ func BenchmarkCLIRunner(b *testing.B) {
 		b.ReportAllocs()
 
 		for range b.N {
-			_ = runner.IsInRepo()
+			_, _ = runner.IsInRepo()
 		}
 	})
 
@@ -56,7 +56,7 @@ func BenchmarkSDKRunner(b *testing.B) {
 		b.ReportAllocs()
 
 		for range b.N {
-			_ = runner.IsInRepo()
+			_, _ = runner.IsInRepo()
 		}
 	})
 

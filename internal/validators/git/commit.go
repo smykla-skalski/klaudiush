@@ -322,7 +322,8 @@ func (v *CommitValidator) checkStagingArea(gitCmd *parser.GitCommand) *validator
 	runner := v.gitRunnerFor(gitCmd)
 
 	// Check if we're in a git repository first
-	if !runner.IsInRepo() {
+	inRepo, err := runner.IsInRepo()
+	if err != nil || !inRepo {
 		// Not in a git repo or git not available, skip check
 		v.Logger().Debug("Not in git repository, skipping staging check")
 		return validator.Pass()

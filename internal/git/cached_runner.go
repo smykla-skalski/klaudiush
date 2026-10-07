@@ -39,6 +39,7 @@ type CachedRunner struct {
 	// IsInRepo cache
 	isInRepoOnce sync.Once
 	isInRepo     bool
+	isInRepoErr  error
 
 	// Remotes cache (all remotes)
 	remotesOnce sync.Once
@@ -76,12 +77,12 @@ func NewCachedRunner(delegate Runner) Runner {
 
 // IsInRepo checks if we're in a git repository.
 // Result is cached.
-func (c *CachedRunner) IsInRepo() bool {
+func (c *CachedRunner) IsInRepo() (bool, error) {
 	c.isInRepoOnce.Do(func() {
-		c.isInRepo = c.delegate.IsInRepo()
+		c.isInRepo, c.isInRepoErr = c.delegate.IsInRepo()
 	})
 
-	return c.isInRepo
+	return c.isInRepo, c.isInRepoErr
 }
 
 // ensureModifiedUntracked fetches modified and untracked files together.

@@ -69,7 +69,8 @@ func (v *FetchValidator) validateFetchCommand(
 	// Use path-specific runner if -C flag is present
 	runner := v.getRunnerForCommand(gitCmd)
 
-	if !runner.IsInRepo() {
+	inRepo, err := runner.IsInRepo()
+	if err != nil || !inRepo {
 		log.Debug("not in a git repository, skipping validation")
 
 		return validator.Pass()

@@ -38,8 +38,22 @@ func (*RemoteHelper) ValidateRemoteExists(
 ) *validator.Result {
 	_, err := runner.GetRemoteURL(remote)
 	if err != nil {
+		if unavailable := runnerUnavailable(
+			err,
+			"Could not check the git remote",
+		); unavailable != nil {
+			return unavailable
+		}
+
 		remotes, remoteErr := runner.GetRemotes()
 		if remoteErr != nil {
+			if unavailable := runnerUnavailable(
+				remoteErr,
+				"Could not list the git remotes",
+			); unavailable != nil {
+				return unavailable
+			}
+
 			return validator.FailWithRef(
 				ref,
 				"Remote '"+remote+"' does not exist",

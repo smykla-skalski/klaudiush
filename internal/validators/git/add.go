@@ -55,7 +55,8 @@ func (v *AddValidator) Validate(ctx context.Context, hookCtx *hook.Context) *val
 	}
 
 	// Check if in git repository
-	if !v.gitRunner.IsInRepo() {
+	inRepo, err := v.gitRunner.IsInRepo()
+	if err != nil || !inRepo {
 		log.Debug("Not in a git repository, skipping validation")
 		return validator.Pass()
 	}

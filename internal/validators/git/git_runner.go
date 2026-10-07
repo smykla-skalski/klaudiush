@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cockroachdb/errors"
+
 	"github.com/smykla-skalski/klaudiush/internal/exec"
 	gitpkg "github.com/smykla-skalski/klaudiush/internal/git"
 )
@@ -42,13 +44,13 @@ func NewCLIGitRunnerForPath(path string) *CLIGitRunnerWithPath {
 }
 
 // IsInRepo checks if the path is in a git repository
-func (r *CLIGitRunnerWithPath) IsInRepo() bool {
+func (r *CLIGitRunnerWithPath) IsInRepo() (bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), r.timeout)
 	defer cancel()
 
 	result := r.runner.Run(ctx, "git", "-C", r.path, "rev-parse", "--git-dir")
 
-	return result.Err == nil
+	return classifyRepoCheck(ctx, result)
 }
 
 // GetStagedFiles returns the list of staged files
@@ -109,11 +111,8 @@ func (r *CLIGitRunnerWithPath) GetRemoteURL(remote string) (string, error) {
 	defer cancel()
 
 	result := r.runner.Run(ctx, "git", "-C", r.path, "remote", "get-url", remote)
-	if result.Err != nil {
-		return "", result.Err
-	}
 
-	return strings.TrimSpace(result.Stdout), nil
+	return remoteURLResult(remote, result)
 }
 
 // GetCurrentBranch returns the current branch name
@@ -121,12 +120,9 @@ func (r *CLIGitRunnerWithPath) GetCurrentBranch() (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), r.timeout)
 	defer cancel()
 
-	result := r.runner.Run(ctx, "git", "-C", r.path, "symbolic-ref", "--short", "HEAD")
-	if result.Err != nil {
-		return "", result.Err
-	}
+	result := r.runner.Run(ctx, "git", "-C", r.path, "symbolic-ref", "--quiet", "--short", "HEAD")
 
-	return strings.TrimSpace(result.Stdout), nil
+	return currentBranchResult(result)
 }
 
 // GetBranchRemote returns the tracking remote for the given branch
@@ -137,11 +133,8 @@ func (r *CLIGitRunnerWithPath) GetBranchRemote(branch string) (string, error) {
 	configKey := "branch." + branch + ".remote"
 
 	result := r.runner.Run(ctx, "git", "-C", r.path, "config", configKey)
-	if result.Err != nil {
-		return "", result.Err
-	}
 
-	return strings.TrimSpace(result.Stdout), nil
+	return branchRemoteResult(branch, result)
 }
 
 // GetRemotes returns the list of all remotes with their URLs
@@ -239,13 +232,29 @@ func NewGitRunnerForPath(path string) GitRunner {
 }
 
 // IsInRepo checks if we're in a git repository
-func (r *CLIGitRunner) IsInRepo() bool {
+func (r *CLIGitRunner) IsInRepo() (bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), r.timeout)
 	defer cancel()
 
 	result := r.runner.Run(ctx, "git", "rev-parse", "--git-dir")
 
-	return result.Err == nil
+	return classifyRepoCheck(ctx, result)
+}
+
+func classifyRepoCheck(ctx context.Context, result exec.CommandResult) (bool, error) {
+	if result.Err == nil {
+		return true, nil
+	}
+
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return false, errors.Wrap(ctxErr, "checking git repository")
+	}
+
+	if strings.Contains(result.Stderr, "not a git repository") {
+		return false, nil
+	}
+
+	return false, errors.Wrap(result.Err, "checking git repository")
 }
 
 // GetStagedFiles returns the list of staged files
@@ -306,11 +315,8 @@ func (r *CLIGitRunner) GetRemoteURL(remote string) (string, error) {
 	defer cancel()
 
 	result := r.runner.Run(ctx, "git", "remote", "get-url", remote)
-	if result.Err != nil {
-		return "", result.Err
-	}
 
-	return strings.TrimSpace(result.Stdout), nil
+	return remoteURLResult(remote, result)
 }
 
 // GetCurrentBranch returns the current branch name
@@ -318,12 +324,9 @@ func (r *CLIGitRunner) GetCurrentBranch() (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), r.timeout)
 	defer cancel()
 
-	result := r.runner.Run(ctx, "git", "symbolic-ref", "--short", "HEAD")
-	if result.Err != nil {
-		return "", result.Err
-	}
+	result := r.runner.Run(ctx, "git", "symbolic-ref", "--quiet", "--short", "HEAD")
 
-	return strings.TrimSpace(result.Stdout), nil
+	return currentBranchResult(result)
 }
 
 // GetBranchRemote returns the tracking remote for the given branch
@@ -334,7 +337,40 @@ func (r *CLIGitRunner) GetBranchRemote(branch string) (string, error) {
 	configKey := "branch." + branch + ".remote"
 
 	result := r.runner.Run(ctx, "git", "config", configKey)
+
+	return branchRemoteResult(branch, result)
+}
+
+func remoteURLResult(remote string, result exec.CommandResult) (string, error) {
 	if result.Err != nil {
+		if result.ExitCode == 2 && strings.Contains(result.Stderr, "No such remote") {
+			return "", errors.Wrapf(gitpkg.ErrRemoteNotFound, "remote %q", remote)
+		}
+
+		return "", result.Err
+	}
+
+	return strings.TrimSpace(result.Stdout), nil
+}
+
+func currentBranchResult(result exec.CommandResult) (string, error) {
+	if result.Err != nil {
+		if result.ExitCode == 1 && result.Stderr == "" {
+			return "", gitpkg.ErrDetachedHead
+		}
+
+		return "", result.Err
+	}
+
+	return strings.TrimSpace(result.Stdout), nil
+}
+
+func branchRemoteResult(branch string, result exec.CommandResult) (string, error) {
+	if result.Err != nil {
+		if result.ExitCode == 1 && result.Stderr == "" {
+			return "", errors.Wrapf(gitpkg.ErrNoTracking, "branch %q", branch)
+		}
+
 		return "", result.Err
 	}
 

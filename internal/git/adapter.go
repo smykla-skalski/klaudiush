@@ -33,8 +33,8 @@ func NewSDKRunnerForPath(path string) (Runner, error) {
 }
 
 // IsInRepo checks if we're in a git repository
-func (a *RepositoryAdapter) IsInRepo() bool {
-	return a.repo.IsInRepo()
+func (a *RepositoryAdapter) IsInRepo() (bool, error) {
+	return a.repo.IsInRepo(), nil
 }
 
 // GetStagedFiles returns the list of staged files

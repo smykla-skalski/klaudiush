@@ -4,12 +4,15 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/cockroachdb/errors"
 	gogit "github.com/go-git/go-git/v6"
 	"github.com/go-git/go-git/v6/config"
+	"github.com/go-git/go-git/v6/plumbing"
 	"github.com/go-git/go-git/v6/plumbing/object"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	gitpkg "github.com/smykla-skalski/klaudiush/internal/git"
 	"github.com/smykla-skalski/klaudiush/internal/validators/git"
 )
 
@@ -101,7 +104,9 @@ var _ = Describe("CLIGitRunnerWithPath", func() {
 
 	Describe("IsInRepo", func() {
 		It("should return true when path is in a git repository", func() {
-			Expect(runner.IsInRepo()).To(BeTrue())
+			inRepo, err := runner.IsInRepo()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(inRepo).To(BeTrue())
 		})
 
 		It("should return false when path is not in a git repository", func() {
@@ -116,7 +121,9 @@ var _ = Describe("CLIGitRunnerWithPath", func() {
 			os.Unsetenv("GIT_WORK_TREE")
 
 			nonRepoRunner := git.NewCLIGitRunnerForPath(nonRepoDir)
-			Expect(nonRepoRunner.IsInRepo()).To(BeFalse())
+			inRepo, repoErr := nonRepoRunner.IsInRepo()
+			Expect(repoErr).NotTo(HaveOccurred())
+			Expect(inRepo).To(BeFalse())
 		})
 	})
 
@@ -259,6 +266,17 @@ var _ = Describe("CLIGitRunnerWithPath", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(branch).To(Equal("master"))
 		})
+
+		It("returns ErrDetachedHead for a detached HEAD", func() {
+			head, err := repo.Head()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(repo.Storer.SetReference(
+				plumbing.NewHashReference(plumbing.HEAD, head.Hash()),
+			)).To(Succeed())
+
+			_, err = runner.GetCurrentBranch()
+			Expect(errors.Is(err, gitpkg.ErrDetachedHead)).To(BeTrue())
+		})
 	})
 
 	Describe("GetRemoteURL", func() {
@@ -281,7 +299,8 @@ var _ = Describe("CLIGitRunnerWithPath", func() {
 		Context("when remote does not exist", func() {
 			It("should return an error", func() {
 				_, err := runner.GetRemoteURL("nonexistent")
-				Expect(err).To(HaveOccurred())
+				Expect(err).To(MatchError(ContainSubstring("remote not found")))
+				Expect(errors.Is(err, gitpkg.ErrRemoteNotFound)).To(BeTrue())
 			})
 		})
 	})
@@ -338,8 +357,51 @@ var _ = Describe("CLIGitRunnerWithPath", func() {
 		Context("when branch has no tracking remote", func() {
 			It("should return an error", func() {
 				_, err := runner.GetBranchRemote("master")
-				Expect(err).To(HaveOccurred())
+				Expect(err).To(MatchError(ContainSubstring("no tracking remote")))
+				Expect(errors.Is(err, gitpkg.ErrNoTracking)).To(BeTrue())
 			})
+		})
+	})
+
+	Describe("CLIGitRunner", func() {
+		It("uses the current directory", func() {
+			_, err := repo.CreateRemote(&config.RemoteConfig{
+				Name: "origin",
+				URLs: []string{"https://github.com/test/repo.git"},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			cfg, err := repo.Config()
+			Expect(err).NotTo(HaveOccurred())
+
+			cfg.Branches["master"] = &config.Branch{
+				Name:   "master",
+				Remote: "origin",
+				Merge:  "refs/heads/master",
+			}
+			Expect(repo.SetConfig(cfg)).To(Succeed())
+
+			cwd, err := os.Getwd()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(os.Chdir(tempDir)).To(Succeed())
+			DeferCleanup(func() { Expect(os.Chdir(cwd)).To(Succeed()) })
+
+			currentDirRunner := git.NewCLIGitRunner()
+			inRepo, err := currentDirRunner.IsInRepo()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(inRepo).To(BeTrue())
+
+			remoteURL, err := currentDirRunner.GetRemoteURL("origin")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(remoteURL).To(Equal("https://github.com/test/repo.git"))
+
+			branch, err := currentDirRunner.GetCurrentBranch()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(branch).To(Equal("master"))
+
+			remote, err := currentDirRunner.GetBranchRemote(branch)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(remote).To(Equal("origin"))
 		})
 	})
 
@@ -434,7 +496,9 @@ var _ = Describe("NewGitRunnerForPath", func() {
 	It("should return a runner that works for the specified path", func() {
 		runner := git.NewGitRunnerForPath(tempDir)
 		Expect(runner).NotTo(BeNil())
-		Expect(runner.IsInRepo()).To(BeTrue())
+		inRepo, repoErr := runner.IsInRepo()
+		Expect(repoErr).NotTo(HaveOccurred())
+		Expect(inRepo).To(BeTrue())
 
 		root, rootErr := runner.GetRepoRoot()
 		Expect(rootErr).NotTo(HaveOccurred())
@@ -449,7 +513,9 @@ var _ = Describe("NewGitRunnerForPath", func() {
 		It("should return a CLI runner", func() {
 			runner := git.NewGitRunnerForPath(tempDir)
 			Expect(runner).NotTo(BeNil())
-			Expect(runner.IsInRepo()).To(BeTrue())
+			inRepo, repoErr := runner.IsInRepo()
+			Expect(repoErr).NotTo(HaveOccurred())
+			Expect(inRepo).To(BeTrue())
 
 			// Verify it's working correctly
 			root, rootErr := runner.GetRepoRoot()
@@ -466,7 +532,9 @@ var _ = Describe("NewGitRunnerForPath", func() {
 		It("should return a CLI runner", func() {
 			runner := git.NewGitRunnerForPath(tempDir)
 			Expect(runner).NotTo(BeNil())
-			Expect(runner.IsInRepo()).To(BeTrue())
+			inRepo, repoErr := runner.IsInRepo()
+			Expect(repoErr).NotTo(HaveOccurred())
+			Expect(inRepo).To(BeTrue())
 		})
 	})
 
@@ -496,7 +564,9 @@ var _ = Describe("NewGitRunnerForPath", func() {
 			runner := git.NewGitRunnerForPath(nonRepoDir)
 			Expect(runner).NotTo(BeNil())
 			// CLI runner should return false for non-repo
-			Expect(runner.IsInRepo()).To(BeFalse())
+			inRepo, repoErr := runner.IsInRepo()
+			Expect(repoErr).NotTo(HaveOccurred())
+			Expect(inRepo).To(BeFalse())
 		})
 	})
 })
