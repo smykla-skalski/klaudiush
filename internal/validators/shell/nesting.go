@@ -211,7 +211,7 @@ func causeSummary(cause parser.OpacityCause) string {
 	case parser.OpacityZshGlobQualifier:
 		return "it uses a glob that runs code klaudiush cannot inspect"
 	case parser.OpacitySourcedStream:
-		return "it sources a script klaudiush cannot see"
+		return "it runs shell code klaudiush cannot see"
 	case parser.OpacityFunctionChain:
 		return "it defines a function whose body klaudiush cannot tell apart from what follows it"
 	default:
@@ -427,10 +427,12 @@ func parallelFinding(o parser.Opacity) (message, required, repair string) {
 	return message, required, repair
 }
 
-// sourcedStreamFinding explains source or . of a stream klaudiush cannot
+// sourcedStreamFinding explains shell code read from a stream klaudiush cannot
 // see, naming the setup tool that prints it when one is known.
 func sourcedStreamFinding(o parser.Opacity) (message, required, repair string) {
 	name := o.Operation
+
+	shellScript := name != "source" && name != "."
 	if name == "." {
 		name = ". (source)"
 	}
@@ -440,13 +442,30 @@ func sourcedStreamFinding(o parser.Opacity) (message, required, repair string) {
 	repair = "Save the script to a file in a separate command and source that file, " +
 		"or run its commands directly"
 
+	if shellScript {
+		required = "a readable script file, a here-string or a heredoc"
+		repair = "Save the script to a file in a separate command and run that file, " +
+			"or run its commands directly"
+	}
+
 	switch o.Detail {
 	case parser.DetailSourceOutput:
-		required = "a literal path to the sourced file"
-		repair = "Write the path of the sourced file literally"
+		if shellScript {
+			required = "a literal path to the shell script"
+			repair = "Write the path of the shell script literally"
+		} else {
+			required = "a literal path to the sourced file"
+			repair = "Write the path of the sourced file literally"
+		}
 	case parser.DetailSourceOption:
 		required = "source given the file's path, with no options but --"
 		repair = "Source the file by its path, without -p or other options"
+	case parser.DetailShellOperand:
+		required = "a literal path to the shell script"
+		repair = "Save the script to a file in a separate command, then run that file"
+	case parser.DetailShellCommand:
+		required = "a literal command line after -c"
+		repair = "Write the command line after -c literally"
 	}
 
 	if setup, ok := evalSetupRepairs[o.Tool]; ok {

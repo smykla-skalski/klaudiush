@@ -490,6 +490,9 @@ func (w *astWalker) resolveEval(cmd Command) (string, bool) {
 // the program after its image, and parallel runs its command lines.
 func (w *astWalker) launchedFrom(cmd, followed Command) launch {
 	l := launched(cmd)
+	if shells[cmd.Name] {
+		l = w.shellStreamLaunch(followed, l)
+	}
 
 	if slices.ContainsFunc(followed.Args, marked) {
 		l.commands = launched(followed).commands

@@ -778,6 +778,7 @@ func shellLaunch(cmd Command) launch {
 // the operands positional parameters, leaving stdin as the script.
 func shellOperand(args []string) (operand string, isScript, ok bool) {
 	sawC := false
+	sawS := false
 
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
@@ -786,6 +787,10 @@ func shellOperand(args []string) (operand string, isScript, ok bool) {
 		case slices.Contains(shellValueFlags, arg):
 			i++
 		case arg == endOfOptions:
+			if sawS && !sawC {
+				return "", false, false
+			}
+
 			if i+1 < len(args) {
 				return args[i+1], sawC, true
 			}
@@ -793,13 +798,17 @@ func shellOperand(args []string) (operand string, isScript, ok bool) {
 			return "", false, false
 		case strings.HasPrefix(arg, "--"), strings.HasPrefix(arg, "+"):
 		case strings.HasPrefix(arg, "-"):
-			switch cluster := arg[1:]; {
-			case strings.Contains(cluster, "c"):
+			cluster := arg[1:]
+			if strings.Contains(cluster, "c") {
 				sawC = true
-			case strings.Contains(cluster, "s"):
+			}
+
+			sawS = sawS || strings.Contains(cluster, "s")
+		default:
+			if sawS && !sawC {
 				return "", false, false
 			}
-		default:
+
 			return arg, sawC, true
 		}
 	}
