@@ -139,6 +139,27 @@ var _ = Describe("MergeValidator squash commit subject", func() {
 		Entry("gh api", ghAPISquash),
 	)
 
+	DescribeTable("checks the subject even when the pull request cannot be fetched",
+		func(command string) {
+			runner.stdout = "not json"
+			result := validate(command)
+
+			Expect(result.ShouldBlock).To(BeTrue())
+			Expect(result.Reference).To(Equal(validator.RefGitMergeMessage))
+			Expect(result.Message).To(ContainSubstring(subjectLabel))
+		},
+		Entry("gh pr merge", ghSquash+`--subject "Add endpoint"`),
+		Entry("gh api", ghAPISquash+`-f commit_title="Add endpoint"`),
+	)
+
+	It("checks a commit_title httpie sends in the query string", func() {
+		result := validate(`http PUT ` + restMergeURL + ` merge_method=squash ` +
+			`commit_message='Body. ` + signoff + `' commit_title=='Add endpoint'`)
+
+		Expect(result.Reference).To(Equal(validator.RefGitMergeMessage))
+		Expect(result.Message).To(ContainSubstring(subjectLabel))
+	})
+
 	It("checks the PR title as well as a valid subject", func() {
 		runner.stdout = invalidPRDetails
 		result := validate(ghSquash + `--subject "feat(api): add endpoint"`)
@@ -217,6 +238,9 @@ var _ = Describe("MergeValidator REST merge field sent twice", func() {
 			Expect(result.ShouldBlock).To(BeTrue())
 			Expect(result.Reference).To(Equal(reference))
 		},
+		Entry("merge_method merge in the httpie body, squash as an httpie query item",
+			`http PUT `+restMergeURL+` merge_method=merge merge_method==squash`,
+			validator.RefGitMergeSignoff),
 		Entry("merge_method merge in the body, squash as a gh field",
 			inputBody(`{"merge_method":"merge"}`, `-f merge_method=squash`),
 			validator.RefGitMergeSignoff),

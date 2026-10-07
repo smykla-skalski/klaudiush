@@ -221,6 +221,11 @@ func (v *MergeValidator) validateMerge(
 		return validator.Pass()
 	}
 
+	// The subject needs no fetch, so a failed fetch cannot let it through.
+	if res := v.validateSubjects(mergeCmd); !res.Passed {
+		return res
+	}
+
 	// Fetch PR details
 	prDetails, err := v.fetchPRDetails(ctx, mergeCmd)
 	if err != nil {
@@ -234,7 +239,7 @@ func (v *MergeValidator) validateMerge(
 		"title", prDetails.Title,
 	)
 
-	// Validate the merge message (PR title + body, and any subject override)
+	// Validate the merge message (PR title + body)
 	result := v.validateMergeMessage(prDetails, mergeSubjects(mergeCmd))
 	if !result.Passed {
 		return result
@@ -329,8 +334,8 @@ func (v *MergeValidator) getCurrentBranch() string {
 	return branch
 }
 
-// validateMergeMessage validates the PR title + body as a commit message,
-// together with any subject the merge sets in place of the PR title.
+// validateMergeMessage validates the PR title + body as a commit message. The
+// subjects, already checked, only name the commit in the preview.
 func (v *MergeValidator) validateMergeMessage(pr *PRDetails, subjects []string) *validator.Result {
 	log := v.Logger()
 
@@ -352,9 +357,6 @@ func (v *MergeValidator) validateMergeMessage(pr *PRDetails, subjects []string) 
 	bodyErrors := v.validateBody(pr.Body)
 	allErrors = append(allErrors, bodyErrors...)
 
-	// 3. Validate the subject that replaces the PR title in the commit
-	allErrors = append(allErrors, v.subjectErrors(subjects)...)
-
 	preview := pr.Title
 	if len(subjects) > 0 {
 		preview = subjects[0]
@@ -370,8 +372,8 @@ func (v *MergeValidator) validateMergeMessage(pr *PRDetails, subjects []string) 
 	return validator.Pass()
 }
 
-// validateSubjects validates only the subjects a merge sets, for a merge whose
-// pull request is not fetched.
+// validateSubjects validates the subjects a merge sets in place of the PR
+// title. It needs no pull request fetch.
 func (v *MergeValidator) validateSubjects(mergeCmd *parser.GHMergeCommand) *validator.Result {
 	if !v.isMessageValidationEnabled() {
 		return validator.Pass()

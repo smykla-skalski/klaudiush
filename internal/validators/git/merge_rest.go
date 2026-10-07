@@ -210,6 +210,12 @@ func (v *MergeValidator) httpClientMerge(
 
 	body.addQuery(rawURL)
 
+	for key, texts := range req.Query {
+		for _, text := range texts {
+			body.add(key, fieldValue{text: result.ExpandVars(text)})
+		}
+	}
+
 	target := mergeTarget{
 		cmd:         restMergeCommand(prPath, "", body),
 		signoffHint: restMergeSignoffHint,

@@ -22,6 +22,10 @@ type HTTPRequest struct {
 	// BodyFile is a body read from a file, from "-d @file" or "--body-file".
 	BodyFile string
 
+	// Query holds the "field==value" items httpie and xh add to the URL query
+	// string, every value of each field in order.
+	Query map[string][]string
+
 	// WorkingDirectory is the effective directory of the command.
 	WorkingDirectory string
 
@@ -238,6 +242,7 @@ func parseClientSegment(cmd Command, spec *httpClientSpec, args []string) []*HTT
 			URL:              url,
 			Body:             state.body,
 			BodyFile:         state.bodyFile,
+			Query:            state.query,
 			WorkingDirectory: cmd.WorkingDirectory,
 			Location:         cmd.Location,
 		})
@@ -255,6 +260,7 @@ type httpClientState struct {
 	urls             []string
 	body             string
 	bodyFile         string
+	query            map[string][]string
 }
 
 // resolveMethod applies the precedence every client shares: an explicit method
@@ -356,6 +362,19 @@ func (s *httpClientState) parseClientPositional(arg string, spec *httpClientSpec
 		return
 	}
 
+	// httpie and xh send "field==value" items in the query string, not the body.
+	if spec.positionalMethod && len(s.urls) > 0 {
+		if key, value, ok := parseQueryItem(arg); ok {
+			if s.query == nil {
+				s.query = map[string][]string{}
+			}
+
+			s.query[key] = append(s.query[key], value)
+
+			return
+		}
+	}
+
 	// httpie request items ("field=value", "field:=json") make the call a POST.
 	// Only the clients that take a positional method have them; curl fetches
 	// every positional, so a URL of its own carrying a query string stays a URL.
@@ -368,6 +387,16 @@ func (s *httpClientState) parseClientPositional(arg string, spec *httpClientSpec
 	}
 
 	s.urls = append(s.urls, arg)
+}
+
+// parseQueryItem reads an httpie "field==value" query item.
+func parseQueryItem(arg string) (string, string, bool) {
+	key, value, found := strings.Cut(arg, "==")
+	if !found || key == "" || strings.ContainsAny(key, "=:@") {
+		return "", "", false
+	}
+
+	return key, value, true
 }
 
 // splitClientFlag splits --flag=value and a short flag with an attached value.
