@@ -535,7 +535,7 @@ func (w *astWalker) writtenPath(fw FileWrite) (string, bool) {
 		return "", false
 	}
 
-	return resolvePath(dir, path), true
+	return w.trackedPath(dir, path), true
 }
 
 // writtenWord expands the variables and leading ~ of a write's path or

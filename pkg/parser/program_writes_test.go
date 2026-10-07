@@ -273,6 +273,18 @@ var _ = Describe("Writes by programs", func() {
 	)
 
 	DescribeTable(
+		"reads a captured write through an equivalent path",
+		func(command string) {
+			result := parse(command)
+
+			Expect(result.Truncated).To(BeFalse(), "opacities: %v", result.Opacities)
+			Expect(result.GitOperations).To(BeEmpty())
+		},
+		Entry("absolute write then relative run", "echo : > /start/run.sh && bash ./run.sh"),
+		Entry("relative write with parent components", "echo : > sub/../run.sh && bash ./run.sh"),
+	)
+
+	DescribeTable(
 		"still follows a script nothing on the line changes",
 		func(command string) {
 			Expect(parse(command).Truncated).To(BeFalse())

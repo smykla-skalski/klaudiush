@@ -80,9 +80,14 @@ var placesIntoDirs = map[WriteOp]bool{
 func (w *astWalker) lineWriteAbove(target string) bool {
 	for p := w; p != nil; p = p.parent {
 		for _, fw := range p.fileWrites {
+			dir, known := w.writtenPath(fw)
+			if !known {
+				continue
+			}
+
 			if placesIntoDirs[fw.Operation] &&
 				(fw.Operation != WriteOpOutput || fw.Source == "install") &&
-				isBelow(target, resolvePath(fw.WorkingDirectory, fw.Path)) {
+				isBelow(target, dir) {
 				return true
 			}
 		}

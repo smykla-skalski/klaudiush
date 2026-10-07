@@ -128,7 +128,19 @@ func (w *astWalker) earlierCommands() iter.Seq[Command] {
 // including those of the scripts that run this one.
 func (w *astWalker) lastLineWrite(target string) (content string, found, captured bool) {
 	for p := w; p != nil; p = p.parent {
-		if content, found, captured = lastWrite(p.fileWrites, target, nil); found {
+		writes := make([]FileWrite, 0, len(p.fileWrites))
+
+		for _, fw := range p.fileWrites {
+			path, known := w.writtenPath(fw)
+			if !known {
+				continue
+			}
+
+			fw.Path, fw.WorkingDirectory = path, ""
+			writes = append(writes, fw)
+		}
+
+		if content, found, captured = lastWrite(writes, target, nil); found {
 			return content, found, captured
 		}
 	}
@@ -1048,7 +1060,7 @@ func (w *astWalker) scriptSource(path string, cmd Command) (string, ScriptStatus
 		return "", ScriptOpaque, DetailScriptDirectory
 	}
 
-	target := resolvePath(cmd.WorkingDirectory, path)
+	target := w.trackedPath(cmd.WorkingDirectory, path)
 
 	if w.unplacedWriteBefore(cmd, target) {
 		return "", ScriptOpaque, DetailScriptUnplacedWrite
