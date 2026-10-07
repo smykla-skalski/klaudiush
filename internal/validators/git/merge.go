@@ -163,9 +163,10 @@ func (v *MergeValidator) findMerges(result *parser.ParseResult) []mergeTarget {
 				continue
 			}
 
-			// Read variables set earlier on the line, as the REST fields are.
-			mergeCmd.Subject = result.ExpandVars(mergeCmd.Subject)
-			mergeCmd.Body = result.ExpandVars(mergeCmd.Body)
+			// Read variables as they stood when the command ran, as the REST
+			// fields are.
+			mergeCmd.Subject = cmd.Vars.ExpandVars(mergeCmd.Subject)
+			mergeCmd.Body = cmd.Vars.ExpandVars(mergeCmd.Body)
 
 			targets = append(targets, mergeTarget{cmd: mergeCmd, signoffHint: ghMergeSignoffHint})
 

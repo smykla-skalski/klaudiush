@@ -126,7 +126,7 @@ func (v *MergeValidator) ghAPIMerge(
 		body = v.stdinFields(result, cmd)
 	}
 
-	body.addFields(expandFields(result, apiCmd.Fields), apiCmd.FieldFiles)
+	body.addFields(expandFields(cmd.Vars, apiCmd.Fields), apiCmd.FieldFiles)
 	body.addQuery(rawEndpoint)
 
 	hostname := strings.ToLower(apiCmd.Hostname)
@@ -203,9 +203,9 @@ func (v *MergeValidator) httpClientMerge(
 	case req.BodyFile != "":
 		body = v.readFieldsFromFile(result, req.BodyFile, req.WorkingDirectory, req.Location)
 	case len(req.DataItems) > 0:
-		body = fieldsFromItems(result, req.DataItems)
+		body = fieldsFromItems(cmd.Vars, req.DataItems)
 	case req.DataBody != "":
-		body = fieldsFromText(result.ExpandVars(req.DataBody))
+		body = fieldsFromText(cmd.Vars.ExpandVars(req.DataBody))
 	default:
 		body = v.stdinFields(result, cmd)
 	}
@@ -214,7 +214,7 @@ func (v *MergeValidator) httpClientMerge(
 
 	for key, texts := range req.Query {
 		for _, text := range texts {
-			body.add(key, fieldValue{text: result.ExpandVars(text)})
+			body.add(key, fieldValue{text: cmd.Vars.ExpandVars(text)})
 		}
 	}
 
@@ -355,10 +355,12 @@ func (v *MergeValidator) stdinFields(
 	return fieldsFromText(cmd.Stdin)
 }
 
-func fieldsFromItems(result *parser.ParseResult, items []string) restMergeFields {
+// fieldsFromItems reads httpie and xh items one by one, with the variables
+// as they stood when the command ran.
+func fieldsFromItems(vars *parser.VarScope, items []string) restMergeFields {
 	expanded := make([]string, 0, len(items))
 	for _, item := range items {
-		expanded = append(expanded, result.ExpandVars(item))
+		expanded = append(expanded, vars.ExpandVars(item))
 	}
 
 	fields, ok := parser.ParseRequestItemList(expanded)
@@ -386,11 +388,13 @@ func fieldsFromText(text string) restMergeFields {
 	return body
 }
 
-func expandFields(result *parser.ParseResult, fields map[string]string) map[string]string {
+// expandFields substitutes the variables as they stood when the command ran,
+// not their final values on the line.
+func expandFields(vars *parser.VarScope, fields map[string]string) map[string]string {
 	expanded := make(map[string]string, len(fields))
 
 	for key, value := range fields {
-		expanded[key] = result.ExpandVars(value)
+		expanded[key] = vars.ExpandVars(value)
 	}
 
 	return expanded
