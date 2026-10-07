@@ -73,20 +73,29 @@ func (w *astWalker) validateStartupWrites() {
 				WorkingDirectory: fw.WorkingDirectory,
 				DirUnknown:       fw.DirUnknown,
 				Vars:             fw.Vars,
-			}, 1, scriptWalk{label: target.label})
+			}, 1, scriptWalk{label: target.label, future: true})
 		}
 	}
 }
 
 func (w *astWalker) startupWriteTargets(fw FileWrite) []startupTarget {
-	path, known := w.writtenPath(fw)
+	target := fw
+	if fw.targetFromSubstitution && fw.Path != "" {
+		target.Dynamic = false
+	}
+
+	path, known := w.writtenPath(target)
 	if !known {
 		label, foreign, ok := startupPathSuffix(fw.Path)
-		if !ok {
-			return nil
+		if ok {
+			return []startupTarget{{label: label, foreign: foreign}}
 		}
 
-		return []startupTarget{{label: label, foreign: foreign}}
+		if fw.TargetUnknown && fw.targetFromSubstitution {
+			return []startupTarget{{label: "dynamic redirect", opaque: true}}
+		}
+
+		return nil
 	}
 
 	if label, foreign, ok := w.classifyStartupPath(fw, path); ok {
@@ -448,7 +457,7 @@ func (w *astWalker) startupTransferSources(fw FileWrite) (Command, []string, boo
 
 	cmd := w.commands[cmdIndex]
 
-	operands := scanArgs(cmd.Args, spec, func(name, value string) {
+	operands := scanArgs(fw.sourceArgs, spec, func(name, value string) {
 		if targetDirOpts[name] {
 			dirs = append(dirs, value)
 		}

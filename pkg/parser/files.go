@@ -100,6 +100,8 @@ type FileWrite struct {
 	emittedContent          string
 	emittedContentCaptured  bool
 	emittedContentAppended  bool
+	sourceArgs              []string
+	targetFromSubstitution  bool
 	Unconditional           bool
 	CertainUntil            Location
 	TargetUnknown           bool

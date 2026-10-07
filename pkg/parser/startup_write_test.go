@@ -94,6 +94,35 @@ var _ = Describe("Startup file writes", func() {
 		Expect(pushed(result)).To(BeTrue())
 	})
 
+	It("uses future-shell variables for planted startup content", func() {
+		result := parse(
+			`echo 'echo "git push --force origin main" > "$HOME/.bashrc"' > ~/.zshenv; HOME=/tmp`,
+			fakeResolver{env: map[string]string{"HOME": "/home/u"}},
+		)
+
+		Expect(pushed(result)).To(BeTrue())
+	})
+
+	It("resolves literal dynamic redirect targets", func() {
+		result := parse(
+			`echo 'git push --force origin main' > "$(printf %s ~/.zshenv)"`,
+			fakeResolver{env: map[string]string{"HOME": "/home/u"}},
+		)
+
+		Expect(pushed(result)).To(BeTrue())
+		Expect(result.Truncated).To(BeFalse())
+	})
+
+	It("resolves literal dynamic system startup targets", func() {
+		result := parse(
+			`echo 'git push --force origin main' > "$(printf /etc/profile)"`,
+			fakeResolver{env: map[string]string{"HOME": "/home/u"}},
+		)
+
+		Expect(pushed(result)).To(BeTrue())
+		Expect(result.Truncated).To(BeFalse())
+	})
+
 	DescribeTable(
 		"combines appended content with prior bytes",
 		func(command string, files map[string]string) {
@@ -213,6 +242,24 @@ var _ = Describe("Startup file writes", func() {
 		Entry(
 			"unresolved directory-copy source",
 			`SRC=$(printf /tmp/.zshenv); cp "$SRC" ~`,
+			"startup-file",
+			"HOME",
+		),
+		Entry(
+			"unresolved dynamic redirect target",
+			`echo 'git push --force origin main' > "$(target)"`,
+			"startup-file",
+			"dynamic redirect",
+		),
+		Entry(
+			"partially substituted copy source",
+			`cp "/tmp$(printf /unsafe)/.zshenv" ~`,
+			"startup-file",
+			"HOME",
+		),
+		Entry(
+			"all-substitution copy source",
+			`cp "$(printf /unsafe/.zshenv)" ~`,
 			"startup-file",
 			"HOME",
 		),

@@ -1203,10 +1203,11 @@ func (w *astWalker) varScope() *VarScope {
 
 // redirOutput is one file an output redirect opens.
 type redirOutput struct {
-	path    string
-	op      WriteOp
-	loc     Location
-	dynamic bool
+	path             string
+	op               WriteOp
+	loc              Location
+	dynamic          bool
+	fromSubstitution bool
 }
 
 // redirInfo holds the output redirection and heredoc found on a statement.
@@ -1225,6 +1226,7 @@ type redirInfo struct {
 	hasOutput      bool
 	hasHeredoc     bool
 	outputDynamic  bool // the target name comes from command output
+	outputFromSub  bool // the entire target is one command substitution
 	dynamicWrites  int  // output targets whose name comes from command output
 }
 
@@ -1265,25 +1267,31 @@ func (info *redirInfo) addOutput(redir *syntax.Redirect) {
 	path := argWord(redir.Word)
 	dynamic := wordDynamic(redir.Word)
 
+	if path == "" && dynamic {
+		path, _ = literalSubstitutionOutput(redir.Word)
+	}
+
 	if dynamic {
 		info.dynamicWrites++
 	}
 
-	if path == "" {
+	if path == "" && !dynamic {
 		return
 	}
 
 	if info.hasOutput {
 		info.earlierOutputs = append(info.earlierOutputs, redirOutput{
-			path:    info.outputPath,
-			op:      info.outputOp,
-			loc:     info.outputLoc,
-			dynamic: info.outputDynamic,
+			path:             info.outputPath,
+			op:               info.outputOp,
+			loc:              info.outputLoc,
+			dynamic:          info.outputDynamic,
+			fromSubstitution: info.outputFromSub,
 		})
 	}
 
 	info.outputPath = path
 	info.outputDynamic = dynamic
+	info.outputFromSub = soleSubstitution(redir.Word) != nil
 
 	info.outputOp = WriteOpRedirect
 	if appendsOutput(redir.Op) {
@@ -1292,6 +1300,25 @@ func (info *redirInfo) addOutput(redir *syntax.Redirect) {
 
 	info.outputLoc = Location{Line: redir.Pos().Line(), Column: redir.Pos().Col()}
 	info.hasOutput = true
+}
+
+// literalSubstitutionOutput returns the filename produced by a redirect whose
+// entire target is one literal echo/printf substitution. A shell removes all
+// trailing newlines from command substitution output.
+func literalSubstitutionOutput(word *syntax.Word) (string, bool) {
+	sub := soleSubstitution(word)
+	if sub == nil {
+		return "", false
+	}
+
+	out, ok := literalCommandOutput(plainCall(sub))
+	if !ok {
+		return "", false
+	}
+
+	out = strings.TrimRight(out, "\n")
+
+	return out, out != ""
 }
 
 // collectRedirs gathers output redirection and heredoc details from a statement.
@@ -1371,13 +1398,15 @@ func (w *astWalker) extractRedirect(stmt *syntax.Stmt) {
 	for _, out := range info.earlierOutputs {
 		out.loc.Seq = seq
 		w.fileWrites = append(w.fileWrites, FileWrite{
-			Path:             out.path,
-			Dynamic:          out.dynamic,
-			Operation:        out.op,
-			Location:         out.loc,
-			WorkingDirectory: w.currentDir,
-			DirUnknown:       w.dirUnknown,
-			Vars:             w.varScope(),
+			Path:                   out.path,
+			Dynamic:                out.dynamic,
+			Operation:              out.op,
+			Location:               out.loc,
+			WorkingDirectory:       w.currentDir,
+			DirUnknown:             w.dirUnknown,
+			Vars:                   w.varScope(),
+			TargetUnknown:          redirectTargetUnknown(out.dynamic, out.path),
+			targetFromSubstitution: out.fromSubstitution,
 		})
 	}
 
@@ -1406,6 +1435,8 @@ func (w *astWalker) extractRedirect(stmt *syntax.Stmt) {
 			WorkingDirectory:       w.currentDir,
 			DirUnknown:             w.dirUnknown,
 			Vars:                   w.varScope(),
+			TargetUnknown:          redirectTargetUnknown(info.outputDynamic, info.outputPath),
+			targetFromSubstitution: info.outputFromSub,
 		})
 	case info.hasOutput:
 		// Just output redirection without heredoc. A literal overwrite's output
@@ -1415,13 +1446,15 @@ func (w *astWalker) extractRedirect(stmt *syntax.Stmt) {
 		// validation, which would lint partial bytes (e.g. "echo 'x' > foo.go"
 		// tripping gofumpt).
 		fw := FileWrite{
-			Path:             info.outputPath,
-			Dynamic:          info.outputDynamic,
-			Operation:        info.outputOp,
-			Location:         info.outputLoc,
-			WorkingDirectory: w.currentDir,
-			DirUnknown:       w.dirUnknown,
-			Vars:             w.varScope(),
+			Path:                   info.outputPath,
+			Dynamic:                info.outputDynamic,
+			Operation:              info.outputOp,
+			Location:               info.outputLoc,
+			WorkingDirectory:       w.currentDir,
+			DirUnknown:             w.dirUnknown,
+			Vars:                   w.varScope(),
+			TargetUnknown:          redirectTargetUnknown(info.outputDynamic, info.outputPath),
+			targetFromSubstitution: info.outputFromSub,
 		}
 
 		if content, exact, ok := w.literalRedirectOutput(callExprOf(stmt)); ok {
@@ -1437,6 +1470,10 @@ func (w *astWalker) extractRedirect(stmt *syntax.Stmt) {
 
 		w.fileWrites = append(w.fileWrites, fw)
 	}
+}
+
+func redirectTargetUnknown(dynamic bool, path string) bool {
+	return dynamic && path == ""
 }
 
 // copiesStdinVerbatim reports whether the command copies its stdin to stdout
@@ -1527,6 +1564,7 @@ func (w *astWalker) extractFileWriteCommand(cmd, followed Command) {
 		WorkingDirectory: cmd.WorkingDirectory,
 		DirUnknown:       cmd.DirUnknown,
 		Vars:             cmd.Vars,
+		sourceArgs:       slices.Clone(followed.Args),
 	}
 
 	computed := placesIntoDirs[write.op] && splitsSubstitution(followed)

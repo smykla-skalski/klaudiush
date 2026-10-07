@@ -128,8 +128,9 @@ var _ = Describe("Dynamic words and redirects", func() {
 	It("counts redirects whose target comes from command output", func() {
 		result := parse(`echo x > "$(mktemp)"; echo y > "$(pwd)/f"`)
 		Expect(result.DynamicWrites).To(Equal(2))
-		Expect(result.FileWrites).To(HaveLen(1))
-		Expect(result.FileWrites[0].Dynamic).To(BeTrue())
+		Expect(result.FileWrites).To(HaveLen(2))
+		Expect(result.FileWrites[0].TargetUnknown).To(BeTrue())
+		Expect(result.FileWrites[1].Dynamic).To(BeTrue())
 
 		Expect(parse(`bash -c 'echo x > "$(mktemp)"'`).DynamicWrites).To(Equal(1))
 		Expect(parse(`echo x > out`).DynamicWrites).To(BeZero())
