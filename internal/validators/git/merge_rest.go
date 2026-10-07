@@ -133,7 +133,10 @@ func (v *MergeValidator) ghAPIMerge(
 	}
 
 	body.addFields(nil, apiCmd.FieldFiles)
-	body.addQuery(rawEndpoint)
+
+	for _, endpoint := range expansions(result, cmd, ghAPIEndpointArg(apiCmd)) {
+		body.addQuery(endpoint)
+	}
 
 	hostname := strings.ToLower(apiCmd.Hostname)
 	if hostname == "" {
@@ -222,7 +225,9 @@ func (v *MergeValidator) httpClientMerge(
 		body = v.stdinFields(result, cmd)
 	}
 
-	body.addQuery(rawURL)
+	for _, target := range expansions(result, cmd, req.URL) {
+		body.addQuery(target)
+	}
 
 	for key, texts := range req.Query {
 		for _, text := range texts {
@@ -383,7 +388,8 @@ func (v *MergeValidator) stdinFields(
 // fieldsFromItems reads httpie and xh items one by one. A "field=@path" item
 // embeds the file. Only content written earlier on the line is read, since a
 // file on disk may be replaced by a write the parser does not follow before
-// the request runs; otherwise the value is the literal text, as before.
+// the request runs. Otherwise a commit_title is treated as unread, like
+// --body-file, and any other value is the literal text, as before.
 func fieldsFromItems(
 	result *parser.ParseResult,
 	cmd parser.Command,
@@ -399,18 +405,25 @@ func fieldsFromItems(
 			continue
 		}
 
+		unread := map[string]string{}
+
 		for key, path := range files {
 			content, read := result.InlineFileContent(path, req.WorkingDirectory, req.Location)
-			if !read {
-				content = "@" + path
-			}
 
-			fields[key] = content
+			switch {
+			case read:
+				fields[key] = content
+			case key == commitTitleField:
+				// An unread subject is skipped, the PR title still checked.
+				unread[key] = path
+			default:
+				fields[key] = "@" + path
+			}
 		}
 
 		var variant restMergeFields
 
-		variant.addFields(fields, nil)
+		variant.addFields(fields, unread)
 		variants = append(variants, variant)
 	}
 

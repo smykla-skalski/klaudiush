@@ -241,6 +241,10 @@ var _ = Describe("MergeValidator squash commit subject", func() {
 		Entry("xh commit_message from a missing file, read literally as before",
 			`xh PUT `+restMergeURL+` merge_method=squash commit_message=@missing-body.txt`,
 			validator.RefGitMergeSignoff),
+		Entry("httpie commit_title from a missing file, treated as unread",
+			`http PUT `+restMergeURL+` merge_method=squash commit_title=@missing-title.txt `+
+				`"commit_message=Body. `+signoff+`"`,
+			validator.Reference("")),
 		Entry("httpie merge_method from a file on disk, read literally as before",
 			`http PUT `+restMergeURL+` merge_method=@go.mod "commit_message=Body. `+signoff+`" `+
 				`commit_title="Add endpoint"`,
@@ -275,6 +279,15 @@ var _ = Describe("MergeValidator squash commit subject", func() {
 			`M=merge; for i in 1 2; do http PUT `+restMergeURL+` "merge_method=$M" `+
 				`"commit_message=Body. `+signoff+`"; M=squash; done`,
 			validator.RefGitMergeMessage),
+		Entry("gh api commit_title in the URL query reassigned in a loop",
+			`T=Add; for i in 1 2; do gh api -X PUT "repos/o/r/pulls/42/merge?commit_title=$T" `+
+				`-f merge_method=squash -f commit_message="Body. `+signoff+`"; T="feat(api):+ok"; done`,
+			validator.RefGitMergeMessage),
+		Entry(
+			"curl merge_method in the URL query reassigned in a loop",
+			`M=squash; for i in 1 2; do curl -X PUT "`+restMergeURL+`?merge_method=$M" -d '{}'; M=merge; done`,
+			validator.RefGitMergeSignoff,
+		),
 		Entry("curl body unreadable first, then a squash without a message",
 			`B='nojson'; for i in 1 2; do curl -X PUT `+restMergeURL+` -d "$B"; `+
 				`B='{"merge_method":"squash"}'; done`,
