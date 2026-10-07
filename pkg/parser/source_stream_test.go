@@ -326,3 +326,75 @@ var _ = Describe("Sourcing a stream klaudiush cannot see", func() {
 		))
 	})
 })
+
+var _ = Describe("Sourcing a name through PATH", func() {
+	parse := func(resolver fakeResolver, command string) *parser.ParseResult {
+		result, err := parser.NewBashParserWithResolver(resolver).Parse(command)
+		Expect(err).NotTo(HaveOccurred())
+
+		return result
+	}
+
+	It("prefers the PATH file when the cwd file also exists", func() {
+		resolver := fakeResolver{
+			files: map[string]string{
+				"env.sh":      "git status\n",
+				"/bin/env.sh": "git push origin main\n",
+			},
+			paths: map[string]string{"env.sh": "/bin/env.sh"},
+		}
+
+		result := parse(resolver, "source env.sh")
+
+		Expect(result.GitOperations).To(ContainElement(HaveField("Args", ContainElement("push"))))
+		Expect(result.GitOperations).NotTo(ContainElement(
+			HaveField("Args", ContainElement("status")),
+		))
+	})
+
+	It("falls back to the cwd when PATH has no file", func() {
+		result := parse(fakeResolver{files: map[string]string{"env.sh": "git status\n"}},
+			"source env.sh")
+
+		Expect(result.GitOperations).To(ContainElement(HaveField("Args", ContainElement("status"))))
+	})
+
+	It("follows a file found only on PATH", func() {
+		resolver := fakeResolver{
+			files: map[string]string{"/bin/env.sh": "git status\n"},
+			paths: map[string]string{"env.sh": "/bin/env.sh"},
+		}
+
+		Expect(parse(resolver, "source env.sh").GitOperations).
+			To(ContainElement(HaveField("Args", ContainElement("status"))))
+	})
+
+	It("follows a PATH file written earlier on the line", func() {
+		resolver := fakeResolver{env: map[string]string{"PATH": "/bin"}}
+
+		result := parse(resolver, `echo 'git status' > /bin/env.sh; source env.sh`)
+
+		Expect(result.Truncated).To(BeFalse())
+		Expect(result.GitOperations).To(ContainElement(HaveField("Args", ContainElement("status"))))
+	})
+
+	It("fails closed after PATH changes", func() {
+		result := parse(fakeResolver{files: map[string]string{"env.sh": "git status\n"}},
+			"PATH=/other; source env.sh")
+
+		Expect(result.Truncated).To(BeTrue())
+		Expect(result.Opacities).To(ContainElement(SatisfyAll(
+			HaveField("Cause", parser.OpacitySourcedStream),
+			HaveField("Operation", "source"),
+			HaveField("Detail", parser.DetailSourcePath),
+		)))
+	})
+
+	It("fails closed after sourcepath changes", func() {
+		result := parse(fakeResolver{files: map[string]string{"env.sh": "git status\n"}},
+			"shopt -u sourcepath; source env.sh")
+
+		Expect(result.Truncated).To(BeTrue())
+		Expect(result.Opacities).To(ContainElement(HaveField("Detail", parser.DetailSourcePath)))
+	})
+})

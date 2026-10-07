@@ -54,6 +54,12 @@ func (f fakeResolver) LookPath(name string) (string, bool) {
 	return path, ok
 }
 
+func (f fakeResolver) LookSource(name, _ string) (string, bool) {
+	path, ok := f.paths[name]
+
+	return path, ok
+}
+
 func (f fakeResolver) GHAlias(name string) (string, bool) {
 	value, ok := f.ghAliases[name]
 

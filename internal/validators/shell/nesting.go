@@ -460,6 +460,9 @@ func sourcedStreamFinding(o parser.Opacity) (message, required, repair string) {
 	case parser.DetailSourceOption:
 		required = "source given the file's path, with no options but --"
 		repair = "Source the file by its path, without -p or other options"
+	case parser.DetailSourcePath:
+		required = "an explicit path after changing PATH"
+		repair = "Write the sourced file's path explicitly"
 	case parser.DetailShellOperand:
 		required = "a literal path to the shell script"
 		repair = "Save the script to a file in a separate command, then run that file"

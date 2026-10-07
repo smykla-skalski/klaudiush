@@ -867,6 +867,10 @@ func (w *astWalker) trackShellState(cmd Command) {
 		}
 	case "enable":
 		w.state.pathChanged = true
+	case "shopt":
+		if slices.Contains(cmd.Args, "sourcepath") {
+			w.state.pathChanged = true
+		}
 	case setBuiltin:
 		w.trackPositional(cmd)
 		w.noteAllExport(cmd.Args)
