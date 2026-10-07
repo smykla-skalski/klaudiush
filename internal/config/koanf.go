@@ -531,8 +531,9 @@ func (l *KoanfLoader) findProjectConfig() string {
 func (l *KoanfLoader) walkUpForConfig() string {
 	globalPath := l.GlobalConfigPath()
 	dir := filepath.Dir(l.workDir)
+	limitToHome := pathWithin(l.homeDir, l.workDir)
 
-	for {
+	for !limitToHome || pathWithin(l.homeDir, dir) {
 		for _, candidate := range []string{
 			filepath.Join(dir, ProjectConfigDir, ProjectConfigFile),
 			filepath.Join(dir, ProjectConfigFileAlt),
@@ -551,6 +552,25 @@ func (l *KoanfLoader) walkUpForConfig() string {
 	}
 
 	return ""
+}
+
+func pathWithin(root, path string) bool {
+	canonicalRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return false
+	}
+
+	canonicalPath, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return false
+	}
+
+	rel, err := filepath.Rel(canonicalRoot, canonicalPath)
+	if err != nil {
+		return false
+	}
+
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // HasGlobalConfig checks if a global configuration file exists.

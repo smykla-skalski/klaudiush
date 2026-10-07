@@ -48,6 +48,15 @@ func writeAltConfigAt(dir, content string) {
 }
 
 var _ = Describe("Walk-up project config discovery", func() {
+	Describe("pathWithin", func() {
+		It("rejects paths that cannot be resolved", func() {
+			root := GinkgoT().TempDir()
+
+			Expect(pathWithin(filepath.Join(root, "missing"), root)).To(BeFalse())
+			Expect(pathWithin(root, filepath.Join(root, "missing"))).To(BeFalse())
+		})
+	})
+
 	Describe("findProjectConfig", func() {
 		It("finds config in cwd (no walk-up needed)", func() {
 			loader, homeDir, _, workDir := newWalkupLoader(0)
@@ -131,6 +140,37 @@ var _ = Describe("Walk-up project config discovery", func() {
 				[]byte("version = 1\n"), 0o644,
 			)).To(Succeed())
 
+			Expect(loader.findProjectConfig()).To(BeEmpty())
+		})
+
+		It("does not walk above $HOME", func() {
+			outerDir, err := os.MkdirTemp("", "walkup-outer-")
+			Expect(err).NotTo(HaveOccurred())
+			DeferCleanup(func() { os.RemoveAll(outerDir) })
+
+			homeDir := filepath.Join(outerDir, "home")
+			Expect(os.MkdirAll(homeDir, 0o755)).To(Succeed())
+			writeConfigAt(outerDir, "version = 1\n")
+
+			loader, err := NewKoanfLoaderWithDirs(homeDir, homeDir)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(loader.findProjectConfig()).To(BeEmpty())
+		})
+
+		It("does not walk above a symlinked $HOME", func() {
+			outerDir, err := os.MkdirTemp("", "walkup-outer-")
+			Expect(err).NotTo(HaveOccurred())
+			DeferCleanup(func() { os.RemoveAll(outerDir) })
+
+			homeDir := filepath.Join(outerDir, "home")
+			linkedHome := filepath.Join(outerDir, "home-link")
+			workDir := filepath.Join(homeDir, "project")
+			Expect(os.MkdirAll(workDir, 0o755)).To(Succeed())
+			Expect(os.Symlink(homeDir, linkedHome)).To(Succeed())
+			writeConfigAt(outerDir, "version = 1\n")
+
+			loader, err := NewKoanfLoaderWithDirs(linkedHome, workDir)
+			Expect(err).NotTo(HaveOccurred())
 			Expect(loader.findProjectConfig()).To(BeEmpty())
 		})
 
