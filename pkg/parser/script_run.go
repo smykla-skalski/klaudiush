@@ -78,7 +78,7 @@ var setupCommands = nameSet("cd pushd popd pwd set true : echo printf test [")
 // klaudiush's own lookup.
 var (
 	lookupEnvPrefixes = []string{
-		"GIT_", "GO", "CGO_", "HOMEBREW_", "POETRY_", "CONDA_", "PYTHON", "RUBY",
+		"GIT_", "GO", "CGO_", "HOMEBREW_", "POETRY_", "CONDA_", "PYTHON", "RUBY", "_CE_",
 	}
 	lookupEnvNames = nameSet(
 		"HOME XDG_CONFIG_HOME XDG_DATA_HOME XDG_CACHE_HOME PATH BASH_ENV ENV CDPATH VIRTUAL_ENV",
