@@ -866,6 +866,13 @@ EOF`
 				Expect(result.Commands[len(result.Commands)-1].WorkingDirectory).To(Equal("/b"))
 			})
 
+			It("tracks function directory changes inside command substitutions", func() {
+				result, err := p.Parse(`f(){ cd /b; }; echo "$(f; bash run.sh)"`)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result.Commands).NotTo(BeEmpty())
+				Expect(result.Commands[len(result.Commands)-1].WorkingDirectory).To(Equal("/b"))
+			})
+
 			It("tracks directory change from cd command", func() {
 				result, err := p.Parse("cd /tmp && git status")
 				Expect(err).NotTo(HaveOccurred())

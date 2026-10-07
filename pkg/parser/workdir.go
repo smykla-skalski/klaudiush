@@ -20,6 +20,7 @@ type directoryState struct {
 	dirStack        []string
 	dirStackUnknown []bool
 	dirSynced       bool
+	dirConditional  bool
 	pwd             string
 	pwdSet          bool
 	pwdUnknown      bool
@@ -39,6 +40,7 @@ func (w *astWalker) directoryState() directoryState {
 		dirStack:        slices.Clone(w.dirStack),
 		dirStackUnknown: slices.Clone(w.dirStackUnknown),
 		dirSynced:       w.dirSynced,
+		dirConditional:  w.dirConditional,
 		pwd:             pwd,
 		pwdSet:          pwdSet,
 		pwdUnknown:      w.unknownVars[pwdVar],
@@ -55,6 +57,7 @@ func (w *astWalker) restoreDirectory(state directoryState) {
 	w.dirStack = state.dirStack
 	w.dirStackUnknown = state.dirStackUnknown
 	w.dirSynced = state.dirSynced
+	w.dirConditional = state.dirConditional
 	w.restoreDirVar(pwdVar, state.pwd, state.pwdSet, state.pwdUnknown)
 	w.restoreDirVar(oldPWDVar, state.oldPWD, state.oldPWDSet, state.oldPWDUnknown)
 	w.scope = nil
@@ -80,7 +83,7 @@ func (w *astWalker) inheritDirectory(child *astWalker, unconditional bool) {
 		return
 	}
 
-	if unconditional {
+	if unconditional && !state.dirConditional {
 		w.restoreDirectory(state)
 
 		return
@@ -102,6 +105,7 @@ func (s directoryState) equal(other directoryState) bool {
 		slices.Equal(s.dirStack, other.dirStack) &&
 		slices.Equal(s.dirStackUnknown, other.dirStackUnknown) &&
 		s.dirSynced == other.dirSynced &&
+		s.dirConditional == other.dirConditional &&
 		s.pwd == other.pwd && s.pwdSet == other.pwdSet && s.pwdUnknown == other.pwdUnknown &&
 		s.oldPWD == other.oldPWD && s.oldPWDSet == other.oldPWDSet &&
 		s.oldPWDUnknown == other.oldPWDUnknown

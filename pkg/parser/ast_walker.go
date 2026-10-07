@@ -91,6 +91,8 @@ type astWalker struct {
 	// dirSynced records that a cd set PWD, which then no longer holds a
 	// value assigned on the line.
 	dirSynced bool
+	// dirConditional records that the last directory mutation may not run.
+	dirConditional bool
 	// scope caches the variable snapshot until an assignment changes it;
 	// scopeDynamic is the dynamicVersion it was taken at.
 	scope        *VarScope
@@ -864,16 +866,19 @@ func (w *astWalker) trackShellState(cmd Command) {
 	case cdBuiltin:
 		defer w.syncDirVars()()
 
+		w.dirConditional = !cmd.unconditional
 		w.moveDir(cmd)
 	case "pushd":
 		defer w.syncDirVars()()
 
+		w.dirConditional = !cmd.unconditional
 		w.dirStack = append(w.dirStack, w.currentDir)
 		w.dirStackUnknown = append(w.dirStackUnknown, w.dirUnknown)
 		w.moveDir(cmd)
 	case "popd":
 		defer w.syncDirVars()()
 
+		w.dirConditional = !cmd.unconditional
 		if n := len(w.dirStack); n > 0 {
 			w.currentDir, w.dirStack = w.dirStack[n-1], w.dirStack[:n-1]
 			w.dirUnknown, w.dirStackUnknown = w.dirStackUnknown[n-1], w.dirStackUnknown[:n-1]

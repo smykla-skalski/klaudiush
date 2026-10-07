@@ -406,6 +406,20 @@ var _ = Describe("The shell's directory", func() {
 		Expect(vars.Assignments).To(HaveKeyWithValue("OLDPWD", "/a"))
 	})
 
+	It("preserves the directory stack through a function", func() {
+		vars := last(parse(`pushd /a; f(){ :; }; f; popd; cat y`)).Vars
+
+		Expect(vars.Assignments).To(HaveKeyWithValue("PWD", "/start"))
+		Expect(vars.Assignments).To(HaveKeyWithValue("OLDPWD", "/a"))
+	})
+
+	It("leaves the directory unknown after a conditional change in a function", func() {
+		cmd := last(parse(`f(){ test -d /repo && cd /repo; }; f; cat y`))
+
+		Expect(cmd.DirUnknown).To(BeTrue())
+		Expect(cmd.Vars.IsDynamic("PWD")).To(BeTrue())
+	})
+
 	It("leaves the directory unknown after a conditional function", func() {
 		cmd := last(parse(`f(){ cd /repo; }; false && f; cat y`))
 
