@@ -218,20 +218,64 @@ var _ = Describe("MergeValidator squash commit subject", func() {
 		Expect(result.Reference).To(Equal(validator.RefGitMergeSignoff))
 	})
 
-	DescribeTable("treats an httpie or xh item that embeds a file as unread",
-		func(command string) {
-			Expect(validate(command).Passed).To(BeTrue())
-
-			runner.stdout = invalidPRDetails
+	DescribeTable("reads the file an httpie or xh item embeds, or else its literal text",
+		func(command string, reference validator.Reference) {
 			result := validate(command)
 
-			Expect(result.Reference).To(Equal(validator.RefGitMergeMessage))
+			if reference == "" {
+				Expect(result.Passed).To(BeTrue())
+
+				return
+			}
+
+			Expect(result.Reference).To(Equal(reference))
 		},
-		Entry("httpie commit_title=@file",
-			`http PUT `+restMergeURL+` merge_method=squash commit_title=@title.txt `+
-				`"commit_message=Body. `+signoff+`"`),
-		Entry("xh commit_message=@file",
-			`xh PUT `+restMergeURL+` merge_method=squash commit_message=@body.txt`),
+		Entry("httpie commit_title from a heredoc file",
+			"cat > title.txt <<'EOF'\nfeat(api): add endpoint\nEOF\n"+
+				`http PUT `+restMergeURL+` merge_method=squash commit_title=@title.txt `+
+				`"commit_message=Body. `+signoff+`"`, validator.Reference("")),
+		Entry("httpie bad commit_title from a heredoc file",
+			"cat > title.txt <<'EOF'\nAdd endpoint\nEOF\n"+
+				`http PUT `+restMergeURL+` merge_method=squash commit_title=@title.txt `+
+				`"commit_message=Body. `+signoff+`"`, validator.RefGitMergeMessage),
+		Entry("xh commit_message from a missing file, read literally as before",
+			`xh PUT `+restMergeURL+` merge_method=squash commit_message=@missing-body.txt`,
+			validator.RefGitMergeSignoff),
+	)
+
+	DescribeTable("checks the values a loop or trap sends after a later assignment",
+		func(command string, reference validator.Reference) {
+			// A bad PR title shows the merge was validated as a squash.
+			if reference == validator.RefGitMergeMessage {
+				runner.stdout = invalidPRDetails
+			}
+
+			result := validate(command)
+
+			Expect(result.ShouldBlock).To(BeTrue())
+			Expect(result.Reference).To(Equal(reference))
+		},
+		Entry("gh api commit_message reassigned in a loop",
+			`B="Body. `+signoff+`"; for i in 1 2; do gh api -X PUT repos/o/r/pulls/42/merge `+
+				`-f merge_method=squash -f commit_message="$B"; B=unsigned; done`,
+			validator.RefGitMergeSignoff),
+		Entry("gh api merge_method reassigned in a loop",
+			`M=merge; while true; do gh api -X PUT repos/o/r/pulls/42/merge -f merge_method="$M" `+
+				`-f commit_message="Body. `+signoff+`"; M=squash; done`,
+			validator.RefGitMergeMessage),
+		Entry("curl JSON body reassigned in a loop",
+			`M=merge; for i in 1 2; do curl -X PUT `+restMergeURL+
+				` -d "{\"merge_method\":\"$M\",\"commit_message\":\"Body. `+signoff+`\"}"; M=squash; done`,
+			validator.RefGitMergeMessage),
+		Entry("httpie item reassigned in a loop",
+			`M=merge; for i in 1 2; do http PUT `+restMergeURL+` "merge_method=$M" `+
+				`"commit_message=Body. `+signoff+`"; M=squash; done`,
+			validator.RefGitMergeMessage),
+		Entry(
+			"gh pr merge subject reassigned in a loop",
+			`S="feat(api): add endpoint"; for i in 1 2; do `+ghSquash+`--subject "$S"; S="Add endpoint"; done`,
+			validator.RefGitMergeMessage,
+		),
 	)
 
 	It("reads httpie items whose value spans lines one by one", func() {

@@ -126,7 +126,13 @@ func (v *MergeValidator) ghAPIMerge(
 		body = v.stdinFields(result, cmd)
 	}
 
-	body.addFields(expandFields(cmd.Vars, apiCmd.Fields), apiCmd.FieldFiles)
+	for key, value := range apiCmd.Fields {
+		for _, text := range expansions(result, cmd, value) {
+			body.add(key, fieldValue{text: text})
+		}
+	}
+
+	body.addFields(nil, apiCmd.FieldFiles)
 	body.addQuery(rawEndpoint)
 
 	hostname := strings.ToLower(apiCmd.Hostname)
@@ -203,9 +209,11 @@ func (v *MergeValidator) httpClientMerge(
 	case req.BodyFile != "":
 		body = v.readFieldsFromFile(result, req.BodyFile, req.WorkingDirectory, req.Location)
 	case len(req.DataItems) > 0:
-		body = fieldsFromItems(cmd.Vars, req.DataItems)
+		body = v.fieldsFromItems(result, cmd, req)
 	case req.DataBody != "":
-		body = fieldsFromText(cmd.Vars.ExpandVars(req.DataBody))
+		for _, text := range expansions(result, cmd, req.DataBody) {
+			body.merge(fieldsFromText(text))
+		}
 	default:
 		body = v.stdinFields(result, cmd)
 	}
@@ -214,7 +222,9 @@ func (v *MergeValidator) httpClientMerge(
 
 	for key, texts := range req.Query {
 		for _, text := range texts {
-			body.add(key, fieldValue{text: cmd.Vars.ExpandVars(text)})
+			for _, expanded := range expansions(result, cmd, text) {
+				body.add(key, fieldValue{text: expanded})
+			}
 		}
 	}
 
@@ -326,20 +336,31 @@ func (v *MergeValidator) readFieldsFromFile(
 	path, workDir string,
 	location parser.Location,
 ) restMergeFields {
+	content, ok := v.readText(result, path, workDir, location)
+	if !ok {
+		return restMergeFields{unreadable: true}
+	}
+
+	return fieldsFromText(content)
+}
+
+// readText reads a file the request sends, preferring content written earlier
+// on the same command line, since a heredoc file does not exist yet when the
+// hook runs.
+func (v *MergeValidator) readText(
+	result *parser.ParseResult,
+	path, workDir string,
+	location parser.Location,
+) (string, bool) {
 	if content, ok := result.InlineFileContent(path, workDir, location); ok {
-		return fieldsFromText(content)
+		return content, true
 	}
 
 	if !filepath.IsAbs(path) && workDir != "" {
 		path = filepath.Join(workDir, path)
 	}
 
-	content, ok := validators.ReadCapped(v.Logger(), filepath.Clean(path), maxMergeBodyBytes)
-	if !ok {
-		return restMergeFields{unreadable: true}
-	}
-
-	return fieldsFromText(content)
+	return validators.ReadCapped(v.Logger(), filepath.Clean(path), maxMergeBodyBytes)
 }
 
 // stdinFields reads a request body sent on stdin: a heredoc or pipe, or a file
@@ -355,24 +376,80 @@ func (v *MergeValidator) stdinFields(
 	return fieldsFromText(cmd.Stdin)
 }
 
-// fieldsFromItems reads httpie and xh items one by one, with the variables
-// as they stood when the command ran.
-func fieldsFromItems(vars *parser.VarScope, items []string) restMergeFields {
-	expanded := make([]string, 0, len(items))
-	for _, item := range items {
-		expanded = append(expanded, vars.ExpandVars(item))
-	}
-
-	fields, files, ok := parser.ParseRequestItemList(expanded)
-	if !ok {
-		return restMergeFields{unreadable: true}
-	}
-
+// fieldsFromItems reads httpie and xh items one by one. A "field=@path" item
+// embeds the file, which is read when it can be; otherwise its value is the
+// literal text, as httpie items were read before.
+func (v *MergeValidator) fieldsFromItems(
+	result *parser.ParseResult,
+	cmd parser.Command,
+	req *parser.HTTPRequest,
+) restMergeFields {
 	var body restMergeFields
 
-	body.addFields(fields, files)
+	for _, items := range itemExpansions(result, cmd, req.DataItems) {
+		fields, files, ok := parser.ParseRequestItemList(items)
+		if !ok {
+			body.unreadable = true
+
+			continue
+		}
+
+		for key, path := range files {
+			content, read := v.readText(result, path, req.WorkingDirectory, req.Location)
+			if !read {
+				content = "@" + path
+			}
+
+			fields[key] = content
+		}
+
+		body.addFields(fields, nil)
+	}
 
 	return body
+}
+
+// itemExpansions returns the items with variables expanded each way
+// expansions does, one list per distinct result.
+func itemExpansions(result *parser.ParseResult, cmd parser.Command, items []string) [][]string {
+	scoped := make([]string, 0, len(items))
+	final := make([]string, 0, len(items))
+
+	for _, item := range items {
+		scoped = append(scoped, cmd.Vars.ExpandVars(item))
+		final = append(final, result.ExpandVars(item))
+	}
+
+	if slices.Equal(scoped, final) {
+		return [][]string{scoped}
+	}
+
+	return [][]string{scoped, final}
+}
+
+// expansions returns s with variables expanded both as they stood when the
+// command ran and as they end on the line. A loop body or trap can run the
+// command again after a later assignment, so each distinct value is checked.
+func expansions(result *parser.ParseResult, cmd parser.Command, s string) []string {
+	scoped := cmd.Vars.ExpandVars(s)
+	final := result.ExpandVars(s)
+
+	if scoped == final {
+		return []string{scoped}
+	}
+
+	return []string{scoped, final}
+}
+
+// merge adds every value of other, and its unreadable state.
+func (b *restMergeFields) merge(other restMergeFields) {
+	for key, values := range other.values {
+		for _, value := range values {
+			b.add(key, value)
+		}
+	}
+
+	b.unreadable = b.unreadable || other.unreadable
 }
 
 func fieldsFromText(text string) restMergeFields {
@@ -386,18 +463,6 @@ func fieldsFromText(text string) restMergeFields {
 	body.addFields(fields, nil)
 
 	return body
-}
-
-// expandFields substitutes the variables as they stood when the command ran,
-// not their final values on the line.
-func expandFields(vars *parser.VarScope, fields map[string]string) map[string]string {
-	expanded := make(map[string]string, len(fields))
-
-	for key, value := range fields {
-		expanded[key] = vars.ExpandVars(value)
-	}
-
-	return expanded
 }
 
 // restMergeCommand shapes a REST merge request as a gh pr merge. REST merges
