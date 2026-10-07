@@ -97,6 +97,11 @@ type FileWrite struct {
 	// a literal echo or a printf using only %s/%% directives and known escapes;
 	// otherwise the output cannot be reproduced.
 	RedirectContentCaptured bool
+	emittedContent          string
+	emittedContentCaptured  bool
+	emittedContentAppended  bool
+	sourceArgs              []string
+	targetFromSubstitution  bool
 	Unconditional           bool
 	CertainUntil            Location
 	TargetUnknown           bool

@@ -1130,6 +1130,9 @@ type scriptWalk struct {
 	prose bool
 	// label names the script in diagnostics.
 	label string
+	// future runs content in a new shell's inherited environment, without
+	// shell-local state from the command that planted it.
+	future bool
 	// run is the $0 and positional parameters of a script file, set when
 	// file is.
 	run  scriptRun
@@ -1154,7 +1157,8 @@ func (w *astWalker) walkScript(script string, parent Command, depth int, sw scri
 		return
 	}
 
-	child := w.child(parent.WorkingDirectory, depth)
+	child := w.scriptChild(parent.WorkingDirectory, depth, sw.future)
+
 	if runsInShell(parent, sw) {
 		child.restoreDirectory(w.directoryState())
 	}
@@ -1214,6 +1218,21 @@ func (w *astWalker) walkScript(script string, parent Command, depth int, sw scri
 	w.dynamicWrites += child.dynamicWrites
 	w.dynamicWriteLocs = append(w.dynamicWriteLocs, child.dynamicWriteLocs...)
 	w.stdinReplaced = w.stdinReplaced || (child.stdinReplaced && runsInShell(parent, sw))
+}
+
+func (w *astWalker) scriptChild(dir string, depth int, future bool) *astWalker {
+	child := w.child(dir, depth)
+	if !future {
+		return child
+	}
+
+	clear(child.assignments)
+	clear(child.unknownVars)
+	clear(child.aliases)
+	clear(child.funcs)
+	child.scope = nil
+
+	return child
 }
 
 func (w *astWalker) publishFunctions(child *astWalker, parent Command, sw scriptWalk) {
