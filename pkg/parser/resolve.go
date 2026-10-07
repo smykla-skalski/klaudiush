@@ -148,6 +148,35 @@ func (w *astWalker) lastLineWrite(target string) (content string, found, capture
 	return "", false, false
 }
 
+// mixedLineWrite reports an earlier write that may name target through a mix
+// of absolute and relative spellings when the command's starting directory is
+// unavailable.
+func (w *astWalker) mixedLineWrite(target string) bool {
+	if _, known := w.startPWD(); known {
+		return false
+	}
+
+	for p := w; p != nil; p = p.parent {
+		for _, fw := range p.fileWrites {
+			path, known := w.writtenPath(fw)
+			if !known || filepath.IsAbs(path) == filepath.IsAbs(target) {
+				continue
+			}
+
+			absolute, relative := path, target
+			if !filepath.IsAbs(absolute) {
+				absolute, relative = relative, absolute
+			}
+
+			if strings.HasSuffix(absolute, string(filepath.Separator)+filepath.Clean(relative)) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
 // expandName substitutes the variables in a command word: first those
 // assigned earlier on the line, then the environment.
 func (w *astWalker) expandName(word string) string {
@@ -1061,6 +1090,9 @@ func (w *astWalker) scriptSource(path string, cmd Command) (string, ScriptStatus
 	}
 
 	target := w.trackedPath(cmd.WorkingDirectory, path)
+	if w.mixedLineWrite(target) {
+		return "", ScriptOpaque, DetailScriptDirectory
+	}
 
 	if w.unplacedWriteBefore(cmd, target) {
 		return "", ScriptOpaque, DetailScriptUnplacedWrite

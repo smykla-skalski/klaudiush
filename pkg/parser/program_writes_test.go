@@ -13,6 +13,8 @@ var _ = Describe("Writes by programs", func() {
 		files: map[string]string{
 			"/s/a.sh":           "echo hi\n",
 			"/repo/push.sh":     "git push --force\n",
+			"run.sh":            "git push --force\n",
+			"sub/run.sh":        "git push --force\n",
 			"/start/sub/run.sh": "git push --force\n",
 		},
 	}
@@ -280,9 +282,29 @@ var _ = Describe("Writes by programs", func() {
 			Expect(result.Truncated).To(BeFalse(), "opacities: %v", result.Opacities)
 			Expect(result.GitOperations).To(BeEmpty())
 		},
-		Entry("absolute write then relative run", "echo : > /start/run.sh && bash ./run.sh"),
-		Entry("relative write with parent components", "echo : > sub/../run.sh && bash ./run.sh"),
+		Entry(
+			"absolute write then relative run",
+			"echo : > /start/sub/run.sh && bash ./sub/run.sh",
+		),
+		Entry(
+			"parent components then relative run",
+			"echo : > /start/sub/../run.sh && bash ./run.sh",
+		),
 	)
+
+	It("fails closed when the starting directory is unavailable", func() {
+		withoutPWD := resolver
+		withoutPWD.env = map[string]string{"HOME": "/home/u"}
+
+		result, err := parser.NewBashParserWithResolver(withoutPWD).Parse(
+			"echo : > /start/run.sh && bash ./run.sh",
+		)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(result.Truncated).To(BeTrue())
+		Expect(result.Opacities).To(ContainElement(
+			HaveField("Detail", parser.DetailScriptDirectory),
+		))
+	})
 
 	DescribeTable(
 		"still follows a script nothing on the line changes",
