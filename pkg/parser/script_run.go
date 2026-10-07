@@ -77,8 +77,10 @@ var setupCommands = nameSet("cd pushd popd pwd set true : echo printf test [")
 // which an assignment on the line would change for the shell but not for
 // klaudiush's own lookup.
 var (
-	lookupEnvPrefixes = []string{"GIT_", "GO", "CGO_", "HOMEBREW_", "POETRY_", "CONDA_"}
-	lookupEnvNames    = nameSet(
+	lookupEnvPrefixes = []string{
+		"GIT_", "GO", "CGO_", "HOMEBREW_", "POETRY_", "CONDA_", "PYTHON", "RUBY",
+	}
+	lookupEnvNames = nameSet(
 		"HOME XDG_CONFIG_HOME XDG_DATA_HOME XDG_CACHE_HOME PATH BASH_ENV ENV CDPATH VIRTUAL_ENV",
 	)
 )
