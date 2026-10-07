@@ -17,7 +17,7 @@ const FunctionChainOperation = "function definition"
 // and the definition takes its place at the head of the list, so the rest is
 // walked as code that runs now. It returns the name of the first definition
 // it could not split, and false when there is one.
-func splitFuncChains(root syntax.Node) (string, bool) {
+func splitFuncChains(root syntax.Node, defined map[string]string) (string, bool) {
 	failed, ok := "", true
 
 	syntax.Walk(root, func(node syntax.Node) bool {
@@ -31,7 +31,7 @@ func splitFuncChains(root syntax.Node) (string, bool) {
 			return true
 		}
 
-		if !splitFuncChain(stmt, fn) && ok {
+		if !splitFuncChain(stmt, fn, defined) && ok {
 			failed, ok = funcName(fn), false
 		}
 
@@ -45,13 +45,14 @@ func splitFuncChains(root syntax.Node) (string, bool) {
 // stmt, out of it, reporting false on a shape it cannot split. zsh takes a
 // definition as a body, as in f() g() { :; } && cmd, where the list folds
 // into the innermost definition, so that one is split first.
-func splitFuncChain(stmt *syntax.Stmt, fn *syntax.FuncDecl) bool {
+func splitFuncChain(stmt *syntax.Stmt, fn *syntax.FuncDecl, defined map[string]string) bool {
 	chain := fn.Body
 	if chain == nil {
 		return true
 	}
 
-	if inner, isFunc := chain.Cmd.(*syntax.FuncDecl); isFunc && !splitFuncChain(chain, inner) {
+	if inner, isFunc := chain.Cmd.(*syntax.FuncDecl); isFunc &&
+		!splitFuncChain(chain, inner, defined) {
 		return false
 	}
 
@@ -64,6 +65,7 @@ func splitFuncChain(stmt *syntax.Stmt, fn *syntax.FuncDecl) bool {
 		return false
 	}
 
+	links := []*syntax.BinaryCmd{head}
 	for {
 		next, isList := head.X.Cmd.(*syntax.BinaryCmd)
 		if !isList {
@@ -75,6 +77,7 @@ func splitFuncChain(stmt *syntax.Stmt, fn *syntax.FuncDecl) bool {
 		}
 
 		head = next
+		links = append(links, head)
 	}
 
 	body := head.X
@@ -83,10 +86,23 @@ func splitFuncChain(stmt *syntax.Stmt, fn *syntax.FuncDecl) bool {
 	}
 
 	fn.Body = body
-	head.X = &syntax.Stmt{Position: fn.Pos(), Cmd: fn}
+	head.X = &syntax.Stmt{Position: fn.Pos(), Cmd: fn, Negated: stmt.Negated}
+
 	stmt.Cmd = chain.Cmd
+	if _, redefinition := defined[funcName(fn)]; stmt.Negated && !redefinition {
+		pruneFalseAndLinks(links)
+	}
+
+	stmt.Negated = false
 
 	return true
+}
+
+// pruneFalseAndLinks removes commands skipped after a negated definition.
+func pruneFalseAndLinks(links []*syntax.BinaryCmd) {
+	for i := len(links) - 1; i >= 0 && links[i].Op == syntax.AndStmt; i-- {
+		links[i].Y = &syntax.Stmt{Position: links[i].Y.Pos()}
+	}
 }
 
 // plainLink reports a statement inside the folded list that carries nothing
