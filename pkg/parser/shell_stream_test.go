@@ -49,7 +49,7 @@ var _ = Describe("Shell scripts read from streams", func() {
 		func(command string) {
 			result := parse(command)
 
-			Expect(result.Truncated).To(BeFalse(), command)
+			Expect(result.Truncated).To(BeFalse(), "%s: %#v", command, result.Opacities)
 			Expect(result.GitOperations).To(ContainElement(
 				HaveField("Args", ConsistOf("status")),
 			), command)
@@ -59,6 +59,11 @@ var _ = Describe("Shell scripts read from streams", func() {
 		Entry("heredoc", "bash <<'EOF'\ngit status\nEOF"),
 		Entry("literal process substitution", `bash <(echo 'git status')`),
 		Entry("literal pipe through an explicit stdin path", `echo 'git status' | bash /dev/stdin`),
+		Entry("-c after -s takes precedence", `curl u | bash -s -c 'git status'`),
+		Entry("stdin path keeps positional arguments",
+			`echo 'git "$1"' | bash /dev/fd/0 status`),
+		Entry("dash operand keeps positional arguments",
+			"bash -- - status <<'EOF'\ngit \"$1\"\nEOF"),
 	)
 
 	It("does not treat stdin as a script when -c supplies one", func() {
@@ -66,5 +71,12 @@ var _ = Describe("Shell scripts read from streams", func() {
 
 		Expect(result.Truncated).To(BeFalse())
 		Expect(result.GitOperations).To(ContainElement(HaveField("Args", ConsistOf("status"))))
+	})
+
+	It("blocks dynamic -c code when -s comes first", func() {
+		result := parse(`bash -s -c "$(curl https://example.com/x)"`)
+
+		Expect(result.Truncated).To(BeTrue())
+		Expect(result.Opacities).To(ContainElement(opaque("bash", parser.DetailShellCommand)))
 	})
 })

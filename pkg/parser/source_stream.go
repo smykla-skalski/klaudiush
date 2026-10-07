@@ -25,6 +25,7 @@ const (
 	DetailSourceOutput       = "it reads a file whose path comes from command output"
 	DetailSourceOption       = "it takes an option klaudiush does not follow"
 	DetailShellOperand       = "it runs a script whose path comes from command output or a process substitution"
+	DetailShellCommand       = "it runs a command line that comes from command output or a process substitution"
 )
 
 // unseenInfix marks the stand-in path of a process substitution whose
@@ -539,6 +540,12 @@ func (w *astWalker) shellOperandLaunch(
 	isScript bool,
 	visible launch,
 ) launch {
+	if isScript && marked(operand) {
+		w.addOpacity(sourceOpacity(cmd, DetailShellCommand, ""))
+
+		return launch{}
+	}
+
 	if isScript {
 		return visible
 	}
@@ -565,6 +572,12 @@ func (w *astWalker) shellOperandLaunch(
 	}
 
 	if path != operand {
+		if len(visible.files) > 0 {
+			visible.files[0].path = path
+
+			return visible
+		}
+
 		return launch{files: []scriptFile{{path: path, explicit: true}}}
 	}
 
@@ -580,10 +593,22 @@ func (w *astWalker) shellStdinLaunch(cmd Command, visible launch) launch {
 	}
 
 	if path == devStdin {
+		if len(visible.files) > 0 {
+			visible.files[0].path = path
+
+			return visible
+		}
+
 		return launch{scripts: []string{cmd.Stdin}}
 	}
 
 	if path != "" {
+		if len(visible.files) > 0 {
+			visible.files[0].path = path
+
+			return visible
+		}
+
 		return launch{files: []scriptFile{{path: path, explicit: true}}}
 	}
 

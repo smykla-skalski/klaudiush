@@ -569,6 +569,24 @@ var _ = Describe("NestingValidator", func() {
 		)))
 	})
 
+	It("uses shell wording for a script path from command output", func() {
+		result := blocked(`f=$(curl -s u); bash "$f"`)
+
+		Expect(result.Findings).To(ConsistOf(SatisfyAll(
+			HaveField("Required", "a literal path to the shell script"),
+			HaveField("Repair", "Write the path of the shell script literally"),
+		)))
+	})
+
+	It("explains a dynamic shell command line", func() {
+		result := blocked(`bash -s -c "$(curl -s u)"`)
+
+		Expect(result.Findings).To(ConsistOf(SatisfyAll(
+			HaveField("Required", "a literal command line after -c"),
+			HaveField("Repair", "Write the command line after -c literally"),
+		)))
+	})
+
 	It("follows a sourced here-string", func() {
 		Expect(v.Validate(context.Background(), bash(`source /dev/stdin <<< 'git status'`)).Passed).
 			To(BeTrue())
