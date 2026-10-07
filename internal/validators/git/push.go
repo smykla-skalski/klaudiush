@@ -2,9 +2,12 @@ package git
 
 import (
 	"context"
+	"os/exec"
 	"path"
 	"slices"
 	"strings"
+
+	"github.com/cockroachdb/errors"
 
 	"github.com/smykla-skalski/klaudiush/internal/templates"
 	"github.com/smykla-skalski/klaudiush/internal/validator"
@@ -74,12 +77,21 @@ func (v *PushValidator) validatePushCommand(
 	// Use path-specific runner if -C flag is present
 	runner := v.getRunnerForCommand(gitCmd)
 
-	if !runner.IsInRepo() {
+	inRepo, err := runner.IsInRepo()
+	if err != nil {
+		return repoCheckUnavailable(err)
+	}
+
+	if !inRepo {
 		log.Debug("not in a git repository, skipping validation")
 		return validator.Pass()
 	}
 
-	remote := v.extractRemote(gitCmd, runner)
+	remote, unavailable := v.extractRemote(gitCmd, runner)
+	if unavailable != nil {
+		return unavailable
+	}
+
 	if remote == "" {
 		log.Debug("no remote specified, skipping validation")
 		return validator.Pass()
@@ -116,6 +128,20 @@ func (v *PushValidator) validatePushCommand(
 	return v.validateRemoteExists(remote, runner)
 }
 
+func repoCheckUnavailable(err error) *validator.Result {
+	reason := validator.ReasonError
+	if errors.Is(err, context.DeadlineExceeded) {
+		reason = validator.ReasonTimeout
+	} else if errors.Is(err, context.Canceled) {
+		reason = validator.ReasonCanceled
+	}
+
+	return validator.Unavailable(
+		reason,
+		"Could not determine whether the command runs in a git repository",
+	)
+}
+
 // getRunnerForCommand returns the appropriate git runner for the command.
 // If the command specifies a working directory with -C, creates a runner for that path.
 // Otherwise, returns the default cached runner.
@@ -132,32 +158,69 @@ func (v *PushValidator) getRunnerForCommand(gitCmd *parser.GitCommand) GitRunner
 }
 
 // extractRemote extracts the remote name from a git push command
-func (*PushValidator) extractRemote(gitCmd *parser.GitCommand, runner GitRunner) string {
+func (*PushValidator) extractRemote(
+	gitCmd *parser.GitCommand,
+	runner GitRunner,
+) (string, *validator.Result) {
 	if len(gitCmd.Args) == 0 {
 		if repo := pushRepo(gitCmd); repo != "" {
-			return repo
+			return repo, nil
 		}
 
 		branch, err := runner.GetCurrentBranch()
 		if err != nil {
-			return defaultRemote
+			if unavailable := runnerUnavailable(
+				err,
+				"Could not determine the current git branch",
+			); unavailable != nil {
+				return "", unavailable
+			}
+
+			return defaultRemote, nil
 		}
 
 		remote, err := runner.GetBranchRemote(branch)
 		if err != nil {
-			return defaultRemote
+			if unavailable := runnerUnavailable(
+				err,
+				"Could not determine the branch's git remote",
+			); unavailable != nil {
+				return "", unavailable
+			}
+
+			return defaultRemote, nil
 		}
 
-		return remote
+		return remote, nil
 	}
 
 	for _, arg := range gitCmd.Args {
 		if !strings.HasPrefix(arg, "-") {
-			return arg
+			return arg, nil
 		}
 	}
 
-	return ""
+	return "", nil
+}
+
+func runnerUnavailable(err error, message string) *validator.Result {
+	var reason validator.UnavailableReason
+
+	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		reason = validator.ReasonTimeout
+	case errors.Is(err, context.Canceled):
+		reason = validator.ReasonCanceled
+	default:
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) || exitErr.ExitCode() != -1 {
+			return nil
+		}
+
+		reason = validator.ReasonError
+	}
+
+	return validator.Unavailable(reason, message)
 }
 
 // validateNotBlockedRemote checks if the remote is blocked
@@ -274,6 +337,13 @@ func (v *PushValidator) validateBlockedBranches(
 	if len(gitCmd.Args) <= 1 {
 		branch, err := runner.GetCurrentBranch()
 		if err != nil {
+			if unavailable := runnerUnavailable(
+				err,
+				"Could not determine the current git branch",
+			); unavailable != nil {
+				return unavailable
+			}
+
 			return validator.Pass()
 		}
 
@@ -281,7 +351,16 @@ func (v *PushValidator) validateBlockedBranches(
 	}
 
 	for _, refspec := range gitCmd.Args[1:] {
-		branch, known := refspecBranch(refspec, runner)
+		branch, known, err := refspecBranch(refspec, runner)
+		if err != nil {
+			if unavailable := runnerUnavailable(
+				err,
+				"Could not determine the push target branch",
+			); unavailable != nil {
+				return unavailable
+			}
+		}
+
 		if !known {
 			return v.uncheckedBranch("'" + refspec + "'")
 		}
@@ -298,10 +377,10 @@ func (v *PushValidator) validateBlockedBranches(
 // its source when it has none, with a force + and refs/heads/ removed and
 // HEAD or @ resolved to the current branch. It returns "" for a ref that is
 // not a branch (a tag), and false when the branch cannot be known.
-func refspecBranch(refspec string, runner GitRunner) (string, bool) {
+func refspecBranch(refspec string, runner GitRunner) (string, bool, error) {
 	spec := strings.TrimPrefix(refspec, "+")
 	if spec == "" || spec == ":" {
-		return "", false
+		return "", false, nil
 	}
 
 	target := spec
@@ -315,21 +394,21 @@ func refspecBranch(refspec string, runner GitRunner) (string, bool) {
 	if target == "HEAD" || target == "@" {
 		branch, err := runner.GetCurrentBranch()
 		if err != nil || branch == "" || branch == "HEAD" {
-			return "", false
+			return "", false, err
 		}
 
-		return branch, true
+		return branch, true, nil
 	}
 
 	if branch, ok := strings.CutPrefix(target, "refs/heads/"); ok {
-		return branch, true
+		return branch, true, nil
 	}
 
 	if strings.HasPrefix(target, "refs/") {
-		return "", true
+		return "", true, nil
 	}
 
-	return target, true
+	return target, true, nil
 }
 
 // validateNotBlockedBranch checks if the branch is blocked. A branch pattern

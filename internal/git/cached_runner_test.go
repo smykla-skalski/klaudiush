@@ -28,25 +28,40 @@ var _ = Describe("CachedRunner", func() {
 
 	Describe("IsInRepo", func() {
 		It("caches the result after first call", func() {
-			mockRunner.EXPECT().IsInRepo().Return(true).Times(1)
+			mockRunner.EXPECT().IsInRepo().Return(true, nil).Times(1)
 
 			// First call
-			result := cached.IsInRepo()
+			result, err := cached.IsInRepo()
+			Expect(err).NotTo(HaveOccurred())
 			Expect(result).To(BeTrue())
 
 			// Second call - should use cached value
-			result = cached.IsInRepo()
+			result, err = cached.IsInRepo()
+			Expect(err).NotTo(HaveOccurred())
 			Expect(result).To(BeTrue())
 		})
 
 		It("caches false result", func() {
-			mockRunner.EXPECT().IsInRepo().Return(false).Times(1)
+			mockRunner.EXPECT().IsInRepo().Return(false, nil).Times(1)
 
-			result := cached.IsInRepo()
+			result, err := cached.IsInRepo()
+			Expect(err).NotTo(HaveOccurred())
 			Expect(result).To(BeFalse())
 
-			result = cached.IsInRepo()
+			result, err = cached.IsInRepo()
+			Expect(err).NotTo(HaveOccurred())
 			Expect(result).To(BeFalse())
+		})
+
+		It("caches errors", func() {
+			expectedErr := errors.New("repository check failed")
+			mockRunner.EXPECT().IsInRepo().Return(false, expectedErr).Times(1)
+
+			_, err := cached.IsInRepo()
+			Expect(err).To(Equal(expectedErr))
+
+			_, err = cached.IsInRepo()
+			Expect(err).To(Equal(expectedErr))
 		})
 	})
 
@@ -349,13 +364,14 @@ var _ = Describe("CachedRunner", func() {
 
 	Describe("Concurrent access", func() {
 		It("handles concurrent calls to IsInRepo", func() {
-			mockRunner.EXPECT().IsInRepo().Return(true).Times(1)
+			mockRunner.EXPECT().IsInRepo().Return(true, nil).Times(1)
 
 			done := make(chan bool, 10)
 
 			for range 10 {
 				go func() {
-					result := cached.IsInRepo()
+					result, err := cached.IsInRepo()
+					Expect(err).NotTo(HaveOccurred())
 					Expect(result).To(BeTrue())
 
 					done <- true

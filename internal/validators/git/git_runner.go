@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cockroachdb/errors"
+
 	"github.com/smykla-skalski/klaudiush/internal/exec"
 	gitpkg "github.com/smykla-skalski/klaudiush/internal/git"
 )
@@ -42,13 +44,13 @@ func NewCLIGitRunnerForPath(path string) *CLIGitRunnerWithPath {
 }
 
 // IsInRepo checks if the path is in a git repository
-func (r *CLIGitRunnerWithPath) IsInRepo() bool {
+func (r *CLIGitRunnerWithPath) IsInRepo() (bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), r.timeout)
 	defer cancel()
 
 	result := r.runner.Run(ctx, "git", "-C", r.path, "rev-parse", "--git-dir")
 
-	return result.Err == nil
+	return classifyRepoCheck(ctx, result)
 }
 
 // GetStagedFiles returns the list of staged files
@@ -239,13 +241,29 @@ func NewGitRunnerForPath(path string) GitRunner {
 }
 
 // IsInRepo checks if we're in a git repository
-func (r *CLIGitRunner) IsInRepo() bool {
+func (r *CLIGitRunner) IsInRepo() (bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), r.timeout)
 	defer cancel()
 
 	result := r.runner.Run(ctx, "git", "rev-parse", "--git-dir")
 
-	return result.Err == nil
+	return classifyRepoCheck(ctx, result)
+}
+
+func classifyRepoCheck(ctx context.Context, result exec.CommandResult) (bool, error) {
+	if result.Err == nil {
+		return true, nil
+	}
+
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return false, errors.Wrap(ctxErr, "checking git repository")
+	}
+
+	if strings.Contains(result.Stderr, "not a git repository") {
+		return false, nil
+	}
+
+	return false, errors.Wrap(result.Err, "checking git repository")
 }
 
 // GetStagedFiles returns the list of staged files

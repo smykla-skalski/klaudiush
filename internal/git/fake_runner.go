@@ -12,6 +12,7 @@ type FakeRunner struct {
 	Remotes        map[string]string
 	CurrentBranch  string
 	BranchRemotes  map[string]string
+	IsInRepoErr    error
 	Err            error
 }
 
@@ -36,8 +37,8 @@ func NewFakeRunner() *FakeRunner {
 }
 
 // IsInRepo checks if we're in a git repository.
-func (f *FakeRunner) IsInRepo() bool {
-	return f.InRepo
+func (f *FakeRunner) IsInRepo() (bool, error) {
+	return f.InRepo, f.IsInRepoErr
 }
 
 // GetStagedFiles returns the list of staged files.

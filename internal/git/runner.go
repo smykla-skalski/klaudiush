@@ -4,8 +4,8 @@ package git
 
 // Runner defines the interface for git operations
 type Runner interface {
-	// IsInRepo checks if we're in a git repository
-	IsInRepo() bool
+	// IsInRepo checks if we're in a git repository.
+	IsInRepo() (bool, error)
 
 	// GetStagedFiles returns the list of staged files
 	GetStagedFiles() ([]string, error)

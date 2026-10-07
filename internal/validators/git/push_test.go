@@ -6,6 +6,7 @@ import (
 	"github.com/cockroachdb/errors"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"go.uber.org/mock/gomock"
 
 	gitpkg "github.com/smykla-skalski/klaudiush/internal/git"
 	validatorpkg "github.com/smykla-skalski/klaudiush/internal/validator"
@@ -72,10 +73,42 @@ var _ = Describe("PushValidator", func() {
 
 		Context("when not in a git repository", func() {
 			It("passes when not in repo", func() {
-				fakeGit.InRepo = false
+				ctrl := gomock.NewController(GinkgoT())
+				runner := gitpkg.NewMockRunner(ctrl)
+				runner.EXPECT().IsInRepo().Return(false, nil)
+				validator = git.NewPushValidator(log, runner, nil, nil)
+
 				ctx := createContext("git push upstream main")
 				result := validator.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeTrue())
+			})
+
+			It("reports a timeout as unavailable", func() {
+				ctrl := gomock.NewController(GinkgoT())
+				runner := gitpkg.NewMockRunner(ctrl)
+				runner.EXPECT().IsInRepo().Return(false, context.DeadlineExceeded)
+				validator = git.NewPushValidator(log, runner, nil, nil)
+
+				result := validator.Validate(
+					context.Background(),
+					createContext("git push upstream main"),
+				)
+				Expect(result.Unavailable).To(BeTrue())
+				Expect(result.ReasonOf()).To(Equal(validatorpkg.ReasonTimeout))
+			})
+
+			It("reports a killed check as unavailable", func() {
+				ctrl := gomock.NewController(GinkgoT())
+				runner := gitpkg.NewMockRunner(ctrl)
+				runner.EXPECT().IsInRepo().Return(false, errors.New("signal: killed"))
+				validator = git.NewPushValidator(log, runner, nil, nil)
+
+				result := validator.Validate(
+					context.Background(),
+					createContext("git push upstream main"),
+				)
+				Expect(result.Unavailable).To(BeTrue())
+				Expect(result.ReasonOf()).To(Equal(validatorpkg.ReasonError))
 			})
 		})
 
@@ -94,6 +127,21 @@ var _ = Describe("PushValidator", func() {
 				Expect(result.Message).To(ContainSubstring("Available remotes:"))
 				Expect(result.Message).To(ContainSubstring("origin"))
 				Expect(result.Message).To(ContainSubstring("upstream"))
+			})
+
+			It("reports a remote lookup timeout as unavailable", func() {
+				ctrl := gomock.NewController(GinkgoT())
+				runner := gitpkg.NewMockRunner(ctrl)
+				runner.EXPECT().IsInRepo().Return(true, nil)
+				runner.EXPECT().GetRemoteURL("origin").Return("", context.DeadlineExceeded)
+				validator = git.NewPushValidator(log, runner, nil, nil)
+
+				result := validator.Validate(
+					context.Background(),
+					createContext("git push origin main"),
+				)
+				Expect(result.Unavailable).To(BeTrue())
+				Expect(result.ReasonOf()).To(Equal(validatorpkg.ReasonTimeout))
 			})
 
 			It("skips validation for a bare variable remote", func() {
@@ -177,6 +225,18 @@ var _ = Describe("PushValidator", func() {
 				ctx := createContext("git push")
 				result := validator.Validate(context.Background(), ctx)
 				Expect(result.Passed).To(BeFalse())
+			})
+
+			It("reports a branch lookup timeout as unavailable", func() {
+				ctrl := gomock.NewController(GinkgoT())
+				runner := gitpkg.NewMockRunner(ctrl)
+				runner.EXPECT().IsInRepo().Return(true, nil)
+				runner.EXPECT().GetCurrentBranch().Return("", context.DeadlineExceeded)
+				validator = git.NewPushValidator(log, runner, nil, nil)
+
+				result := validator.Validate(context.Background(), createContext("git push"))
+				Expect(result.Unavailable).To(BeTrue())
+				Expect(result.ReasonOf()).To(Equal(validatorpkg.ReasonTimeout))
 			})
 		})
 
@@ -520,6 +580,23 @@ var _ = Describe("PushValidator", func() {
 				Expect(result.Message).To(ContainSubstring("cannot be checked"))
 			})
 
+			It("reports a current branch timeout as unavailable", func() {
+				ctrl := gomock.NewController(GinkgoT())
+				runner := gitpkg.NewMockRunner(ctrl)
+				runner.EXPECT().IsInRepo().Return(true, nil)
+				runner.EXPECT().GetCurrentBranch().Return("", context.DeadlineExceeded)
+
+				cfg := &config.PushValidatorConfig{BlockedBranches: []string{"main"}}
+				validator = git.NewPushValidator(log, runner, cfg, nil)
+
+				result := validator.Validate(
+					context.Background(),
+					createContext("git push origin"),
+				)
+				Expect(result.Unavailable).To(BeTrue())
+				Expect(result.ReasonOf()).To(Equal(validatorpkg.ReasonTimeout))
+			})
+
 			It("pushes to --repo when no repository is given", func() {
 				cfg := &config.PushValidatorConfig{BlockedRemotes: []string{"fork"}}
 				validator = git.NewPushValidator(log, fakeGit, cfg, nil)
@@ -596,18 +673,18 @@ var _ = Describe("PushValidator", func() {
 		})
 
 		Context("with -C flag for different directory", func() {
-			It("passes for git push with -C flag to valid repo", func() {
+			It("reports an unavailable path-specific repository check", func() {
 				ctx := createContext("git -C /path/to/worktree push origin main")
 				result := validator.Validate(context.Background(), ctx)
-				// This creates a new runner for the path, which won't find the repo
-				// but should handle gracefully
-				Expect(result.Passed).To(BeTrue())
+				Expect(result.Unavailable).To(BeTrue())
+				Expect(result.ReasonOf()).To(Equal(validatorpkg.ReasonError))
 			})
 
 			It("handles -C flag before push subcommand", func() {
 				ctx := createContext("git -C /some/path push upstream feature")
 				result := validator.Validate(context.Background(), ctx)
-				Expect(result.Passed).To(BeTrue())
+				Expect(result.Unavailable).To(BeTrue())
+				Expect(result.ReasonOf()).To(Equal(validatorpkg.ReasonError))
 			})
 
 			It("handles --git-dir style paths", func() {

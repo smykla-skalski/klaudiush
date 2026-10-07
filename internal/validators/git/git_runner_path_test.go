@@ -101,7 +101,9 @@ var _ = Describe("CLIGitRunnerWithPath", func() {
 
 	Describe("IsInRepo", func() {
 		It("should return true when path is in a git repository", func() {
-			Expect(runner.IsInRepo()).To(BeTrue())
+			inRepo, err := runner.IsInRepo()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(inRepo).To(BeTrue())
 		})
 
 		It("should return false when path is not in a git repository", func() {
@@ -116,7 +118,9 @@ var _ = Describe("CLIGitRunnerWithPath", func() {
 			os.Unsetenv("GIT_WORK_TREE")
 
 			nonRepoRunner := git.NewCLIGitRunnerForPath(nonRepoDir)
-			Expect(nonRepoRunner.IsInRepo()).To(BeFalse())
+			inRepo, repoErr := nonRepoRunner.IsInRepo()
+			Expect(repoErr).NotTo(HaveOccurred())
+			Expect(inRepo).To(BeFalse())
 		})
 	})
 
@@ -434,7 +438,9 @@ var _ = Describe("NewGitRunnerForPath", func() {
 	It("should return a runner that works for the specified path", func() {
 		runner := git.NewGitRunnerForPath(tempDir)
 		Expect(runner).NotTo(BeNil())
-		Expect(runner.IsInRepo()).To(BeTrue())
+		inRepo, repoErr := runner.IsInRepo()
+		Expect(repoErr).NotTo(HaveOccurred())
+		Expect(inRepo).To(BeTrue())
 
 		root, rootErr := runner.GetRepoRoot()
 		Expect(rootErr).NotTo(HaveOccurred())
@@ -449,7 +455,9 @@ var _ = Describe("NewGitRunnerForPath", func() {
 		It("should return a CLI runner", func() {
 			runner := git.NewGitRunnerForPath(tempDir)
 			Expect(runner).NotTo(BeNil())
-			Expect(runner.IsInRepo()).To(BeTrue())
+			inRepo, repoErr := runner.IsInRepo()
+			Expect(repoErr).NotTo(HaveOccurred())
+			Expect(inRepo).To(BeTrue())
 
 			// Verify it's working correctly
 			root, rootErr := runner.GetRepoRoot()
@@ -466,7 +474,9 @@ var _ = Describe("NewGitRunnerForPath", func() {
 		It("should return a CLI runner", func() {
 			runner := git.NewGitRunnerForPath(tempDir)
 			Expect(runner).NotTo(BeNil())
-			Expect(runner.IsInRepo()).To(BeTrue())
+			inRepo, repoErr := runner.IsInRepo()
+			Expect(repoErr).NotTo(HaveOccurred())
+			Expect(inRepo).To(BeTrue())
 		})
 	})
 
@@ -496,7 +506,9 @@ var _ = Describe("NewGitRunnerForPath", func() {
 			runner := git.NewGitRunnerForPath(nonRepoDir)
 			Expect(runner).NotTo(BeNil())
 			// CLI runner should return false for non-repo
-			Expect(runner.IsInRepo()).To(BeFalse())
+			inRepo, repoErr := runner.IsInRepo()
+			Expect(repoErr).NotTo(HaveOccurred())
+			Expect(inRepo).To(BeFalse())
 		})
 	})
 })
