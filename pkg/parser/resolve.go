@@ -462,10 +462,11 @@ func (w *astWalker) lineGHAlias(name string) (string, bool) {
 // alias or function, or a git or gh shell alias. The name keeps the
 // definition from being expanded inside itself.
 type nestedScript struct {
-	name      string
-	text      string
-	splitArgs bool
-	forward   map[string]writtenArg
+	name         string
+	text         string
+	splitArgs    bool
+	publishFuncs bool
+	forward      map[string]writtenArg
 }
 
 // programBehind returns git or gh for a program invoked with one of their
@@ -861,10 +862,11 @@ func (w *astWalker) definitionScripts(cmd Command) []nestedScript {
 
 		text, split := substitutePositional(body, cmd.Args)
 		scripts = append(scripts, nestedScript{
-			name:      cmd.Invoked,
-			text:      text,
-			splitArgs: split,
-			forward:   w.forwardPositional(cmd, body),
+			name:         cmd.Invoked,
+			text:         text,
+			splitArgs:    split,
+			publishFuncs: true,
+			forward:      w.forwardPositional(cmd, body),
 		})
 	}
 
@@ -1140,13 +1142,15 @@ type scriptWalk struct {
 
 	prelude   []startupScript
 	forwarded map[string]writtenArg
+	// Shell function calls define nested functions in their caller's scope.
+	publishFuncs bool
 }
 
 // walkScript records the commands of a script that parent runs. A cd inside
-// the script moves only the script, and its definitions stay inside it. A
-// shell runs the commands before a syntax error and what follows is unknown,
-// so a script that fails to parse fails closed; interpreter strings, which
-// are mostly prose, do not.
+// the script moves only the script. Its definitions stay inside it unless it
+// is a same-shell function call. A shell runs the commands before a syntax
+// error and what follows is unknown, so a script that fails to parse fails
+// closed; interpreter strings, which are mostly prose, do not.
 func (w *astWalker) walkScript(script string, parent Command, depth int, sw scriptWalk) {
 	if !w.state.spend() {
 		w.opaque(OpacityWorkBudget, sw.operation(), "")
@@ -1197,6 +1201,7 @@ func (w *astWalker) walkScript(script string, parent Command, depth int, sw scri
 	}
 
 	child.walkEpilogue(sw.prelude, parent, movedLeniently)
+	w.publishFunctions(child, sw)
 
 	if runsInShell(parent, sw) && parent.Name != trapBuiltin {
 		w.inheritDirectory(child, parent.unconditional)
@@ -1213,6 +1218,12 @@ func (w *astWalker) walkScript(script string, parent Command, depth int, sw scri
 	w.dynamicWrites += child.dynamicWrites
 	w.dynamicWriteLocs = append(w.dynamicWriteLocs, child.dynamicWriteLocs...)
 	w.stdinReplaced = w.stdinReplaced || (child.stdinReplaced && runsInShell(parent, sw))
+}
+
+func (w *astWalker) publishFunctions(child *astWalker, sw scriptWalk) {
+	if sw.publishFuncs {
+		maps.Copy(w.funcs, child.funcs)
+	}
 }
 
 // argStrings converts argument words to strings. A process substitution fed

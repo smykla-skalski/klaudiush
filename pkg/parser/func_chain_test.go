@@ -88,6 +88,27 @@ var _ = Describe("Commands chained after a function definition", func() {
 		Expect(gitLines(result)).To(BeEmpty())
 	})
 
+	It("records a function defined by a same-line function call", func() {
+		result := parse("f() { g() { git push --force origin main; }; }; f; g")
+
+		Expect(gitLines(result)).To(ConsistOf("push --force origin main"))
+		Expect(result.Truncated).To(BeFalse())
+	})
+
+	It("records a zsh function defined by a same-line function call", func() {
+		result := parse("f() g() { git push --force origin main; }; f; g")
+
+		Expect(gitLines(result)).To(ConsistOf("push --force origin main"))
+		Expect(result.Truncated).To(BeFalse())
+	})
+
+	It("does not record a nested function until its parent is called", func() {
+		result := parse("f() { g() { git push --force origin main; }; }; g")
+
+		Expect(gitLines(result)).To(BeEmpty())
+		Expect(result.Truncated).To(BeFalse())
+	})
+
 	It("keeps only the first command as the body for later calls", func() {
 		result := parse("f() { git status; } && git push --force; f")
 

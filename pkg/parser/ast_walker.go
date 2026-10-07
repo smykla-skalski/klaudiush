@@ -816,7 +816,11 @@ func (w *astWalker) walkNested(script nestedScript, cmd Command, depth int) {
 		script.text,
 		cmd,
 		depth,
-		scriptWalk{name: script.name, forwarded: script.forward},
+		scriptWalk{
+			name:         script.name,
+			forwarded:    script.forward,
+			publishFuncs: script.publishFuncs,
+		},
 	)
 
 	if script.splitArgs && (untrusted || w.state.untrusted) {
