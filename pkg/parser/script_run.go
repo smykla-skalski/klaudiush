@@ -176,7 +176,7 @@ func (w *astWalker) lookupUnchanged(program string) bool {
 
 // lookupEnvChanged reports an environment the lookup may not share with the
 // shell: CDPATH sending a cd elsewhere, a new shell sourcing BASH_ENV or ENV
-// first, or a variable git or go read assigned on the line.
+// first, or a variable an allowed lookup reads assigned on the line.
 func (w *astWalker) lookupEnvChanged() bool {
 	if cdpath, set := w.resolver.LookupEnv("CDPATH"); set && cdpath != "" && w.currentDir != "" {
 		return true
