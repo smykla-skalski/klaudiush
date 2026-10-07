@@ -352,6 +352,23 @@ var _ = Describe("Sourcing a name through PATH", func() {
 		))
 	})
 
+	It("expands a literal variable before searching PATH", func() {
+		resolver := fakeResolver{
+			files: map[string]string{
+				"env.sh":      "git status\n",
+				"/bin/env.sh": "git push origin main\n",
+			},
+			paths: map[string]string{"env.sh": "/bin/env.sh"},
+		}
+
+		result := parse(resolver, `f=env.sh; source "$f"`)
+
+		Expect(result.GitOperations).To(ContainElement(HaveField("Args", ContainElement("push"))))
+		Expect(result.GitOperations).NotTo(ContainElement(
+			HaveField("Args", ContainElement("status")),
+		))
+	})
+
 	It("falls back to the cwd when PATH has no file", func() {
 		result := parse(fakeResolver{files: map[string]string{"env.sh": "git status\n"}},
 			"source env.sh")
@@ -393,6 +410,30 @@ var _ = Describe("Sourcing a name through PATH", func() {
 	It("fails closed after sourcepath changes", func() {
 		result := parse(fakeResolver{files: map[string]string{"env.sh": "git status\n"}},
 			"shopt -u sourcepath; source env.sh")
+
+		Expect(result.Truncated).To(BeTrue())
+		Expect(result.Opacities).To(ContainElement(HaveField("Detail", parser.DetailSourcePath)))
+	})
+
+	It("does not treat a sourcepath query as a change", func() {
+		resolver := fakeResolver{
+			files: map[string]string{"/bin/env.sh": "git status\n"},
+			paths: map[string]string{"env.sh": "/bin/env.sh"},
+		}
+
+		result := parse(resolver, "shopt -q sourcepath; source env.sh")
+
+		Expect(result.Truncated).To(BeFalse())
+		Expect(result.GitOperations).To(ContainElement(HaveField("Args", ContainElement("status"))))
+	})
+
+	It("fails closed when a child shell changes sourcepath", func() {
+		resolver := fakeResolver{
+			files: map[string]string{"/bin/env.sh": "git status\n"},
+			paths: map[string]string{"env.sh": "/bin/env.sh"},
+		}
+
+		result := parse(resolver, `bash +O sourcepath -c 'source env.sh'`)
 
 		Expect(result.Truncated).To(BeTrue())
 		Expect(result.Opacities).To(ContainElement(HaveField("Detail", parser.DetailSourcePath)))

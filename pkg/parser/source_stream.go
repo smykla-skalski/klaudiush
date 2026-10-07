@@ -444,17 +444,25 @@ func (w *astWalker) sourceLaunch(cmd Command) []scriptFile {
 		return nil
 	}
 
-	if !strings.Contains(args[0], "/") {
+	operand := args[0]
+	if !marked(operand) && !w.fromOutput(operand) {
+		expanded := w.expandName(operand)
+		if !HasUnresolvedVars(expanded) {
+			operand = expanded
+		}
+	}
+
+	if !strings.Contains(operand, "/") && !HasUnresolvedVars(operand) {
 		if w.state.pathChanged {
 			w.addOpacity(sourceOpacity(cmd, DetailSourcePath, ""))
 
 			return nil
 		}
 
-		args[0] = w.sourceSearchPath(cmd, args[0])
+		operand = w.sourceSearchPath(cmd, operand)
 	}
 
-	path, o := w.sourcePath(cmd, args[0])
+	path, o := w.sourcePath(cmd, operand)
 	if o.Cause != "" {
 		w.addOpacity(o)
 

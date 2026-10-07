@@ -868,7 +868,7 @@ func (w *astWalker) trackShellState(cmd Command) {
 	case "enable":
 		w.state.pathChanged = true
 	case "shopt":
-		if slices.Contains(cmd.Args, "sourcepath") {
+		if shoptChangesSourcePath(cmd.Args) {
 			w.state.pathChanged = true
 		}
 	case setBuiltin:
@@ -876,6 +876,34 @@ func (w *astWalker) trackShellState(cmd Command) {
 		w.noteAllExport(cmd.Args)
 		w.noteKeywordMode(cmd.Args)
 	}
+
+	if shells[cmd.Name] && shellSetsSourcePath(cmd.Args) {
+		w.state.pathChanged = true
+	}
+}
+
+func shoptChangesSourcePath(args []string) bool {
+	changes := slices.ContainsFunc(args, func(arg string) bool {
+		return strings.HasPrefix(arg, "-") &&
+			(strings.Contains(arg[1:], "s") || strings.Contains(arg[1:], "u"))
+	})
+
+	return changes && slices.Contains(args, "sourcepath")
+}
+
+func shellSetsSourcePath(args []string) bool {
+	for i, arg := range args {
+		option := len(arg) > 1 && (arg[0] == '-' || arg[0] == '+')
+		if option && arg[1:] == "O" && i+1 < len(args) && args[i+1] == "sourcepath" {
+			return true
+		}
+
+		if option && arg[1:] == "Osourcepath" {
+			return true
+		}
+	}
+
+	return false
 }
 
 // changeDir moves the walker's directory, joining a relative target onto

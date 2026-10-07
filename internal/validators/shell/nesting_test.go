@@ -591,7 +591,7 @@ var _ = Describe("NestingValidator", func() {
 		result := blocked(`PATH=/other; source env.sh`)
 
 		Expect(result.Findings).To(ConsistOf(SatisfyAll(
-			HaveField("Required", "an explicit path after changing PATH"),
+			HaveField("Required", "an explicit path after changing PATH or sourcepath"),
 			HaveField("Repair", "Write the sourced file's path explicitly"),
 		)))
 	})
