@@ -24,6 +24,7 @@ const (
 	DetailSourceDescriptor   = "it reads a file descriptor or device klaudiush cannot follow"
 	DetailSourceOutput       = "it reads a file whose path comes from command output"
 	DetailSourceOption       = "it takes an option klaudiush does not follow"
+	DetailSourcePath         = "it searches after PATH or source lookup changed earlier on the line"
 	DetailShellOperand       = "it runs a script whose path comes from command output or a process substitution"
 	DetailShellCommand       = "it runs a command line that comes from command output or a process substitution"
 )
@@ -443,7 +444,25 @@ func (w *astWalker) sourceLaunch(cmd Command) []scriptFile {
 		return nil
 	}
 
-	path, o := w.sourcePath(cmd, args[0])
+	operand := args[0]
+	if !marked(operand) && !w.fromOutput(operand) {
+		expanded := w.expandName(operand)
+		if !HasUnresolvedVars(expanded) {
+			operand = expanded
+		}
+	}
+
+	if !strings.Contains(operand, "/") && !HasUnresolvedVars(operand) {
+		if w.state.pathChanged {
+			w.addOpacity(sourceOpacity(cmd, DetailSourcePath, ""))
+
+			return nil
+		}
+
+		operand = w.sourceSearchPath(cmd, operand)
+	}
+
+	path, o := w.sourcePath(cmd, operand)
 	if o.Cause != "" {
 		w.addOpacity(o)
 
@@ -455,6 +474,44 @@ func (w *astWalker) sourceLaunch(cmd Command) []scriptFile {
 	}
 
 	return []scriptFile{{path: path, explicit: true, args: args[1:], withArgs: len(args) > 1}}
+}
+
+// sourceSearchPath returns the first PATH candidate that exists on disk or
+// was written earlier on the line, then the cwd spelling when none exists.
+func (w *astWalker) sourceSearchPath(cmd Command, name string) string {
+	diskPath, diskFound := w.resolver.LookSource(name, cmd.WorkingDirectory)
+
+	pathValue, pathKnown := w.resolver.LookupEnv(pathVar)
+	if !pathKnown {
+		if diskFound {
+			return diskPath
+		}
+
+		return name
+	}
+
+	for _, dir := range filepath.SplitList(pathValue) {
+		if dir == "" {
+			dir = "."
+		}
+
+		candidate := resolvePath(cmd.WorkingDirectory, filepath.Join(dir, name))
+
+		_, written, _ := w.lastLineWrite(candidate)
+		if written || w.unplacedWriteBefore(cmd, candidate) {
+			return candidate
+		}
+
+		if diskFound && filepath.Clean(candidate) == filepath.Clean(diskPath) {
+			return diskPath
+		}
+	}
+
+	if diskFound {
+		return diskPath
+	}
+
+	return name
 }
 
 // sourcePath returns the path of the script source reads for operand, ""

@@ -587,6 +587,15 @@ var _ = Describe("NestingValidator", func() {
 		)))
 	})
 
+	It("explains a source lookup after PATH changes", func() {
+		result := blocked(`PATH=/other; source env.sh`)
+
+		Expect(result.Findings).To(ConsistOf(SatisfyAll(
+			HaveField("Required", "an explicit path after changing PATH or sourcepath"),
+			HaveField("Repair", "Write the sourced file's path explicitly"),
+		)))
+	})
+
 	It("follows a sourced here-string", func() {
 		Expect(v.Validate(context.Background(), bash(`source /dev/stdin <<< 'git status'`)).Passed).
 			To(BeTrue())

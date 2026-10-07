@@ -150,6 +150,39 @@ var _ = Describe("OSResolver", func() {
 		})
 	})
 
+	Describe("LookSource", func() {
+		It("finds a non-executable file on PATH", func() {
+			path := filepath.Join(dir, "env.sh")
+			Expect(os.WriteFile(path, []byte("git status\n"), 0o600)).To(Succeed())
+			GinkgoT().Setenv("PATH", dir)
+
+			found, ok := resolver.LookSource("env.sh", "")
+
+			Expect(ok).To(BeTrue())
+			Expect(found).To(Equal(path))
+		})
+
+		It("reports a source name not on PATH", func() {
+			GinkgoT().Setenv("PATH", dir)
+
+			_, ok := resolver.LookSource("missing.sh", "")
+			Expect(ok).To(BeFalse())
+		})
+
+		It("resolves relative PATH entries from the shell directory", func() {
+			bin := filepath.Join(dir, "bin")
+			Expect(os.Mkdir(bin, 0o700)).To(Succeed())
+			path := filepath.Join(bin, "env.sh")
+			Expect(os.WriteFile(path, []byte("git status\n"), 0o600)).To(Succeed())
+			GinkgoT().Setenv("PATH", "bin")
+
+			found, ok := resolver.LookSource("env.sh", dir)
+
+			Expect(ok).To(BeTrue())
+			Expect(found).To(Equal(path))
+		})
+	})
+
 	Describe("GHAlias", func() {
 		It("reads an alias from gh's configuration", func() {
 			GinkgoT().Setenv("GH_CONFIG_DIR", dir)

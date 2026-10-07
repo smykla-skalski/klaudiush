@@ -73,6 +73,9 @@ type Resolver interface {
 	Program(word, dir string) Program
 	// LookPath returns the file a bare program name runs.
 	LookPath(name string) (string, bool)
+	// LookSource returns the first file with name on PATH, without requiring it
+	// to be executable.
+	LookSource(name, dir string) (string, bool)
 	// GitAlias returns the value of a git alias as seen from dir.
 	GitAlias(dir, name string) (string, bool)
 	GitCommand(name string) bool
@@ -106,6 +109,7 @@ type OSResolver struct {
 	execPath  *string                      // git --exec-path
 	ghAliases map[string]string            // gh aliases
 	paths     map[string]string            // LookPath results, "" when not found
+	sources   map[string]string            // LookSource results, "" when not found
 	outputs   map[string]string
 }
 
@@ -216,6 +220,50 @@ func (r *OSResolver) LookPath(name string) (string, bool) {
 	}
 
 	return path, path != ""
+}
+
+// LookSource returns the first regular file with name on PATH. Empty PATH
+// entries name the current directory, as they do in the shell.
+func (r *OSResolver) LookSource(name, dir string) (string, bool) {
+	key := name + "\x00" + dir
+
+	r.mu.Lock()
+	path, cached := r.sources[key]
+	r.mu.Unlock()
+
+	if !cached {
+		path = lookSource(name, dir)
+
+		r.mu.Lock()
+		if r.sources == nil {
+			r.sources = make(map[string]string)
+		}
+
+		r.sources[key] = path
+		r.mu.Unlock()
+	}
+
+	return path, path != ""
+}
+
+func lookSource(name, workDir string) string {
+	pathValue, ok := os.LookupEnv(pathVar)
+	if !ok {
+		return ""
+	}
+
+	for _, dir := range filepath.SplitList(pathValue) {
+		if dir == "" {
+			dir = "."
+		}
+
+		path := resolvePath(workDir, filepath.Join(dir, name))
+		if info, err := os.Stat(path); err == nil && info.Mode().IsRegular() {
+			return path
+		}
+	}
+
+	return ""
 }
 
 // lookPath searches PATH, then fallbackBinDirs.
