@@ -91,8 +91,8 @@ func (w *astWalker) startupWriteTargets(fw FileWrite) []startupTarget {
 			return []startupTarget{{label: label, foreign: foreign}}
 		}
 
-		if fw.TargetUnknown && fw.targetFromSubstitution {
-			return []startupTarget{{label: "dynamic redirect", opaque: true}}
+		if fw.Path == "" && fw.targetFromSubstitution {
+			return []startupTarget{{label: "dynamic redirect"}}
 		}
 
 		return nil

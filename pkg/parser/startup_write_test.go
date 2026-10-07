@@ -123,6 +123,16 @@ var _ = Describe("Startup file writes", func() {
 		Expect(result.Truncated).To(BeFalse())
 	})
 
+	It("inspects captured content sent to an unknown dynamic target", func() {
+		result := parse(
+			`echo 'git push --force origin main' > "$(target)"`,
+			fakeResolver{env: map[string]string{"HOME": "/home/u"}},
+		)
+
+		Expect(pushed(result)).To(BeTrue())
+		Expect(result.Truncated).To(BeFalse())
+	})
+
 	DescribeTable(
 		"combines appended content with prior bytes",
 		func(command string, files map[string]string) {
@@ -247,7 +257,7 @@ var _ = Describe("Startup file writes", func() {
 		),
 		Entry(
 			"unresolved dynamic redirect target",
-			`echo 'git push --force origin main' > "$(target)"`,
+			`date > "$(target)"`,
 			"startup-file",
 			"dynamic redirect",
 		),

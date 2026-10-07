@@ -1405,7 +1405,6 @@ func (w *astWalker) extractRedirect(stmt *syntax.Stmt) {
 			WorkingDirectory:       w.currentDir,
 			DirUnknown:             w.dirUnknown,
 			Vars:                   w.varScope(),
-			TargetUnknown:          redirectTargetUnknown(out.dynamic, out.path),
 			targetFromSubstitution: out.fromSubstitution,
 		})
 	}
@@ -1435,7 +1434,6 @@ func (w *astWalker) extractRedirect(stmt *syntax.Stmt) {
 			WorkingDirectory:       w.currentDir,
 			DirUnknown:             w.dirUnknown,
 			Vars:                   w.varScope(),
-			TargetUnknown:          redirectTargetUnknown(info.outputDynamic, info.outputPath),
 			targetFromSubstitution: info.outputFromSub,
 		})
 	case info.hasOutput:
@@ -1453,7 +1451,6 @@ func (w *astWalker) extractRedirect(stmt *syntax.Stmt) {
 			WorkingDirectory:       w.currentDir,
 			DirUnknown:             w.dirUnknown,
 			Vars:                   w.varScope(),
-			TargetUnknown:          redirectTargetUnknown(info.outputDynamic, info.outputPath),
 			targetFromSubstitution: info.outputFromSub,
 		}
 
@@ -1470,10 +1467,6 @@ func (w *astWalker) extractRedirect(stmt *syntax.Stmt) {
 
 		w.fileWrites = append(w.fileWrites, fw)
 	}
-}
-
-func redirectTargetUnknown(dynamic bool, path string) bool {
-	return dynamic && path == ""
 }
 
 // copiesStdinVerbatim reports whether the command copies its stdin to stdout

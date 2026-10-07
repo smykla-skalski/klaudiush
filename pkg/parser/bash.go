@@ -89,6 +89,9 @@ func (p *BashParser) Parse(command string) (*ParseResult, error) {
 	}
 
 	walker.validateStartupWrites()
+	fileWrites := slices.DeleteFunc(slices.Clone(walker.fileWrites), func(fw FileWrite) bool {
+		return fw.Path == "" && fw.targetFromSubstitution
+	})
 
 	// Extract git operations
 	gitOps := make([]Command, 0)
@@ -101,7 +104,7 @@ func (p *BashParser) Parse(command string) (*ParseResult, error) {
 
 	return &ParseResult{
 		Commands:      walker.commands,
-		FileWrites:    walker.fileWrites,
+		FileWrites:    fileWrites,
 		GitOperations: gitOps,
 		Assignments:   walker.assignments,
 		Truncated:     walker.state.truncated,
