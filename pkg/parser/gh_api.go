@@ -45,6 +45,7 @@ const (
 	flagInput       = "--input"
 	flagHeaderLong  = "--header"
 	flagFieldLong   = "--field"
+	flagHostname    = "--hostname"
 
 	// Short flags several clients spell the same way for different options:
 	// -F is gh's --field and curl's --form, -b is gh's --body and curl's
@@ -72,7 +73,7 @@ var ghAPIValueFlags = map[string]bool{
 	"--jq":          true,
 	"-t":            true,
 	"--template":    true,
-	"--hostname":    true,
+	flagHostname:    true,
 	"--cache":       true,
 	"-p":            true,
 	"--preview":     true,
@@ -126,6 +127,17 @@ type GHAPICommand struct {
 	// InputFile is the --input path, when the body comes from a file rather
 	// than from a field or stdin. "-" means stdin and is not recorded here.
 	InputFile string
+
+	// Fields holds the key=value pairs sent with -f, --raw-field, -F and
+	// --field. A later field overwrites an earlier one with the same key.
+	Fields map[string]string
+
+	// FieldFiles holds the fields whose value -F or --field reads from a file,
+	// keyed by field name, with the file path as the value.
+	FieldFiles map[string]string
+
+	// Hostname is the --hostname value, empty when the default host is used.
+	Hostname string
 
 	// WorkingDirectory is the effective directory of the command, for
 	// resolving a relative InputFile.
@@ -236,6 +248,8 @@ func (c *GHAPICommand) parseAPIArg(args []string, idx int, state *ghAPIParseStat
 	switch {
 	case name == flagMethodShort || name == flagMethodLong:
 		state.explicitMethod = strings.ToUpper(value)
+	case name == flagHostname:
+		c.Hostname = value
 	case name == flagInput:
 		state.hasFieldFlag = true
 
@@ -247,7 +261,9 @@ func (c *GHAPICommand) parseAPIArg(args []string, idx int, state *ghAPIParseStat
 
 		// Only --field/-F expands a leading @ to a file; --raw-field takes the
 		// value literally.
-		c.collectQueryField(value, name == flagFieldShort || name == flagFieldLong)
+		expandsFile := name == flagFieldShort || name == flagFieldLong
+		c.collectField(value, expandsFile)
+		c.collectQueryField(value, expandsFile)
 	}
 
 	return used
@@ -264,6 +280,33 @@ func (c *GHAPICommand) parseAPIPositional(arg string, state *ghAPIParseState) {
 	if c.Endpoint == "" {
 		c.Endpoint = arg
 	}
+}
+
+// collectField records a key=value field. A value read from a file is kept
+// apart, since the text after the @ is a path rather than the value sent.
+func (c *GHAPICommand) collectField(field string, expandsFile bool) {
+	key, value, found := strings.Cut(field, "=")
+	if !found || key == "" {
+		return
+	}
+
+	if path, isFile := strings.CutPrefix(value, "@"); isFile && expandsFile {
+		if c.FieldFiles == nil {
+			c.FieldFiles = map[string]string{}
+		}
+
+		c.FieldFiles[key] = path
+		delete(c.Fields, key)
+
+		return
+	}
+
+	if c.Fields == nil {
+		c.Fields = map[string]string{}
+	}
+
+	c.Fields[key] = value
+	delete(c.FieldFiles, key)
 }
 
 // collectQueryField appends a query=... field value to the GraphQL document.

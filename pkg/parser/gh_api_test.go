@@ -202,3 +202,28 @@ var _ = Describe("ParseGHAPICommand", func() {
 		})
 	})
 })
+
+var _ = Describe("ParseGHAPICommand fields", func() {
+	It("records field values, files and the hostname", func() {
+		apiCmd, err := parser.ParseGHAPICommand(parseFirstGHCommand(
+			`gh api --hostname ghe.example.com -X PUT repos/o/r/pulls/1/merge ` +
+				`-f merge_method=squash -F commit_message=@body.txt --raw-field sha=@abc`,
+		))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(apiCmd.Hostname).To(Equal("ghe.example.com"))
+		Expect(apiCmd.Fields).To(Equal(map[string]string{
+			"merge_method": "squash",
+			"sha":          "@abc",
+		}))
+		Expect(apiCmd.FieldFiles).To(Equal(map[string]string{"commit_message": "body.txt"}))
+	})
+
+	It("lets a later field replace an earlier one with the same key", func() {
+		apiCmd, err := parser.ParseGHAPICommand(parseFirstGHCommand(
+			`gh api -X PUT repos/o/r/pulls/1/merge -F commit_message=@a.txt -f commit_message=x`,
+		))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(apiCmd.Fields).To(Equal(map[string]string{"commit_message": "x"}))
+		Expect(apiCmd.FieldFiles).To(BeEmpty())
+	})
+})

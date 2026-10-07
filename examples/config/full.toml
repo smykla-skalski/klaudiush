@@ -179,7 +179,6 @@ blocked_endpoints = [
   "DELETE **/contents/**",
   "POST **/git/commits",
   "POST **/merges",
-  "PUT **/pulls/*/merge",
 ]
 # Mutation names rejected when found in the query body of a /graphql request
 blocked_graphql_mutations = ["createCommitOnBranch"]

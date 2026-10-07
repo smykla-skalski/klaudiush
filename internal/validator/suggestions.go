@@ -29,7 +29,7 @@ var DefaultSuggestions = map[Reference]string{
 	RefGitSignoffMismatch:    "Use correct signoff identity: git config user.name and user.email",
 	RefGitListFormat:         "Add empty line before list items in commit body",
 	RefGitMergeMessage:       "Fix PR title/body to follow commit message conventions before merge",
-	RefGitMergeSignoff:       "Add --body flag with Signed-off-by trailer to gh pr merge command",
+	RefGitMergeSignoff:       "Add a Signed-off-by trailer to the merge commit body (gh pr merge --body, or commit_message for the REST merge endpoint)",
 	RefGitBlockedFiles:       "Remove blocked files from your git add command. Do not stage these files.",
 	RefGitBranchName:         "Use lowercase kebab-case for branch names (e.g., feat/my-feature)",
 	RefGitNoVerify:           "Remove --no-verify flag and fix any pre-commit hook issues",

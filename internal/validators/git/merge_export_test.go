@@ -1,6 +1,9 @@
 package git
 
-import "github.com/smykla-skalski/klaudiush/pkg/parser"
+import (
+	"github.com/smykla-skalski/klaudiush/internal/exec"
+	"github.com/smykla-skalski/klaudiush/pkg/parser"
+)
 
 // Export functions for testing.
 // These functions expose internal methods for unit testing.
@@ -24,7 +27,7 @@ func (v *MergeValidator) ExportValidateSignoffInText(text string) []string {
 func (v *MergeValidator) ExportValidateMergeCommandSignoff(
 	mergeCmd *parser.GHMergeCommand,
 ) string {
-	result := v.validateMergeCommandSignoff(mergeCmd)
+	result := v.validateMergeCommandSignoff(mergeCmd, ghMergeSignoffHint)
 	if result.Passed {
 		return ""
 	}
@@ -40,4 +43,9 @@ func (v *MergeValidator) ExportIsMessageValidationEnabled() bool {
 // ExportShouldValidateAutomerge exposes shouldValidateAutomerge for testing.
 func (v *MergeValidator) ExportShouldValidateAutomerge() bool {
 	return v.shouldValidateAutomerge()
+}
+
+// ExportSetCommandRunner replaces the runner that fetches pull request details.
+func (v *MergeValidator) ExportSetCommandRunner(runner exec.CommandRunner) {
+	v.cmdRunner = runner
 }

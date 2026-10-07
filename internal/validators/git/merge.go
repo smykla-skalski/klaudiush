@@ -20,6 +20,21 @@ import (
 const (
 	ghAPITimeout       = 30 * time.Second
 	minPRBodyLineCount = 2
+
+	ghMergeSignoffHint = "Add --body flag with signoff:\n\n" +
+		"gh pr merge --body \"$(cat <<'EOF'\n" +
+		"Your commit body here\n\n" +
+		"%s\n" +
+		"EOF\n" +
+		")\""
+
+	restMergeSignoffHint = "Send the signoff in the commit_message field:\n\n" +
+		"gh api -X PUT repos/{owner}/{repo}/pulls/{number}/merge " +
+		"-f merge_method=squash -f commit_message=\"$(cat <<'EOF'\n" +
+		"Your commit body here\n\n" +
+		"%s\n" +
+		"EOF\n" +
+		")\""
 )
 
 var (
@@ -53,6 +68,7 @@ type MergeValidator struct {
 	config    *config.MergeValidatorConfig
 	gitRunner GitRunner
 	cmdRunner exec.CommandRunner
+	apiHosts  []string
 }
 
 // NewMergeValidator creates a new MergeValidator instance.
@@ -105,7 +121,11 @@ func (v *MergeValidator) Validate(ctx context.Context, hookCtx *hook.Context) *v
 		}
 
 		// Validate the merge command
-		return v.validateMerge(ctx, mergeCmd)
+		return v.validateMerge(ctx, mergeCmd, ghMergeSignoffHint)
+	}
+
+	if mergeCmd, ok := v.findRESTMerge(result); ok {
+		return v.validateMerge(ctx, mergeCmd, restMergeSignoffHint)
 	}
 
 	log.Debug("No gh pr merge commands found")
@@ -117,6 +137,7 @@ func (v *MergeValidator) Validate(ctx context.Context, hookCtx *hook.Context) *v
 func (v *MergeValidator) validateMerge(
 	ctx context.Context,
 	mergeCmd *parser.GHMergeCommand,
+	signoffHint string,
 ) *validator.Result {
 	log := v.Logger()
 
@@ -154,7 +175,7 @@ func (v *MergeValidator) validateMerge(
 	}
 
 	// Validate signoff in merge command body (not PR body)
-	return v.validateMergeCommandSignoff(mergeCmd)
+	return v.validateMergeCommandSignoff(mergeCmd, signoffHint)
 }
 
 // fetchPRDetails fetches PR details from GitHub API.
@@ -194,6 +215,10 @@ func (v *MergeValidator) buildGHArgs(mergeCmd *parser.GHMergeCommand) ([]string,
 // buildAPIArgs builds gh api command arguments.
 func (*MergeValidator) buildAPIArgs(mergeCmd *parser.GHMergeCommand) []string {
 	args := []string{"api"}
+
+	if mergeCmd.Hostname != "" {
+		args = append(args, "--hostname", mergeCmd.Hostname)
+	}
 
 	if mergeCmd.Repo != "" {
 		args = append(args, fmt.Sprintf("repos/%s/pulls/%d", mergeCmd.Repo, mergeCmd.PRNumber))
@@ -294,6 +319,7 @@ func (v *MergeValidator) validateMergeMessage(pr *PRDetails) *validator.Result {
 // The signoff should be in the --body or --body-file flag, not the PR body.
 func (v *MergeValidator) validateMergeCommandSignoff(
 	mergeCmd *parser.GHMergeCommand,
+	signoffHint string,
 ) *validator.Result {
 	if !v.shouldRequireSignoff() {
 		return validator.Pass()
@@ -333,15 +359,7 @@ func (v *MergeValidator) validateMergeCommandSignoff(
 	return validator.FailWithRef(
 		validator.RefGitMergeSignoff,
 		"Merge command missing Signed-off-by in commit body",
-	).AddDetail("errors", fmt.Sprintf(
-		"Add --body flag with signoff:\n\n"+
-			"gh pr merge --body \"$(cat <<'EOF'\n"+
-			"Your commit body here\n\n"+
-			"%s\n"+
-			"EOF\n"+
-			")\"",
-		signoffExample,
-	))
+	).AddDetail("errors", fmt.Sprintf(signoffHint, signoffExample))
 }
 
 // validateTitle validates the PR title as a commit message title.

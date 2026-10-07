@@ -297,7 +297,8 @@ func (f *GitValidatorFactory) createMergeValidator(
 
 	return ValidatorWithPredicate{
 		Validator: wrapValidatorWithSeverity(
-			gitvalidators.NewMergeValidator(f.log, f.getGitRunner(), cfg, rc),
+			gitvalidators.NewMergeValidator(f.log, f.getGitRunner(), cfg, rc).
+				WithAPIHosts(f.githubAPIHosts()),
 			cfg,
 		),
 		Predicate: validator.And(
@@ -306,7 +307,19 @@ func (f *GitValidatorFactory) createMergeValidator(
 			validator.Or(
 				validator.CommandContains("gh pr merge"),
 				validator.GHCommandIs("pr", "merge"),
+				validator.CommandMatches(gitvalidators.RESTPRMergePattern),
 			),
 		),
 	}
+}
+
+// githubAPIHosts returns the GitHub API hosts configured for the gh api
+// validator, so a REST merge is recognised on the same hosts it checks.
+func (f *GitValidatorFactory) githubAPIHosts() []string {
+	if f.cfg == nil || f.cfg.Validators == nil || f.cfg.Validators.GitHub == nil ||
+		f.cfg.Validators.GitHub.API == nil {
+		return nil
+	}
+
+	return f.cfg.Validators.GitHub.API.Hosts
 }

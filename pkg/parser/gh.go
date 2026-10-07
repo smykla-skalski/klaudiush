@@ -70,6 +70,10 @@ type GHMergeCommand struct {
 	// Repo is the repository from --repo or -R flag.
 	Repo string
 
+	// Hostname is the GitHub host of a merge made through the REST API, empty
+	// for the default host. gh pr merge carries any host inside Repo instead.
+	Hostname string
+
 	// RawArgs contains all the raw arguments for debugging.
 	RawArgs []string
 }
