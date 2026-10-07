@@ -493,7 +493,7 @@ func (w *astWalker) exportedValue(name string) EnvValue {
 // noteExports records the names export and declare -x export, and the ones
 // export -n and declare +x stop exporting.
 func (w *astWalker) noteExports(decl *syntax.DeclClause) {
-	isExport := decl.Variant != nil && decl.Variant.Value == "export"
+	isExport := decl.Variant != nil && decl.Variant.Value == exportBuiltin
 	export, changes := isExport, isExport
 
 	for _, arg := range decl.Args {

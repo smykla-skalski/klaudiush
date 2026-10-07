@@ -56,15 +56,12 @@ func (w *astWalker) loopStartupNames(
 		}
 	case *syntax.CallExpr:
 		text = w.loopWrites(n, seen)
+	case *syntax.Assign:
+		text = w.loopAssignWrite(n)
 	case *syntax.DeclClause:
-		if slices.ContainsFunc(n.Args, computedOperand) ||
-			slices.ContainsFunc(n.Args, namerefOption) {
-			text = anyStartupVar
-		}
+		text = w.loopDeclWrites(n)
 	case *syntax.ParamExp:
-		if (n.Excl && assignsDefault(n)) || promptExpansion(n) {
-			text = anyStartupVar
-		}
+		text = w.loopParamWrites(n)
 	}
 
 	var names []string
@@ -78,6 +75,46 @@ func (w *astWalker) loopStartupNames(
 	}
 
 	return names
+}
+
+func (w *astWalker) loopAssignWrite(assign *syntax.Assign) string {
+	if assign.Name == nil {
+		return ""
+	}
+
+	target, _ := w.namerefTarget(assign.Name.Value)
+
+	return target
+}
+
+func (w *astWalker) loopDeclWrites(decl *syntax.DeclClause) string {
+	if slices.ContainsFunc(decl.Args, computedOperand) ||
+		declHasNameref(decl) {
+		return anyStartupVar
+	}
+
+	var writes strings.Builder
+
+	for _, assign := range decl.Args {
+		if assign.Name != nil {
+			writes.WriteByte(' ')
+			writes.WriteString(w.namerefWrites(assign.Name.Value))
+		}
+	}
+
+	return writes.String()
+}
+
+func (w *astWalker) loopParamWrites(exp *syntax.ParamExp) string {
+	if (exp.Excl && assignsDefault(exp)) || promptExpansion(exp) {
+		return anyStartupVar
+	}
+
+	if assignsDefault(exp) && exp.Param != nil {
+		return w.namerefWrites(exp.Param.Value)
+	}
+
+	return ""
 }
 
 // promptExpansion reports ${x@P}, which expands the value of x again as a
@@ -97,6 +134,15 @@ func namerefOption(assign *syntax.Assign) bool {
 	option := wordToString(assign.Value)
 
 	return isNamerefOption(option)
+}
+
+func declHasNameref(decl *syntax.DeclClause) bool {
+	return decl.Variant != nil && supportsNameref(decl.Variant.Value) &&
+		slices.ContainsFunc(decl.Args, namerefOption)
+}
+
+func supportsNameref(name string) bool {
+	return name == "declare" || name == "typeset" || name == "local"
 }
 
 // isNamerefOption reports an option cluster with n in it, such as -n or -gn.
@@ -136,15 +182,104 @@ func (w *astWalker) commandWrites(name string, args []*syntax.Word, seen map[str
 		return callbackFlag(argWord(arg))
 	}):
 		return anyStartupVar
+	case name == unsetBuiltin && removesNameref(args):
+		return unsetNamerefWrites(args)
 	case varWriters[name]:
-		return writerTargets(name, args)
-	case declWriters[name] && slices.ContainsFunc(args, func(arg *syntax.Word) bool {
-		return computedWord(arg) || isNamerefOption(argWord(arg))
-	}):
-		return anyStartupVar
+		return w.namerefWrites(writerTargets(name, args))
+	case declWriters[name]:
+		return w.declCommandWrites(name, args)
 	default:
 		return ""
 	}
+}
+
+func unsetNamerefWrites(args []*syntax.Word) string {
+	var names []string
+
+	options := true
+
+	for _, arg := range args {
+		if unsureWord(arg) {
+			return anyStartupVar
+		}
+
+		value := argWord(arg)
+		switch {
+		case options && value == endOfOptions:
+			options = false
+		case options && strings.HasPrefix(value, "-"):
+			continue
+		default:
+			options = false
+
+			names = append(names, value)
+		}
+	}
+
+	return joinTargets(names)
+}
+
+func removesNameref(args []*syntax.Word) bool {
+	for _, arg := range args {
+		if !isLiteralWord(arg) {
+			return false
+		}
+
+		option := argWord(arg)
+		if option == endOfOptions || !strings.HasPrefix(option, "-") {
+			return false
+		}
+
+		if strings.Contains(option[1:], "n") {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (w *astWalker) declCommandWrites(name string, args []*syntax.Word) string {
+	var names []string
+
+	for _, arg := range args {
+		if computedWord(arg) || expandingWord(arg) {
+			return anyStartupVar
+		}
+
+		value := argWord(arg)
+		if strings.HasPrefix(value, "-") || strings.HasPrefix(value, "+") {
+			if supportsNameref(name) && isNamerefOption(value) {
+				return anyStartupVar
+			}
+
+			continue
+		}
+
+		variable, _, _ := strings.Cut(value, "=")
+		if !variableName.MatchString(variable) {
+			return anyStartupVar
+		}
+
+		names = append(names, variable)
+	}
+
+	return w.namerefWrites(strings.Join(names, " "))
+}
+
+// namerefWrites replaces literal nameref names with their final targets.
+func (w *astWalker) namerefWrites(names string) string {
+	if names == anyStartupVar {
+		return names
+	}
+
+	targets := strings.Fields(names)
+	for i, name := range targets {
+		if target, ok := w.namerefTarget(name); ok {
+			targets[i] = target
+		}
+	}
+
+	return strings.Join(targets, " ")
 }
 
 // trapWrites returns, as text, the startup variables a trap action may set

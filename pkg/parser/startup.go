@@ -551,7 +551,7 @@ func (w *astWalker) seedStartup(parent Command) {
 // noteUnset marks the startup variables a plain unset clears, unless their
 // value was already unknown: the unset leaves the earlier value or none.
 func (w *astWalker) noteUnset(cmd Command, wasUnknown map[string]bool) {
-	if cmd.Name != "unset" {
+	if cmd.Name != unsetBuiltin {
 		return
 	}
 

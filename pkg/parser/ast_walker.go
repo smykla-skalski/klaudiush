@@ -38,7 +38,9 @@ type astWalker struct {
 	assignments  map[string]string
 	unknownVars  map[string]bool
 	safeAssigns  map[*syntax.Assign]bool
+	safeNamerefs map[*syntax.Assign]bool
 	chainAssigns map[*syntax.Assign]bool
+	namerefs     map[string]string
 	exported     map[string]bool
 	allExport    bool
 	chained      []string
@@ -236,7 +238,7 @@ func (w *astWalker) visit(node syntax.Node) bool {
 		w.forgetAssigned(n)
 	case *syntax.ForClause:
 		if iter, ok := n.Loop.(*syntax.WordIter); ok {
-			w.forget(iter.Name.Value)
+			w.forgetName(iter.Name.Value)
 		}
 	case *syntax.Stmt:
 		w.extractRedirect(n)
@@ -268,7 +270,11 @@ func (w *astWalker) walkIsolated(stmts []*syntax.Stmt) {
 	funcs := maps.Clone(w.funcs)
 	defer func() { w.funcs = funcs }()
 
+	namerefs := maps.Clone(w.namerefs)
+	defer func() { w.namerefs = namerefs }()
+
 	for _, stmt := range stmts {
+		markSafeNamerefs(stmt, w.safeNamerefs)
 		syntax.Walk(stmt, w.visit)
 	}
 }
@@ -889,7 +895,7 @@ func (w *astWalker) walkNested(script nestedScript, cmd Command, depth int) {
 		script.text,
 		cmd,
 		depth,
-		scriptWalk{name: script.name, forwarded: script.forward},
+		scriptWalk{name: script.name, scoped: script.scoped, forwarded: script.forward},
 	)
 
 	if script.splitArgs && (untrusted || w.state.untrusted) {
@@ -1101,9 +1107,14 @@ func (w *astWalker) gitEnvScripts(cmd Command) []string {
 func (w *astWalker) extractDecl(decl *syntax.DeclClause) {
 	w.noteExports(decl)
 	w.distrustDecl(decl)
+	changesNameref := declHasNameref(decl)
 
 	for _, assign := range decl.Args {
 		if assign.Name == nil {
+			continue
+		}
+
+		if !changesNameref && w.forgetNamerefAssign(assign) {
 			continue
 		}
 
@@ -1501,7 +1512,7 @@ func (w *astWalker) extractAssigns(call *syntax.CallExpr) {
 	commandOnly := len(call.Args) > 0 && !w.keepsPrefix(w.commandWord(call.Args[0]))
 
 	for _, assign := range call.Assigns {
-		if commandOnly && assign.Name != nil && startupVars[assign.Name.Value] {
+		if w.skipAssign(assign, commandOnly) {
 			continue
 		}
 
@@ -1539,6 +1550,11 @@ func (w *astWalker) extractAssigns(call *syntax.CallExpr) {
 
 		w.forgetUnlessSafe(assign)
 	}
+}
+
+func (w *astWalker) skipAssign(assign *syntax.Assign, commandOnly bool) bool {
+	return commandOnly && assign.Name != nil && startupVars[assign.Name.Value] ||
+		w.forgetNamerefAssign(assign)
 }
 
 // extractFileWriteCommand records the files a program writes. followed is

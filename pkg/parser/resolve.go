@@ -63,7 +63,9 @@ func newAstWalker(resolver Resolver) *astWalker {
 		assignments:     make(map[string]string),
 		unknownVars:     make(map[string]bool),
 		safeAssigns:     make(map[*syntax.Assign]bool),
+		safeNamerefs:    make(map[*syntax.Assign]bool),
 		chainAssigns:    make(map[*syntax.Assign]bool),
+		namerefs:        make(map[string]string),
 		certain:         make(map[*syntax.Stmt]certainty),
 		loopCalls:       make(map[*syntax.CallExpr]bool),
 		resolver:        resolver,
@@ -84,7 +86,7 @@ func newAstWalker(resolver Resolver) *astWalker {
 // child returns a walker for a script run by a command at depth. It sees the
 // variables, aliases and functions defined so far without leaking its own,
 // and shares the parse's work budget and outcome.
-func (w *astWalker) child(dir string, depth int) *astWalker {
+func (w *astWalker) child(dir string, depth int, inheritNamerefs bool) *astWalker {
 	child := newAstWalker(w.resolver)
 	child.currentDir = dir
 	child.dirUnknown = w.dirUnknown
@@ -98,6 +100,10 @@ func (w *astWalker) child(dir string, depth int) *astWalker {
 
 	maps.Copy(child.assignments, w.assignments)
 	maps.Copy(child.unknownVars, w.unknownVars)
+
+	if inheritNamerefs {
+		maps.Copy(child.namerefs, w.namerefs)
+	}
 
 	child.outerLoop = w.inLoop
 	child.loopStartup = maps.Clone(w.loopStartup)
@@ -465,6 +471,7 @@ type nestedScript struct {
 	name      string
 	text      string
 	splitArgs bool
+	scoped    bool
 	forward   map[string]writtenArg
 }
 
@@ -864,6 +871,7 @@ func (w *astWalker) definitionScripts(cmd Command) []nestedScript {
 			name:      cmd.Invoked,
 			text:      text,
 			splitArgs: split,
+			scoped:    true,
 			forward:   w.forwardPositional(cmd, body),
 		})
 	}
@@ -1128,6 +1136,8 @@ type scriptWalk struct {
 	// prose marks a plain string literal from interpreter code, where an
 	// unknown git word is a message rather than a command.
 	prose bool
+	// scoped marks a function body, whose local declarations do not escape.
+	scoped bool
 	// label names the script in diagnostics.
 	label string
 	// future runs content in a new shell's inherited environment, without
@@ -1157,15 +1167,16 @@ func (w *astWalker) walkScript(script string, parent Command, depth int, sw scri
 		return
 	}
 
-	child := w.scriptChild(parent.WorkingDirectory, depth, sw.future)
+	sameShell := runsInShell(parent, sw)
 
-	if runsInShell(parent, sw) {
+	child := w.scriptChild(parent.WorkingDirectory, depth, sw.future, sameShell)
+	if sameShell {
 		child.restoreDirectory(w.directoryState())
 	}
 
 	child.literal = sw.literal
 	child.prose = sw.prose
-	child.distrust = w.distrust || !runsInShell(parent, sw)
+	child.distrust = w.distrust || !sameShell
 	child.scriptRun = w.childRun(parent, sw)
 	child.launchSeq = parent.Location.Seq
 	child.stdinFed = w.feedsStdin(parent)
@@ -1202,6 +1213,7 @@ func (w *astWalker) walkScript(script string, parent Command, depth int, sw scri
 
 	child.walkEpilogue(sw.prelude, parent, movedLeniently)
 	w.publishFunctions(child, parent, sw)
+	w.publishNamerefs(child, parent, sw)
 
 	if runsInShell(parent, sw) && parent.Name != trapBuiltin {
 		w.inheritDirectory(child, parent.unconditional)
@@ -1220,8 +1232,28 @@ func (w *astWalker) walkScript(script string, parent Command, depth int, sw scri
 	w.stdinReplaced = w.stdinReplaced || (child.stdinReplaced && runsInShell(parent, sw))
 }
 
-func (w *astWalker) scriptChild(dir string, depth int, future bool) *astWalker {
-	child := w.child(dir, depth)
+func (w *astWalker) publishNamerefs(child *astWalker, parent Command, sw scriptWalk) {
+	if !runsInShell(parent, sw) || parent.isolated ||
+		maps.Equal(w.namerefs, child.namerefs) {
+		return
+	}
+
+	if sw.scoped || !parent.unconditional {
+		w.distrustNames()
+
+		return
+	}
+
+	w.namerefs = maps.Clone(child.namerefs)
+}
+
+func (w *astWalker) scriptChild(
+	dir string,
+	depth int,
+	future bool,
+	inheritNamerefs bool,
+) *astWalker {
+	child := w.child(dir, depth, inheritNamerefs)
 	if !future {
 		return child
 	}
