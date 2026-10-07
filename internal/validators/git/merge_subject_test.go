@@ -177,6 +177,10 @@ var _ = Describe("MergeValidator squash commit subject", func() {
 			`echo '{"merge_method":"squash","commit_message":"Body. `+signoff+`","commit_title":"Add endpoint"}' | `+
 				`xh PUT `+restMergeURL+` page==1`,
 		),
+		Entry("httpie with a query item and a multi-line raw body",
+			`http PUT `+restMergeURL+` page==1 --raw '{"merge_method":`+"\n"+
+				`"squash", "x==":`+"\n"+`"merge", "commit_message":"Body. `+signoff+
+				`", "commit_title":"Add endpoint"}'`),
 		Entry("httpie with a body redirected from a file written by a heredoc",
 			"cat > body.json <<'EOF'\n"+
 				`{"merge_method":"squash","commit_message":"Body. `+signoff+`","commit_title":"Add endpoint"}`+

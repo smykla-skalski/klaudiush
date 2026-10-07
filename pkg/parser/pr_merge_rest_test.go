@@ -27,12 +27,6 @@ var _ = Describe("REST pull request merge", func() {
 		Entry("issues instead of pulls", "repos/o/r/issues/1/merge", "", false),
 	)
 
-	It("StripQueryItems drops only httpie query items", func() {
-		Expect(parser.StripQueryItems("a=1\npage==2\nb:=\"x\"\nc\\==3")).
-			To(Equal("a=1\nb:=\"x\"\nc\\==3"))
-		Expect(parser.StripQueryItems("page==2")).To(BeEmpty())
-	})
-
 	It("QueryFields reads every value of the query string", func() {
 		Expect(parser.QueryFields("repos/o/r/pulls/1/merge?merge_method=squash&a=1&a=2")).
 			To(Equal(map[string][]string{"merge_method": {"squash"}, "a": {"1", "2"}}))

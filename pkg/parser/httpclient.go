@@ -26,6 +26,10 @@ type HTTPRequest struct {
 	// string, every value of each field in order. The items also stay in Body.
 	Query map[string][]string
 
+	// DataBody is Body without the Query items: what the client sends as the
+	// request body.
+	DataBody string
+
 	// WorkingDirectory is the effective directory of the command.
 	WorkingDirectory string
 
@@ -243,6 +247,7 @@ func parseClientSegment(cmd Command, spec *httpClientSpec, args []string) []*HTT
 			Body:             state.body,
 			BodyFile:         state.bodyFile,
 			Query:            state.query,
+			DataBody:         state.dataBody,
 			WorkingDirectory: cmd.WorkingDirectory,
 			Location:         cmd.Location,
 		})
@@ -259,6 +264,7 @@ type httpClientState struct {
 	hasDataItem      bool
 	urls             []string
 	body             string
+	dataBody         string
 	bodyFile         string
 	query            map[string][]string
 }
@@ -346,11 +352,16 @@ func (s *httpClientState) collectBody(value string) {
 		return
 	}
 
-	if s.body != "" {
-		s.body += "\n"
+	s.body = appendLine(s.body, value)
+	s.dataBody = appendLine(s.dataBody, value)
+}
+
+func appendLine(text, line string) string {
+	if text == "" {
+		return line
 	}
 
-	s.body += value
+	return text + "\n" + line
 }
 
 // parseClientPositional records a bare verb, a URL, or an httpie data item.
@@ -376,6 +387,9 @@ func (s *httpClientState) parseClientPositional(arg string, spec *httpClientSpec
 			}
 
 			s.query[key] = append(s.query[key], value)
+			s.body = appendLine(s.body, arg)
+
+			return
 		}
 
 		s.collectBody(arg)

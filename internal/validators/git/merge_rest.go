@@ -197,19 +197,13 @@ func (v *MergeValidator) httpClientMerge(
 		return mergeTarget{}, false
 	}
 
-	// httpie and xh query items sit in the body text but go to the URL.
-	bodyText := req.Body
-	if len(req.Query) > 0 {
-		bodyText = parser.StripQueryItems(bodyText)
-	}
-
 	var body restMergeFields
 
 	switch {
 	case req.BodyFile != "":
 		body = v.readFieldsFromFile(result, req.BodyFile, req.WorkingDirectory, req.Location)
-	case bodyText != "":
-		body = fieldsFromText(result.ExpandVars(bodyText))
+	case req.DataBody != "":
+		body = fieldsFromText(result.ExpandVars(req.DataBody))
 	default:
 		body = v.stdinFields(result, cmd)
 	}

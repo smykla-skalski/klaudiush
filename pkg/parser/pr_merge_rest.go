@@ -81,20 +81,6 @@ func ParseRequestFields(body string) (map[string]string, bool) {
 	return parseRequestItems(trimmed)
 }
 
-// StripQueryItems drops httpie and xh "key==value" query items from request
-// body text, since they go to the URL rather than the body.
-func StripQueryItems(body string) string {
-	var lines []string
-
-	for line := range strings.SplitSeq(body, "\n") {
-		if _, _, isQuery := parseQueryItem(line); !isQuery {
-			lines = append(lines, line)
-		}
-	}
-
-	return strings.Join(lines, "\n")
-}
-
 // parseJSONFields reads the string values of a JSON object body.
 func parseJSONFields(body string) (map[string]string, bool) {
 	var raw map[string]json.RawMessage
