@@ -153,6 +153,13 @@ func unknownOperand(name string, hasValue bool, arg string) bool {
 // and the --rcfile of bash. A file whose path or content cannot be known is
 // recorded as opaque instead.
 func (w *astWalker) startupScripts(cmd Command, args []string) []startupScript {
+	if loginProgram(cmd.Name, args) {
+		cmd.Name = loginShell(w.resolver)
+		cmd.Invoked = cmd.Name
+		cmd.loginArgv0 = true
+		args = nil
+	}
+
 	_, isLauncher := launchers[cmd.Name]
 	if shellBuiltins[cmd.Name] || dataCommands[cmd.Name] || isLauncher ||
 		w.defined(cmd.Invoked) {
@@ -178,7 +185,13 @@ func (w *astWalker) startupScripts(cmd Command, args []string) []startupScript {
 	mode.login = mode.login || cmd.loginArgv0
 	named := rcfiles(args)
 	before, after := homeStartupFiles(cmd.Name, mode, len(named) > 0)
+	systemBefore, systemAfter := systemStartupFiles(cmd.Name, mode, len(named) > 0)
+	scripts = append(scripts, w.systemScripts(cmd, systemBefore)...)
+
 	scripts = append(scripts, w.homeScripts(cmd, before, false)...)
+	if cmd.Name == fishShell {
+		w.checkFishConfScripts(cmd)
+	}
 
 	v, set := w.startupSetting(cmd, bashEnvVar)
 	add(bashEnvVar, v, set)
@@ -193,6 +206,8 @@ func (w *astWalker) startupScripts(cmd Command, args []string) []startupScript {
 			add(rcfileLabel, literalRCFile(rcfile), true)
 		}
 	}
+
+	scripts = append(scripts, w.systemScripts(cmd, systemAfter)...)
 
 	return append(scripts, w.homeScripts(cmd, after, false)...)
 }

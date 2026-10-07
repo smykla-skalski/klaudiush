@@ -19,6 +19,11 @@ const (
 	yashShell  = "yash"
 	emulateOpt = "--emulate"
 	execArgv0  = "-a"
+	fishShell  = "fish"
+	loginOpt   = "login"
+	shShell    = "sh"
+	kshShell   = "ksh"
+	xonshShell = "xonsh"
 )
 
 // zshFiles are the startup files zsh reads from ZDOTDIR, HOME when unset.
@@ -29,6 +34,10 @@ var logoutFiles = nameSet(".zlogout .bash_logout .logout")
 
 // cshShells read .cshrc on every start unless given -f.
 var cshShells = nameSet("csh tcsh")
+
+// foreignStartupFiles use shell syntaxes the bash parser cannot interpret.
+var foreignStartupFiles = nameSet(`.tcshrc .cshrc .login .logout config.fish
+	env.nu config.nu login.nu rc.elv .xonshrc rc.xsh xonshrc`)
 
 // shellMode is how its options make a shell start: posix is bash --posix,
 // which reads ENV alone, noRCs is zsh or csh -f or NO_RCS, which reads no
@@ -123,6 +132,8 @@ func (m *shellMode) flags(name, cluster string, on bool) {
 			m.interactive = true
 		case flag == 'f' && (name == zshShell || cshShells[name]):
 			m.noRCs = on
+		case flag == 'N' && name == fishShell && on:
+			m.noRC = true
 		}
 	}
 }
@@ -130,13 +141,17 @@ func (m *shellMode) flags(name, cluster string, on bool) {
 // longOption applies a --name option. zsh takes any option name that way.
 func (m *shellMode) longOption(name, option string) {
 	switch option {
-	case "login":
+	case loginOpt:
 		m.login = true
 	case "interactive":
 		m.interactive = true
 	case "posix":
 		m.posix = bashShells[name]
 	case "norc":
+		m.noRC = true
+	case "no-rc":
+		m.noRC = name == xonshShell
+	case "no-config", "no-config-file":
 		m.noRC = true
 	case "noprofile":
 		m.noProfile = true
@@ -156,7 +171,7 @@ func (m *shellMode) namedOption(name, option string, on bool) {
 	}
 
 	switch option {
-	case "login":
+	case loginOpt:
 		m.login = m.login || on
 	case "interactive":
 		m.interactive = m.interactive || on
@@ -181,6 +196,10 @@ func homeStartupFiles(name string, mode shellMode, rcfile bool) (before, after [
 		name = zshEmulation(mode.emulate)
 	}
 
+	if name == fishShell || name == "nu" || name == "elvish" || name == xonshShell {
+		return foreignHomeStartupFiles(name, mode)
+	}
+
 	switch name {
 	case zshShell:
 		return zshStartupFiles(mode)
@@ -196,11 +215,11 @@ func homeStartupFiles(name string, mode shellMode, rcfile bool) (before, after [
 		case mode.interactive && !mode.noRC && !rcfile:
 			after = []string{".bashrc"}
 		}
-	case "sh", "dash", "ash", "posh":
+	case shShell, "dash", "ash", "posh":
 		if mode.login {
 			before = []string{profile}
 		}
-	case "ksh", "mksh", "oksh", "loksh", yashShell:
+	case kshShell, "mksh", "oksh", "loksh", yashShell:
 		before, after = kshStartupFiles(name, mode)
 	case "csh", "tcsh":
 		before, after = cshStartupFiles(mode)
@@ -209,11 +228,36 @@ func homeStartupFiles(name string, mode shellMode, rcfile bool) (before, after [
 	return before, after
 }
 
+func foreignHomeStartupFiles(name string, mode shellMode) (before, after []string) {
+	if mode.noRC {
+		return nil, nil
+	}
+
+	switch name {
+	case fishShell:
+		before = []string{".config/fish/config.fish"}
+	case "nu":
+		before = []string{".config/nushell/env.nu", ".config/nushell/config.nu"}
+		if mode.login {
+			before = append(before, ".config/nushell/login.nu")
+		}
+	case "elvish":
+		before = []string{".config/elvish/rc.elv"}
+	case xonshShell:
+		before = []string{".config/xonsh/rc.xsh"}
+		if mode.interactive {
+			before = append(before, ".xonshrc")
+		}
+	}
+
+	return before, nil
+}
+
 // zshEmulation returns the shell whose startup files zsh --emulate reads:
 // sh and ksh emulation read .profile and ENV instead of the z-files.
 func zshEmulation(emulate string) string {
 	switch emulate {
-	case "sh", "ksh":
+	case shShell, kshShell:
 		return emulate
 	default:
 		return zshShell
@@ -438,25 +482,96 @@ func (w *astWalker) homeScript(cmd Command, file string, dir homeDir) (startupSc
 		return startupScript{}, false
 	}
 
-	text, status, detail := w.homeFileSource(clean)
+	return w.startupPathScript(file, clean, touched, dir.inherited && !touched)
+}
+
+// startupPathScript reads a resolved startup path. Unsupported syntaxes are
+// opaque only when the command line touched them; untouched files are lenient.
+func (w *astWalker) startupPathScript(
+	label string,
+	path string,
+	touched bool,
+	lenient bool,
+) (startupScript, bool) {
+	text, status, detail := w.homeFileSource(path)
+	if foreignStartupFiles[filepath.Base(path)] {
+		if status != ScriptMissing && !lenient {
+			w.opaque(OpacityScriptSyntax, filepath.Base(label), "")
+		}
+
+		return startupScript{}, false
+	}
 
 	switch status {
 	case ScriptText:
-		key := file + "\x00" + clean
+		key := label + "\x00" + path
 		if w.expanding[startupPrefix+key+"\x00"+text] {
 			return startupScript{}, false
 		}
 
 		return startupScript{
-			label: file, key: key, text: text,
-			touched: touched, lenient: dir.inherited && !touched,
+			label: label, key: key, text: text,
+			touched: touched, lenient: lenient,
 		}, true
 	case ScriptOpaque:
-		w.opaque(OpacityStartupFile, file, detail)
+		w.opaque(OpacityStartupFile, label, detail)
 	case ScriptMissing, ScriptBinary:
 	}
 
 	return startupScript{}, false
+}
+
+// systemScripts reads fixed system startup files leniently until the line
+// touches them, matching inherited home startup files.
+func (w *astWalker) systemScripts(cmd Command, files []string) []startupScript {
+	var scripts []startupScript
+
+	for _, path := range files {
+		if script, found := w.systemScript(cmd, path); found {
+			scripts = append(scripts, script)
+		}
+	}
+
+	return scripts
+}
+
+func (w *astWalker) systemScript(cmd Command, path string) (startupScript, bool) {
+	touched := w.homeTouched(path, filepath.Dir(path), cmd)
+	if !touched && !w.lenient {
+		defer w.enterLenient()()
+	}
+
+	return w.startupPathScript(filepath.Base(path), path, touched, !touched)
+}
+
+// checkFishConfScripts finds same-line writes to fish conf.d files. Untouched
+// foreign-syntax files need no directory enumeration because they are lenient.
+func (w *astWalker) checkFishConfScripts(cmd Command) {
+	dirs, ok := w.homeDirs(cmd, false)
+	if !ok {
+		return
+	}
+
+	seen := make(map[string]bool)
+
+	for _, dir := range dirs {
+		confDir := resolvePath(cmd.WorkingDirectory, dir.path+"/.config/fish/conf.d")
+
+		for p := w; p != nil; p = p.parent {
+			for _, fw := range p.fileWrites {
+				path, known := w.writtenPath(fw)
+				if !known || filepath.Dir(path) != confDir ||
+					!strings.HasSuffix(filepath.Base(path), ".fish") || seen[path] {
+					continue
+				}
+
+				seen[path] = true
+				if _, status, _ := w.homeFileSource(path); status != ScriptMissing {
+					w.opaque(OpacityScriptSyntax, filepath.Base(path), "")
+				}
+			}
+		}
+	}
 }
 
 // homeFileSource returns the text of a home startup file: the content
@@ -839,4 +954,77 @@ func (w *astWalker) argTouches(cmd Command, arg, name, dir string) bool {
 	path := ExpandHome(w.expandName(arg), w.resolver)
 
 	return resolvePath(cmd.WorkingDirectory, path) == dir
+}
+
+// systemStartupFiles returns fixed startup files for common Unix layouts.
+func systemStartupFiles(name string, mode shellMode, rcfile bool) (before, after []string) {
+	switch name {
+	case zshShell:
+		before = []string{"/etc/zshenv"}
+		if mode.login {
+			before = append(before, "/etc/zprofile")
+			after = append(after, "/etc/zlogin", "/etc/zlogout")
+		}
+
+		if mode.interactive {
+			after = append([]string{"/etc/zshrc"}, after...)
+		}
+	case "bash", "rbash":
+		switch {
+		case mode.posix:
+		case mode.login && !mode.noProfile:
+			before = []string{"/etc/profile"}
+		case mode.interactive && !mode.noRC && !rcfile:
+			after = []string{"/etc/bash.bashrc"}
+		}
+	case shShell, "dash", "ash", "posh", kshShell, "mksh", "oksh", "loksh", yashShell:
+		if mode.login {
+			before = []string{"/etc/profile"}
+		}
+	case "csh", "tcsh":
+		if !mode.noRCs {
+			before = []string{"/etc/csh.cshrc"}
+			if mode.login {
+				before = append(before, "/etc/csh.login")
+			}
+		}
+	case fishShell:
+		if !mode.noRC {
+			before = []string{"/etc/fish/config.fish"}
+		}
+	case xonshShell:
+		if !mode.noRC {
+			before = []string{"/etc/xonsh/xonshrc"}
+		}
+	}
+
+	return before, after
+}
+
+// loginProgram reports login and the login forms of su.
+func loginProgram(name string, args []string) bool {
+	if name == loginOpt {
+		return true
+	}
+
+	if name != "su" {
+		return false
+	}
+
+	return slices.ContainsFunc(args, func(arg string) bool {
+		return arg == "-" || arg == "--login" ||
+			strings.HasPrefix(arg, "-") && !strings.HasPrefix(arg, "--") &&
+				strings.Contains(arg[1:], "l")
+	})
+}
+
+// loginShell names the shell a login program starts when it is visible.
+func loginShell(resolver Resolver) string {
+	if value, ok := resolver.LookupEnv("SHELL"); ok {
+		if name := commandName(value); shells[name] {
+			return name
+		}
+	}
+
+	return shShell
 }

@@ -136,8 +136,6 @@ var _ = Describe("Home startup files", func() {
 		Entry("exec -a with a dash", `HOME=/zl exec -a -zsh zsh -c true`),
 		Entry("exec -a from a variable", `HOME=/zl exec -a "$N" zsh -c true`),
 		Entry("exec -l bash", `HOME=/bp exec -l bash`),
-		Entry("tcshrc", `HOME=/t tcsh -c true`),
-		Entry("cshrc", `HOME=/c csh -c true`),
 		Entry("profile for a login oksh", `HOME=/bpr oksh -l -c true`),
 		Entry("zsh -f turned back on by +f", `HOME=/z zsh -f +f -c true`),
 		Entry("relative ZDOTDIR after a cd in zshenv", `HOME=/zc zsh -i -c true`),
@@ -381,4 +379,105 @@ var _ = Describe("Home startup files the line never touched", func() {
 		Entry("written on the line",
 			"echo 'eval \"$(x)\"' > ~/.zprofile; zsh -l -c true"),
 	)
+})
+
+var _ = Describe("Other shell startup files", func() {
+	const payload = "git push --force"
+
+	parse := func(command string, resolver fakeResolver) *parser.ParseResult {
+		result, err := parser.NewBashParserWithResolver(resolver).Parse(command)
+		Expect(err).NotTo(HaveOccurred(), command)
+
+		return result
+	}
+
+	DescribeTable("blocks startup files written for unsupported shell syntaxes",
+		func(command, operation string) {
+			result := parse(command, fakeResolver{env: map[string]string{"HOME": "/home/u"}})
+
+			Expect(result.Truncated).To(BeTrue(), command)
+			Expect(result.Opacities).To(ContainElement(SatisfyAll(
+				HaveField("Cause", parser.OpacityScriptSyntax),
+				HaveField("Operation", operation),
+			)), command)
+		},
+		Entry("fish config", `echo x > ~/.config/fish/config.fish; fish -c true`, "config.fish"),
+		Entry("fish conf.d", `echo x > ~/.config/fish/conf.d/10-test.fish; fish -c true`,
+			"10-test.fish"),
+		Entry("nushell config", `echo x > ~/.config/nushell/config.nu; nu -c true`, "config.nu"),
+		Entry("elvish config", `echo x > ~/.config/elvish/rc.elv; elvish -c true`, "rc.elv"),
+		Entry("xonsh config", `echo x > ~/.config/xonsh/rc.xsh; xonsh -c true`, "rc.xsh"),
+		Entry("csh config", `echo x > ~/.cshrc; csh -c true`, ".cshrc"),
+	)
+
+	DescribeTable("leaves untouched unsupported shell syntax lenient",
+		func(command string) {
+			result := parse(command, fakeResolver{
+				env: map[string]string{"HOME": "/home/u"},
+				files: map[string]string{
+					"/home/u/.config/fish/config.fish":  "if test -n $x; git push --force; end",
+					"/home/u/.config/nushell/config.nu": "let-env X = 1",
+					"/home/u/.config/elvish/rc.elv":     "if ?(true) { git push --force }",
+					"/home/u/.config/xonsh/rc.xsh":      "$X = $(git push --force)",
+					"/home/u/.cshrc":                    "setenv X y",
+				},
+			})
+
+			Expect(result.Truncated).To(BeFalse(), command)
+			Expect(result.GitOperations).To(BeEmpty(), command)
+		},
+		Entry("fish", `fish -c true`),
+		Entry("nushell", `nu -c true`),
+		Entry("elvish", `elvish -c true`),
+		Entry("xonsh", `xonsh -c true`),
+		Entry("csh", `csh -c true`),
+	)
+
+	DescribeTable("reads matching system startup files leniently",
+		func(command string) {
+			result := parse(command, fakeResolver{
+				env: map[string]string{"HOME": "/home/u"},
+				files: map[string]string{
+					"/etc/zshenv":      payload,
+					"/etc/profile":     payload,
+					"/etc/bash.bashrc": payload,
+				},
+			})
+
+			Expect(result.Truncated).To(BeFalse(), command)
+			Expect(result.GitOperations).NotTo(BeEmpty(), command)
+		},
+		Entry("zsh", `zsh -c true`),
+		Entry("login sh", `sh -l -c true`),
+		Entry("interactive bash", `bash -i -c true`),
+	)
+
+	DescribeTable("treats login programs as login shells",
+		func(command string) {
+			result := parse(command, fakeResolver{
+				env:   map[string]string{"HOME": "/home/u", "SHELL": "/bin/sh"},
+				files: map[string]string{"/home/u/.profile": payload},
+			})
+
+			Expect(result.Truncated).To(BeFalse(), command)
+			Expect(result.GitOperations).NotTo(BeEmpty(), command)
+		},
+		Entry("login", `login`),
+		Entry("su dash", `su -`),
+		Entry("su login", `su --login user`),
+	)
+
+	It("honors fish no-config", func() {
+		result := parse(`echo x > ~/.config/fish/config.fish; fish --no-config -c true`,
+			fakeResolver{env: map[string]string{"HOME": "/home/u"}})
+
+		Expect(result.Truncated).To(BeFalse())
+	})
+
+	It("honors xonsh no-rc", func() {
+		result := parse(`echo x > ~/.config/xonsh/rc.xsh; xonsh --no-rc -c true`,
+			fakeResolver{env: map[string]string{"HOME": "/home/u"}})
+
+		Expect(result.Truncated).To(BeFalse())
+	})
 })
