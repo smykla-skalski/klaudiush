@@ -5,6 +5,27 @@ All notable changes to klaudiush will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.44.0](https://github.com/smykla-skalski/klaudiush/compare/v1.43.3...v1.44.0) (2026-10-07)
+
+### Features
+
+* **parser:** add environment path lookups ([#796](https://github.com/smykla-skalski/klaudiush/issues/796)) ([076c454](https://github.com/smykla-skalski/klaudiush/commit/076c454217146fd34503f02d17b9393a15625479))
+
+### Bug Fixes
+
+* **git:** fail closed on runner errors ([#788](https://github.com/smykla-skalski/klaudiush/issues/788)) ([37f6858](https://github.com/smykla-skalski/klaudiush/commit/37f6858f8c79df7b9ec30370b37e8c9625f26e47))
+* **harness:** track macOS fork events ([#798](https://github.com/smykla-skalski/klaudiush/issues/798)) ([313d612](https://github.com/smykla-skalski/klaudiush/commit/313d6122f766de3e2862be365d11fcc7ae85ccdc))
+* **parser:** block unseen shell streams ([#787](https://github.com/smykla-skalski/klaudiush/issues/787)) ([5d17d2c](https://github.com/smykla-skalski/klaudiush/commit/5d17d2c90a9d684f508b6f21890a6acc2fd5bd67))
+* **parser:** cover more startup files ([#789](https://github.com/smykla-skalski/klaudiush/issues/789)) ([0489243](https://github.com/smykla-skalski/klaudiush/commit/04892435b0bc1d72e7666680063a77aa40a37a8f))
+* **parser:** follow remote containers ([#792](https://github.com/smykla-skalski/klaudiush/issues/792)) ([acc174b](https://github.com/smykla-skalski/klaudiush/commit/acc174bdf30df1775b4d4874ead596a1a85dcf4b))
+* **parser:** normalize tracked write paths ([#786](https://github.com/smykla-skalski/klaudiush/issues/786)) ([d52cefe](https://github.com/smykla-skalski/klaudiush/commit/d52cefe71092dc4956aa76642ddd92536ad44d69))
+* **parser:** preserve function negation ([#793](https://github.com/smykla-skalski/klaudiush/issues/793)) ([719c16d](https://github.com/smykla-skalski/klaudiush/commit/719c16d79ae8de7e911f13017c2469dd8f8d2a72))
+* **parser:** resolve source names via PATH ([#791](https://github.com/smykla-skalski/klaudiush/issues/791)) ([e92176d](https://github.com/smykla-skalski/klaudiush/commit/e92176db291317e09e431a09e267f0d84d6ad4f6))
+* **parser:** restore shell directories ([#790](https://github.com/smykla-skalski/klaudiush/issues/790)) ([024b487](https://github.com/smykla-skalski/klaudiush/commit/024b487f1424dc17a7794f12f7060767098e2135))
+* **parser:** retain functions from calls ([#794](https://github.com/smykla-skalski/klaudiush/issues/794)) ([92bdb5c](https://github.com/smykla-skalski/klaudiush/commit/92bdb5c5e235999b6527aef3de605f286b0303cb))
+* **parser:** track nameref writes ([#799](https://github.com/smykla-skalski/klaudiush/issues/799)) ([33d4588](https://github.com/smykla-skalski/klaudiush/commit/33d4588efd1d90c997aa5fbdf024d23f4dd7201e))
+* **parser:** validate startup writes ([#797](https://github.com/smykla-skalski/klaudiush/issues/797)) ([c2756b9](https://github.com/smykla-skalski/klaudiush/commit/c2756b9a569d93fc0759807223fb4727d18b08e2))
+
 ## [1.43.3](https://github.com/smykla-skalski/klaudiush/compare/v1.43.2...v1.43.3) (2026-10-05)
 
 ### Bug Fixes
