@@ -115,6 +115,22 @@ func (w *astWalker) startPWD() (string, bool) {
 	return start, true
 }
 
+// trackedPath resolves path from the directory the command line started in.
+// currentDir is intentionally relative until the first absolute cd, so joining
+// it here makes absolute and relative spellings of the same file comparable.
+func (w *astWalker) trackedPath(dir, path string) string {
+	target := resolvePath(dir, path)
+	if filepath.IsAbs(target) || strings.HasPrefix(target, "~") {
+		return target
+	}
+
+	if start, ok := w.startPWD(); ok {
+		return filepath.Clean(filepath.Join(start, target))
+	}
+
+	return target
+}
+
 // unknownDirVars adds PWD and OLDPWD to dynamic when the walker cannot
 // tell them, so validators reading a VarScope do not fall back to the
 // environment klaudiush runs in.

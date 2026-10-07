@@ -120,7 +120,11 @@ func (w *astWalker) lineWrites() (versions map[string][]string, ok bool) {
 				return nil, false
 			}
 
-			target := resolvePath(fw.WorkingDirectory, fw.Path)
+			target, known := w.writtenPath(fw)
+			if !known {
+				return nil, false
+			}
+
 			version := writeVersion(fw)
 
 			if !slices.Contains(versions[target], version) {

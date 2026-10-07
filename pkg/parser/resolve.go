@@ -128,12 +128,53 @@ func (w *astWalker) earlierCommands() iter.Seq[Command] {
 // including those of the scripts that run this one.
 func (w *astWalker) lastLineWrite(target string) (content string, found, captured bool) {
 	for p := w; p != nil; p = p.parent {
-		if content, found, captured = lastWrite(p.fileWrites, target, nil); found {
+		writes := make([]FileWrite, 0, len(p.fileWrites))
+
+		for _, fw := range p.fileWrites {
+			path, known := w.writtenPath(fw)
+			if !known {
+				continue
+			}
+
+			fw.Path, fw.WorkingDirectory = path, ""
+			writes = append(writes, fw)
+		}
+
+		if content, found, captured = lastWrite(writes, target, nil); found {
 			return content, found, captured
 		}
 	}
 
 	return "", false, false
+}
+
+// mixedLineWrite reports an earlier write that may name target through a mix
+// of absolute and relative spellings when the command's starting directory is
+// unavailable.
+func (w *astWalker) mixedLineWrite(target string) bool {
+	if _, known := w.startPWD(); known {
+		return false
+	}
+
+	for p := w; p != nil; p = p.parent {
+		for _, fw := range p.fileWrites {
+			path, known := w.writtenPath(fw)
+			if !known || filepath.IsAbs(path) == filepath.IsAbs(target) {
+				continue
+			}
+
+			absolute, relative := path, target
+			if !filepath.IsAbs(absolute) {
+				absolute, relative = relative, absolute
+			}
+
+			if strings.HasSuffix(absolute, string(filepath.Separator)+filepath.Clean(relative)) {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 // expandName substitutes the variables in a command word: first those
@@ -1048,7 +1089,10 @@ func (w *astWalker) scriptSource(path string, cmd Command) (string, ScriptStatus
 		return "", ScriptOpaque, DetailScriptDirectory
 	}
 
-	target := resolvePath(cmd.WorkingDirectory, path)
+	target := w.trackedPath(cmd.WorkingDirectory, path)
+	if w.mixedLineWrite(target) {
+		return "", ScriptOpaque, DetailScriptDirectory
+	}
 
 	if w.unplacedWriteBefore(cmd, target) {
 		return "", ScriptOpaque, DetailScriptUnplacedWrite
