@@ -65,6 +65,7 @@ type Sandbox struct {
 	keeper   *keeper
 
 	keeperClosed bool
+	watchEvery   time.Duration
 
 	scanMu sync.Mutex
 }
@@ -78,14 +79,15 @@ func NewSandbox(base string) (*Sandbox, error) {
 	}
 
 	s := &Sandbox{
-		Root:     root,
-		Home:     filepath.Join(root, "home"),
-		Work:     filepath.Join(root, "work"),
-		Bin:      filepath.Join(root, "bin"),
-		Captures: filepath.Join(root, "captures"),
-		extraEnv: map[string]string{},
-		sessions: map[int]struct{}{},
-		known:    map[int]int64{},
+		Root:       root,
+		Home:       filepath.Join(root, "home"),
+		Work:       filepath.Join(root, "work"),
+		Bin:        filepath.Join(root, "bin"),
+		Captures:   filepath.Join(root, "captures"),
+		extraEnv:   map[string]string{},
+		sessions:   map[int]struct{}{},
+		known:      map[int]int64{},
+		watchEvery: watchPoll,
 	}
 
 	dirs := []string{

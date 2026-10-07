@@ -144,6 +144,31 @@ jobs:
           fail_ci_if_error: false
         continue-on-error: true
 
+  test-darwin:
+    name: Test (darwin)
+    runs-on: macos-15
+    needs: ci-scope
+
+    steps:
+      - name: Report short-circuit
+        if: needs.ci-scope.outputs.run_heavy != 'true'
+        run: echo "Only GitHub Actions pins changed; skipping Darwin tests."
+
+      - name: Checkout
+        if: needs.ci-scope.outputs.run_heavy == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Go
+        if: needs.ci-scope.outputs.run_heavy == 'true'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run harness tests
+        if: needs.ci-scope.outputs.run_heavy == 'true'
+        run: go test -v -race ./internal/harness
+
   lint:
     name: Lint
     runs-on: ubuntu-26.04
@@ -247,7 +272,7 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-26.04
-    needs: [ci-scope, test, lint]
+    needs: [ci-scope, test, test-darwin, lint]
 
     strategy:
       matrix:
