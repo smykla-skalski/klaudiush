@@ -561,3 +561,27 @@ var _ = Describe("rule findings", func() {
 		Expect(result.Findings[0].Repair).To(ContainSubstring("within 50 characters"))
 	})
 })
+
+var _ = Describe("AIAttributionRule path words", func() {
+	rule := git.NewAIAttributionRule()
+
+	DescribeTable("an assistant name inside a path is not a mention",
+		func(msg string, blocked bool) {
+			Expect(rule.Validate(nil, msg) != nil).To(Equal(blocked))
+		},
+		Entry("an agent worktree dir beside a marker word",
+			"fix(git): drop paths\n\nA name under .claude/, paired with \"written\".", false),
+		Entry("a temp dir beside a marker word",
+			"fix(git): drop paths\n\nCreated /private/tmp/claude-502/x for the run.", false),
+		Entry("a home-relative path",
+			"fix(git): drop paths\n\nGenerated ~/.codex/config.toml from defaults.", false),
+		Entry("credit beside a path still blocks",
+			"fix(git): drop paths\n\nWritten by Claude in /tmp/x.", true),
+		Entry("a footer link still blocks",
+			"t\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)", true),
+		Entry("a scheme-less session link still blocks",
+			"t\n\nclaude.ai/code/session_01ABC", true),
+		Entry("a co-author trailer still blocks",
+			"t\n\nCo-authored-by: Claude <noreply@anthropic.com>", true),
+	)
+})

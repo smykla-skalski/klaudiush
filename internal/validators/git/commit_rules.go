@@ -836,15 +836,29 @@ var legitimateAIReferences = []string{
 	"klaudiush",
 }
 
+// pathWordPattern matches a filesystem path word: absolute, home-relative,
+// dot-relative or under a dot directory such as .claude/, standing alone or
+// as a flag value. Checks run line by line, so an assistant name in a temp dir
+// or agent worktree path would otherwise pair with an ordinary word such as
+// "written" on the same line. A link keeps its scheme or host in front of the
+// slash, so it never matches.
+var pathWordPattern = regexp.MustCompile(`(^|[\s"'=;&|(])(?:~|\.\.?|\.[\w-]+)?/[^\s"';&|()]*`)
+
+// withoutPaths removes the filesystem path words from text, keeping the
+// character before each so the surrounding words stay apart.
+func withoutPaths(text string) string {
+	return pathWordPattern.ReplaceAllString(text, "$1")
+}
+
 // containsAIAttribution reports whether a message credits an AI assistant. It
 // works line by line: a bare mention is not attribution - "we should try Claude
 // Code" is a sentence about a tool - so an assistant name counts only next to a
 // credit marker ("generated", "co-authored by", the robot emoji) or a link to
 // an assistant product, which is what every generated footer carries.
 func containsAIAttribution(message string) bool {
-	lower := confusableLetters.Replace(
+	lower := withoutPaths(confusableLetters.Replace(
 		strings.ReplaceAll(strings.ToLower(message), `\n`, "\n"),
-	)
+	))
 
 	// Every form of attribution names an assistant, so text that names none -
 	// the overwhelmingly common case, and now up to a megabyte of body file -

@@ -906,6 +906,55 @@ EOF
 				Entry("a plain tag", `git tag -a v1.0.0 -m "release v1.0.0"`, false),
 			)
 
+			DescribeTable("an assistant name inside a path does not pair with message wording",
+				func(command string, blocked bool) {
+					ctx := &hook.Context{
+						EventType: hook.EventTypePreToolUse,
+						ToolName:  hook.ToolTypeBash,
+						ToolInput: hook.ToolInput{Command: command},
+					}
+
+					result := validator.Validate(context.Background(), ctx)
+					Expect(result.Passed).To(Equal(!blocked), result.Message)
+				},
+				Entry("a script under a claude-named temp dir before the commit",
+					`/private/tmp/claude-502/-Users-x/scratchpad/renew.sh; `+
+						`cd ~/w/klaudiush-merge-title-parity && git add -A && `+
+						`git commit -s -S -q -m "fix(git): keep merge body as written" `+
+						`-m "Expanding gh pr merge --body applied a prefix assignment such as`+"\n"+
+						`M=... gh pr merge --body \"\$M\" that bash does not apply to the`+"\n"+
+						`command's own arguments, so an empty body passed the signoff check.`+"\n"+
+						`The body is left as written again; only --subject is expanded, like`+"\n"+
+						`the REST commit_title."`, false),
+				Entry(
+					"a cd into an agent worktree",
+					`cd /repo/.claude/worktrees/w && git commit -sS -a -m "fix(a): keep body as written"`,
+					false,
+				),
+				Entry("a relative agent worktree",
+					`cd .claude/worktrees/w && git commit -sS -a -m "fix(a): keep body as written"`,
+					false),
+				Entry("a git -C path",
+					`git -C ~/.claude/worktrees/w commit -sS -a -m "fix(a): keep body as written"`,
+					false),
+				Entry("a staged path given as a flag value",
+					`git add --pathspec-from-file=/tmp/claude-1/list && `+
+						`git commit -sS -m "fix(a): keep body as written"`, false),
+				Entry("a footer after a path still blocks",
+					`cd /tmp/claude-1 && git commit -sS -a -m "feat(a): add thing" `+
+						`-m "🤖 Generated with [Claude Code](https://claude.com/claude-code)"`, true),
+				Entry("a co-author trailer after a path still blocks",
+					`cd /tmp/claude-1 && git commit -sS -a -m "feat(a): add thing" `+
+						`--trailer "Co-authored-by: Claude <noreply@anthropic.com>"`, true),
+				Entry("credit wording beside a path still blocks",
+					`git commit -sS -a -m "feat(a): add /tmp/x - written by Claude"`, true),
+				Entry(
+					"a scheme-less session link still blocks",
+					`git commit -sS -a -m "feat(a): add thing" -m "claude.ai/code/session_01ABC"`,
+					true,
+				),
+			)
+
 			It("should pass with CLAUDE.md file reference", func() {
 				ctx := &hook.Context{
 					EventType: hook.EventTypePreToolUse,
