@@ -5,6 +5,14 @@ All notable changes to klaudiush will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.44.1](https://github.com/smykla-skalski/klaudiush/compare/v1.44.0...v1.44.1) (2026-10-08)
+
+### Bug Fixes
+
+* **git:** check squash subject on merge ([#809](https://github.com/smykla-skalski/klaudiush/issues/809)) ([18fc318](https://github.com/smykla-skalski/klaudiush/commit/18fc318ed85e19f3b75c74377ecb441d449b2330))
+* **github:** allow REST PR merge like gh pr merge ([#803](https://github.com/smykla-skalski/klaudiush/issues/803)) ([d055b90](https://github.com/smykla-skalski/klaudiush/commit/d055b909c6acb5ae82227af9933f2487877636ed))
+* **validator:** treat # as code in // languages ([#807](https://github.com/smykla-skalski/klaudiush/issues/807)) ([906e4ae](https://github.com/smykla-skalski/klaudiush/commit/906e4aedaea39227a8a13af077d6a9327ea245d8))
+
 ## [1.44.0](https://github.com/smykla-skalski/klaudiush/compare/v1.43.3...v1.44.0) (2026-10-07)
 
 ### Features
