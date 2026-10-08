@@ -41,7 +41,11 @@ var _ = Describe("A script captured from a write and edited before it runs", fun
 		Entry("after a pipe", "echo x | sometool w.py\n"),
 		Entry("behind a launcher", "sudo sometool w.py\n"),
 		Entry("inside a shell", "bash -c 'sometool w.py'\n"),
-		Entry("a tool given the directory", "sometool .\n"),
+		Entry("a formatter given the directory", "black .\n"),
+		Entry("a linter fixing the directory", "ruff check --fix .\n"),
+		Entry("a formatter module given the directory", "python3 -m black .\n"),
+		Entry("inline code importing a local module", "python3 -c 'import mut'\n"),
+		Entry("a tool given a matching glob", "sometool w.p*\n"),
 		Entry("a tool with no operands", "make\n"),
 		Entry("git checking out the tree", "git checkout .\n"),
 		Entry("git applying a patch", "git apply p.diff\n"),
@@ -87,6 +91,11 @@ var _ = Describe("A script captured from a write and edited before it runs", fun
 		Entry("find listing files", "find src -name '*.go'\n"),
 		Entry("inline code dumping JSON", "python3 -c 'import json; print(json.dumps({}))'\n"),
 		Entry("a new branch", "git checkout -b feat\n"),
+		Entry("a build given the directory", "go build .\n"),
+		Entry("a linter checking the directory", "ruff check .\n"),
+		Entry("an image build", "docker build -t x .\n"),
+		Entry("tests given a directory", "pytest tests/\n"),
+		Entry("a tool given a glob for other files", "sometool *.txt\n"),
 	)
 
 	It("parses many scripts written and run in turn quickly", func() {

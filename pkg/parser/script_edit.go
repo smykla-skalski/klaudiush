@@ -27,6 +27,13 @@ var readOnlyPrograms = nameSet(`cat head tail less more wc ls stat file grep egr
 var editPrograms = nameSet(`make gmake bmake just task ninja unzip tar bsdtar cpio 7z rsync
 	patch install`)
 
+// formatterPrograms rewrite the files under a directory they are given.
+var formatterPrograms = nameSet(`black isort autoflake autopep8 yapf prettier gofmt goimports
+	gofumpt rustfmt clang-format shfmt`)
+
+// writeFlags make a linter or formatter rewrite the files it checks.
+var writeFlags = nameSet("-w --write --fix -i --inplace fmt format fix")
+
 // readOnlyGit are the git subcommands that leave work tree files as they
 // are. Any other may rewrite them (checkout, restore, apply, stash, reset).
 var readOnlyGit = nameSet(`add diff status log show ls-files blame commit fetch push
@@ -91,9 +98,7 @@ func (w *astWalker) editedAfter(cmd Command, target string, seq int) bool {
 // on the line are left out: the commands they run are recorded and judged
 // on their own. An interpreter counts when its program may change files;
 // git when its subcommand may rewrite the work tree; editPrograms always;
-// any other program outside readOnlyPrograms when an operand may stand for
-// target: the file itself, a directory, a glob or a word klaudiush cannot
-// resolve.
+// any other program outside readOnlyPrograms as operandsEdit says.
 func (w *astWalker) mayEdit(cmd Command, target string) bool {
 	name := commandName(cmd.Name)
 
@@ -119,8 +124,23 @@ func (w *astWalker) mayEdit(cmd Command, target string) bool {
 		})
 	}
 
-	return slices.ContainsFunc(cmd.Args, func(arg string) bool {
-		return w.mayName(arg, target)
+	return w.operandsEdit(name, cmd.Args, target)
+}
+
+// operandsEdit reports whether a program named name, given args, may change
+// target: an operand names it, matches it as a glob or cannot be resolved,
+// or the program rewrites a directory above it (a formatter, or a write
+// flag such as -w, --fix or --in-place). A build, test or lint tool given a
+// directory reads it.
+func (w *astWalker) operandsEdit(name string, args []string, target string) bool {
+	rewrites := formatterPrograms[name] || slices.ContainsFunc(args, func(arg string) bool {
+		return writeFlags[arg] || strings.HasPrefix(arg, "--in-place")
+	})
+
+	return slices.ContainsFunc(args, func(arg string) bool {
+		names, dir := w.mayName(arg, target)
+
+		return names || dir && rewrites
 	})
 }
 
@@ -142,21 +162,21 @@ func gitEdits(cmd Command) bool {
 	}
 }
 
-// mayName reports whether an argument may name target: it is the file
-// (alone or as a flag value), a directory above it, a glob or a word
-// klaudiush cannot resolve (a variable left after expansion). A URL names
-// no local file.
-func (w *astWalker) mayName(arg, target string) bool {
+// mayName reports whether an argument names target (the file alone or as a
+// flag value, a glob matching it, or a word klaudiush cannot resolve: a
+// variable left after expansion) and, apart from that, whether it names a
+// directory that may hold it. A URL names no local file.
+func (w *astWalker) mayName(arg, target string) (names, dir bool) {
 	if strings.Contains(arg, "://") {
-		return false
+		return false, false
 	}
 
 	if strings.Contains(arg, "$") {
 		arg = w.expandName(arg)
 	}
 
-	if marked(arg) || strings.Contains(arg, "$") || arg == "{}" || strings.ContainsAny(arg, "*?[") {
-		return true
+	if marked(arg) || strings.Contains(arg, "$") || arg == "{}" {
+		return true, false
 	}
 
 	if _, value, ok := strings.Cut(arg, "="); ok && strings.HasPrefix(arg, "-") {
@@ -166,8 +186,17 @@ func (w *astWalker) mayName(arg, target string) bool {
 	base := filepath.Base(target)
 	clean := filepath.Clean(arg)
 
-	return clean == base || strings.HasSuffix(clean, string(filepath.Separator)+base) ||
-		clean == "." || clean == parentDir || strings.HasSuffix(arg, "/")
+	if strings.ContainsAny(arg, "*?[") {
+		matched, err := filepath.Match(filepath.Base(clean), base)
+
+		return err != nil || matched, true
+	}
+
+	if clean == base || strings.HasSuffix(clean, string(filepath.Separator)+base) {
+		return true, false
+	}
+
+	return false, clean == "." || clean == parentDir || strings.HasSuffix(arg, "/")
 }
 
 // interpreterEdits reports whether an interpreter run may change target:
@@ -191,8 +220,13 @@ func (w *astWalker) interpreterEdits(cmd Command, spec interpreter, target strin
 		}
 	}
 
+	if module, ok := moduleArgs(cmd.Args); ok {
+		return w.operandsEdit(module[0], module[1:], target)
+	}
+
 	if inline {
-		return codeEdits(strings.Join(cmd.Args, " "), target)
+		return codeEdits(strings.Join(cmd.Args, " "), target) ||
+			unknownModule(strings.Join(operands, "\n"), langPython)
 	}
 
 	if len(operands) == 0 || operands[0] == "-" || operands[0] == devStdin {
@@ -212,6 +246,17 @@ func (w *astWalker) interpreterEdits(cmd Command, spec interpreter, target strin
 	text, status := w.resolver.ReadScript(script)
 
 	return status != ScriptText || codeEdits(text, target)
+}
+
+// moduleArgs returns the module an interpreter runs with -m and the
+// arguments after it.
+func moduleArgs(args []string) ([]string, bool) {
+	i := slices.Index(args, "-m")
+	if i < 0 || i+1 >= len(args) {
+		return nil, false
+	}
+
+	return args[i+1:], true
 }
 
 // codeEdits reports whether program source may change files or names
