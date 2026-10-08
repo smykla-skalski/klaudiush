@@ -388,12 +388,13 @@ func (w *astWalker) forwardPositional(cmd Command, body string) map[string]writt
 
 	unquoted := make(map[string]bool)
 
-	for _, ref := range positionalParam.FindAllString(body, -1) {
+	refs, _ := positionalRefs(body)
+
+	for _, ref := range refs {
 		first, last := 0, len(cmd.Args)
 
-		param := strings.Trim(ref, `"${}`)
-		if param != "@" && param != "*" {
-			n := int(param[0] - '0')
+		if ref.param != "@" && ref.param != "*" {
+			n := int(ref.param[0] - '0')
 			if n > len(cmd.Args) {
 				continue
 			}
@@ -402,7 +403,7 @@ func (w *astWalker) forwardPositional(cmd Command, body string) map[string]writt
 		}
 
 		for i := first; i < last; i++ {
-			if strings.HasPrefix(ref, `"`) || strings.HasSuffix(ref, `"`) {
+			if ref.quoted() {
 				quoted = append(quoted, i)
 
 				continue

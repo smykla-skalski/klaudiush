@@ -61,6 +61,9 @@ type astWalker struct {
 	// line, so a later call is followed into what it runs.
 	aliases map[string]string
 	funcs   map[string]string
+	// sureFuncs names the functions of funcs the top-level shell is sure to
+	// have defined: a call to one runs the function, never a program.
+	sureFuncs map[string]bool
 	// scriptFiles holds the content of process substitutions by stand-in path.
 	scriptFiles     map[string]string
 	pipedByCall     map[*syntax.CallExpr]string
@@ -241,6 +244,7 @@ func (w *astWalker) visit(node syntax.Node) bool {
 			w.forgetName(iter.Name.Value)
 		}
 	case *syntax.Stmt:
+		w.noteSureFunc(n)
 		w.extractRedirect(n)
 		w.noteRedirectedOutput(n)
 		w.noteStdinRedirects(n)
@@ -267,8 +271,8 @@ func (w *astWalker) walkIsolated(stmts []*syntax.Stmt) {
 	dir := w.directoryState()
 	defer w.restoreDirectory(dir)
 
-	funcs := maps.Clone(w.funcs)
-	defer func() { w.funcs = funcs }()
+	funcs, sureFuncs := maps.Clone(w.funcs), maps.Clone(w.sureFuncs)
+	defer func() { w.funcs, w.sureFuncs = funcs, sureFuncs }()
 
 	namerefs := maps.Clone(w.namerefs)
 	defer func() { w.namerefs = namerefs }()
@@ -853,7 +857,7 @@ func (w *astWalker) record(cmd Command, depth int, view string) {
 	w.forgetWritten(followed)
 	w.extractFileWriteCommand(cmd, followed)
 
-	l := w.launchedFrom(cmd, followed)
+	l := w.launchedFrom(cmd, followed, w.callsSureFunc(cmd, depth))
 	if detail != "" {
 		l.files = withoutProgramFile(l.files, cmd.Invoked)
 	}
@@ -970,6 +974,8 @@ func (w *astWalker) trackShellState(cmd Command) {
 		}
 	case "enable":
 		w.state.pathChanged = true
+	case unsetBuiltin, "unfunction", "unhash":
+		w.forgetSureFuncs(cmd)
 	case "shopt":
 		if shoptChangesSourcePath(cmd.Args) {
 			w.state.pathChanged = true

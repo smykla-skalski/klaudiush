@@ -736,6 +736,14 @@ var _ = Describe("NestingValidator", func() {
 		Expect(result.Passed).To(BeTrue())
 	})
 
+	It("passes a call to a function defined earlier on the line", func() {
+		command := "t(){ out=$(printf '%s' \"$1\" | tr '\\n' ' '); " +
+			"echo \"[$out] <= $2\"; }\n" +
+			"t \"git commit -s -S -m \\\"fix(git): x\\\"\" \"one\""
+
+		Expect(v.Validate(context.Background(), bash(command)).Passed).To(BeTrue(), command)
+	})
+
 	It("passes an empty command", func() {
 		Expect(v.Validate(context.Background(), bash("")).Passed).To(BeTrue())
 	})
