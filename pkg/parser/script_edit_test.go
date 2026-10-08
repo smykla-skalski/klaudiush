@@ -18,7 +18,10 @@ func writtenScript(between string) string {
 
 var _ = Describe("A script captured from a write and edited before it runs", func() {
 	parse := func(command string) *parser.ParseResult {
-		result, err := parser.NewBashParserWithResolver(fakeResolver{}).Parse(command)
+		resolver := fakeResolver{files: map[string]string{
+			"build.py": "import sys\ndef f(a: int) -> int:\n    return a\nif len(sys.argv) > 1:\n    print(f(1))\n",
+		}}
+		result, err := parser.NewBashParserWithResolver(resolver).Parse(command)
 		Expect(err).NotTo(HaveOccurred())
 
 		return result
@@ -44,6 +47,11 @@ var _ = Describe("A script captured from a write and edited before it runs", fun
 		Entry("a formatter given the directory", "black .\n"),
 		Entry("a formatter writing it", "gofmt -w w.py\n"),
 		Entry("a linter fixing it", "ruff check --fix w.py\n"),
+		Entry("sed with a combined in-place flag", "sed -Ei 's/a/b/' *.py\n"),
+		Entry("perl editing in place", "perl -pi -e 's/a/b/' *.py\n"),
+		Entry("sort with a combined output flag", "sort -ro w.py\n"),
+		Entry("a formatter over a package pattern", "gofmt -w ./...\n"),
+		Entry("a fix-only linter", "ruff check --fix-only .\n"),
 		Entry("a linter fixing the directory", "ruff check --fix .\n"),
 		Entry("a formatter module given the directory", "python3 -m black .\n"),
 		Entry("inline code importing a local module", "python3 -c 'import mut'\n"),
@@ -107,6 +115,8 @@ var _ = Describe("A script captured from a write and edited before it runs", fun
 		Entry("an image build", "docker build -t x .\n"),
 		Entry("tests given a directory", "pytest tests/\n"),
 		Entry("a tool given a glob for other files", "sometool *.txt\n"),
+		Entry("a script comparing values", "python3 build.py\n"),
+		Entry("inline code comparing values", "python3 -c 'print(1 > 0)'\n"),
 	)
 
 	It("parses many scripts written and run in turn quickly", func() {

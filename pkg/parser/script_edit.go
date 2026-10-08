@@ -35,17 +35,40 @@ var formatterPrograms = nameSet(`black isort autoflake autopep8 yapf prettier go
 var writeFlags = nameSet("-w --write --fix -i --inplace fmt format fix")
 
 // filterWrites maps the filters that only read their files to the flag
-// that makes them write one (sed -i, sort -o, awk -i inplace).
+// that makes them write one: a short option letter (sed -i, sed -Ei, sort -o)
+// or text in an option (awk -i inplace).
 var filterWrites = func() map[string]string {
 	flags := make(map[string]string)
 
-	for pair := range strings.FieldsSeq("sed=-i sort=-o awk=inplace") {
+	for pair := range strings.FieldsSeq("sed=i sort=o awk=inplace") {
 		program, flag, _ := strings.Cut(pair, "=")
 		flags[program] = flag
 	}
 
 	return flags
 }()
+
+// longWrites are the long options that make sed or sort write a file.
+var longWrites = []string{"--in-place", "--output"}
+
+// filterWrite reports whether arg turns on the write flag of a filter: a
+// short option cluster holding its letter (sed -Ei, sort -ro), a long
+// in-place or output option, or text in an option (awk -i inplace).
+func filterWrite(arg, flag string) bool {
+	if len([]rune(flag)) > 1 {
+		return strings.Contains(arg, flag)
+	}
+
+	if slices.ContainsFunc(
+		longWrites,
+		func(long string) bool { return strings.HasPrefix(arg, long) },
+	) {
+		return true
+	}
+
+	return strings.HasPrefix(arg, "-") && !strings.HasPrefix(arg, "--") &&
+		strings.Contains(arg[1:], flag)
+}
 
 // checkFlags keep a formatter or linter to reporting (black --check,
 // gofmt -l, tofu fmt -check).
@@ -66,12 +89,16 @@ var readOnlyGit = nameSet(`add diff status log show ls-files blame commit fetch 
 // node -e, ruby -e, perl -e) or name a module it runs (python -m).
 var codeFlags = nameSet("-c -e -E --eval -p --print -m -r")
 
-// fileEdits matches program source that may change files: writes, dumps,
-// renames, removals, permission changes, output redirection or starting
-// another program, which may do any of these.
+// fileEdits matches program source that may change files: writes (write
+// calls, write-mode opens, print to a file, Perl and awk output opens),
+// dumps, renames, removals, permission changes, or starting another
+// program, which may do any of these. Comparisons and arrows (a > b, ->)
+// are not writes.
 var fileEdits = regexp.MustCompile(
-	`(?i)write|open\s*\(|dump\s*\(|rename|os\.replace|copy|move|unlink|os\.remove|` +
-		`truncate|chmod|rmtree|shutil|system|popen|subprocess|exec|spawn|>`,
+	`(?i)\.write\s*\(|write_(?:text|bytes)|writefile|appendfile|createwritestream|` +
+		`open\s*\([^)]*,\s*(?:mode\s*=\s*)?["'][rbt]*[wax+][rwxabt+]*["']|\.open\s*\(\s*["'][wax+]|["']>>?[^=>]|\bfile\s*=|` +
+		`print[f]?\s*>|\bdump\s*\(|os\.(?:rename|replace|remove|unlink|truncate|chmod|system)|` +
+		`shutil\.|rmtree|popen|subprocess|child_process|\bexec\w*\s*\(|spawn|\bsystem\s*\(`,
 )
 
 // lastLineWriteSeq returns the execution position of the last write
@@ -163,7 +190,7 @@ func (w *astWalker) operandsEdit(name string, args []string, target string) bool
 	writes := !checking &&
 		(formatterPrograms[name] || slices.ContainsFunc(args, func(arg string) bool {
 			return writeFlags[arg] || strings.HasPrefix(arg, "--in-place") ||
-				filter && strings.Contains(arg, filterFlag)
+				filter && filterWrite(arg, filterFlag) || strings.HasPrefix(arg, "--fix")
 		}))
 	reader := checkerPrograms[name] || formatterPrograms[name] || filter
 
@@ -230,7 +257,8 @@ func (w *astWalker) mayName(arg, target string) (names, dir bool) {
 		return true, false
 	}
 
-	return false, clean == "." || clean == parentDir || strings.HasSuffix(arg, "/")
+	return false, clean == "." || clean == parentDir || strings.HasSuffix(arg, "/") ||
+		strings.HasSuffix(clean, "...")
 }
 
 // interpreterEdits reports whether an interpreter run may change target:
@@ -264,8 +292,17 @@ func (w *astWalker) interpreterEdits(cmd Command, spec interpreter, target strin
 	}
 
 	if inline {
+		inPlace := slices.ContainsFunc(cmd.Args, func(arg string) bool {
+			return filterWrite(arg, "i")
+		})
+
 		return codeEdits(strings.Join(cmd.Args, " "), target) ||
-			unknownModule(strings.Join(operands, "\n"), langPython)
+			unknownModule(strings.Join(operands, "\n"), langPython) ||
+			inPlace && slices.ContainsFunc(operands, func(arg string) bool {
+				names, dir := w.mayName(arg, target)
+
+				return names || dir
+			})
 	}
 
 	if len(operands) == 0 || operands[0] == "-" || operands[0] == devStdin {
