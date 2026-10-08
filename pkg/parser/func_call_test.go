@@ -125,6 +125,10 @@ var _ = Describe("Calls to a function defined on the line", func() {
 		Entry("after unset", `t(){ :; }; unset t; t "git push --force"`),
 		Entry("after an unset of an unknown name", `t(){ :; }; unset "$n"; t "git push --force"`),
 		Entry("after an unset in eval", `t(){ :; }; eval 'unset -f t'; t "git push --force"`),
+		Entry("after an unset of a brace expansion",
+			`t(){ :; }; unset -f {t,x}; t "git push --force"`),
+		Entry("after an unset of a partial brace expansion",
+			`t(){ :; }; unset -f t{,}; t "git push --force"`),
 		Entry("after zsh unfunction", `t(){ :; }; unfunction t; t "git push --force"`),
 		Entry(
 			"a redefinition behind &&",

@@ -881,7 +881,7 @@ func (w *astWalker) forgetSureFuncs(cmd Command) {
 
 // unsureName reports an argument whose value may name another function.
 func unsureName(arg string) bool {
-	return strings.ContainsAny(arg, "$`*?[")
+	return strings.ContainsAny(arg, "$`*?[{")
 }
 
 // callsSureFunc reports a command the top-level shell runs directly as a
