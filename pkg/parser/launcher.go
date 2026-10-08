@@ -29,6 +29,9 @@ type launch struct {
 	files       []scriptFile // files run as scripts (bash x.sh, ./x.sh, source x)
 	code        []string     // interpreter source scanned for commands (python -c)
 	entrypoints []Command
+	// stdinProgram marks an interpreter told by a lone - to read its program
+	// from stdin (python3 - args), which must then be visible.
+	stdinProgram bool
 }
 
 // empty reports whether the command launches nothing to follow.
@@ -132,6 +135,7 @@ type interpreter struct {
 	shellLike  bool     // the source is itself a command line (pwsh)
 	codeFirst  bool     // the first operand is source, not a file (awk)
 	wordFlags  bool     // options are whole words (-Command), never letter clusters
+	dashStdin  bool     // a lone - reads the program from stdin; later operands are its arguments
 }
 
 // codeFlag reports whether arg takes the program source, and the source
@@ -157,10 +161,12 @@ var (
 		codeFlags:  strings.Fields("-c"),
 		valueFlags: strings.Fields("-W -X"),
 		stopFlags:  strings.Fields("-m"),
+		dashStdin:  true,
 	}
 	nodeInterpreter = interpreter{
 		codeFlags:  strings.Fields("-e -p --eval --print"),
 		valueFlags: strings.Fields("-r --require --import --loader"),
+		dashStdin:  true,
 	}
 	pwshInterpreter = interpreter{
 		codeFlags: strings.Fields("-c -command"),
@@ -171,27 +177,39 @@ var (
 
 // interpreters run program source that can start a git command itself.
 var interpreters = map[string]interpreter{
-	"awk":        awkInterpreter,
-	"bun":        {codeFlags: strings.Fields("-e --eval -p --print")},
-	"gawk":       awkInterpreter,
-	"mawk":       awkInterpreter,
-	"nawk":       awkInterpreter,
-	"deno":       {codeFlags: strings.Fields("eval")},
-	"lua":        {codeFlags: strings.Fields("-e")},
-	"node":       nodeInterpreter,
-	"nodejs":     nodeInterpreter,
-	"osascript":  {codeFlags: strings.Fields("-e"), valueFlags: strings.Fields("-l -s")},
-	"perl":       {codeFlags: strings.Fields("-e -E"), valueFlags: strings.Fields("-M -I")},
+	"awk":    awkInterpreter,
+	"bun":    {codeFlags: strings.Fields("-e --eval -p --print")},
+	"gawk":   awkInterpreter,
+	"mawk":   awkInterpreter,
+	"nawk":   awkInterpreter,
+	"deno":   {codeFlags: strings.Fields("eval")},
+	"lua":    {codeFlags: strings.Fields("-e"), dashStdin: true},
+	"node":   nodeInterpreter,
+	"nodejs": nodeInterpreter,
+	"osascript": {
+		codeFlags:  strings.Fields("-e"),
+		valueFlags: strings.Fields("-l -s"),
+		dashStdin:  true,
+	},
+	"perl": {
+		codeFlags:  strings.Fields("-e -E"),
+		valueFlags: strings.Fields("-M -I"),
+		dashStdin:  true,
+	},
 	"php":        {codeFlags: strings.Fields("-r"), valueFlags: strings.Fields("-c -d -z")},
 	"powershell": pwshInterpreter,
 	"pwsh":       pwshInterpreter,
 	"python":     pythonInterpreter,
 	"python2":    pythonInterpreter,
 	"python3":    pythonInterpreter,
-	"rscript":    {codeFlags: strings.Fields("-e")},
-	"ruby":       {codeFlags: strings.Fields("-e"), valueFlags: strings.Fields("-r -I")},
-	"ts-node":    {codeFlags: strings.Fields("-e --eval")},
-	"tsx":        {codeFlags: strings.Fields("-e --eval")},
+	"rscript":    {codeFlags: strings.Fields("-e"), dashStdin: true},
+	"ruby": {
+		codeFlags:  strings.Fields("-e"),
+		valueFlags: strings.Fields("-r -I"),
+		dashStdin:  true,
+	},
+	"ts-node": {codeFlags: strings.Fields("-e --eval")},
+	"tsx":     {codeFlags: strings.Fields("-e --eval")},
 }
 
 // assignmentPattern matches a NAME=value operand.
@@ -840,6 +858,7 @@ func interpreterLaunch(cmd Command, spec interpreter) launch {
 	// An option klaudiush does not know may take a value, which then looks
 	// like the script file, so later arguments are still read for code.
 	operand := false
+	stdinProgram := false
 
 args:
 	for i := 0; i < len(cmd.Args); i++ {
@@ -855,6 +874,12 @@ args:
 		case slices.Contains(spec.valueFlags, arg):
 			i++
 		case hasAttachedValue(arg, spec.valueFlags):
+		case arg == "-" && spec.dashStdin && !operand && len(l.code) == 0:
+			// python3 - "$f": the program comes from stdin and "$f" is its
+			// argument, not a script file.
+			stdinProgram = true
+
+			break args
 		case spec.codeFirst && !strings.HasPrefix(arg, "-") && len(l.code) == 0 && len(l.files) == 0:
 			l.code = append(l.code, arg)
 
@@ -882,6 +907,7 @@ args:
 
 	if len(l.code) == 0 && len(l.files) == 0 {
 		l = stdinSource(cmd, spec)
+		l.stdinProgram = stdinProgram
 	}
 
 	// A shell-like language runs its source as a command line too.

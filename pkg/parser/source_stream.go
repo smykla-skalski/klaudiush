@@ -306,6 +306,14 @@ func (w *astWalker) notePiped(call *syntax.CallExpr, seq int) {
 
 		w.state.untrustedStdin[seq] = tool
 	}
+
+	if w.overriddenByCall[call] {
+		if w.state.overriddenStdin == nil {
+			w.state.overriddenStdin = make(map[int]bool)
+		}
+
+		w.state.overriddenStdin[seq] = true
+	}
 }
 
 // noteStdinRedirects marks the commands whose stdin a redirect of stmt
@@ -329,13 +337,25 @@ func (w *astWalker) noteStdinRedirects(stmt *syntax.Stmt) {
 
 	call := callExprOf(stmt)
 
+	// The call's own redirect replaces what a pipe fed it, so piped text
+	// recorded as its stdin is not what it reads.
+	if _, text := w.stdinByCall[call]; text && call != nil && !literalText(redirs[len(redirs)-1]) {
+		w.setOverridden(call)
+	}
+
 	switch last := redirs[len(redirs)-1]; {
 	case call == nil:
 		w.markPiped(stmt, "")
 	case runsExec(call):
 		w.stdinReplaced = true
-	case len(redirs) > 1, last.Op == syntax.DplIn, last.Op == syntax.RdrInOut,
-		heredocExpands(last):
+	case len(redirs) > 1, last.Op == syntax.DplIn, last.Op == syntax.DplOut,
+		last.Op == syntax.RdrInOut:
+		w.setUntrusted(call, "")
+
+		if !soleLastText(redirs) {
+			w.setOverridden(call)
+		}
+	case heredocExpands(last):
 		w.setUntrusted(call, "")
 	case last.Op == syntax.RdrIn:
 		if sub := soleProcSubst(last.Word); sub != nil {
@@ -406,6 +426,39 @@ func (w *astWalker) setUntrusted(call *syntax.CallExpr, tool string) {
 	w.untrustedByCall[call] = tool
 }
 
+// soleLastText reports stdin redirects whose last, the one the shell
+// keeps, is the only heredoc or here-string, so the text recorded as the
+// command's stdin is what it reads.
+func soleLastText(redirs []*syntax.Redirect) bool {
+	texts := 0
+
+	for _, redir := range redirs {
+		if literalText(redir) {
+			texts++
+		}
+	}
+
+	return texts == 1 && literalText(redirs[len(redirs)-1])
+}
+
+// literalText reports a heredoc or here-string redirect.
+func literalText(redir *syntax.Redirect) bool {
+	switch redir.Op {
+	case syntax.Hdoc, syntax.DashHdoc, syntax.WordHdoc:
+		return true
+	default:
+		return false
+	}
+}
+
+func (w *astWalker) setOverridden(call *syntax.CallExpr) {
+	if w.overriddenByCall == nil {
+		w.overriddenByCall = make(map[*syntax.CallExpr]bool)
+	}
+
+	w.overriddenByCall[call] = true
+}
+
 // redirectsStdin reports a redirect that replaces stdin.
 func redirectsStdin(redir *syntax.Redirect) bool {
 	if redir.N != nil && redir.N.Value != "0" {
@@ -416,6 +469,9 @@ func redirectsStdin(redir *syntax.Redirect) bool {
 	case syntax.RdrIn, syntax.RdrInOut, syntax.DplIn,
 		syntax.Hdoc, syntax.DashHdoc, syntax.WordHdoc:
 		return true
+	case syntax.DplOut:
+		// 0>&3 duplicates a descriptor onto stdin just as <&3 does.
+		return redir.N != nil
 	default:
 		return false
 	}
@@ -670,6 +726,30 @@ func (w *astWalker) shellStdinLaunch(cmd Command, visible launch) launch {
 	}
 
 	return visible
+}
+
+// stdinProgramLaunch returns what an interpreter told by a lone - to read
+// its program from stdin runs: the literal text or redirected file it was
+// given. A heredoc or here-string the shell keeps wins over an earlier
+// file redirect. A program klaudiush cannot see (piped from a command,
+// inherited, a process substitution or descriptor, text a later redirect
+// replaces, or no stdin at all) fails closed.
+func (w *astWalker) stdinProgramLaunch(cmd Command, visible launch) launch {
+	_, untrusted := w.state.untrustedStdin[cmd.Location.Seq]
+	opaque := w.state.overriddenStdin[cmd.Location.Seq]
+
+	if cmd.Stdin == "" && cmd.StdinFile != "" {
+		_, detail := redirectedStdin(cmd, cmd.StdinFile)
+		opaque = opaque || untrusted || detail != ""
+	}
+
+	if !opaque && !visible.empty() {
+		return visible
+	}
+
+	w.addOpacity(sourceOpacity(cmd, DetailSourceStdin, w.state.pipedStdin[cmd.Location.Seq]))
+
+	return launch{}
 }
 
 // referencedVar matches a variable a rendered word refers to.
