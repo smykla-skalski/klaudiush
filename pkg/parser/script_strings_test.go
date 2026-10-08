@@ -189,6 +189,13 @@ var _ = Describe("Plain strings in interpreter code", func() {
 			`python3 -c 'import subprocess; subprocess.run(["hyperfine", "git zz"])'`),
 		Entry("a python-shebang file run by bash", "bash /s/shebang.py"),
 		Entry("a python-shebang file sourced", "source /s/shebang.py"),
+		Entry("a log file handler",
+			`python3 -c 'import logging; logging.FileHandler("/tmp/h"); logging.info("git zz")'`),
+		Entry("a make clone fed on stdin",
+			`python3 -c 'import subprocess; subprocess.run(["gmake", "-f", "-"], input="git zz")'`),
+		Entry("a comment inside the argv",
+			"python3 -c 'import subprocess\nsubprocess.run([\"/bin/echo\",  # x\n"+
+				"    \"bash\"], input=\"git zz\")'"),
 	)
 
 	DescribeTable("still records git the code really runs",

@@ -21,25 +21,26 @@ const (
 // hand one to something that does: a shell call (os.system, popen,
 // shell=True, exec, spawn, getstatusoutput), code run from a string (eval,
 // compile, Function), a name looked up at run time (getattr,
-// globalThis[...], sys.modules), a file written (and so maybe run later) or
-// an environment variable git or a shell may run (GIT_EDITOR, BASH_ENV). It
-// is matched case-insensitively, after benignCalls are removed, and
-// deliberately loose: a false match only keeps reading every string.
+// globalThis[...], sys.modules), a file written and maybe run later (write,
+// FileHandler, inplace) or an environment variable git or a shell may run
+// (GIT_EDITOR, BASH_ENV). It is matched case-insensitively, after
+// benignCalls are removed, and deliberately loose: a false match only keeps
+// reading every string.
 var stringRunners = regexp.MustCompile(
 	`(?i)system|popen|\bshell\b|_shell|shell_|exec|eval|spawn|getattr|(?:^|[^\w.])compile\s*\(|runpy|` +
 		`getstatusoutput|startfile|\bfunction\s*\(|\bcommand\s*\(|` +
 		`write|chmod|symlink|appendfile|copyfile|\bdump\s*\(|o_wronly|o_rdwr|o_creat|o_append|` +
 		`\bopen\s*\([^)]*,\s*(?:mode\s*=\s*)?["'][^"']*[wax+]|` +
 		`environ|\benv\b|globalthis|\bglobal\s*\[|mainmodule|process\.binding|dlopen|` +
-		`sys\.modules|attrgetter|methodcaller|__getattribute__`,
+		`sys\.modules|attrgetter|methodcaller|__getattribute__|filehandler|inplace|filename\s*=`,
 )
 
 // benignCalls drops reads and writes stringRunners would otherwise match
 // that cannot run anything: printing to the process's own streams, naming
 // the running interpreter and reading an environment variable.
 var benignCalls = strings.NewReplacer(
-	"sys.stdout.write", "", "sys.stderr.write", "", "process.stdout.write", "",
-	"process.stderr.write", "", "sys.executable", "", "environ.get(", "(",
+	"sys.stdout.write", " ", "sys.stderr.write", " ", "process.stdout.write", " ",
+	"process.stderr.write", " ", "sys.executable", " ", "environ.get(", " (",
 )
 
 // jsRunners matches JavaScript that reaches a program or a module without
@@ -55,7 +56,7 @@ var jsRunners = regexp.MustCompile(
 var stdinPrograms = nameSet(`su flock env watch ssh tmux screen parallel xargs busybox
 	script expect at batch crontab ed ex vi vim nvim sqlite3 psql mysql gdb lldb sed
 	docker podman nerdctl kubectl make runuser sg newgrp pkexec chroot nsenter unshare
-	systemd-run xterm tee dd cat cp install`)
+	systemd-run xterm tee dd cat cp install gmake bmake just task`)
 
 // commandStringFlag matches an argv item that hands a wrapper, shell or
 // interpreter its command line (-c, -lc, -e, --eval, --command), whatever
@@ -208,7 +209,8 @@ func spawnRunsStrings(code string) bool {
 }
 
 // argvItems returns the quoted items of the list or tuple literal that opens
-// rest, when its first item is a quoted program name.
+// rest, when its first item is a quoted program name. A comment in the list
+// may hide an item or unbalance its quotes, so it reads as unknown.
 func argvItems(rest string) ([]string, bool) {
 	if rest == "" || rest[0] != '[' && rest[0] != '(' {
 		return nil, false
@@ -219,7 +221,12 @@ func argvItems(rest string) ([]string, bool) {
 		return nil, false
 	}
 
-	matches := listItem.FindAllStringSubmatch(rest[1:listEnd(rest)], -1)
+	region := rest[1:listEnd(rest)]
+	if strings.Contains(region, "#") {
+		return nil, false
+	}
+
+	matches := listItem.FindAllStringSubmatch(region, -1)
 	items := make([]string, 0, len(matches))
 
 	for _, match := range matches {
