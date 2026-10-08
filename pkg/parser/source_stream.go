@@ -349,7 +349,8 @@ func (w *astWalker) noteStdinRedirects(stmt *syntax.Stmt) {
 		w.markPiped(stmt, "")
 	case runsExec(call):
 		w.stdinReplaced = true
-	case len(redirs) > 1, last.Op == syntax.DplIn, last.Op == syntax.RdrInOut:
+	case len(redirs) > 1, last.Op == syntax.DplIn, last.Op == syntax.DplOut,
+		last.Op == syntax.RdrInOut:
 		w.setUntrusted(call, "")
 
 		if !soleLastText(redirs) {
@@ -469,6 +470,9 @@ func redirectsStdin(redir *syntax.Redirect) bool {
 	case syntax.RdrIn, syntax.RdrInOut, syntax.DplIn,
 		syntax.Hdoc, syntax.DashHdoc, syntax.WordHdoc:
 		return true
+	case syntax.DplOut:
+		// 0>&3 duplicates a descriptor onto stdin just as <&3 does.
+		return redir.N != nil
 	default:
 		return false
 	}
