@@ -23,28 +23,42 @@ if [ ! -f "$QUERY_FILE" ]; then
   exit 1
 fi
 
-# Collect modified and untracked files
-files=()
+work_dir="$(mktemp -d)"
+trap 'rm -rf "$work_dir"' EXIT
+
+# File contents go into a request body file, not argv: Linux caps a single
+# argument at 128 KiB, and the base64 of CHANGELOG.md alone exceeds that.
+: >"$work_dir/files.jsonl"
 while IFS= read -r f; do
-  files+=(--field "files[][path]=$f")
-  files+=(--field "files[][contents]=$(base64 -w0 "$f")")
+  base64 -w0 "$f" >"$work_dir/contents"
+  jq -cn --arg path "$f" --rawfile contents "$work_dir/contents" \
+    '{path: $path, contents: $contents}' >>"$work_dir/files.jsonl"
 done < <(git status --porcelain | awk '{print $2}' | xargs --no-run-if-empty -I{} find {} -type f 2>/dev/null)
 
-if [ ${#files[@]} -eq 0 ]; then
+if [ ! -s "$work_dir/files.jsonl" ]; then
   echo "No modified files to commit, skipping" >&2
   exit 0
 fi
 
-# Create verified commit via GraphQL API
+jq -s \
+  --rawfile query "$QUERY_FILE" \
+  --arg githubRepository "$GITHUB_REPOSITORY" \
+  --arg branchName "$GITHUB_REF_NAME" \
+  --arg expectedHeadOid "$(git rev-parse HEAD)" \
+  --arg commitMessage "$COMMIT_MESSAGE" \
+  '{query: $query, variables: {
+      githubRepository: $githubRepository,
+      branchName: $branchName,
+      expectedHeadOid: $expectedHeadOid,
+      commitMessage: $commitMessage,
+      files: .
+    }}' \
+  "$work_dir/files.jsonl" >"$work_dir/body.json"
+
 new_sha=$(
   gh api graphql \
     --jq '.data.createCommitOnBranch.commit.oid' \
-    --field "query=@$QUERY_FILE" \
-    --field "githubRepository=$GITHUB_REPOSITORY" \
-    --field "branchName=$GITHUB_REF_NAME" \
-    --field "expectedHeadOid=$(git rev-parse HEAD)" \
-    --field "commitMessage=$COMMIT_MESSAGE" \
-    "${files[@]}"
+    --input "$work_dir/body.json"
 )
 
 echo "Created verified commit: $new_sha" >&2
