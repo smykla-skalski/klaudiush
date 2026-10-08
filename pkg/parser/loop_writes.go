@@ -184,6 +184,13 @@ func (w *astWalker) commandWrites(name string, args []*syntax.Word, seen map[str
 		return anyStartupVar
 	case name == unsetBuiltin && removesNameref(args):
 		return unsetNamerefWrites(args)
+	case name == printfBuiltin:
+		words := make([]*syntax.Word, len(args))
+		for i, arg := range args {
+			words[i] = w.loopLiteral(arg)
+		}
+
+		return w.namerefWrites(writerTargets(name, words))
 	case varWriters[name]:
 		return w.namerefWrites(writerTargets(name, args))
 	case declWriters[name]:

@@ -556,22 +556,30 @@ func (w *astWalker) noteAllExport(args []string) {
 // any variable ((T=1)), let, $[T=1], a[T=1]=x, declare -i) and evaluates
 // values as more arithmetic, so no variable value is trusted after it.
 func (w *astWalker) noteArithmetic(node syntax.Node) {
+	w.state.arithmetic = w.state.arithmetic || arithmeticNode(node)
+}
+
+// arithmeticNode reports a node that evaluates arithmetic.
+func arithmeticNode(node syntax.Node) bool {
 	switch n := node.(type) {
 	case *syntax.ArithmCmd, *syntax.ArithmExp, *syntax.LetClause:
-		w.state.arithmetic = true
+		return true
 	case *syntax.ParamExp:
-		w.state.arithmetic = w.state.arithmetic || !literalIndex(n.Index) || n.Slice != nil
+		return !literalIndex(n.Index) || n.Slice != nil
 	case *syntax.Assign:
-		w.state.arithmetic = w.state.arithmetic || !literalIndex(n.Index)
+		return !literalIndex(n.Index)
 	case *syntax.DeclClause:
 		for _, arg := range n.Args {
 			if arg.Name == nil && arg.Value != nil {
 				option := wordToString(arg.Value)
-				w.state.arithmetic = w.state.arithmetic ||
-					strings.HasPrefix(option, "-") && strings.Contains(option, "i")
+				if strings.HasPrefix(option, "-") && strings.Contains(option, "i") {
+					return true
+				}
 			}
 		}
 	}
+
+	return false
 }
 
 // prefixGaps turns into gaps the variables of a heredoc or here-string that

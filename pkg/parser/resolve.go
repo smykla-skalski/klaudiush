@@ -66,6 +66,7 @@ func newAstWalker(resolver Resolver) *astWalker {
 		namerefs:        make(map[string]string),
 		certain:         make(map[*syntax.Stmt]certainty),
 		loopCalls:       make(map[*syntax.CallExpr]bool),
+		loopScopes:      make(map[*syntax.CallExpr]map[string]string),
 		resolver:        resolver,
 		aliases:         make(map[string]string),
 		funcs:           make(map[string]string),
@@ -105,6 +106,7 @@ func (w *astWalker) child(dir string, depth int, inheritNamerefs bool) *astWalke
 	}
 
 	child.outerLoop = w.inLoop
+	child.shellAssigned = maps.Clone(w.shellAssigned)
 	child.loopStartup = maps.Clone(w.loopStartup)
 	child.startupUnset = maps.Clone(w.startupUnset)
 	child.startupDeferred = maps.Clone(w.startupDeferred)
@@ -1353,9 +1355,13 @@ func (w *astWalker) scriptChild(
 	dir string,
 	depth int,
 	future bool,
-	inheritNamerefs bool,
+	sameShell bool,
 ) *astWalker {
-	child := w.child(dir, depth, inheritNamerefs)
+	child := w.child(dir, depth, sameShell)
+	if !sameShell {
+		child.shellAssigned = nil
+	}
+
 	if !future {
 		return child
 	}

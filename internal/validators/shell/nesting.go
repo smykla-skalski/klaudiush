@@ -268,11 +268,7 @@ func opacityFinding(o parser.Opacity) validator.Finding {
 		f.Repair = "Use the builtin subcommand it stands for, or define the alias " +
 			"in your global or repository git config in a separate command first"
 	case parser.OpacityUnresolvedArgs:
-		f.Message = "function " + o.Operation + " forwards arguments with positional " +
-			"forms klaudiush does not substitute (slices, defaults, shift or ${10})"
-		f.Required = `arguments forwarded as "$@", "$*" or $1 to $9`
-		f.Repair = "Run the command inside the function directly, or forward " +
-			`arguments with plain "$@"`
+		f.Message, f.Required, f.Repair = unresolvedArgsFinding(o)
 	case parser.OpacityUnresolvedWord:
 		switch {
 		case programWord(o):
@@ -706,4 +702,25 @@ func startupFileRequired(o parser.Opacity) string {
 	}
 
 	return "a literal path to a readable file, or no startup file"
+}
+
+// unresolvedArgsFinding explains a function call whose arguments cannot be
+// followed: split after IFS may have changed, or forwarded in a positional
+// form klaudiush does not substitute.
+func unresolvedArgsFinding(o parser.Opacity) (message, required, repair string) {
+	if o.Detail == parser.DetailArgsSplit {
+		return "function " + o.Operation + " splits unquoted arguments ($1, $@) after IFS " +
+				"may have changed, by a write on the line or one klaudiush cannot name " +
+				"(read, printf or declare with a computed target, eval, source)",
+			"unquoted arguments split under the default IFS, with no write " +
+				"klaudiush cannot name before them",
+			`Quote the arguments in the function ("$1", "$@"), keep the write that ` +
+				"may change IFS out of the command, or run the command directly"
+	}
+
+	return "function " + o.Operation + " forwards arguments with positional " +
+			"forms klaudiush does not substitute (slices, defaults, shift or ${10})",
+		`arguments forwarded as "$@", "$*" or $1 to $9`,
+		"Run the command inside the function directly, or forward " +
+			`arguments with plain "$@"`
 }

@@ -149,13 +149,23 @@ func (w *astWalker) prepare(stmt *syntax.Stmt) {
 
 		switch n := node.(type) {
 		case *syntax.WhileClause, *syntax.ForClause:
+			var scope map[string]string
+			if node == leadingLoop(stmt) {
+				scope = w.loopScope(n)
+			}
+
+			w.loopStable = scope
+
 			walkLoop(n, func(inner syntax.Node, param bool) {
 				w.noteLoopStartup(inner, param)
 
 				if call, ok := inner.(*syntax.CallExpr); ok {
 					w.loopCalls[call] = true
+					w.loopScopes[call] = scope
 				}
 			})
+
+			w.loopStable = nil
 
 			return false
 		case *syntax.ParamExp:
@@ -722,6 +732,15 @@ func (w *astWalker) forgetWritten(cmd Command) {
 	}
 
 	names := writtenVars(cmd)
+	if cmd.Name == printfBuiltin {
+		var known bool
+		if names, known = w.printfNames(cmd); !known {
+			w.distrustNames()
+
+			return
+		}
+	}
+
 	if cmd.Name == getoptsBuiltin {
 		names = append(names, "OPTARG", "OPTIND")
 	}

@@ -33,6 +33,11 @@ const OpacityUnresolvedProgram OpacityCause = "unresolved-program"
 // parser does not substitute.
 const OpacityUnresolvedArgs OpacityCause = "unresolved-args"
 
+// DetailArgsSplit is the Opacity.Detail of a function that splits its
+// unquoted arguments after IFS may have changed: set on the line, or by a
+// write klaudiush cannot name.
+const DetailArgsSplit = "it splits unquoted arguments after IFS may have changed"
+
 // OpacityUnresolvedWord means the line eval runs, or the command word of git
 // or gh, comes from a variable or command output the parser cannot resolve.
 const OpacityUnresolvedWord OpacityCause = "unresolved-word"
