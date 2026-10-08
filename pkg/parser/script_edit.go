@@ -49,7 +49,7 @@ var filterWrites = func() map[string]string {
 }()
 
 // longWrites are the long options that make sed or sort write a file.
-var longWrites = []string{"--in-place", "--output"}
+var longWrites = strings.Fields("--in-place --output")
 
 // filterWrite reports whether arg turns on the write flag of a filter: a
 // short option cluster holding its letter (sed -Ei, sort -ro), a long
@@ -292,17 +292,7 @@ func (w *astWalker) interpreterEdits(cmd Command, spec interpreter, target strin
 	}
 
 	if inline {
-		inPlace := slices.ContainsFunc(cmd.Args, func(arg string) bool {
-			return filterWrite(arg, "i")
-		})
-
-		return codeEdits(strings.Join(cmd.Args, " "), target) ||
-			unknownModule(strings.Join(operands, "\n"), langPython) ||
-			inPlace && slices.ContainsFunc(operands, func(arg string) bool {
-				names, dir := w.mayName(arg, target)
-
-				return names || dir
-			})
+		return w.inlineEdits(cmd.Args, operands, target)
 	}
 
 	if len(operands) == 0 || operands[0] == "-" || operands[0] == devStdin {
@@ -322,6 +312,27 @@ func (w *astWalker) interpreterEdits(cmd Command, spec interpreter, target strin
 	text, status := w.resolver.ReadScript(script)
 
 	return status != ScriptText || codeEdits(text, target)
+}
+
+// inlineEdits reports whether an interpreter given its program inline may
+// change target: the program may change files, names target or loads a
+// module klaudiush does not know, or an in-place flag (perl -pi, ruby -i)
+// edits operands that may stand for target.
+func (w *astWalker) inlineEdits(args, operands []string, target string) bool {
+	if codeEdits(strings.Join(args, " "), target) ||
+		unknownModule(strings.Join(operands, "\n"), langPython) {
+		return true
+	}
+
+	if !slices.ContainsFunc(args, func(arg string) bool { return filterWrite(arg, "i") }) {
+		return false
+	}
+
+	return slices.ContainsFunc(operands, func(arg string) bool {
+		names, dir := w.mayName(arg, target)
+
+		return names || dir
+	})
 }
 
 // moduleArgs returns the module an interpreter runs with -m and the
