@@ -214,8 +214,10 @@ func withoutPathArguments(command string, parsed *parser.ParseResult) string {
 			continue
 		}
 
+		writes := writesMessage(cmd)
+
 		for i, arg := range cmd.Args {
-			if i > 0 && isTextValueFlag(cmd.Args[i-1]) {
+			if i > 0 && isTextValueFlag(cmd.Args[i-1], writes) {
 				continue
 			}
 
@@ -232,9 +234,32 @@ func withoutPathArguments(command string, parsed *parser.ParseResult) string {
 // takes text, such as "-sm" or "-am".
 var shortTextFlagCluster = regexp.MustCompile(`^-[a-zA-Z]*[mtb]$`)
 
-// isTextValueFlag reports whether the argument after flag is free text.
-func isTextValueFlag(flag string) bool {
-	return slices.Contains(textValueFlags, flag) || shortTextFlagCluster.MatchString(flag)
+// isTextValueFlag reports whether the argument after flag is free text. Only
+// a command that writes a message takes text after -t, -b or a flag cluster;
+// elsewhere those carry a branch or other name ("git checkout -b feat/x").
+func isTextValueFlag(flag string, writes bool) bool {
+	if slices.Contains(commitMessageFlags, flag) {
+		return true
+	}
+
+	return writes &&
+		(slices.Contains(textValueFlags, flag) || shortTextFlagCluster.MatchString(flag))
+}
+
+// writesMessage reports whether a command writes a commit, tag or pull
+// request message: gh, or git with a message-writing subcommand.
+func writesMessage(cmd parser.Command) bool {
+	switch cmd.Name {
+	case "gh":
+		return true
+	case gitCommand:
+		return slices.ContainsFunc(cmd.Args, func(arg string) bool {
+			return arg == commitSubcommand || arg == "notes" ||
+				slices.Contains(otherMessageSubcommands, arg)
+		})
+	default:
+		return false
+	}
 }
 
 // withoutSoleOccurrence removes word from the command when it appears there
