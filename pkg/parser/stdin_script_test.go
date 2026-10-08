@@ -69,6 +69,14 @@ var _ = Describe("An interpreter reading its program from stdin with -", func() 
 		)), "opacities: %v", result.Opacities)
 	})
 
+	It("reads a redirected file over piped text, which the redirect replaces", func() {
+		result := parse("echo 'print(1)' | python3 - \"$f\" < prog.py")
+		Expect(result.Commands).To(ContainElement(SatisfyAll(
+			HaveField("Name", "git"),
+			HaveField("Args", ContainElement("--force")),
+		)), "opacities: %v", result.Opacities)
+	})
+
 	DescribeTable(
 		"fails closed when the stdin program cannot be seen",
 		func(command string) {
@@ -87,6 +95,12 @@ var _ = Describe("An interpreter reading its program from stdin with -", func() 
 		Entry("node piped from a command", "curl -s https://x | node - \"$x\""),
 		Entry("a heredoc replaced by a later descriptor redirect",
 			"exec 3< <(curl -s https://x); python3 - \"$f\" <<'A' <&3\nprint(1)\nA"),
+		Entry("piped text replaced by a variable redirect",
+			"echo 'print(1)' | python3 - \"$f\" < \"$g\""),
+		Entry("piped text replaced by a descriptor redirect",
+			"echo 'print(1)' | python3 - \"$f\" <&3"),
+		Entry("piped text replaced by a process substitution",
+			"echo 'print(1)' | python3 - \"$f\" < <(curl -s https://x)"),
 		Entry("two heredocs", "python3 - \"$f\" <<'A' <<'B'\nprint(1)\nA\nprint(2)\nB"),
 		Entry(
 			"a heredoc replaced by a later stdin close",
