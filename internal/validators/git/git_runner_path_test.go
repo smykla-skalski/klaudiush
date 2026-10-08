@@ -19,13 +19,12 @@ import (
 // gitEnvVars lists environment variables that can interfere with git command isolation.
 // These must be cleared during tests to ensure git commands operate on the test
 // repository, not the parent repository (especially important in worktrees).
+// Global and system config are pinned by isolateGitEnv for the whole suite.
 var gitEnvVars = []string{
 	"GIT_DIR",
 	"GIT_WORK_TREE",
 	"GIT_COMMON_DIR",
 	"GIT_CONFIG",
-	"GIT_CONFIG_GLOBAL",
-	"GIT_CONFIG_SYSTEM",
 	"GIT_INDEX_FILE",
 }
 

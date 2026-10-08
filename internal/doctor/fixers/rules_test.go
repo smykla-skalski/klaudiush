@@ -40,6 +40,16 @@ var _ = Describe("RulesFixer", func() {
 
 		// Set HOME for tests
 		os.Setenv("HOME", tempDir)
+
+		// Keep the developer's real XDG config out of the merged config.
+		for name, sub := range map[string]string{
+			"XDG_CONFIG_HOME": ".config",
+			"XDG_DATA_HOME":   filepath.Join(".local", "share"),
+			"XDG_STATE_HOME":  filepath.Join(".local", "state"),
+			"XDG_CACHE_HOME":  ".cache",
+		} {
+			GinkgoT().Setenv(name, filepath.Join(tempDir, sub))
+		}
 	})
 
 	AfterEach(func() {

@@ -2,7 +2,6 @@ package config
 
 import (
 	"os"
-	"path/filepath"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -13,8 +12,6 @@ var _ = Describe("Manual QA: end-to-end deep merge scenarios", func() {
 		Context("global disables markdown, project overrides severity only", func() {
 			It("markdown stays disabled, severity changes, all other defaults survive", func() {
 				loader, homeDir, workDir := newSeparatedLoader()
-
-				DeferCleanup(func() { os.RemoveAll(homeDir); os.RemoveAll(workDir) })
 
 				writeGlobalConfig(homeDir, `[validators.file.markdown]
 enabled = false
@@ -40,8 +37,6 @@ severity = "warning"
 		Context("global changes commit title length, project changes commit scope", func() {
 			It("both changes apply, all other commit and message defaults survive", func() {
 				loader, homeDir, workDir := newSeparatedLoader()
-
-				DeferCleanup(func() { os.RemoveAll(homeDir); os.RemoveAll(workDir) })
 
 				writeGlobalConfig(homeDir, `[validators.git.commit.message]
 title_max_length = 72
@@ -79,8 +74,6 @@ require_scope = false
 			It("both sources merge correctly with defaults", func() {
 				loader, _, workDir := newSeparatedLoader()
 
-				DeferCleanup(func() { os.RemoveAll(filepath.Dir(workDir)); os.RemoveAll(workDir) })
-
 				writeProjectConfig(workDir, `[validators.file.markdown]
 heading_spacing = false
 `)
@@ -103,8 +96,6 @@ heading_spacing = false
 		Context("all five sources active on different fields", func() {
 			It("each source's field wins at its priority level", func() {
 				loader, homeDir, workDir := newSeparatedLoader()
-
-				DeferCleanup(func() { os.RemoveAll(homeDir); os.RemoveAll(workDir) })
 
 				// Global: severity=warning
 				writeGlobalConfig(homeDir, `[validators.file.markdown]
@@ -150,10 +141,6 @@ heading_spacing = false
 				It("env var wins over project TOML for the same field", func() {
 					loader, _, workDir := newSeparatedLoader()
 
-					DeferCleanup(
-						func() { os.RemoveAll(filepath.Dir(workDir)); os.RemoveAll(workDir) },
-					)
-
 					writeProjectConfig(workDir, `[validators.file.markdown]
 severity = "warning"
 `)
@@ -177,8 +164,6 @@ severity = "warning"
 			It("preserves bell defaults", func() {
 				loader, _, workDir := newSeparatedLoader()
 
-				DeferCleanup(func() { os.RemoveAll(filepath.Dir(workDir)); os.RemoveAll(workDir) })
-
 				writeProjectConfig(workDir, `[validators.notification.bell]
 severity = "warning"
 `)
@@ -200,8 +185,6 @@ severity = "warning"
 			It("both fields merge correctly", func() {
 				loader, homeDir, workDir := newSeparatedLoader()
 
-				DeferCleanup(func() { os.RemoveAll(homeDir); os.RemoveAll(workDir) })
-
 				writeGlobalConfig(homeDir, `[crash_dump]
 enabled = false
 `)
@@ -222,8 +205,6 @@ max_dumps = 5
 		Context("backup: global sets auto_backup, project sets max_backups", func() {
 			It("both fields merge correctly", func() {
 				loader, homeDir, workDir := newSeparatedLoader()
-
-				DeferCleanup(func() { os.RemoveAll(homeDir); os.RemoveAll(workDir) })
 
 				writeGlobalConfig(homeDir, `[backup]
 auto_backup = false

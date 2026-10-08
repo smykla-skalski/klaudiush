@@ -12,8 +12,22 @@ import (
 )
 
 func TestKoanfRules(t *testing.T) {
+	// Specs get a private TMPDIR so a cleanup bug cannot reach the
+	// developer's real temp dir; the sentinel catches such a bug.
+	sandbox := t.TempDir()
+	t.Setenv("TMPDIR", sandbox)
+
+	sentinel := filepath.Join(sandbox, "sentinel")
+	if err := os.WriteFile(sentinel, nil, 0o600); err != nil {
+		t.Fatalf("write sentinel: %v", err)
+	}
+
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "Koanf Rules Suite")
+
+	if _, err := os.Stat(sentinel); err != nil {
+		t.Errorf("a spec removed the shared temp dir: %v", err)
+	}
 }
 
 // Clear XDG env vars before every spec so that homeResolver uses the

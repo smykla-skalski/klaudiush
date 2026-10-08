@@ -8,15 +8,13 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-// helper to create a loader with separate home and work dirs.
+// newSeparatedLoader creates a loader with separate home and work dirs.
+// Both dirs are removed automatically when the spec ends.
 func newSeparatedLoader() (loader *KoanfLoader, homeDir, workDir string) {
 	var err error
 
-	homeDir, err = os.MkdirTemp("", "koanf-deepmerge-home-")
-	Expect(err).NotTo(HaveOccurred())
-
-	workDir, err = os.MkdirTemp("", "koanf-deepmerge-work-")
-	Expect(err).NotTo(HaveOccurred())
+	homeDir = GinkgoT().TempDir()
+	workDir = GinkgoT().TempDir()
 
 	loader, err = NewKoanfLoaderWithDirs(homeDir, workDir)
 	Expect(err).NotTo(HaveOccurred())
@@ -53,7 +51,6 @@ var _ = Describe("Deep merge config integration", func() {
 			It("preserves all markdown defaults", func() {
 				loader, _, workDir := newSeparatedLoader()
 
-				DeferCleanup(func() { os.RemoveAll(filepath.Dir(workDir)); os.RemoveAll(workDir) })
 				writeProjectConfig(workDir, `[validators.file.markdown]
 enabled = true
 `)
@@ -81,7 +78,6 @@ enabled = true
 			It("preserves enabled and other booleans", func() {
 				loader, _, workDir := newSeparatedLoader()
 
-				DeferCleanup(func() { os.RemoveAll(filepath.Dir(workDir)); os.RemoveAll(workDir) })
 				writeProjectConfig(workDir, `[validators.file.markdown]
 use_markdownlint = false
 `)
@@ -103,7 +99,6 @@ use_markdownlint = false
 			It("preserves all shellscript defaults", func() {
 				loader, _, workDir := newSeparatedLoader()
 
-				DeferCleanup(func() { os.RemoveAll(filepath.Dir(workDir)); os.RemoveAll(workDir) })
 				writeProjectConfig(workDir, `[validators.file.shellscript]
 severity = "warning"
 `)
@@ -127,7 +122,6 @@ severity = "warning"
 			It("preserves all terraform defaults", func() {
 				loader, _, workDir := newSeparatedLoader()
 
-				DeferCleanup(func() { os.RemoveAll(filepath.Dir(workDir)); os.RemoveAll(workDir) })
 				writeProjectConfig(workDir, `[validators.file.terraform]
 check_format = false
 `)
@@ -150,7 +144,6 @@ check_format = false
 			It("preserves all workflow defaults", func() {
 				loader, _, workDir := newSeparatedLoader()
 
-				DeferCleanup(func() { os.RemoveAll(filepath.Dir(workDir)); os.RemoveAll(workDir) })
 				writeProjectConfig(workDir, `[validators.file.workflow]
 enforce_digest_pinning = false
 `)
@@ -172,7 +165,6 @@ enforce_digest_pinning = false
 			It("preserves all commit defaults including nested message config", func() {
 				loader, _, workDir := newSeparatedLoader()
 
-				DeferCleanup(func() { os.RemoveAll(filepath.Dir(workDir)); os.RemoveAll(workDir) })
 				writeProjectConfig(workDir, `[validators.git.commit]
 severity = "warning"
 `)
@@ -219,7 +211,6 @@ severity = "warning"
 			It("preserves all push defaults", func() {
 				loader, _, workDir := newSeparatedLoader()
 
-				DeferCleanup(func() { os.RemoveAll(filepath.Dir(workDir)); os.RemoveAll(workDir) })
 				writeProjectConfig(workDir, `[validators.git.push]
 require_tracking = false
 `)
@@ -239,7 +230,6 @@ require_tracking = false
 			It("preserves all branch defaults", func() {
 				loader, _, workDir := newSeparatedLoader()
 
-				DeferCleanup(func() { os.RemoveAll(filepath.Dir(workDir)); os.RemoveAll(workDir) })
 				writeProjectConfig(workDir, `[validators.git.branch]
 allow_uppercase = true
 `)
@@ -265,7 +255,6 @@ allow_uppercase = true
 			It("preserves all PR defaults", func() {
 				loader, _, workDir := newSeparatedLoader()
 
-				DeferCleanup(func() { os.RemoveAll(filepath.Dir(workDir)); os.RemoveAll(workDir) })
 				writeProjectConfig(workDir, `[validators.git.pr]
 require_body = false
 `)
@@ -294,7 +283,6 @@ require_body = false
 			It("preserves rate_limit and audit sub-maps", func() {
 				loader, _, workDir := newSeparatedLoader()
 
-				DeferCleanup(func() { os.RemoveAll(filepath.Dir(workDir)); os.RemoveAll(workDir) })
 				writeProjectConfig(workDir, `[exceptions]
 token_prefix = "MYEXC"
 `)
@@ -332,7 +320,6 @@ token_prefix = "MYEXC"
 			It("preserves default_timeout", func() {
 				loader, _, workDir := newSeparatedLoader()
 
-				DeferCleanup(func() { os.RemoveAll(filepath.Dir(workDir)); os.RemoveAll(workDir) })
 				writeProjectConfig(workDir, `[global]
 use_sdk_git = false
 `)
@@ -356,8 +343,6 @@ use_sdk_git = false
 		Context("global sets enabled=false, project sets severity=warning", func() {
 			It("merges both without wiping defaults", func() {
 				loader, homeDir, workDir := newSeparatedLoader()
-
-				DeferCleanup(func() { os.RemoveAll(homeDir); os.RemoveAll(workDir) })
 
 				writeGlobalConfig(homeDir, `[validators.file.markdown]
 enabled = false
@@ -383,8 +368,6 @@ severity = "warning"
 			It("merges both overrides with defaults", func() {
 				loader, homeDir, workDir := newSeparatedLoader()
 
-				DeferCleanup(func() { os.RemoveAll(homeDir); os.RemoveAll(workDir) })
-
 				writeGlobalConfig(homeDir, `[validators.git.commit]
 check_staging_area = false
 `)
@@ -409,8 +392,6 @@ severity = "warning"
 			It("project wins", func() {
 				loader, homeDir, workDir := newSeparatedLoader()
 
-				DeferCleanup(func() { os.RemoveAll(homeDir); os.RemoveAll(workDir) })
-
 				writeGlobalConfig(homeDir, `[validators.file.shellscript]
 shellcheck_severity = "error"
 `)
@@ -431,8 +412,6 @@ shellcheck_severity = "info"
 		Context("global touches one section, project touches different section", func() {
 			It("both merge without interfering", func() {
 				loader, homeDir, workDir := newSeparatedLoader()
-
-				DeferCleanup(func() { os.RemoveAll(homeDir); os.RemoveAll(workDir) })
 
 				writeGlobalConfig(homeDir, `[validators.file.markdown]
 enabled = false
@@ -460,9 +439,7 @@ enabled = false
 
 		Context("env var overrides specific field", func() {
 			It("preserves defaults for unset fields", func() {
-				loader, _, workDir := newSeparatedLoader()
-
-				DeferCleanup(func() { os.RemoveAll(filepath.Dir(workDir)); os.RemoveAll(workDir) })
+				loader, _, _ := newSeparatedLoader()
 
 				// No TOML configs - just env var
 				os.Setenv("KLAUDIUSH_VALIDATORS_FILE_MARKDOWN_ENABLED", "false")
@@ -480,9 +457,7 @@ enabled = false
 
 		Context("--disable flag for one validator", func() {
 			It("preserves other validators and defaults", func() {
-				loader, _, workDir := newSeparatedLoader()
-
-				DeferCleanup(func() { os.RemoveAll(filepath.Dir(workDir)); os.RemoveAll(workDir) })
+				loader, _, _ := newSeparatedLoader()
 
 				flags := map[string]any{
 					"disable": []string{"markdown"},
@@ -509,8 +484,6 @@ enabled = false
 		Context("four sources: defaults + global + project + flags", func() {
 			It("all layers merge correctly", func() {
 				loader, homeDir, workDir := newSeparatedLoader()
-
-				DeferCleanup(func() { os.RemoveAll(homeDir); os.RemoveAll(workDir) })
 
 				writeGlobalConfig(homeDir, `[validators.file.markdown]
 severity = "warning"
@@ -546,7 +519,6 @@ heading_spacing = false
 			It("preserves all other message defaults", func() {
 				loader, _, workDir := newSeparatedLoader()
 
-				DeferCleanup(func() { os.RemoveAll(filepath.Dir(workDir)); os.RemoveAll(workDir) })
 				writeProjectConfig(workDir, `[validators.git.commit.message]
 title_max_length = 72
 `)
@@ -588,7 +560,6 @@ title_max_length = 72
 			It("preserves other rate_limit fields and parent fields", func() {
 				loader, _, workDir := newSeparatedLoader()
 
-				DeferCleanup(func() { os.RemoveAll(filepath.Dir(workDir)); os.RemoveAll(workDir) })
 				writeProjectConfig(workDir, `[exceptions.rate_limit]
 max_per_hour = 5
 `)
@@ -622,7 +593,6 @@ max_per_hour = 5
 			It("replaces required_flags completely", func() {
 				loader, _, workDir := newSeparatedLoader()
 
-				DeferCleanup(func() { os.RemoveAll(filepath.Dir(workDir)); os.RemoveAll(workDir) })
 				writeProjectConfig(workDir, `[validators.git.commit]
 required_flags = ["-s"]
 `)
@@ -641,7 +611,6 @@ required_flags = ["-s"]
 			It("replaces valid_types completely", func() {
 				loader, _, workDir := newSeparatedLoader()
 
-				DeferCleanup(func() { os.RemoveAll(filepath.Dir(workDir)); os.RemoveAll(workDir) })
 				writeProjectConfig(workDir, `[validators.git.commit.message]
 valid_types = ["feat", "fix"]
 `)
@@ -657,7 +626,6 @@ valid_types = ["feat", "fix"]
 			It("replaces protected_branches completely", func() {
 				loader, _, workDir := newSeparatedLoader()
 
-				DeferCleanup(func() { os.RemoveAll(filepath.Dir(workDir)); os.RemoveAll(workDir) })
 				writeProjectConfig(workDir, `[validators.git.branch]
 protected_branches = ["main", "develop", "release"]
 `)
@@ -682,7 +650,6 @@ protected_branches = ["main", "develop", "release"]
 			It("all defaults are intact", func() {
 				loader, _, workDir := newSeparatedLoader()
 
-				DeferCleanup(func() { os.RemoveAll(filepath.Dir(workDir)); os.RemoveAll(workDir) })
 				writeProjectConfig(workDir, "")
 
 				cfg, err := loader.Load(nil)
@@ -702,9 +669,7 @@ protected_branches = ["main", "develop", "release"]
 
 		Context("no config files at all", func() {
 			It("all defaults are intact", func() {
-				loader, homeDir, workDir := newSeparatedLoader()
-
-				DeferCleanup(func() { os.RemoveAll(homeDir); os.RemoveAll(workDir) })
+				loader, _, _ := newSeparatedLoader()
 
 				cfg, err := loader.Load(nil)
 				Expect(err).NotTo(HaveOccurred())
@@ -734,9 +699,6 @@ protected_branches = ["main", "develop", "release"]
 				It("enabled=true does not wipe use_markdownlint or table_formatting", func() {
 					loader, _, workDir := newSeparatedLoader()
 
-					DeferCleanup(
-						func() { os.RemoveAll(filepath.Dir(workDir)); os.RemoveAll(workDir) },
-					)
 					// Exact config from the bug report
 					writeProjectConfig(workDir, `[validators.file.markdown]
 enabled = true
@@ -764,8 +726,6 @@ enabled = true
 			It("project wins for the field, all other defaults preserved", func() {
 				loader, homeDir, workDir := newSeparatedLoader()
 
-				DeferCleanup(func() { os.RemoveAll(homeDir); os.RemoveAll(workDir) })
-
 				writeGlobalConfig(homeDir, `[validators.file.markdown]
 use_markdownlint = false
 `)
@@ -787,7 +747,6 @@ use_markdownlint = true
 			It("each validator preserves its own defaults", func() {
 				loader, _, workDir := newSeparatedLoader()
 
-				DeferCleanup(func() { os.RemoveAll(filepath.Dir(workDir)); os.RemoveAll(workDir) })
 				writeProjectConfig(workDir, `[validators.file.markdown]
 enabled = true
 
@@ -847,7 +806,6 @@ require_tracking = false
 			It("both levels merge without interference", func() {
 				loader, _, workDir := newSeparatedLoader()
 
-				DeferCleanup(func() { os.RemoveAll(filepath.Dir(workDir)); os.RemoveAll(workDir) })
 				writeProjectConfig(workDir, `[validators.git.commit]
 check_staging_area = false
 
@@ -879,7 +837,6 @@ conventional_commits = false
 			It("preserves sibling audit fields and parent exception fields", func() {
 				loader, _, workDir := newSeparatedLoader()
 
-				DeferCleanup(func() { os.RemoveAll(filepath.Dir(workDir)); os.RemoveAll(workDir) })
 				writeProjectConfig(workDir, `[exceptions.audit]
 max_size_mb = 50
 `)
