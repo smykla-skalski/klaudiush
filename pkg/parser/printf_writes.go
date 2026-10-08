@@ -133,7 +133,7 @@ var identifier = regexp.MustCompile(`[A-Za-z_][A-Za-z0-9_]*`)
 // with.
 func (w *astWalker) loopScope(loop syntax.Node) map[string]string {
 	if w.state.untrusted || w.state.namesUnknown || w.state.arithmetic ||
-		len(w.assignments) == 0 {
+		len(w.assignments) == 0 || w.definesNotFoundHandler() {
 		return nil
 	}
 
@@ -243,9 +243,13 @@ func (s *loopScan) node(root syntax.Node) {
 	})
 }
 
+// mention marks every name a literal may write, including each suffix of
+// a token, since an option can be glued to the name it takes (-vNAME).
 func (s *loopScan) mention(text string) {
-	for _, name := range identifier.FindAllString(text, -1) {
-		s.mentioned[name] = true
+	for _, token := range identifier.FindAllString(text, -1) {
+		for i := range len(token) {
+			s.mentioned[token[i:]] = true
+		}
 	}
 }
 
@@ -391,4 +395,20 @@ func firstStmt(stmts []*syntax.Stmt) *syntax.Stmt {
 	}
 
 	return stmts[0]
+}
+
+// notFoundHandlers are the functions bash and zsh run, without a call
+// naming them, when a command is not found.
+var notFoundHandlers = []string{"command_not_found_handle", "command_not_found_handler"}
+
+// definesNotFoundHandler reports a not-found handler defined on the line,
+// which any command in a loop may run.
+func (w *astWalker) definesNotFoundHandler() bool {
+	for _, name := range notFoundHandlers {
+		if _, ok := w.funcs[name]; ok || len(w.stmtFuncs[name]) > 0 {
+			return true
+		}
+	}
+
+	return false
 }

@@ -226,6 +226,18 @@ var _ = Describe("Startup variables a loop may set", func() {
 			`bash /abs/gen-v.sh`,
 		),
 		Entry(
+			"printf format variable set by a glued printf -v",
+			`G=x; for s in /abs/run.sh; do bash -c true; printf "$G" "$s"; printf -vG %s -vBASH_ENV; done`,
+		),
+		Entry(
+			"printf format variable set by a not-found handler",
+			`G=x; command_not_found_handle() { G=-vBASH_ENV; }; for s in /abs/run.sh; do bash -c true; printf "$G" "$s"; nonexist; done`,
+		),
+		Entry(
+			"printf format variable set by a zsh not-found handler",
+			`G=x; command_not_found_handler() { G=-vBASH_ENV; }; for s in /abs/run.sh; do bash -c true; printf "$G" "$s"; nonexist; done`,
+		),
+		Entry(
 			"printf format variable changed earlier in the statement",
 			`G=x; G=-vBASH_ENV && for s in /abs/run.sh; do bash -c true; printf "$G" "$s"; done`,
 		),
