@@ -1,6 +1,7 @@
 package fixers
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"path/filepath"
@@ -396,7 +397,15 @@ var _ = Describe("RulesFixer with global and project rules", func() {
 		ctx         context.Context
 		projectPath string
 		globalPath  string
+		warnings    *bytes.Buffer
 	)
+
+	newFixer := func() *RulesFixer {
+		fixer := NewRulesFixer(mockPrompt)
+		fixer.warnOut = warnings
+
+		return fixer
+	}
 
 	writeFile := func(path, content string) {
 		Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
@@ -449,6 +458,7 @@ type = "block"
 		ctrl = gomock.NewController(GinkgoT())
 		mockPrompt = prompt.NewMockPrompter(ctrl)
 		ctx = context.Background()
+		warnings = &bytes.Buffer{}
 
 		tempDir := GinkgoT().TempDir()
 		home := filepath.Join(tempDir, "home")
@@ -492,7 +502,7 @@ name = "project-invalid"
 type = "block"
 `)
 
-		Expect(NewRulesFixer(mockPrompt).Fix(ctx, false)).To(Succeed())
+		Expect(newFixer().Fix(ctx, false)).To(Succeed())
 
 		Expect(readFile(globalPath)).To(Equal(validGlobal))
 
@@ -503,6 +513,7 @@ type = "block"
 		Expect(rules[1].Name).To(Equal("project-invalid"))
 		Expect(rules[1].IsRuleEnabled()).To(BeFalse())
 		Expect(rules[1].Description).To(Equal(disabledNote))
+		Expect(warnings.String()).To(BeEmpty())
 	})
 
 	It("does not disable a valid project rule because of an invalid global rule", func() {
@@ -518,10 +529,10 @@ type = "block"
 `
 		writeFile(projectPath, projectContent)
 
-		err := NewRulesFixer(mockPrompt).Fix(ctx, false)
-		Expect(err).To(MatchError(ErrGlobalRulesNotFixed))
-		Expect(err.Error()).To(ContainSubstring(globalPath))
-		Expect(err.Error()).To(ContainSubstring(`"global-invalid"`))
+		Expect(newFixer().Fix(ctx, false)).To(Succeed())
+		Expect(warnings.String()).To(ContainSubstring(globalPath))
+		Expect(warnings.String()).To(ContainSubstring(`"global-invalid"`))
+		Expect(warnings.String()).To(ContainSubstring("were not modified"))
 
 		Expect(readFile(projectPath)).To(Equal(projectContent))
 		Expect(readFile(globalPath)).To(Equal(invalidGlobal))
@@ -536,8 +547,8 @@ name = "project-invalid"
 type = "block"
 `)
 
-		err := NewRulesFixer(mockPrompt).Fix(ctx, false)
-		Expect(err).To(MatchError(ErrGlobalRulesNotFixed))
+		Expect(newFixer().Fix(ctx, false)).To(Succeed())
+		Expect(warnings.String()).To(ContainSubstring(`"global-invalid"`))
 
 		rules := projectRules()
 		Expect(rules).To(HaveLen(1))
@@ -555,10 +566,61 @@ enabled = false
 `
 		writeFile(projectPath, projectContent)
 
-		Expect(NewRulesFixer(mockPrompt).Fix(ctx, false)).To(Succeed())
+		Expect(newFixer().Fix(ctx, false)).To(Succeed())
 
 		Expect(readFile(projectPath)).To(Equal(projectContent))
 		Expect(readFile(globalPath)).To(Equal(invalidGlobal))
+		Expect(warnings.String()).To(BeEmpty())
+	})
+
+	It("warns about the invalid global rule when the user declines", func() {
+		writeFile(globalPath, invalidGlobal)
+
+		projectContent := `
+[[rules.rules]]
+name = "project-invalid"
+[rules.rules.action]
+type = "block"
+`
+		writeFile(projectPath, projectContent)
+
+		mockPrompt.EXPECT().Confirm(gomock.Any(), true).Return(false, nil)
+
+		Expect(newFixer().Fix(ctx, true)).To(Succeed())
+		Expect(readFile(projectPath)).To(Equal(projectContent))
+		Expect(warnings.String()).To(ContainSubstring(`"global-invalid"`))
+	})
+
+	It("still fixes the project rule when the global config cannot be loaded", func() {
+		globalContent := "[[rules.rules]\nname = \"broken\n"
+		writeFile(globalPath, globalContent)
+		writeFile(projectPath, `
+[[rules.rules]]
+name = "project-invalid"
+[rules.rules.action]
+type = "block"
+`)
+
+		Expect(newFixer().Fix(ctx, false)).To(Succeed())
+		Expect(projectRules()[0].IsRuleEnabled()).To(BeFalse())
+		Expect(readFile(globalPath)).To(Equal(globalContent))
+		Expect(warnings.String()).To(ContainSubstring("not checked for invalid rules"))
+	})
+
+	It("warns when a disabled project rule overrides a global rule", func() {
+		writeFile(globalPath, validGlobal)
+		writeFile(projectPath, `
+[[rules.rules]]
+name = "global-valid-one"
+[rules.rules.action]
+type = "block"
+`)
+
+		Expect(newFixer().Fix(ctx, false)).To(Succeed())
+		Expect(projectRules()[0].IsRuleEnabled()).To(BeFalse())
+		Expect(readFile(globalPath)).To(Equal(validGlobal))
+		Expect(warnings.String()).To(ContainSubstring(`"global-valid-one"`))
+		Expect(warnings.String()).To(ContainSubstring("are now off too"))
 	})
 
 	It("counts only project rules in the interactive confirmation", func() {
@@ -576,7 +638,7 @@ type = "block"
 			}), true).
 			Return(true, nil)
 
-		Expect(NewRulesFixer(mockPrompt).Fix(ctx, true)).To(Succeed())
+		Expect(newFixer().Fix(ctx, true)).To(Succeed())
 		Expect(projectRules()[0].IsRuleEnabled()).To(BeFalse())
 		Expect(readFile(globalPath)).To(Equal(validGlobal))
 	})
