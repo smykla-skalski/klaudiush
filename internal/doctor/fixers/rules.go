@@ -4,6 +4,9 @@ package fixers
 import (
 	"context"
 	"fmt"
+	"io"
+	"os"
+	"slices"
 	"strings"
 
 	"github.com/cockroachdb/errors"
@@ -25,9 +28,9 @@ const (
 
 // RulesFixer fixes invalid rules by disabling them.
 type RulesFixer struct {
-	prompter     prompt.Prompter
-	rulesChecker *ruleschecker.RulesChecker
-	loader       *internalconfig.KoanfLoader
+	prompter prompt.Prompter
+	loader   *internalconfig.KoanfLoader
+	warnOut  io.Writer
 }
 
 // NewRulesFixer creates a new RulesFixer.
@@ -35,9 +38,9 @@ func NewRulesFixer(prompter prompt.Prompter) *RulesFixer {
 	loader, _ := internalconfig.NewKoanfLoader()
 
 	return &RulesFixer{
-		prompter:     prompter,
-		rulesChecker: ruleschecker.NewRulesChecker(),
-		loader:       loader,
+		prompter: prompter,
+		loader:   loader,
+		warnOut:  os.Stderr,
 	}
 }
 
@@ -56,42 +59,45 @@ func (*RulesFixer) CanFix(result doctor.CheckResult) bool {
 	return result.FixID == "fix_invalid_rules" && result.Status == doctor.StatusFail
 }
 
-// Fix disables invalid rules in the configuration.
-func (f *RulesFixer) Fix(ctx context.Context, interactive bool) error {
-	// Run the rules checker to get current issues
-	f.rulesChecker.Check(ctx)
-	issues := f.rulesChecker.GetIssues()
-
-	if len(issues) == 0 {
-		return nil
+// Fix disables invalid rules in the project configuration.
+//
+// Rules are validated per source file instead of through the merged config,
+// so each disabled rule is the one the project file actually defines. Invalid
+// rules that come from the global config are never modified; Fix prints a
+// warning naming them instead, and the doctor re-run keeps reporting them.
+func (f *RulesFixer) Fix(_ context.Context, interactive bool) error {
+	if err := f.ensureLoader(); err != nil {
+		return err
 	}
 
 	// Load only the project config (not merged with defaults/global/env)
 	// This ensures we only write back what was in the project config
-	cfg, configPath, err := f.loadProjectConfig()
+	cfg, configPath, err := f.loader.LoadProjectConfigOnly()
 	if err != nil {
-		return err
+		return errors.Wrap(err, "failed to load project config")
 	}
 
-	if cfg == nil || cfg.Rules == nil || len(cfg.Rules.Rules) == 0 {
-		return nil
+	var projectRules []config.RuleConfig
+	if cfg != nil && cfg.Rules != nil {
+		projectRules = cfg.Rules.Rules
 	}
 
-	// Collect indices of rules to disable
-	rulesToDisable := f.collectFixableRules(issues)
+	globalRules, globalPath, globalErr := f.loadGlobalRules()
+
+	defer f.warnGlobalRules(projectRules, globalRules, globalPath, globalErr)
+
+	rulesToDisable := collectFixableRules(projectRules)
 	if len(rulesToDisable) == 0 {
 		return nil
 	}
 
 	// Confirm with user if interactive
-	if interactive {
-		if !f.confirmFix(len(rulesToDisable)) {
-			return nil
-		}
+	if interactive && !f.confirmFix(len(rulesToDisable)) {
+		return nil
 	}
 
 	// Disable the invalid rules
-	f.disableRules(cfg, rulesToDisable)
+	disableRules(cfg, rulesToDisable)
 
 	// Write back to the same project config file that was loaded
 	writer := internalconfig.NewWriter()
@@ -99,41 +105,158 @@ func (f *RulesFixer) Fix(ctx context.Context, interactive bool) error {
 		return errors.Wrapf(err, "failed to write config to %s", configPath)
 	}
 
+	f.warnShadowedGlobalRules(projectRules, rulesToDisable, globalRules, globalPath)
+
 	return nil
 }
 
-// loadProjectConfig loads only the project configuration file.
-// This ensures we don't contaminate the project config with defaults/global/env values.
-func (f *RulesFixer) loadProjectConfig() (*config.Config, string, error) {
-	if f.loader == nil {
-		loader, err := internalconfig.NewKoanfLoader()
-		if err != nil {
-			return nil, "", errors.Wrap(err, "failed to create config loader")
-		}
-
-		f.loader = loader
+func (f *RulesFixer) ensureLoader() error {
+	if f.loader != nil {
+		return nil
 	}
 
-	// Load only the project config file (not merged with defaults/global/env)
-	cfg, path, err := f.loader.LoadProjectConfigOnly()
+	loader, err := internalconfig.NewKoanfLoader()
 	if err != nil {
-		return nil, path, errors.Wrap(err, "failed to load project config")
+		return errors.Wrap(err, "failed to create config loader")
 	}
 
-	return cfg, path, nil
+	f.loader = loader
+
+	return nil
 }
 
-// collectFixableRules collects indices of rules that can be fixed.
-func (*RulesFixer) collectFixableRules(issues []ruleschecker.RuleIssue) map[int]bool {
+func (f *RulesFixer) loadGlobalRules() ([]config.RuleConfig, string, error) {
+	globalCfg, globalPath, err := f.loader.LoadGlobalConfigOnly()
+	if err != nil {
+		return nil, globalPath, err
+	}
+
+	if globalCfg == nil || globalCfg.Rules == nil {
+		return nil, globalPath, nil
+	}
+
+	return globalCfg.Rules.Rules, globalPath, nil
+}
+
+func (f *RulesFixer) warnf(format string, args ...any) {
+	if f.warnOut == nil {
+		return
+	}
+
+	_, _ = fmt.Fprintf(f.warnOut, "warning: "+format+"\n", args...)
+}
+
+// warnGlobalRules warns about invalid enabled global rules that no project
+// rule overrides by name. The fixer only edits the project config.
+func (f *RulesFixer) warnGlobalRules(
+	projectRules, globalRules []config.RuleConfig,
+	globalPath string,
+	loadErr error,
+) {
+	if loadErr != nil {
+		f.warnf("global config %s not checked for invalid rules: %v", globalPath, loadErr)
+
+		return
+	}
+
+	overridden := namedRules(projectRules)
+
+	var invalid []string
+
+	for idx := range collectFixableRules(globalRules) {
+		rule := &globalRules[idx]
+		if rule.Name != "" && overridden[rule.Name] {
+			continue
+		}
+
+		invalid = append(invalid, ruleLabel(idx, rule))
+	}
+
+	if len(invalid) == 0 {
+		return
+	}
+
+	slices.Sort(invalid)
+
+	f.warnf(
+		"invalid rule(s) in global config %s were not modified: %s; fix or disable them manually",
+		globalPath,
+		strings.Join(invalid, ", "),
+	)
+}
+
+// warnShadowedGlobalRules warns when a disabled project rule overrides a
+// global rule of the same name: the global rule stays replaced by it, so it
+// does not apply until the project rule is fixed or removed.
+func (f *RulesFixer) warnShadowedGlobalRules(
+	projectRules []config.RuleConfig,
+	rulesToDisable map[int]bool,
+	globalRules []config.RuleConfig,
+	globalPath string,
+) {
+	globalNames := namedRules(globalRules)
+
+	var shadowed []string
+
+	for idx := range rulesToDisable {
+		if name := projectRules[idx].Name; name != "" && globalNames[name] {
+			shadowed = append(shadowed, fmt.Sprintf("%q", name))
+		}
+	}
+
+	if len(shadowed) == 0 {
+		return
+	}
+
+	slices.Sort(shadowed)
+
+	f.warnf(
+		"disabled project rule(s) %s still override the same-named rule(s) in global config %s; "+
+			"fix or remove them to apply the global rule(s)",
+		strings.Join(shadowed, ", "),
+		globalPath,
+	)
+}
+
+func namedRules(rules []config.RuleConfig) map[string]bool {
+	names := make(map[string]bool, len(rules))
+
+	for i := range rules {
+		if rules[i].Name != "" {
+			names[rules[i].Name] = true
+		}
+	}
+
+	return names
+}
+
+// collectFixableRules returns the indices of enabled rules with fixable issues.
+func collectFixableRules(rules []config.RuleConfig) map[int]bool {
 	rulesToDisable := make(map[int]bool)
 
-	for _, issue := range issues {
-		if issue.Fixable {
-			rulesToDisable[issue.RuleIndex] = true
+	for i := range rules {
+		if !rules[i].IsRuleEnabled() {
+			continue
+		}
+
+		for _, issue := range ruleschecker.ValidateRule(i, &rules[i]) {
+			if issue.Fixable {
+				rulesToDisable[i] = true
+
+				break
+			}
 		}
 	}
 
 	return rulesToDisable
+}
+
+func ruleLabel(index int, rule *config.RuleConfig) string {
+	if rule.Name != "" {
+		return fmt.Sprintf("%q", rule.Name)
+	}
+
+	return fmt.Sprintf("rule #%d", index+1)
 }
 
 // confirmFix prompts the user for confirmation.
@@ -152,7 +275,7 @@ func (f *RulesFixer) confirmFix(count int) bool {
 }
 
 // disableRules marks the specified rules as disabled.
-func (*RulesFixer) disableRules(cfg *config.Config, rulesToDisable map[int]bool) {
+func disableRules(cfg *config.Config, rulesToDisable map[int]bool) {
 	for idx := range rulesToDisable {
 		if idx < len(cfg.Rules.Rules) {
 			disabled := false

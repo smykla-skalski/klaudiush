@@ -107,7 +107,7 @@ func (c *RulesChecker) Check(_ context.Context) doctor.CheckResult {
 
 		enabledCount++
 
-		c.validateRule(i, &cfg.Rules.Rules[i])
+		c.issues = append(c.issues, ValidateRule(i, &cfg.Rules.Rules[i])...)
 	}
 
 	if len(c.issues) == 0 {
@@ -150,13 +150,16 @@ func (c *RulesChecker) Check(_ context.Context) doctor.CheckResult {
 	return result
 }
 
-// validateRule validates a single rule and records issues.
-func (c *RulesChecker) validateRule(index int, rule *config.RuleConfig) {
+// ValidateRule validates a single rule and returns its issues. The index is
+// recorded as RuleIndex, so callers decide which rule list it refers to.
+func ValidateRule(index int, rule *config.RuleConfig) []RuleIssue {
+	var issues []RuleIssue
+
 	ruleName := rule.Name
 
 	// Check for missing match section
 	if rule.Match == nil {
-		c.issues = append(c.issues, RuleIssue{
+		issues = append(issues, RuleIssue{
 			RuleIndex: index,
 			RuleName:  ruleName,
 			IssueType: "no_match_section",
@@ -164,12 +167,12 @@ func (c *RulesChecker) validateRule(index int, rule *config.RuleConfig) {
 			Fixable:   true,
 		})
 
-		return // No point checking other fields if match is missing
+		return issues // No point checking other fields if match is missing
 	}
 
 	// Check for empty match conditions (using centralized method)
 	if !rule.Match.HasMatchConditions() {
-		c.issues = append(c.issues, RuleIssue{
+		issues = append(issues, RuleIssue{
 			RuleIndex: index,
 			RuleName:  ruleName,
 			IssueType: "empty_match",
@@ -183,7 +186,7 @@ func (c *RulesChecker) validateRule(index int, rule *config.RuleConfig) {
 		if !slices.ContainsFunc(config.ValidEventTypes, func(s string) bool {
 			return strings.EqualFold(s, rule.Match.EventType)
 		}) {
-			c.issues = append(c.issues, RuleIssue{
+			issues = append(issues, RuleIssue{
 				RuleIndex: index,
 				RuleName:  ruleName,
 				IssueType: "invalid_event_type",
@@ -199,7 +202,7 @@ func (c *RulesChecker) validateRule(index int, rule *config.RuleConfig) {
 		if !slices.ContainsFunc(config.ValidToolTypes, func(s string) bool {
 			return strings.EqualFold(s, rule.Match.ToolType)
 		}) {
-			c.issues = append(c.issues, RuleIssue{
+			issues = append(issues, RuleIssue{
 				RuleIndex: index,
 				RuleName:  ruleName,
 				IssueType: "invalid_tool_type",
@@ -213,7 +216,7 @@ func (c *RulesChecker) validateRule(index int, rule *config.RuleConfig) {
 	// Check for invalid action type
 	if rule.Action != nil && rule.Action.Type != "" {
 		if !slices.Contains(config.ValidActionTypes, rule.Action.Type) {
-			c.issues = append(c.issues, RuleIssue{
+			issues = append(issues, RuleIssue{
 				RuleIndex: index,
 				RuleName:  ruleName,
 				IssueType: "invalid_action_type",
@@ -223,4 +226,6 @@ func (c *RulesChecker) validateRule(index int, rule *config.RuleConfig) {
 			})
 		}
 	}
+
+	return issues
 }
