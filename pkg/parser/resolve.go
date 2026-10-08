@@ -1028,11 +1028,15 @@ func (w *astWalker) followFile(
 // followCode records the command lines found in program source, walking
 // each as sw describes. Prose is read only in Python and JavaScript, whose
 // print and log calls cannot pipe their own output into a program, and only
-// when nothing on the line routes output to another command.
+// when nothing on the line routes output to another command. For the same
+// reason a plain string there is a command line only when the code can run
+// one (see stringsRun): a label or a fragment passed to str.replace is data.
 func (w *astWalker) followCode(cmd Command, code string, depth int, sw scriptWalk) {
-	proseAllowed := !w.state.outputRouted && proseLanguage(cmd, code)
+	lang := codeLanguage(cmd, code)
+	proseAllowed := !w.state.outputRouted && lang != langOther
+	plain := !proseAllowed || stringsRun(code, lang)
 
-	for _, line := range commandLines(code) {
+	for _, line := range commandLines(code, plain) {
 		lineWalk := sw
 		lineWalk.prose = proseAllowed && line.prose
 
@@ -1040,34 +1044,40 @@ func (w *astWalker) followCode(cmd Command, code string, depth int, sw scriptWal
 	}
 }
 
-// proseLanguage reports whether program source is Python or JavaScript, by
+// codeLanguage reports whether program source is Python or JavaScript, by
 // the interpreter running it or, for a script run by path, its shebang. A
 // named interpreter (awk -f x.py) ignores the shebang, and a script's own
 // name (./python-tool) says nothing about its language.
-func proseLanguage(cmd Command, code string) bool {
+func codeLanguage(cmd Command, code string) codeLang {
 	name := commandName(cmd.Name)
 	if _, named := interpreters[name]; named {
-		return proseInterpreter(name)
+		return interpreterLanguage(name)
 	}
 
 	line, _, _ := strings.Cut(code, "\n")
 	if !strings.HasPrefix(line, "#!") {
-		return false
+		return langOther
 	}
 
-	return slices.ContainsFunc(
-		strings.Fields(strings.TrimPrefix(line, "#!")),
-		func(word string) bool {
-			return proseInterpreter(commandName(word))
-		},
-	)
+	for word := range strings.FieldsSeq(strings.TrimPrefix(line, "#!")) {
+		if lang := interpreterLanguage(commandName(word)); lang != langOther {
+			return lang
+		}
+	}
+
+	return langOther
 }
 
-// proseInterpreter reports whether an interpreter name runs Python or
-// JavaScript.
-func proseInterpreter(name string) bool {
-	return strings.HasPrefix(name, "python") || name == "node" || name == "nodejs" ||
-		name == "deno" || name == "bun"
+// interpreterLanguage returns the language an interpreter name runs.
+func interpreterLanguage(name string) codeLang {
+	switch {
+	case strings.HasPrefix(name, "python"):
+		return langPython
+	case name == "node" || name == "nodejs" || name == "deno" || name == "bun":
+		return langJavaScript
+	default:
+		return langOther
+	}
 }
 
 // scriptSource returns the text of a script a command runs: stdin, a process

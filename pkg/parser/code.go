@@ -431,10 +431,12 @@ type codeLine struct {
 
 // commandLines returns the command lines program source may run: its string
 // literals, argv-style lists, program-and-list calls and Perl or Ruby command
-// strings. Only candidates naming git, gh or a shell are kept. A literal
-// counts as prose only where it is text (see proseLiteral) and the code
-// cannot change git configuration, which would make an unknown git word run.
-func commandLines(code string) []codeLine {
+// strings. Only candidates naming git, gh or a shell are kept. Unless plain
+// is set, only backtick strings are taken from the literals, since nothing
+// in the code can run any other string. A literal counts as prose only where
+// it is text (see proseLiteral) and the code cannot change git
+// configuration, which would make an unknown git word run.
+func commandLines(code string, plain bool) []codeLine {
 	literals := quotedLiteral.FindAllStringSubmatchIndex(code, -1)
 	lists := listLiteral.FindAllStringSubmatch(code, -1)
 	calls := programThenList.FindAllStringSubmatch(code, -1)
@@ -444,6 +446,10 @@ func commandLines(code string) []codeLine {
 	reuse := newTextReuse(code)
 
 	for _, m := range literals {
+		if !plain && code[m[0]] != '`' {
+			continue
+		}
+
 		text := literalEscapes.Replace(submatchText(code, m))
 		if !mentionsCommand.MatchString(text) {
 			continue
