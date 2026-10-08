@@ -631,11 +631,28 @@ func (f *fakeOptionsRunner) RunWithOptions(
 	return f.result
 }
 
+// shortCheckTimeout is the timeout of a check whose run must time out. Specs
+// that expect the run to finish keep a timeout it never reaches, as the
+// starting fingerprint runs git under the same deadline.
+const shortCheckTimeout = 50 * time.Millisecond
+
+// fingerprintPastDeadline fingerprints the work tree without the check's
+// deadline, so a run that must time out does not lose the race to git in the
+// starting fingerprint instead.
+func fingerprintPastDeadline(
+	ctx context.Context,
+	repo string,
+	check *evidence.Check,
+) (fingerprint, error) {
+	return worktreeFingerprint(context.WithoutCancel(ctx), repo, check)
+}
+
 var _ = Describe("checkVerifier", func() {
 	var (
-		repo  string
-		store *hooksession.Store
-		check *evidence.Check
+		repo             string
+		store            *hooksession.Store
+		check            *evidence.Check
+		startFingerprint func(context.Context, string, *evidence.Check) (fingerprint, error)
 	)
 
 	BeforeEach(func() {
@@ -648,21 +665,23 @@ var _ = Describe("checkVerifier", func() {
 			Checks: []*config.EvidenceCheckConfig{{
 				Name:     "tests",
 				Commands: []string{"make test"},
-				Timeout:  config.Duration(50 * time.Millisecond),
+				Timeout:  config.Duration(time.Minute),
 			}},
 		})
 		Expect(err).NotTo(HaveOccurred())
 
 		check = checks[0]
+		startFingerprint = nil
 	})
 
 	verify := func(runner *fakeOptionsRunner) (int, *evidence.Receipt, string) {
 		var notices bytes.Buffer
 
 		verifier := &checkVerifier{
-			store:  store,
-			runner: runner,
-			now:    time.Now,
+			store:       store,
+			runner:      runner,
+			now:         time.Now,
+			fingerprint: startFingerprint,
 			notify: func(format string, args ...any) {
 				notices.WriteString(strings.TrimSpace(format))
 
@@ -710,6 +729,8 @@ var _ = Describe("checkVerifier", func() {
 	})
 
 	It("records a timeout as canceled", func() {
+		check.Timeout = shortCheckTimeout
+		startFingerprint = fingerprintPastDeadline
 		runner := &fakeOptionsRunner{wait: true, result: kexec.CommandResult{Err: os.ErrClosed}}
 		code, receipt, _ := verify(runner)
 
@@ -750,6 +771,7 @@ var _ = Describe("checkVerifier", func() {
 	})
 
 	It("bounds the starting fingerprint by the check's timeout", func() {
+		check.Timeout = shortCheckTimeout
 		verifier := &checkVerifier{
 			store:  store,
 			runner: &fakeOptionsRunner{},
@@ -768,6 +790,7 @@ var _ = Describe("checkVerifier", func() {
 	})
 
 	It("gives the end fingerprint its own deadline after a timeout", func() {
+		check.Timeout = shortCheckTimeout
 		calls := 0
 
 		var notices bytes.Buffer
@@ -785,7 +808,7 @@ var _ = Describe("checkVerifier", func() {
 			) (fingerprint, error) {
 				calls++
 				if calls == 1 {
-					return worktreeFingerprint(ctx, root, item)
+					return fingerprintPastDeadline(ctx, root, item)
 				}
 
 				Expect(ctx.Err()).NotTo(HaveOccurred())

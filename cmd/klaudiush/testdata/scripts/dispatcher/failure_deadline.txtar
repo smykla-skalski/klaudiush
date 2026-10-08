@@ -7,6 +7,8 @@ exec klaudiush --hook-type PreToolUse
 mkdir $WORK/.klaudiush/plugins
 cp slow.sh $WORK/.klaudiush/plugins/slow.sh
 chmod 0755 $WORK/.klaudiush/plugins/slow.sh
+exec $WORK/.klaudiush/plugins/slow.sh --version
+stdout '^1$'
 mkdir project/.klaudiush
 exec sh -c 'sed "s#HOMEDIR#$WORK#" config.toml > project/.klaudiush/config.toml'
 cd project

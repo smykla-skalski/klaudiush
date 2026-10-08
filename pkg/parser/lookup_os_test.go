@@ -4,12 +4,21 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	"github.com/smykla-skalski/klaudiush/pkg/parser"
 )
+
+// writeRanScript writes an executable script and runs it once. macOS checks
+// a new file the first time it runs, and under load that check alone
+// outlasts the resolver's lookup timeout.
+func writeRanScript(path, text string) {
+	Expect(os.WriteFile(path, []byte(text), 0o755)).To(Succeed())
+	Expect(exec.Command(path, "--version").Run()).To(Succeed())
+}
 
 var _ = Describe("OSResolver argument lookups", func() {
 	var (
@@ -40,7 +49,7 @@ var _ = Describe("OSResolver argument lookups", func() {
 		}
 
 		for name, text := range tools {
-			Expect(os.WriteFile(filepath.Join(bin, name), []byte(text), 0o755)).To(Succeed())
+			writeRanScript(filepath.Join(bin, name), text)
 		}
 
 		GinkgoT().Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
@@ -56,9 +65,10 @@ var _ = Describe("OSResolver argument lookups", func() {
 		}
 
 		for _, lookup := range lookups {
+			line := strings.Join(lookup.argv, " ")
 			out, ok := resolver.CommandOutput(repo, lookup.argv)
-			Expect(ok).To(BeTrue(), lookup.argv)
-			Expect(out).To(Equal(lookup.want), lookup.argv)
+			Expect(ok).To(BeTrue(), line)
+			Expect(out).To(Equal(lookup.want), line)
 		}
 	})
 
