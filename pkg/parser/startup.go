@@ -31,9 +31,7 @@ const startupPrefix = "startup:"
 var startupVars = nameSet(anyStartupVar)
 
 // startupMention matches a startup variable named anywhere in a loop body.
-var startupMention = regexp.MustCompile(
-	`(^|[^A-Za-z0-9_])(BASH_ENV|ENV|HOME|ZDOTDIR)([^A-Za-z0-9_]|$)`,
-)
+var startupMention = regexp.MustCompile(`\b(BASH_ENV|ENV|HOME|ZDOTDIR)\b`)
 
 // specialBuiltins keep prefix assignments in the shell in POSIX mode.
 var specialBuiltins = nameSet(`: . break continue eval exec exit export readonly

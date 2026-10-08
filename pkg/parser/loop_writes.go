@@ -43,6 +43,24 @@ func (w *astWalker) loopStartupNames(
 	param bool,
 	seen map[string]bool,
 ) []string {
+	text := w.loopWriteText(node, seen)
+
+	var names []string
+
+	for _, m := range startupMention.FindAllStringSubmatch(text, -1) {
+		if param && (m[1] == homeVar || m[1] == zdotdirVar) {
+			continue
+		}
+
+		names = append(names, m[1])
+	}
+
+	return names
+}
+
+// loopWriteText returns, as text, the names node may set on a later pass
+// of a loop, holding anyStartupVar for a write it cannot name.
+func (w *astWalker) loopWriteText(node syntax.Node, seen map[string]bool) string {
 	var text string
 
 	switch n := node.(type) {
@@ -64,17 +82,7 @@ func (w *astWalker) loopStartupNames(
 		text = w.loopParamWrites(n)
 	}
 
-	var names []string
-
-	for _, m := range startupMention.FindAllStringSubmatch(text, -1) {
-		if param && (m[2] == homeVar || m[2] == zdotdirVar) {
-			continue
-		}
-
-		names = append(names, m[2])
-	}
-
-	return names
+	return text
 }
 
 func (w *astWalker) loopAssignWrite(assign *syntax.Assign) string {

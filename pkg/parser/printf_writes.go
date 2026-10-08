@@ -168,8 +168,9 @@ func (w *astWalker) loopScope(loop syntax.Node) map[string]string {
 
 	unknown := false
 
-	walkLoop(loop, func(node syntax.Node, param bool) {
-		unknown = unknown || allStartupVars(w.loopStartupNames(node, param, make(map[string]bool)))
+	walkLoop(loop, func(node syntax.Node, _ bool) {
+		unknown = unknown ||
+			strings.Contains(w.loopWriteText(node, make(map[string]bool)), anyStartupVar)
 	})
 
 	if unknown {
@@ -195,24 +196,6 @@ func (w *astWalker) namerefNamed(name string) bool {
 	return false
 }
 
-// allStartupVars reports names holding every startup variable, which the
-// loop scan returns for a write it cannot name.
-func allStartupVars(names []string) bool {
-	for name := range startupVars {
-		found := false
-
-		for _, n := range names {
-			found = found || n == name
-		}
-
-		if !found {
-			return false
-		}
-	}
-
-	return true
-}
-
 // loopScan collects the names written as literal text in a loop and the
 // same-line definitions it calls.
 type loopScan struct {
@@ -235,6 +218,9 @@ func (s *loopScan) node(root syntax.Node) {
 			}
 		case *syntax.SglQuoted:
 			s.mention(n.Value)
+			s.mention(decodeANSIC(n.Value))
+		case *syntax.Word:
+			s.mention(staticText(n))
 		case *syntax.BinaryTest:
 			s.unknown = s.unknown || arithmeticTest(n.Op)
 		case *syntax.CallExpr:
@@ -411,4 +397,36 @@ func (w *astWalker) definesNotFoundHandler() bool {
 	}
 
 	return false
+}
+
+// staticText joins the literal parts of a word after quote removal, so a
+// name assembled from pieces (FM""T, FM\T, $'FM\x54') reads as one token.
+// An expansion stands as a break between tokens.
+func staticText(word *syntax.Word) string {
+	var text strings.Builder
+
+	for _, part := range word.Parts {
+		switch p := part.(type) {
+		case *syntax.Lit:
+			text.WriteString(renderLit(p.Value, true, allEscapable))
+		case *syntax.SglQuoted:
+			if p.Dollar {
+				text.WriteString(decodeANSIC(p.Value))
+			} else {
+				text.WriteString(p.Value)
+			}
+		case *syntax.DblQuoted:
+			for _, inner := range p.Parts {
+				if lit, ok := inner.(*syntax.Lit); ok {
+					text.WriteString(renderLit(lit.Value, true, doubleQuoteEscapable))
+				} else {
+					text.WriteByte(' ')
+				}
+			}
+		default:
+			text.WriteByte(' ')
+		}
+	}
+
+	return text.String()
 }
