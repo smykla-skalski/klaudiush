@@ -1153,6 +1153,20 @@ Text"`),
 				`/private/tmp/claude-502/x/renew.sh; gh pr edit 1 --body "Body written by hand"`),
 		)
 
+		It("blocks a PR body credit repeated as a no-op argument", func() {
+			ctx := &hook.Context{
+				EventType: hook.EventTypePreToolUse,
+				ToolName:  hook.ToolTypeBash,
+				ToolInput: hook.ToolInput{
+					Command: `gh pr edit 1 --body "Written w/Claude"; : w/Claude`,
+				},
+			}
+
+			result := validator.Validate(context.Background(), ctx)
+			Expect(result.Passed).To(BeFalse())
+			Expect(result.Message).To(ContainSubstring("AI attribution"))
+		})
+
 		It("blocks slash prose in a PR body", func() {
 			ctx := &hook.Context{
 				EventType: hook.EventTypePreToolUse,

@@ -220,12 +220,25 @@ func withoutPathArguments(command string, parsed *parser.ParseResult) string {
 			}
 
 			if relativePathArgPattern.MatchString(arg) {
-				command = strings.ReplaceAll(command, arg, "")
+				command = withoutSoleOccurrence(command, arg)
 			}
 		}
 	}
 
 	return command
+}
+
+// withoutSoleOccurrence removes word from the command when it appears there
+// exactly once, ignoring case. A word that also appears elsewhere, such as
+// inside a message, is kept everywhere: removing every copy would let a no-op
+// argument ("; : w/claude") erase the same text from the message.
+func withoutSoleOccurrence(command, word string) string {
+	spans := regexp.MustCompile(`(?i)`+regexp.QuoteMeta(word)).FindAllStringIndex(command, -1)
+	if len(spans) != 1 {
+		return command
+	}
+
+	return command[:spans[0][0]] + command[spans[0][1]:]
 }
 
 // otherMessageSubcommands are the git subcommands that write a commit message
