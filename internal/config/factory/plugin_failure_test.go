@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"time"
 
@@ -17,7 +18,16 @@ import (
 	"github.com/smykla-skalski/klaudiush/pkg/logger"
 )
 
+// overrunTimeout is the timeout of the plugin that never answers. It bounds
+// the plugin's --info at load too, so it must outlast a process start on a
+// busy machine. The plugin execs sleep so no child keeps the output pipe open
+// after the kill.
+const overrunTimeout = 2 * time.Second
+
 // writePluginScript writes an exec plugin that answers validation with body.
+// It runs the plugin once before returning: macOS checks a new file the first
+// time it runs, and under load that check alone outlasts the 5s the loader
+// gives --version.
 func writePluginScript(dir, name, body string) string {
 	path := filepath.Join(dir, name)
 	script := fmt.Sprintf(`#!/bin/sh
@@ -30,6 +40,7 @@ cat >/dev/null
 `, name, body)
 
 	Expect(os.WriteFile(path, []byte(script), 0o755)).To(Succeed())
+	Expect(exec.Command(path, "--version").Run()).To(Succeed())
 
 	return path
 }
@@ -124,8 +135,8 @@ var _ = Describe("Plugin failures", func() {
 	})
 
 	It("reports a plugin that ran past its timeout", func() {
-		slow := instance("slow", writePluginScript(pluginDir, "slow", "sleep 5"))
-		slow.Timeout = config.Duration(100 * time.Millisecond)
+		slow := instance("slow", writePluginScript(pluginDir, "slow", "exec sleep 60"))
+		slow.Timeout = config.Duration(overrunTimeout)
 
 		result := validate(slow)
 

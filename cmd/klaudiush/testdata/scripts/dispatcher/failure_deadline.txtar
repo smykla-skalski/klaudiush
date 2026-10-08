@@ -7,6 +7,8 @@ exec klaudiush --hook-type PreToolUse
 mkdir $WORK/.klaudiush/plugins
 cp slow.sh $WORK/.klaudiush/plugins/slow.sh
 chmod 0755 $WORK/.klaudiush/plugins/slow.sh
+exec $WORK/.klaudiush/plugins/slow.sh --version
+stdout '^1$'
 mkdir project/.klaudiush
 exec sh -c 'sed "s#HOMEDIR#$WORK#" config.toml > project/.klaudiush/config.toml'
 cd project
@@ -16,11 +18,14 @@ exec klaudiush --hook-type PreToolUse
 stdout 'Validation unavailable HOOK001'
 stdout 'did not answer in time'
 ! stdout 'permissionDecision'
+exists $WORK/.klaudiush/plugins/slow.sh.ran
+rm $WORK/.klaudiush/plugins/slow.sh.ran
 
 stdin $WORK/ls.json
 exec klaudiush --hook-type PreToolUse --failure-mode=block
 stdout '"permissionDecision":"deny"'
 stdout 'did not answer in time'
+exists $WORK/.klaudiush/plugins/slow.sh.ran
 
 -- ls.json --
 {"tool_name": "Bash", "tool_input": {"command": "ls"}}
@@ -28,7 +33,7 @@ stdout 'did not answer in time'
 -- config.toml --
 [failure_policy]
 mode = "warn"
-deadline = "1s"
+deadline = "5s"
 
 [plugins]
 enabled = true
@@ -46,4 +51,5 @@ case "$1" in
   --version) echo 1; exit 0 ;;
 esac
 cat >/dev/null
-sleep 10
+: > "$0.ran"
+exec sleep 30

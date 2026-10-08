@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"time"
 
@@ -17,7 +18,10 @@ import (
 	pluginapi "github.com/smykla-skalski/klaudiush/pkg/plugin"
 )
 
-// createExecPlugin creates a temporary exec plugin script for testing.
+// createExecPlugin creates a temporary exec plugin script for testing. It runs
+// the script once before returning: macOS checks a new file the first time
+// it runs, and under load that check alone outlasts the 5s the loader gives
+// --version.
 func createExecPlugin(
 	tmpDir string,
 	name string,
@@ -61,6 +65,10 @@ echo '%s'
 `, infoJSON, respJSON)
 
 	if err := os.WriteFile(script, []byte(content), 0o755); err != nil {
+		return "", err
+	}
+
+	if err := exec.Command(script, "--version").Run(); err != nil {
 		return "", err
 	}
 
