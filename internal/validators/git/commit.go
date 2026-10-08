@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -99,7 +100,9 @@ func (v *CommitValidator) validateCommits(
 
 		// merge, revert, cherry-pick and tag write a message too, but none of
 		// the commit contract applies to them - only attribution does.
-		attribution := v.checkCommandAIAttribution(hookCtx.GetCommand())
+		attribution := v.checkCommandAIAttribution(
+			withoutPathArguments(hookCtx.GetCommand(), result),
+		)
 		if !isCommit {
 			if attribution != nil {
 				return attribution
@@ -156,7 +159,9 @@ func (v *CommitValidator) withAttribution(
 		return f.Reference == validator.RefGitClaudeAttr
 	}) {
 		msg, err := v.extractCommitMessage(ctx, gitCmd, src)
-		if err != nil || !containsAIAttribution(withoutMessage(src.text, msg)) {
+		if err != nil || !containsAIAttribution(
+			withoutPathArguments(withoutMessage(src.text, msg), src.parsed),
+		) {
 			return res
 		}
 
@@ -174,6 +179,49 @@ func withoutMessage(command, message string) string {
 	for line := range strings.SplitSeq(message, "\n") {
 		if line = strings.TrimSpace(line); line != "" {
 			command = strings.Replace(command, line, "", 1)
+		}
+	}
+
+	return command
+}
+
+// relativePathArgPattern matches an argument that is a relative path word,
+// such as src/claude or docs/claude-notes.md.
+var relativePathArgPattern = regexp.MustCompile(`^[\w+%@~][\w.+%@~-]*(?:/[\w.+%@~-]*)+$`)
+
+// textValueFlags take free text, so the argument after one is prose, not a
+// path, even when it looks like one.
+var textValueFlags = slices.Concat(commitMessageFlags, []string{
+	"-t", "--title", "-b", "--body", "--subject", "--trailer",
+})
+
+// textCommands print their arguments as text, which may be a message.
+var textCommands = []string{"echo", "printf"}
+
+// withoutPathArguments removes from the command text every argument the
+// parsed command passes as a relative path, as in "cd src/claude" or
+// "git add docs/claude-notes.md". The attribution check reads the raw text
+// line by line, so a name in such a path would otherwise pair with a marker
+// word in the message. Prose is left alone: "w/Claude" in a message value,
+// an echo or an assignment is not an argument the parser reads as a path.
+func withoutPathArguments(command string, parsed *parser.ParseResult) string {
+	if parsed == nil {
+		return command
+	}
+
+	for _, cmd := range parsed.Commands {
+		if slices.Contains(textCommands, cmd.Name) {
+			continue
+		}
+
+		for i, arg := range cmd.Args {
+			if i > 0 && slices.Contains(textValueFlags, cmd.Args[i-1]) {
+				continue
+			}
+
+			if relativePathArgPattern.MatchString(arg) {
+				command = strings.ReplaceAll(command, arg, "")
+			}
 		}
 	}
 

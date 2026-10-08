@@ -1136,6 +1136,37 @@ Text"`),
 				"See https://docs.anthropic.com/en/api/messages for details.", false),
 		)
 
+		DescribeTable("an assistant name in a path argument does not pair with PR wording",
+			func(command string) {
+				ctx := &hook.Context{
+					EventType: hook.EventTypePreToolUse,
+					ToolName:  hook.ToolTypeBash,
+					ToolInput: hook.ToolInput{Command: command},
+				}
+
+				result := validator.Validate(context.Background(), ctx)
+				Expect(result.Message).NotTo(ContainSubstring("AI attribution"))
+			},
+			Entry("a relative cd before the edit",
+				`cd src/claude && gh pr edit 1 --body "Body written by hand"`),
+			Entry("an absolute script path before the edit",
+				`/private/tmp/claude-502/x/renew.sh; gh pr edit 1 --body "Body written by hand"`),
+		)
+
+		It("blocks slash prose in a PR body", func() {
+			ctx := &hook.Context{
+				EventType: hook.EventTypePreToolUse,
+				ToolName:  hook.ToolTypeBash,
+				ToolInput: hook.ToolInput{
+					Command: `cd src/claude && gh pr edit 1 --body "Written w/Claude"`,
+				},
+			}
+
+			result := validator.Validate(context.Background(), ctx)
+			Expect(result.Passed).To(BeFalse())
+			Expect(result.Message).To(ContainSubstring("AI attribution"))
+		})
+
 		It("should fail with attribution in a gh pr merge --body", func() {
 			ctx := &hook.Context{
 				EventType: hook.EventTypePreToolUse,

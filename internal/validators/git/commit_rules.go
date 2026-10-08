@@ -862,52 +862,19 @@ var anchoredPathPattern = regexp.MustCompile(
 		`/` + pathDirs + pathTail,
 )
 
-// relativePathPattern matches a relative path word such as src/claude or
-// docs/claude-notes.md. The first segment has no dot, so a scheme-less link
-// such as claude.com/claude-code is never read as a path.
-var relativePathPattern = regexp.MustCompile(
-	pathBoundary + `[\w+%@~-]+/` + pathDirs + pathTail,
-)
-
-// assistantProseWords name assistants, their vendors and their models. A
-// slash-joined word that opens with one ("Claude/3.5", "OpenAI/Codex",
-// "Copilot/GPT-4o") is prose about an assistant, not a path, so it is kept.
-var assistantProseWords = map[string]bool{
-	"anthropic": true, "openai": true, "github": true, "microsoft": true,
-	"opus": true, "sonnet": true, "haiku": true, "gpt": true,
-}
-
-// isAssistantProse reports whether a slash-joined word opens with an assistant,
-// vendor or model name, version suffix removed. A path to a directory named
-// after an assistant ("src/claude", "docs/claude-notes.md") opens with an
-// ordinary directory instead.
-func isAssistantProse(word string) bool {
-	first, _, _ := strings.Cut(strings.TrimPrefix(word, "/"), "/")
-
-	return containsAIAssistantName(first) ||
-		assistantProseWords[strings.TrimRight(first, "-.0123456789")]
-}
-
-// withoutPaths removes the filesystem path words from lowercased text,
-// keeping the character before each so the surrounding words stay apart.
-// Checks run line by line, so an assistant name in a temp dir, agent worktree
-// or repository path would otherwise pair with an ordinary word such as
-// "written" on the same line. A bare "/claude" with no directory after it is
-// kept, since it reads as the name rather than a path.
+// withoutPaths removes the anchored filesystem path words from lowercased
+// text, keeping the character before each so the surrounding words stay apart.
+// Checks run line by line, so an assistant name in a temp dir or agent
+// worktree path would otherwise pair with an ordinary word such as "written"
+// on the same line. A bare "/claude" with no directory after it is kept, since
+// it reads as the name rather than a path. Relative paths are ambiguous in
+// prose ("w/Claude", "Cursor/Copilot"), so only withoutPathArguments drops
+// them, and only where the parsed command uses them as arguments.
 func withoutPaths(text string) string {
-	text = anchoredPathPattern.ReplaceAllStringFunc(text, func(match string) string {
+	return anchoredPathPattern.ReplaceAllStringFunc(text, func(match string) string {
 		boundary, word := splitBoundary(match)
 		if strings.Count(word, "/") == 1 && strings.HasPrefix(word, "/") &&
 			containsAIAssistantName(word) {
-			return match
-		}
-
-		return boundary
-	})
-
-	return relativePathPattern.ReplaceAllStringFunc(text, func(match string) string {
-		boundary, word := splitBoundary(match)
-		if isAssistantProse(word) {
 			return match
 		}
 
