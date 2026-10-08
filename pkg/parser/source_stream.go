@@ -672,6 +672,30 @@ func (w *astWalker) shellStdinLaunch(cmd Command, visible launch) launch {
 	return visible
 }
 
+// stdinProgramLaunch returns what an interpreter told by a lone - to read
+// its program from stdin runs: the literal text or redirected file it was
+// given. A program klaudiush cannot see (piped from a command, inherited,
+// a process substitution or descriptor, several stdin redirects, or no
+// stdin at all) fails closed.
+func (w *astWalker) stdinProgramLaunch(cmd Command, visible launch) launch {
+	_, untrusted := w.state.untrustedStdin[cmd.Location.Seq]
+
+	opaqueFile := false
+
+	if cmd.StdinFile != "" {
+		_, detail := redirectedStdin(cmd, cmd.StdinFile)
+		opaqueFile = untrusted || detail != ""
+	}
+
+	if !opaqueFile && !visible.empty() {
+		return visible
+	}
+
+	w.addOpacity(sourceOpacity(cmd, DetailSourceStdin, w.state.pipedStdin[cmd.Location.Seq]))
+
+	return launch{}
+}
+
 // referencedVar matches a variable a rendered word refers to.
 var referencedVar = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)`)
 

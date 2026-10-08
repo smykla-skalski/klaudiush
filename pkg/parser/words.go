@@ -519,6 +519,10 @@ func (w *astWalker) launchedFrom(cmd, followed Command, function bool) launch {
 		l = w.shellStreamLaunch(followed, l)
 	}
 
+	if l.stdinProgram {
+		l = w.stdinProgramLaunch(followed, l)
+	}
+
 	if slices.ContainsFunc(followed.Args, marked) {
 		l.commands = launches(followed).commands
 	}
