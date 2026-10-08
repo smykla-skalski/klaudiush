@@ -44,6 +44,8 @@ var _ = Describe("An interpreter reading its program from stdin with -", func() 
 		Entry("lua", "lua - \"$x\" <<'EOF'\nprint(arg[1])\nEOF"),
 		Entry("bash -s, unchanged", "bash -s \"$x\" <<'EOF'\necho \"$1\"\nEOF"),
 		Entry("python3 - with no arguments, unchanged", "python3 - <<'EOF'\nprint(1)\nEOF"),
+		Entry("a heredoc after a file redirect, which wins",
+			"python3 - \"$f\" < \"$g\" <<'A'\nprint(1)\nA"),
 		Entry("a heredoc after a descriptor redirect, which wins",
 			"python3 - \"$f\" <&3 <<'A'\nprint(1)\nA"),
 	)

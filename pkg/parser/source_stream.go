@@ -720,14 +720,15 @@ func (w *astWalker) shellStdinLaunch(cmd Command, visible launch) launch {
 
 // stdinProgramLaunch returns what an interpreter told by a lone - to read
 // its program from stdin runs: the literal text or redirected file it was
-// given. A program klaudiush cannot see (piped from a command, inherited,
-// a process substitution or descriptor, several stdin redirects, or no
-// stdin at all) fails closed.
+// given. A heredoc or here-string the shell keeps wins over an earlier
+// file redirect. A program klaudiush cannot see (piped from a command,
+// inherited, a process substitution or descriptor, text a later redirect
+// replaces, or no stdin at all) fails closed.
 func (w *astWalker) stdinProgramLaunch(cmd Command, visible launch) launch {
 	_, untrusted := w.state.untrustedStdin[cmd.Location.Seq]
 	opaque := w.state.overriddenStdin[cmd.Location.Seq]
 
-	if cmd.StdinFile != "" {
+	if cmd.Stdin == "" && cmd.StdinFile != "" {
 		_, detail := redirectedStdin(cmd, cmd.StdinFile)
 		opaque = opaque || untrusted || detail != ""
 	}
