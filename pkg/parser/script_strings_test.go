@@ -86,7 +86,8 @@ var _ = Describe("Plain strings in interpreter code", func() {
 			"python3 -c 'import asyncio\nasync def m():\n    print(\"git zz\")\nasyncio.run(m())'"),
 	)
 
-	DescribeTable("still reads them when the code can run a string",
+	DescribeTable(
+		"still reads them when the code can run a string",
 		func(command string) {
 			Expect(parse(command).Truncated).To(BeTrue(), "not truncated: %q", command)
 		},
@@ -144,6 +145,20 @@ var _ = Describe("Plain strings in interpreter code", func() {
 			`python3 -c 'from subprocess import run; run(cmd, input="git zz")'`),
 		Entry("a continued import line",
 			"python3 -c 'import json, \\\n    helper\nhelper.go(\"git zz\")'"),
+		Entry("a computed child_process member",
+			`node -e 'const cp = require("child_process"); cp["ex" + "ecSync"]("git zz")'`),
+		Entry(
+			"a deno shell argv",
+			`deno eval 'const c = "git zz"; Deno.run({cmd: ["sh", "-c", c]})'`,
+		),
+		Entry(
+			"a wrapper with a command flag",
+			`python3 -c 'import subprocess; subprocess.run(["runuser", "-l", "bob", "-c", "git zz"])'`,
+		),
+		Entry("an unlisted wrapper with a command flag",
+			`python3 -c 'import subprocess; c = "git zz"; subprocess.run(["newtool", "-c", c])'`),
+		Entry("an attribute fetched by attrgetter",
+			`python3 -c 'import operator, os; operator.attrgetter("sys" + "tem")(os)("git zz")'`),
 		Entry("a computed node global",
 			`node -e 'globalThis["req" + "uire"]("./h").run("git zz")'`),
 	)

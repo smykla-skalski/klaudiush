@@ -30,7 +30,14 @@ var stringRunners = regexp.MustCompile(
 		`getstatusoutput|startfile|\bfunction\s*\(|\bcommand\s*\(|` +
 		`write|chmod|symlink|appendfile|copyfile|\bdump\s*\(|o_wronly|o_rdwr|o_creat|o_append|` +
 		`environ|\benv\b|globalthis|\bglobal\s*\[|mainmodule|process\.binding|dlopen|` +
-		`sys\.modules`,
+		`sys\.modules|attrgetter|methodcaller|__getattribute__`,
+)
+
+// jsRunners matches JavaScript that reaches a program or a module without
+// naming it: Deno and Bun process APIs, Reflect, module.require, global
+// objects and computed members of process.
+var jsRunners = regexp.MustCompile(
+	`\bDeno\b|\bBun\b|\bReflect\b|\bmodule\b|\bglobal\b|\bprocess\s*\[`,
 )
 
 // stdinPrograms run what arrives on their stdin or in their arguments as a
@@ -38,7 +45,13 @@ var stringRunners = regexp.MustCompile(
 // and multiplexed shells, and tools with a shell escape.
 var stdinPrograms = nameSet(`su flock env watch ssh tmux screen parallel xargs busybox
 	script expect at batch crontab ed ex vi vim nvim sqlite3 psql mysql gdb lldb sed
-	docker podman nerdctl kubectl make`)
+	docker podman nerdctl kubectl make runuser sg newgrp pkexec chroot nsenter unshare
+	systemd-run xterm`)
+
+// commandStringFlag matches an argv item that hands a wrapper, shell or
+// interpreter its command line (-c, -lc, -e, --eval, --command), whatever
+// program it follows.
+var commandStringFlag = regexp.MustCompile(`^-(?:[A-Za-z]*c|e|-eval|-command)$`)
 
 // spawnCall matches a subprocess call that starts a program: subprocess.run
 // and its siblings, or the same names imported bare. Method calls on other
@@ -86,9 +99,10 @@ var pythonModules = nameSet(`__future__ abc argparse array ast asyncio base64 bi
 	sys sysconfig tarfile tempfile textwrap threading time tomllib traceback types typing
 	unicodedata unittest urllib uuid warnings weakref xml zipfile zlib zoneinfo`)
 
-// jsModules are the Node built-in modules with the same property. Starting
-// a program from Node goes through exec, spawn or fork, all stringRunners.
-var jsModules = nameSet(`assert buffer child_process crypto events fs fs/promises os path
+// jsModules are the Node built-in modules with the same property.
+// child_process is left out: a computed member (cp["ex" + "ec"]) reaches its
+// exec without naming it.
+var jsModules = nameSet(`assert buffer crypto events fs fs/promises os path
 	process readline stream string_decoder timers url util zlib`)
 
 // stringsRun reports whether Python or JavaScript source may run one of its
@@ -103,6 +117,10 @@ func stringsRun(code string, lang codeLang) bool {
 	}
 
 	if lang == langOther || codeUnsafe(code) || stringRunners.MatchString(code) {
+		return true
+	}
+
+	if lang == langJavaScript && jsRunners.MatchString(code) {
 		return true
 	}
 
@@ -220,13 +238,14 @@ func listEnd(s string) int {
 
 // commandRunner reports whether an argv item names a program that runs
 // commands handed to it: a shell, an interpreter, a launcher or one of
-// stdinPrograms. Case is folded, as macOS finds bash for Bash.
+// stdinPrograms, or is a flag that hands one its command line. Case is folded, as macOS finds bash for Bash.
 func commandRunner(item string) bool {
 	name := commandName(strings.TrimSpace(item))
 	_, interp := interpreters[name]
 	_, launch := launchers[name]
 
-	return interp || launch || shells[name] || stdinPrograms[name]
+	return interp || launch || shells[name] || stdinPrograms[name] ||
+		commandStringFlag.MatchString(strings.TrimSpace(item))
 }
 
 // unknownModule reports whether source loads a module outside the known set
