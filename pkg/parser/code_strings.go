@@ -263,14 +263,22 @@ func listEnd(s string) int {
 
 // commandRunner reports whether an argv item names a program that runs
 // commands handed to it: a shell, an interpreter, a launcher or one of
-// stdinPrograms, or is a flag that hands one its command line. Case is folded, as macOS finds bash for Bash.
+// stdinPrograms, a flag that hands one its command line, or a whole command
+// line naming git, gh or a shell, which a wrapper klaudiush does not know
+// (hyperfine, mosh) may hand to a shell. Case is folded, as macOS finds bash
+// for Bash.
 func commandRunner(item string) bool {
-	name := commandName(strings.TrimSpace(item))
+	item = strings.TrimSpace(item)
+	if strings.ContainsAny(item, regexSpace) && mentionsCommand.MatchString(item) {
+		return true
+	}
+
+	name := commandName(item)
 	_, interp := interpreters[name]
 	_, launch := launchers[name]
 
 	return interp || launch || shells[name] || stdinPrograms[name] ||
-		commandStringFlag.MatchString(strings.TrimSpace(item))
+		commandStringFlag.MatchString(item)
 }
 
 // unknownModule reports whether source loads a module outside the known set

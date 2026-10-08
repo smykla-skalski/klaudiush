@@ -1046,12 +1046,17 @@ func (w *astWalker) followCode(cmd Command, code string, depth int, sw scriptWal
 
 // codeLanguage reports whether program source is Python or JavaScript, by
 // the interpreter running it or, for a script run by path, its shebang. A
-// named interpreter (awk -f x.py) ignores the shebang, and a script's own
-// name (./python-tool) says nothing about its language.
+// named interpreter (awk -f x.py) or a shell (bash x.py, source x.py)
+// ignores the shebang, and a script's own name (./python-tool) says nothing
+// about its language.
 func codeLanguage(cmd Command, code string) codeLang {
 	name := commandName(cmd.Name)
 	if _, named := interpreters[name]; named {
 		return interpreterLanguage(name)
+	}
+
+	if shells[name] || name == sourceBuiltin || name == dotBuiltin {
+		return langOther
 	}
 
 	line, _, _ := strings.Cut(code, "\n")

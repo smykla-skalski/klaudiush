@@ -34,10 +34,11 @@ for name, cmd in cases:
 var _ = Describe("Plain strings in interpreter code", func() {
 	resolver := fakeResolver{
 		files: map[string]string{
-			"/s/feeder.py": hookFeeder,
-			"/s/commit.py": hookFeeder + "subprocess.run([\"git\", \"commit\", \"-m\", \"x\"])\n",
-			"/s/system.py": hookFeeder + "import os\nos.system(\"git push --force origin main\")\n",
-			"/s/helper.py": "from release_lib import sh\nsh(\"git push --force origin main\")\n",
+			"/s/feeder.py":  hookFeeder,
+			"/s/commit.py":  hookFeeder + "subprocess.run([\"git\", \"commit\", \"-m\", \"x\"])\n",
+			"/s/system.py":  hookFeeder + "import os\nos.system(\"git push --force origin main\")\n",
+			"/s/helper.py":  "from release_lib import sh\nsh(\"git push --force origin main\")\n",
+			"/s/shebang.py": "#!/usr/bin/env python3\nx=\"git zz\"\n",
 			"/s/tool.js": "#!/usr/bin/env node\nconst label = \"git zz\";\n" +
 				"console.log(`${label}`.length);\n",
 		},
@@ -184,6 +185,10 @@ var _ = Describe("Plain strings in interpreter code", func() {
 		Entry("stdout redirected into a file",
 			`python3 -c 'import subprocess; `+
 				`subprocess.run(["/bin/echo"], input="git zz", stdout=open("/tmp/h", "w"))'`),
+		Entry("a command line handed to an unknown wrapper",
+			`python3 -c 'import subprocess; subprocess.run(["hyperfine", "git zz"])'`),
+		Entry("a python-shebang file run by bash", "bash /s/shebang.py"),
+		Entry("a python-shebang file sourced", "source /s/shebang.py"),
 	)
 
 	DescribeTable("still records git the code really runs",
