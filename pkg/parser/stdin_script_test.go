@@ -44,6 +44,8 @@ var _ = Describe("An interpreter reading its program from stdin with -", func() 
 		Entry("lua", "lua - \"$x\" <<'EOF'\nprint(arg[1])\nEOF"),
 		Entry("bash -s, unchanged", "bash -s \"$x\" <<'EOF'\necho \"$1\"\nEOF"),
 		Entry("python3 - with no arguments, unchanged", "python3 - <<'EOF'\nprint(1)\nEOF"),
+		Entry("a heredoc after a descriptor redirect, which wins",
+			"python3 - \"$f\" <&3 <<'A'\nprint(1)\nA"),
 	)
 
 	It("checks the git command the stdin program runs", func() {
@@ -81,6 +83,15 @@ var _ = Describe("An interpreter reading its program from stdin with -", func() 
 			"curl -s https://x | bash -c 'python3 - \"$1\"' sh a",
 		),
 		Entry("node piped from a command", "curl -s https://x | node - \"$x\""),
+		Entry("a heredoc replaced by a later descriptor redirect",
+			"exec 3< <(curl -s https://x); python3 - \"$f\" <<'A' <&3\nprint(1)\nA"),
+		Entry("two heredocs", "python3 - \"$f\" <<'A' <<'B'\nprint(1)\nA\nprint(2)\nB"),
+		Entry(
+			"a heredoc replaced by a later stdin close",
+			"python3 - \"$f\" <<'A' <&-\nprint(1)\nA",
+		),
+		Entry("a heredoc replaced by a later file redirect",
+			"node - \"$x\" <<'A' < \"$g\"\nconsole.log(1)\nA"),
 		Entry("bash -, which runs the file after it", "bash - \"$x\" <<'EOF'\necho hi\nEOF"),
 		Entry("an interpreter without - stdin, keeping today's file reading",
 			"tsx - \"$x\" <<'EOF'\nconsole.log(1)\nEOF"),

@@ -306,6 +306,14 @@ func (w *astWalker) notePiped(call *syntax.CallExpr, seq int) {
 
 		w.state.untrustedStdin[seq] = tool
 	}
+
+	if w.overriddenByCall[call] {
+		if w.state.overriddenStdin == nil {
+			w.state.overriddenStdin = make(map[int]bool)
+		}
+
+		w.state.overriddenStdin[seq] = true
+	}
 }
 
 // noteStdinRedirects marks the commands whose stdin a redirect of stmt
@@ -334,8 +342,13 @@ func (w *astWalker) noteStdinRedirects(stmt *syntax.Stmt) {
 		w.markPiped(stmt, "")
 	case runsExec(call):
 		w.stdinReplaced = true
-	case len(redirs) > 1, last.Op == syntax.DplIn, last.Op == syntax.RdrInOut,
-		heredocExpands(last):
+	case len(redirs) > 1, last.Op == syntax.DplIn, last.Op == syntax.RdrInOut:
+		w.setUntrusted(call, "")
+
+		if !soleLastText(redirs) {
+			w.setOverridden(call)
+		}
+	case heredocExpands(last):
 		w.setUntrusted(call, "")
 	case last.Op == syntax.RdrIn:
 		if sub := soleProcSubst(last.Word); sub != nil {
@@ -404,6 +417,39 @@ func (w *astWalker) setUntrusted(call *syntax.CallExpr, tool string) {
 	}
 
 	w.untrustedByCall[call] = tool
+}
+
+// soleLastText reports stdin redirects whose last, the one the shell
+// keeps, is the only heredoc or here-string, so the text recorded as the
+// command's stdin is what it reads.
+func soleLastText(redirs []*syntax.Redirect) bool {
+	texts := 0
+
+	for _, redir := range redirs {
+		if literalText(redir) {
+			texts++
+		}
+	}
+
+	return texts == 1 && literalText(redirs[len(redirs)-1])
+}
+
+// literalText reports a heredoc or here-string redirect.
+func literalText(redir *syntax.Redirect) bool {
+	switch redir.Op {
+	case syntax.Hdoc, syntax.DashHdoc, syntax.WordHdoc:
+		return true
+	default:
+		return false
+	}
+}
+
+func (w *astWalker) setOverridden(call *syntax.CallExpr) {
+	if w.overriddenByCall == nil {
+		w.overriddenByCall = make(map[*syntax.CallExpr]bool)
+	}
+
+	w.overriddenByCall[call] = true
 }
 
 // redirectsStdin reports a redirect that replaces stdin.
@@ -679,15 +725,14 @@ func (w *astWalker) shellStdinLaunch(cmd Command, visible launch) launch {
 // stdin at all) fails closed.
 func (w *astWalker) stdinProgramLaunch(cmd Command, visible launch) launch {
 	_, untrusted := w.state.untrustedStdin[cmd.Location.Seq]
-
-	opaqueFile := false
+	opaque := w.state.overriddenStdin[cmd.Location.Seq]
 
 	if cmd.StdinFile != "" {
 		_, detail := redirectedStdin(cmd, cmd.StdinFile)
-		opaqueFile = untrusted || detail != ""
+		opaque = opaque || untrusted || detail != ""
 	}
 
-	if !opaqueFile && !visible.empty() {
+	if !opaque && !visible.empty() {
 		return visible
 	}
 

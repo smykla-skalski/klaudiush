@@ -68,8 +68,11 @@ type astWalker struct {
 	scriptFiles     map[string]string
 	pipedByCall     map[*syntax.CallExpr]string
 	untrustedByCall map[*syntax.CallExpr]string
-	stdinFed        bool
-	stdinReplaced   bool
+	// overriddenByCall marks the calls whose literal stdin a later redirect
+	// may replace, as in <<'EOF' <&3.
+	overriddenByCall map[*syntax.CallExpr]bool
+	stdinFed         bool
+	stdinReplaced    bool
 	// state is shared by every walker of one parse.
 	state *parseState
 	// expanding holds the aliases, functions and git aliases being expanded
@@ -153,6 +156,9 @@ type parseState struct {
 	unseenSubsts   map[string]string
 	pipedStdin     map[int]string
 	untrustedStdin map[int]string
+	// overriddenStdin holds, by seq, the commands whose literal stdin a later
+	// redirect may replace (see overriddenByCall).
+	overriddenStdin map[int]bool
 	// distinct holds every distinct command recorded so far, so a pass that
 	// confirms a script's repeat can tell whether it found anything new.
 	distinct map[string]bool
