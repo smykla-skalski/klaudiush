@@ -506,11 +506,13 @@ func endPythonLine(state stringState) stringState {
 // commentScan is how a Write or Edit payload is scanned: the language
 // syntax, the leads it is scanned from (none means once from code), and
 // whether triple-quoted state is dropped at each line break because the
-// payload's lines are not contiguous in the file.
+// payload's lines are not contiguous in the file. goSource is set for Go
+// files, whose indented declarations are local to a function body.
 type commentScan struct {
 	syntax          langSyntax
 	leads           []editLead
 	lineLocalTriple bool
+	goSource        bool
 }
 
 // editLead is one place an Edit's new_string lands: the multi-line string
@@ -555,7 +557,10 @@ func (s commentScan) lineStart(state stringState) stringState {
 // lost, so triple-quoted state is not carried between its lines.
 func newCommentScan(hookCtx *hook.Context) commentScan {
 	path := hookCtx.GetFilePath()
-	scan := commentScan{syntax: langSyntaxForPath(path)}
+	scan := commentScan{
+		syntax:   langSyntaxForPath(path),
+		goSource: strings.EqualFold(filepath.Ext(path), ".go"),
+	}
 	detectShebang := scan.syntax == (langSyntax{}) && filepath.Ext(path) == ""
 
 	if hookCtx.ToolName != hook.ToolTypeEdit || hookCtx.ToolInput.Content != "" {

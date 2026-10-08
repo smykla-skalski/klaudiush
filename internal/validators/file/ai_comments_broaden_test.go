@@ -771,6 +771,23 @@ var _ = Describe("AICommentValidator multi-line string literals", func() {
 			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
 		})
 
+		DescribeTable("allows doc comments above indented declarations outside Go",
+			func(name, content string) {
+				ctx.ToolName = hook.ToolTypeWrite
+				ctx.ToolInput.FilePath = filepath.Join(filepath.Dir(path), name)
+				ctx.ToolInput.Content = content
+				Expect(sv.Validate(context.Background(), ctx).Passed).To(BeTrue())
+			},
+			Entry("rust associated const", "a.rs",
+				"impl S {\n    // Max size of buffer.\n    const MAX: usize = 1;\n}\n"),
+			Entry("rust associated type", "a.rs",
+				"trait T {\n    // Item produced.\n    type Item;\n}\n"),
+			Entry("typescript namespace type", "a.ts",
+				"namespace N {\n  // Alias for id.\n  type Id = string;\n}\n"),
+			Entry("python class type alias", "a.py",
+				"class A:\n    # Alias.\n    type X = int\n"),
+		)
+
 		It("flags a doc continuation fragment when the file cannot be read", func() {
 			ctx.ToolInput.FilePath = path
 			ctx.ToolInput.OldString = "// and executed later."

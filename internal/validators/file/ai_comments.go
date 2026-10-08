@@ -115,19 +115,23 @@ var nonStrictBasenames = map[string]bool{
 // A leading comment block directly above such a line is its documentation and
 // is allowed even when it opens with a verb. A tagged struct field counts: code
 // generators publish those comments as API documentation, so removing them
-// removes the description from the generated schema. A type, const or var
-// counts only at the start of the line: indented, it is a local declaration
-// inside a function body, where a comment is an inline one.
+// removes the description from the generated schema.
 var aiDocDecl = regexp.MustCompile(
-	`^(type\s+(\(|[A-Za-z_])|(const|var)\s+(\(|[A-Za-z_]))` + // Go type, const, var
-		`|^\s*(` +
+	`^\s*(` +
 		`package\s+[A-Za-z_]` + // Go package doc
 		`|func\s+(\([^)]*\)\s*)?[A-Za-z_]` + // Go func or method
+		`|type\s+(\(|[A-Za-z_])` + // Go type or block
+		`|(const|var)\s+(\(|[A-Za-z_])` + // Go const/var or block
 		`|export\b` + // JS/TS export
 		`|(async\s+)?(def|class)\s+[A-Za-z_]` + // Python def/class
 		`|[A-Za-z_][\w.]*(\s+[\w*\[\]./]+)?\s+\x60` + // Go struct field with a tag
 		`)`,
 )
+
+// aiGoLocalDecl matches an indented Go type, const or var line. Go declares
+// those keywords indented only inside a function body, where a comment above
+// them is an inline one, not documentation.
+var aiGoLocalDecl = regexp.MustCompile(`^\s+(type|const|var)\s`)
 
 // isShebangOrDocMarker reports whether the comment body (marker stripped, not
 // trimmed) is a shebang (#!), a Rust doc comment (///) or a Rust inner doc
@@ -342,7 +346,7 @@ func findLeadViolations(
 			continue
 		}
 
-		if isFullLineComment(line, idx) && precedesDocDecl(docLines, i) &&
+		if isFullLineComment(line, idx) && precedesDocDecl(docLines, i, scan.goSource) &&
 			!aiGenericDocComment.MatchString(body) {
 			continue
 		}
@@ -434,8 +438,9 @@ func isFullLineComment(line string, idx int) bool {
 // comment block whose first non-comment line declares a symbol or package.
 // Lines starting with "#" do not end the block, so a Rust attribute or a
 // preprocessor directive may sit between a comment and its declaration. A
-// blank line breaks the association (it is no longer a doc comment).
-func precedesDocDecl(lines []string, i int) bool {
+// blank line breaks the association (it is no longer a doc comment). In Go
+// a local declaration inside a function body does not count.
+func precedesDocDecl(lines []string, i int, goSource bool) bool {
 	for j := i + 1; j < len(lines); j++ {
 		trimmed := strings.TrimSpace(lines[j])
 		if trimmed == "" {
@@ -444,6 +449,10 @@ func precedesDocDecl(lines []string, i int) bool {
 
 		if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
 			continue
+		}
+
+		if goSource && aiGoLocalDecl.MatchString(lines[j]) {
+			return false
 		}
 
 		return aiDocDecl.MatchString(lines[j])
