@@ -57,6 +57,8 @@ var _ = Describe("A script captured from a write and edited before it runs", fun
 		Entry("inline code importing a local module", "python3 -c 'import mut'\n"),
 		Entry("a tool given a matching glob", "sometool w.p*\n"),
 		Entry("a make target that formats", "make fmt\n"),
+		Entry("a formatter given a line length", "black -l 100 w.py\n"),
+		Entry("a lister told to write", "gofmt -l -w .\n"),
 		Entry("a linter fixing the current directory", "ruff check --fix\n"),
 		Entry("a formatter on the current directory", "go fmt\nruff format\n"),
 		Entry("git checking out the tree", "git checkout .\n"),
@@ -119,6 +121,7 @@ var _ = Describe("A script captured from a write and edited before it runs", fun
 		Entry("a tool given a glob for other files", "sometool *.txt\n"),
 		Entry("a script comparing values", "python3 build.py\n"),
 		Entry("make targets that build and test", "make test\nmake build\nmake\n"),
+		Entry("import order checks", "isort -c .\ngofmt -l .\n"),
 		Entry("interactive containers and keys", "docker exec -i c ls\nssh -i key host ls\n"),
 		Entry("inline code comparing values", "python3 -c 'print(1 > 0)'\n"),
 	)

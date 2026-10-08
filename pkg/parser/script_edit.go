@@ -20,7 +20,7 @@ var readOnlyPrograms = nameSet(`cat head tail less more wc ls stat file grep egr
 	rg diff cmp test [ md5sum md5 shasum sha1sum sha256sum chmod chown chgrp touch echo
 	printf realpath readlink basename dirname du true false pwd cd mkdir jq tr cut column
 	nl od hexdump sleep date which uname whoami id hostname printenv tput clear seq base64
-	df ps free nproc uptime curl wget`)
+	df ps free nproc uptime`)
 
 // editPrograms change files they do not name: archives, patches and syncs.
 var editPrograms = nameSet("unzip tar bsdtar cpio 7z rsync patch install")
@@ -30,21 +30,28 @@ var formatterPrograms = nameSet(`black isort autoflake autopep8 yapf prettier go
 	gofumpt rustfmt clang-format shfmt`)
 
 // writeFlags make a linter or formatter rewrite the files it checks.
-var writeFlags = nameSet("-w --write --fix --inplace fmt format fix")
+var writeFlags = nameSet("-w --write --fix --inplace")
+
+// writeCommands are subcommands that rewrite files unless a check flag keeps
+// them to reporting (go fmt, ruff format, tofu fmt -check).
+var writeCommands = nameSet("fmt format fix")
 
 // filterWrites maps the filters that only read their files to the flag
 // that makes them write one: a short option letter (sed -i, sed -Ei, sort -o)
 // or text in an option (awk -i inplace).
-var filterWrites = func() map[string]string {
-	flags := make(map[string]string)
+var filterWrites = pairs("sed=i sort=o awk=inplace")
 
-	for pair := range strings.FieldsSeq("sed=i sort=o awk=inplace") {
-		program, flag, _ := strings.Cut(pair, "=")
-		flags[program] = flag
+// pairs builds a map from space-separated key=value pairs.
+func pairs(list string) map[string]string {
+	m := make(map[string]string)
+
+	for pair := range strings.FieldsSeq(list) {
+		key, value, _ := strings.Cut(pair, "=")
+		m[key] = value
 	}
 
-	return flags
-}()
+	return m
+}
 
 // longWrites are the long options that make sed or sort write a file.
 var longWrites = strings.Fields("--in-place --output")
@@ -70,7 +77,12 @@ func filterWrite(arg, flag string) bool {
 
 // checkFlags keep a formatter or linter to reporting (black --check,
 // gofmt -l, tofu fmt -check).
-var checkFlags = nameSet("--check -check -l -d --diff --dry-run --list-different")
+var checkFlags = nameSet("--check -check --check-only -d --diff --dry-run --list-different")
+
+// listFlags are the check flags that mean list or check for one tool only:
+// -l lists unformatted files for gofmt and shfmt but sets the line length
+// for black, and -c checks for isort.
+var listFlags = pairs("gofmt=-l goimports=-l gofumpt=-l shfmt=-l isort=-c")
 
 // checkerPrograms read the files they are given and report on them: linters,
 // type checkers, test runners and compilers.
@@ -184,12 +196,15 @@ func (w *astWalker) mayEdit(cmd Command, target string) bool {
 // directory above target.
 func (w *astWalker) operandsEdit(name string, args []string, target string) bool {
 	filterFlag, filter := filterWrites[name]
-	checking := slices.ContainsFunc(args, func(arg string) bool { return checkFlags[arg] })
-	writes := !checking &&
-		(formatterPrograms[name] || slices.ContainsFunc(args, func(arg string) bool {
-			return writeFlags[arg] || strings.HasPrefix(arg, "--in-place") ||
-				filter && filterWrite(arg, filterFlag) || strings.HasPrefix(arg, "--fix")
-		}))
+	checking := slices.ContainsFunc(args, func(arg string) bool {
+		return checkFlags[arg] || listFlags[name] == arg
+	})
+	explicit := slices.ContainsFunc(args, func(arg string) bool {
+		return writeFlags[arg] || strings.HasPrefix(arg, "--in-place") ||
+			filter && filterWrite(arg, filterFlag) || strings.HasPrefix(arg, "--fix")
+	})
+	writes := explicit || !checking && (formatterPrograms[name] ||
+		slices.ContainsFunc(args, func(arg string) bool { return writeCommands[arg] }))
 	reader := checkerPrograms[name] || formatterPrograms[name] || filter
 
 	if reader && !writes {
@@ -249,7 +264,7 @@ func (w *astWalker) mayName(arg, target string) (names, dir bool) {
 		return true, false
 	}
 
-	if _, value, ok := strings.Cut(arg, "="); ok && strings.HasPrefix(arg, "-") {
+	if _, value, ok := strings.Cut(arg, "="); ok {
 		arg = value
 	}
 
