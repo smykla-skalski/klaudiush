@@ -661,6 +661,93 @@ var _ = Describe("AICommentValidator multi-line string literals", func() {
 		})
 	})
 
+	Context("Edit fragments in a Go file", func() {
+		const docSource = "package parser\n\n" +
+			"// stringRunners maps interpreters that run code from a string\n" +
+			"// (globalThis[...], sys.modules), a file written to disk\n" +
+			"// and executed later.\n" +
+			"var stringRunners = map[string]bool{}\n\n" +
+			"func run() int {\n\tx := 1\n\n\treturn x\n}\n"
+
+		var path string
+
+		BeforeEach(func() {
+			ctx.ToolName = hook.ToolTypeEdit
+			path = filepath.Join(GinkgoT().TempDir(), "code_strings.go")
+		})
+
+		writeGo := func(content string) {
+			Expect(os.WriteFile(path, []byte(content), 0o600)).To(Succeed())
+		}
+
+		DescribeTable("allows doc comment text checked against the file",
+			func(source, oldString, newString string) {
+				writeGo(source)
+
+				ctx.ToolInput.FilePath = path
+				ctx.ToolInput.OldString = oldString
+				ctx.ToolInput.NewString = newString
+				Expect(sv.Validate(context.Background(), ctx).Passed).To(BeTrue())
+			},
+			Entry("fragment starting on a continuation line", docSource,
+				"// (globalThis[...], sys.modules), a file written to disk\n// and executed later.",
+				"// (globalThis[...], sys.modules), a file written to disk\n// and run later."),
+			Entry("fragment holding only a continuation line", docSource,
+				"// and executed later.", "// and run later on."),
+			Entry("word replaced inside a doc comment", docSource,
+				"written to disk", "saved to disk"),
+			Entry("line added inside a doc block", docSource,
+				"// and executed later.\n", "// and executed later.\n// Keys are lowercase.\n"),
+		)
+
+		DescribeTable("flags what comments in a fragment",
+			func(source, oldString, newString string) {
+				writeGo(source)
+
+				ctx.ToolInput.FilePath = path
+				ctx.ToolInput.OldString = oldString
+				ctx.ToolInput.NewString = newString
+				Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
+			},
+			Entry("comment added in a function body", docSource,
+				"\tx := 1\n", "\t// set x to one\n\tx := 1\n"),
+			Entry("comment separated from the declaration by a blank line",
+				"package parser\n\n// old note\n\nvar a = 1\n",
+				"// old note", "// holds the value"),
+			Entry("trailing comment replaced on a line above a declaration",
+				"package parser\n\nvar a = 1 // old\nvar b = 2\n",
+				"// old", "// holds the value"),
+			Entry("generic doc comment above a declaration",
+				"package parser\n\n// old\nvar a = 1\n",
+				"// old", "// This variable holds the value"),
+			Entry("comment after a backtick in a block comment",
+				"package parser\n\n/* use ` quotes */\nfunc f() {\n\tx := 1\n\t_ = x\n}\n",
+				"\tx := 1\n", "\t// set x to one\n\tx := 1\n"),
+			Entry("comment added past the doc context lookahead",
+				"package parser\n\n// old\n"+strings.Repeat("\n", 300)+"var a = 1\n",
+				"// old", "// holds the value"),
+		)
+
+		It("flags a doc continuation fragment when the file cannot be read", func() {
+			ctx.ToolInput.FilePath = path
+			ctx.ToolInput.OldString = "// and executed later."
+			ctx.ToolInput.NewString = "// and run later on."
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
+		})
+
+		It("checks every occurrence replaced with replace_all", func() {
+			writeGo("package parser\n\n// old\nvar a = 1\n\n// old\n\nvar b = 2\n")
+
+			ctx.ToolInput.FilePath = path
+			ctx.ToolInput.OldString = "// old"
+			ctx.ToolInput.NewString = "// holds the value"
+			ctx.ToolInput.Additional = map[string]json.RawMessage{
+				"replace_all": json.RawMessage("true"),
+			}
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
+		})
+	})
+
 	DescribeTable(
 		"uses the comment marker of the file's language",
 		func(path, content string, passes bool) {

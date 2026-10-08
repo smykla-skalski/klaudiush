@@ -544,9 +544,12 @@ func (s commentScan) lineStart(state stringState) stringState {
 // Write starts in code. An Edit's new_string continues the line of its
 // old_string in the file on disk, from the string state that line starts in,
 // so a fragment that begins inside (or closes) a docstring or inside a comment
-// is scanned correctly; with several matches it is scanned from each. Only languages
-// with triple-quoted strings, and extension-less files that may hold a Python
-// shebang, read the file; CRLF line endings are matched as LF. An Edit with no
+// is scanned correctly; with several matches it is scanned from each. The
+// file text after old_string lets a comment the fragment touches find the
+// declaration it documents. Only languages with triple-quoted strings carry
+// the file's string state; elsewhere block comments are not tracked, so a
+// backtick inside one would open a string that hides every later comment,
+// and the line starts in code. CRLF line endings are matched as LF. An Edit with no
 // old_string joins added lines from several patch hunks whose boundaries are
 // lost, so triple-quoted state is not carried between its lines.
 func newCommentScan(hookCtx *hook.Context) commentScan {
@@ -576,10 +579,6 @@ func newCommentScan(hookCtx *hook.Context) commentScan {
 		}
 	}
 
-	if !scan.syntax.followsFileStrings() && !detectShebang {
-		return scan
-	}
-
 	data, ok := readRegularFile(hook.CanonicalFilePath(hookCtx.WorkingDir, path))
 	if !ok || len(data) == 0 {
 		return scan
@@ -589,9 +588,6 @@ func newCommentScan(hookCtx *hook.Context) commentScan {
 
 	if detectShebang {
 		scan.syntax = shebangSyntax(original)
-		if scan.syntax == (langSyntax{}) {
-			return scan
-		}
 	}
 
 	old := strings.ReplaceAll(hookCtx.ToolInput.OldString, "\r\n", "\n")
@@ -600,6 +596,12 @@ func newCommentScan(hookCtx *hook.Context) commentScan {
 	}
 
 	scan.leads = editLeads(original, old, scan.syntax, toolEdits(hookCtx)[0].ReplaceAll)
+
+	if !scan.syntax.followsFileStrings() {
+		for i := range scan.leads {
+			scan.leads[i].state = stateCode
+		}
+	}
 
 	return scan
 }
