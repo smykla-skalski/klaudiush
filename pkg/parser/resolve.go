@@ -839,15 +839,26 @@ func (w *astWalker) defineFunc(fn *syntax.FuncDecl) {
 
 // noteSureFunc records a function the top-level shell defines whenever the
 // line runs: not in a branch, loop, pipeline or background job, any of which
-// may leave a program of that name to run instead.
+// may leave a program of that name to run instead. Any other definition,
+// including one in a script this line runs, may leave the earlier body in
+// place while the walk follows the new one, so the name is no longer sure.
 func (w *astWalker) noteSureFunc(stmt *syntax.Stmt) {
 	fn, ok := stmt.Cmd.(*syntax.FuncDecl)
-	if !ok || fn.Name == nil || fn.Body == nil || w.depth > 0 || w.parent != nil {
+	if !ok || fn.Name == nil {
 		return
 	}
 
-	if c, ok := w.certain[stmt]; ok && !c.never && !c.bounded {
-		w.sureFuncs[fn.Name.Value] = true
+	name := fn.Name.Value
+
+	if c, ok := w.certain[stmt]; ok && !c.never && !c.bounded && fn.Body != nil &&
+		w.depth == 0 && w.parent == nil {
+		w.sureFuncs[name] = true
+
+		return
+	}
+
+	for p := w; p != nil; p = p.parent {
+		delete(p.sureFuncs, name)
 	}
 }
 
@@ -976,6 +987,8 @@ func positionalReplacement(ref positionalRef, values []string, set bool) string 
 		}
 
 		return `"` + quoteArgs(values) + `"`
+	case positionalQuotedOperand:
+		return doubleQuoteEscape(strings.Join(values, " "))
 	case positionalHeredoc:
 		return heredocEscape(strings.Join(values, " "))
 	default:

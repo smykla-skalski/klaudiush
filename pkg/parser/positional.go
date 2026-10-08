@@ -11,13 +11,15 @@ import (
 // parameter, which decides how a call's argument is put in its place:
 // unquoted ($1, split and globbed), a double-quoted string holding only the
 // parameter ("$1"), a parameter inside a longer double-quoted string
-// ("[$1]"), or the body of an unquoted heredoc.
+// ("[$1]"), a parameter in the operand of an expansion inside double quotes
+// ("${x:-$1}"), or the body of an unquoted heredoc.
 type positionalContext int
 
 const (
 	positionalUnquoted positionalContext = iota
 	positionalQuotedWord
 	positionalQuotedPart
+	positionalQuotedOperand
 	positionalHeredoc
 )
 
@@ -108,13 +110,20 @@ func positionalRefAt(
 		end:   int(exp.End().Offset()),
 	}
 
+	operand := false
+
 	for _, node := range slices.Backward(stack) {
 		switch n := node.(type) {
+		case *syntax.ParamExp:
+			operand = true
 		case *syntax.DblQuoted:
-			if len(n.Parts) == 1 && n.Parts[0] == exp {
+			switch {
+			case operand:
+				ref.context = positionalQuotedOperand
+			case len(n.Parts) == 1 && n.Parts[0] == exp:
 				ref.context = positionalQuotedWord
 				ref.start, ref.end = int(n.Pos().Offset()), int(n.End().Offset())
-			} else {
+			default:
 				ref.context = positionalQuotedPart
 			}
 
@@ -152,4 +161,10 @@ func positionalValues(param string, args []string) ([]string, bool) {
 // backslash, dollar and backquote are still special.
 func heredocEscape(value string) string {
 	return strings.NewReplacer(`\`, `\\`, "$", `\$`, "`", "\\`").Replace(value)
+}
+
+// doubleQuoteEscape keeps a value literal inside double quotes, where a
+// nested quote would start a new string rather than end the value.
+func doubleQuoteEscape(value string) string {
+	return strings.NewReplacer(`\`, `\\`, "$", `\$`, "`", "\\`", `"`, `\"`).Replace(value)
 }

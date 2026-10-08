@@ -71,6 +71,9 @@ var _ = Describe("Calls to a function defined on the line", func() {
 		Entry("inside a group", `{ t(){ :; }; }; t "git push --force"`),
 		Entry("after a definition chained with &&", `t(){ :; } && t "git push --force"`),
 		Entry("from a command substitution", `t(){ :; }; x=$(t "git push --force")`),
+		Entry("after a sure redefinition", `t(){ eval "$1"; }; t(){ :; }; t "git push --force"`),
+		Entry("in an expansion operand inside quotes",
+			`t(){ echo "${x:-$1}"; }; t '$(git push --force)'`),
 	)
 
 	DescribeTable("follows what the body runs with the arguments",
@@ -97,7 +100,8 @@ var _ = Describe("Calls to a function defined on the line", func() {
 		Expect(result.Truncated).To(BeTrue())
 	})
 
-	DescribeTable("still scans the arguments when a program may run instead",
+	DescribeTable(
+		"still scans the arguments when a program may run instead",
 		func(command string) {
 			Expect(gitLines(parse(command))).To(ContainElement("push --force"), command)
 		},
@@ -115,6 +119,26 @@ var _ = Describe("Calls to a function defined on the line", func() {
 		Entry("after an unset of an unknown name", `t(){ :; }; unset "$n"; t "git push --force"`),
 		Entry("after an unset in eval", `t(){ :; }; eval 'unset -f t'; t "git push --force"`),
 		Entry("after zsh unfunction", `t(){ :; }; unfunction t; t "git push --force"`),
+		Entry(
+			"a redefinition behind &&",
+			`t(){ eval "$1"; }; false && t(){ :; }; t "git push --force"`,
+		),
+		Entry(
+			"a redefinition in a pipeline",
+			`t(){ eval "$1"; }; echo | t(){ :; }; t "git push --force"`,
+		),
+		Entry(
+			"a redefinition in the background",
+			`t(){ eval "$1"; }; t(){ :; } & t "git push --force"`,
+		),
+		Entry("a redefinition in a loop",
+			`t(){ eval "$1"; }; for i in 1; do t(){ :; }; done; t "git push --force"`),
+		Entry("a redefinition in a piped group",
+			`t(){ eval "$1"; }; { t(){ :; }; } | cat; t "git push --force"`),
+		Entry("a redefinition in a case",
+			`t(){ eval "$1"; }; case $x in a) t(){ :; };; esac; t "git push --force"`),
+		Entry("a redefinition in a conditional eval",
+			`t(){ eval "$1"; }; false && eval 't(){ :; }'; t "git push --force"`),
 		Entry("through command", `t(){ :; }; command t "git push --force"`),
 		Entry("through env", `t(){ :; }; env t "git push --force"`),
 		Entry("inside bash -c", `t(){ :; }; bash -c 't "git push --force"'`),
