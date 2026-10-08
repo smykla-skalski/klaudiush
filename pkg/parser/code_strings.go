@@ -211,25 +211,37 @@ func spawnRunsStrings(code string) bool {
 }
 
 // argvItems returns the quoted items of the list or tuple literal that opens
-// rest, when its first item is a quoted program name. A comment or an
-// escape in the list may hide an item or unbalance its quotes, so it reads
-// as unknown.
+// rest, when the list holds only quoted items and is the whole argv. A
+// variable item may be a command string a subcommand runs (git submodule
+// foreach C), an expression after the list may pick another argv, and a
+// comment or an escape may hide an item or unbalance its quotes, so each
+// reads as unknown.
 func argvItems(rest string) ([]string, bool) {
 	if rest == "" || rest[0] != '[' && rest[0] != '(' {
 		return nil, false
 	}
 
-	body := strings.TrimLeft(rest[1:], regexSpace)
-	if body == "" || !strings.ContainsRune(`"'`, rune(body[0])) {
+	end := listEnd(rest)
+	if end == len(rest) {
 		return nil, false
 	}
 
-	region := rest[1:listEnd(rest)]
-	if strings.ContainsAny(region, `#\\`) {
+	region := rest[1:end]
+	if strings.ContainsAny(region, `#\\`) ||
+		strings.Trim(listItem.ReplaceAllString(region, ""), regexSpace+",") != "" {
+		return nil, false
+	}
+
+	after := strings.TrimLeft(rest[end+1:], regexSpace)
+	if after == "" || after[0] != ',' && after[0] != ')' {
 		return nil, false
 	}
 
 	matches := listItem.FindAllStringSubmatch(region, -1)
+	if len(matches) == 0 {
+		return nil, false
+	}
+
 	items := make([]string, 0, len(matches))
 
 	for _, match := range matches {

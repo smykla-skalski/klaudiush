@@ -220,6 +220,16 @@ var _ = Describe("Plain strings in interpreter code", func() {
 			"a yaml dump into a path opened for writing",
 			`python3 -c 'import yaml, pathlib; yaml.safe_dump("git zz", pathlib.Path("/s/x").open("w"))'`,
 		),
+		Entry(
+			"a command string a git subcommand runs",
+			`python3 -c 'import subprocess; c = "git zz"; subprocess.run(["git", "submodule", "foreach", c])'`,
+		),
+		Entry("a command string an unknown wrapper runs",
+			`python3 -c 'import subprocess; c = "git zz"; subprocess.run(["devbox", "run", c])'`),
+		Entry(
+			"an argv picked by an expression",
+			`python3 -c 'import subprocess; subprocess.run(["true"] if u else ["sh"], input="git zz")'`,
+		),
 		Entry("a remote shell fed on stdin",
 			`python3 -c 'import subprocess; subprocess.run(["oc", "rsh", "pod"], input="git zz")'`),
 	)
