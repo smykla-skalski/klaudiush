@@ -940,6 +940,15 @@ EOF
 				Entry("a staged path given as a flag value",
 					`git add --pathspec-from-file=/tmp/claude-1/list && `+
 						`git commit -sS -m "fix(a): keep body as written"`, false),
+				Entry("a relative directory",
+					`cd src/claude && git commit -sS -a -m "fix(a): keep body as written"`, false),
+				Entry(
+					"a relative file staged first",
+					`git add docs/claude-notes.md && git commit -sS -m "fix(a): keep body as written"`,
+					false,
+				),
+				Entry("a path glued to -C",
+					`git -C/tmp/claude-1/w commit -sS -a -m "fix(a): keep body as written"`, false),
 				Entry("a footer after a path still blocks",
 					`cd /tmp/claude-1 && git commit -sS -a -m "feat(a): add thing" `+
 						`-m "🤖 Generated with [Claude Code](https://claude.com/claude-code)"`, true),

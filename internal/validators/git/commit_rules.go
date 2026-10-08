@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/smykla-skalski/klaudiush/internal/validator"
@@ -836,26 +837,95 @@ var legitimateAIReferences = []string{
 	"klaudiush",
 }
 
-// pathWordPattern matches a filesystem path word: absolute, home-relative,
-// variable-rooted, dot-relative or under a dot directory such as .claude/,
-// standing alone or as a flag value, redirect target or code span. Checks run
-// line by line, so an assistant name in a temp dir or agent worktree path
-// would otherwise pair with an ordinary word such as "written" on the same
-// line. A path takes only the ASCII characters paths are spelled with, so it
-// ends at punctuation, emoji, invisible characters and Unicode spaces and never
-// swallows a footer glued to it. A link keeps its scheme or host in front of
-// the slash, and a word opening with "//" stops at the first slash, so links
-// never match.
-var pathWordPattern = regexp.MustCompile(
-	`(^|[\s\p{Z}"'\x60=;&|()<>])` +
-		`(?:~|\$\{?\w+\}?|\.\.?|\.[\w-]+)?` +
-		`/(?:[\w.+%@~-][\w.+%@~/-]*)?`,
+// Path words are built from these pieces. A path takes only the ASCII
+// characters paths are spelled with, so it ends at punctuation, emoji,
+// invisible characters and Unicode spaces and never swallows a footer glued to
+// it. An escaped space ("My\ Dir") may only sit in a directory, never in the
+// last segment, so a footer behind "\ " is not taken as part of a path.
+const (
+	pathBoundary = `(^|[\s\p{Z}"'\x60=;&|()<>@])`
+	pathChar     = `[\w.+%@~-]`
+	pathDirs     = `(?:` + pathChar + `+(?:\\ ` + pathChar + `+)*/)*`
+	pathTail     = `(?:` + pathChar + `+)?`
 )
 
-// withoutPaths removes the filesystem path words from text, keeping the
-// character before each so the surrounding words stay apart.
+// anchoredPathPattern matches a path word rooted at "/": absolute,
+// home-relative, variable-rooted (including "${VAR:-/tmp}"), dot-relative,
+// under a dot directory such as .claude/, a file:// URL, or glued to a short
+// flag as in "-C/path". It may stand alone or follow "=", "@", a redirect or a
+// code span. A word opening with "//" stops at the first slash and a link keeps
+// its scheme or host in front of the slash, so links never match.
+var anchoredPathPattern = regexp.MustCompile(
+	pathBoundary +
+		`(?:-[a-zA-Z])?` +
+		`(?:file://|~|\$\{[^}\s]*\}|\$\w+|\.\.?|\.[\w-]+)?` +
+		`/` + pathDirs + pathTail,
+)
+
+// relativePathPattern matches a relative path word such as src/claude or
+// docs/claude-notes.md. The first segment has no dot, so a scheme-less link
+// such as claude.com/claude-code is never read as a path.
+var relativePathPattern = regexp.MustCompile(
+	pathBoundary + `[\w+%@~-]+/` + pathDirs + pathTail,
+)
+
+// assistantProseWords are the words a slash joins in prose about an assistant
+// ("Claude/Codex", "Claude Code/Opus", "OpenAI/Codex"). A relative word made
+// only of them is prose, not a path, so it is kept.
+var assistantProseWords = map[string]bool{
+	"claude": true, "copilot": true, "codex": true, "code": true, "cli": true,
+	"anthropic": true, "openai": true, "github": true, "microsoft": true,
+	"opus": true, "sonnet": true, "haiku": true, "gpt": true, "ai": true,
+}
+
+// isAssistantProse reports whether every segment of a relative word, version
+// suffix removed, is an assistant prose word.
+func isAssistantProse(word string) bool {
+	for segment := range strings.SplitSeq(word, "/") {
+		if segment == "" {
+			continue
+		}
+
+		if !assistantProseWords[strings.TrimRight(segment, "-.0123456789")] {
+			return false
+		}
+	}
+
+	return true
+}
+
+// withoutPaths removes the filesystem path words from lowercased text,
+// keeping the character before each so the surrounding words stay apart.
+// Checks run line by line, so an assistant name in a temp dir, agent worktree
+// or repository path would otherwise pair with an ordinary word such as
+// "written" on the same line.
 func withoutPaths(text string) string {
-	return pathWordPattern.ReplaceAllString(text, "$1")
+	text = anchoredPathPattern.ReplaceAllString(text, "$1")
+
+	return relativePathPattern.ReplaceAllStringFunc(text, func(match string) string {
+		boundary, word := splitBoundary(match)
+		if isAssistantProse(word) {
+			return match
+		}
+
+		return boundary
+	})
+}
+
+// splitBoundary separates the leading boundary character a path match keeps
+// from the path word itself.
+func splitBoundary(match string) (boundary, word string) {
+	r, size := utf8.DecodeRuneInString(match)
+	if r == utf8.RuneError || size == 0 {
+		return "", match
+	}
+
+	if strings.ContainsRune(`"'=;&|()<>@`+"`", r) || unicode.IsSpace(r) ||
+		unicode.Is(unicode.Z, r) {
+		return match[:size], match[size:]
+	}
+
+	return "", match
 }
 
 // containsAIAttribution reports whether a message credits an AI assistant. It
