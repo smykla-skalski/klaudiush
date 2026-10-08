@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -20,6 +21,11 @@ const (
 	gitCommand       = "git"
 	commitSubcommand = "commit"
 	addSubcommand    = "add"
+
+	checkoutSubcommand = "checkout"
+	switchSubcommand   = "switch"
+	branchSubcommand   = "branch"
+	worktreeSubcommand = "worktree"
 )
 
 var (
@@ -99,7 +105,9 @@ func (v *CommitValidator) validateCommits(
 
 		// merge, revert, cherry-pick and tag write a message too, but none of
 		// the commit contract applies to them - only attribution does.
-		attribution := v.checkCommandAIAttribution(hookCtx.GetCommand())
+		attribution := v.checkCommandAIAttribution(
+			withoutPathArguments(hookCtx.GetCommand(), result),
+		)
 		if !isCommit {
 			if attribution != nil {
 				return attribution
@@ -156,7 +164,9 @@ func (v *CommitValidator) withAttribution(
 		return f.Reference == validator.RefGitClaudeAttr
 	}) {
 		msg, err := v.extractCommitMessage(ctx, gitCmd, src)
-		if err != nil || !containsAIAttribution(withoutMessage(src.text, msg)) {
+		if err != nil || !containsAIAttribution(
+			withoutPathArguments(withoutMessage(src.text, msg), src.parsed),
+		) {
 			return res
 		}
 
@@ -178,6 +188,155 @@ func withoutMessage(command, message string) string {
 	}
 
 	return command
+}
+
+// relativePathArgPattern matches an argument that is a relative path word,
+// such as src/claude or docs/claude-notes.md.
+var relativePathArgPattern = regexp.MustCompile(`^[\w+%@~][\w.+%@~-]*(?:/[\w.+%@~-]*)+$`)
+
+// textValueFlags take free text, so the argument after one is prose, not a
+// path, even when it looks like one.
+var textValueFlags = slices.Concat(commitMessageFlags, []string{
+	"-t", "--title", "-b", "--body", "--subject", "--trailer",
+})
+
+// textCommands print their arguments as text, which may be a message.
+var textCommands = []string{"echo", "printf"}
+
+// withoutPathArguments removes from the command text every argument the
+// parsed command passes as a relative path, as in "cd src/claude" or
+// "git add docs/claude-notes.md". The attribution check reads the raw text
+// line by line, so a name in such a path would otherwise pair with a marker
+// word in the message. Prose is left alone: "w/Claude" in a message value,
+// an echo or an assignment is not an argument the parser reads as a path.
+func withoutPathArguments(command string, parsed *parser.ParseResult) string {
+	if parsed == nil {
+		return command
+	}
+
+	for _, cmd := range parsed.Commands {
+		if slices.Contains(textCommands, cmd.Name) {
+			continue
+		}
+
+		branches := namesBranches(cmd)
+
+		for i, arg := range cmd.Args {
+			if i > 0 && isTextValueFlag(cmd.Args[i-1], branches) {
+				continue
+			}
+
+			if relativePathArgPattern.MatchString(arg) {
+				command = withoutSoleOccurrence(command, arg)
+			}
+		}
+	}
+
+	return command
+}
+
+// shortTextFlagCluster matches a cluster of short flags ending in one that
+// takes text, such as "-sm" or "-am".
+var shortTextFlagCluster = regexp.MustCompile(`^-[a-zA-Z]*[mtb]$`)
+
+// isTextValueFlag reports whether the argument after flag is free text. A
+// git subcommand that names branches reads -b and -t as a branch ("git
+// checkout -b feat/x"), so there only -m and --message mark text; every other
+// command, wrapped or not, keeps -t, -b and flag clusters as text.
+func isTextValueFlag(flag string, branches bool) bool {
+	if slices.Contains(commitMessageFlags, flag) {
+		return true
+	}
+
+	return !branches &&
+		(slices.Contains(textValueFlags, flag) || shortTextFlagCluster.MatchString(flag))
+}
+
+// branchSubcommands are the git subcommands whose -b and -t take a branch.
+var branchSubcommands = []string{
+	checkoutSubcommand, switchSubcommand, worktreeSubcommand, branchSubcommand,
+}
+
+// namesBranches reports whether a command runs a git subcommand that takes a
+// branch after -b or -t and writes no message.
+func namesBranches(cmd parser.Command) bool {
+	hasBranch, writes := false, false
+
+	for _, arg := range cmd.Args {
+		switch {
+		case slices.Contains(branchSubcommands, arg):
+			hasBranch = true
+		case arg == commitSubcommand || arg == "notes" ||
+			slices.Contains(otherMessageSubcommands, arg):
+			writes = true
+		}
+	}
+
+	return hasBranch && !writes
+}
+
+// withoutSoleOccurrence removes word from the command when it appears there
+// exactly once, ignoring case, and stands as a word of its own. A word that
+// also appears elsewhere, such as inside a message, is kept everywhere:
+// removing every copy would let a no-op argument ("; : w/claude") erase the
+// same text from the message. A word inside a command substitution or a
+// quoted string holding more than the word is part of some other text, so it
+// is kept too.
+func withoutSoleOccurrence(command, word string) string {
+	spans := regexp.MustCompile(`(?i)`+regexp.QuoteMeta(word)).FindAllStringIndex(command, -1)
+	if len(spans) != 1 || !standsAlone(command, spans[0][0], spans[0][1]) {
+		return command
+	}
+
+	return command[:spans[0][0]] + command[spans[0][1]:]
+}
+
+// standsAlone reports whether command[start:end] is a shell word of its own:
+// outside any command substitution, and either unquoted or the whole content
+// of its quotes. It errs toward false, which only keeps text in the check.
+func standsAlone(command string, start, end int) bool {
+	var (
+		quote      byte
+		quoteStart int
+		depth      int
+		backtick   bool
+	)
+
+	for i := 0; i < start; i++ {
+		c := command[i]
+
+		switch {
+		case quote == '\'':
+			if c == '\'' {
+				quote = 0
+			}
+		case c == '\\':
+			i++
+		case c == '`':
+			backtick = !backtick
+		case c == '$' && i+1 < len(command) && command[i+1] == '(':
+			depth++
+			i++
+		case c == ')' && depth > 0:
+			depth--
+		case quote == '"':
+			if c == '"' {
+				quote = 0
+			}
+		case c == '"' || c == '\'':
+			quote, quoteStart = c, i
+		}
+	}
+
+	if depth > 0 || backtick {
+		return false
+	}
+
+	if quote == 0 {
+		return true
+	}
+
+	return quoteStart == start-1 && end < len(command) && command[end] == quote
 }
 
 // otherMessageSubcommands are the git subcommands that write a commit message
