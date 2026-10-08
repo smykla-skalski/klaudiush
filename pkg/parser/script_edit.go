@@ -363,9 +363,6 @@ func (w *astWalker) inlineEdits(args, operands []string, target string) bool {
 	})
 }
 
-// unzipLists make unzip list or test an archive instead of extracting it.
-var unzipLists = nameSet("-l -t -v -Z")
-
 // sedScriptFlags hand sed its script as an option value, so no operand is
 // the script.
 var sedScriptFlags = nameSet("-e -f --expression --file")
@@ -390,20 +387,53 @@ func withoutSedScript(args []string) []string {
 }
 
 // archiveWrites reports whether an editPrograms run may write files: an
-// archive tool that only lists or tests (tar t, unzip -l) does not.
+// archive tool that only lists, creates or compares (tar t, tar c, unzip
+// -l, unzip -p) does not. Anything else, extraction above all, counts.
 func archiveWrites(name string, args []string) bool {
 	switch name {
 	case "tar", "bsdtar":
-		return slices.ContainsFunc(args, func(arg string) bool {
-			return arg == "--extract" || arg == "--get" ||
-				!strings.HasPrefix(arg, "--") && strings.ContainsRune(strings.TrimPrefix(arg, "-"), 'x') &&
-					strings.Trim(arg, "-cxtvzjJfpPoOk") == ""
-		})
+		return tarMayExtract(args)
 	case "unzip":
-		return !slices.ContainsFunc(args, func(arg string) bool { return unzipLists[arg] })
+		return !slices.ContainsFunc(args, func(arg string) bool {
+			return shortCluster(arg, false) && strings.ContainsAny(arg[1:], unzipReadLetters)
+		})
 	default:
 		return true
 	}
+}
+
+// unzipReadLetters are the unzip options that list, test or print an
+// archive instead of extracting it to files.
+const unzipReadLetters = "ltvZpc"
+
+// tarMayExtract reports whether a tar command may extract: an x mode or
+// --extract, or no mode that only lists, creates or compares. The first
+// argument may be a mode cluster without a dash (tar xf a.tar).
+func tarMayExtract(args []string) bool {
+	var modes strings.Builder
+
+	for i, arg := range args {
+		switch {
+		case arg == "--extract" || arg == "--get":
+			return true
+		case arg == "--list" || arg == "--create" || arg == "--diff" || arg == "--compare":
+			modes.WriteString("t")
+		case shortCluster(arg, i == 0):
+			modes.WriteString(strings.TrimPrefix(arg, "-"))
+		}
+	}
+
+	return strings.ContainsRune(modes.String(), 'x') || !strings.ContainsAny(modes.String(), "tcd")
+}
+
+// shortCluster reports whether arg is a cluster of short options (-xzf), or
+// a bare one when dashless is set (the first argument of tar).
+func shortCluster(arg string, dashless bool) bool {
+	if strings.HasPrefix(arg, "--") || arg == "-" || arg == "" {
+		return false
+	}
+
+	return strings.HasPrefix(arg, "-") || dashless
 }
 
 // moduleArgs returns the module an interpreter runs with -m and the
