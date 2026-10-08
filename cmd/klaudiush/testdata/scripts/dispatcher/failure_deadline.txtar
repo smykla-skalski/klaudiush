@@ -30,7 +30,7 @@ stdout 'did not answer in time'
 -- config.toml --
 [failure_policy]
 mode = "warn"
-deadline = "1s"
+deadline = "3s"
 
 [plugins]
 enabled = true
