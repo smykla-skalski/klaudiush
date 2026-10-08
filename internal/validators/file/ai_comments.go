@@ -128,6 +128,15 @@ var aiDocDecl = regexp.MustCompile(
 		`)`,
 )
 
+// aiGoStatement matches an indented Go line opening with a keyword. Go
+// writes those indented only inside a function body, where a comment above
+// them is an inline one, not documentation; a raw string after one such as
+// "return" would otherwise read as a tagged struct field.
+var aiGoStatement = regexp.MustCompile(
+	`^\s+(type|const|var|return|case|default|go|defer|goto|break|continue|` +
+		`fallthrough|select|switch|if|for|else)\b`,
+)
+
 // isShebangOrDocMarker reports whether the comment body (marker stripped, not
 // trimmed) is a shebang (#!), a Rust doc comment (///) or a Rust inner doc
 // comment (//!). These sit flush against the marker, so a leading space (an
@@ -341,7 +350,7 @@ func findLeadViolations(
 			continue
 		}
 
-		if isFullLineComment(line, idx) && precedesDocDecl(docLines, i) &&
+		if isFullLineComment(line, idx) && precedesDocDecl(docLines, i, scan.goSource) &&
 			!aiGenericDocComment.MatchString(body) {
 			continue
 		}
@@ -433,8 +442,9 @@ func isFullLineComment(line string, idx int) bool {
 // comment block whose first non-comment line declares a symbol or package.
 // Lines starting with "#" do not end the block, so a Rust attribute or a
 // preprocessor directive may sit between a comment and its declaration. A
-// blank line breaks the association (it is no longer a doc comment).
-func precedesDocDecl(lines []string, i int) bool {
+// blank line breaks the association (it is no longer a doc comment). In Go
+// a local declaration inside a function body does not count.
+func precedesDocDecl(lines []string, i int, goSource bool) bool {
 	for j := i + 1; j < len(lines); j++ {
 		trimmed := strings.TrimSpace(lines[j])
 		if trimmed == "" {
@@ -443,6 +453,10 @@ func precedesDocDecl(lines []string, i int) bool {
 
 		if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
 			continue
+		}
+
+		if goSource && aiGoStatement.MatchString(lines[j]) {
+			return false
 		}
 
 		return aiDocDecl.MatchString(lines[j])

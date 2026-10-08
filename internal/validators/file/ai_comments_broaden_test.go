@@ -661,6 +661,159 @@ var _ = Describe("AICommentValidator multi-line string literals", func() {
 		})
 	})
 
+	Context("Edit fragments in a Go file", func() {
+		const docSource = "package parser\n\n" +
+			"// stringRunners maps interpreters that run code from a string\n" +
+			"// (globalThis[...], sys.modules), a file written to disk\n" +
+			"// and executed later.\n" +
+			"var stringRunners = map[string]bool{}\n\n" +
+			"func run() int {\n\tx := 1\n\n\treturn x\n}\n"
+
+		var path string
+
+		BeforeEach(func() {
+			ctx.ToolName = hook.ToolTypeEdit
+			path = filepath.Join(GinkgoT().TempDir(), "code_strings.go")
+		})
+
+		writeGo := func(content string) {
+			Expect(os.WriteFile(path, []byte(content), 0o600)).To(Succeed())
+		}
+
+		DescribeTable("allows doc comment text checked against the file",
+			func(source, oldString, newString string) {
+				writeGo(source)
+
+				ctx.ToolInput.FilePath = path
+				ctx.ToolInput.OldString = oldString
+				ctx.ToolInput.NewString = newString
+				Expect(sv.Validate(context.Background(), ctx).Passed).To(BeTrue())
+			},
+			Entry("fragment starting on a continuation line", docSource,
+				"// (globalThis[...], sys.modules), a file written to disk\n// and executed later.",
+				"// (globalThis[...], sys.modules), a file written to disk\n// and run later."),
+			Entry("fragment holding only a continuation line", docSource,
+				"// and executed later.", "// and run later on."),
+			Entry("word replaced inside a doc comment", docSource,
+				"written to disk", "saved to disk"),
+			Entry("line added inside a doc block", docSource,
+				"// and executed later.\n", "// and executed later.\n// Keys are lowercase.\n"),
+		)
+
+		DescribeTable(
+			"flags what comments in a fragment",
+			func(source, oldString, newString string) {
+				writeGo(source)
+
+				ctx.ToolInput.FilePath = path
+				ctx.ToolInput.OldString = oldString
+				ctx.ToolInput.NewString = newString
+				Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
+			},
+			Entry("comment added in a function body", docSource,
+				"\tx := 1\n", "\t// set x to one\n\tx := 1\n"),
+			Entry("comment separated from the declaration by a blank line",
+				"package parser\n\n// old note\n\nvar a = 1\n",
+				"// old note", "// holds the value"),
+			Entry("trailing comment replaced on a line above a declaration",
+				"package parser\n\nvar a = 1 // old\nvar b = 2\n",
+				"// old", "// holds the value"),
+			Entry("generic doc comment above a declaration",
+				"package parser\n\n// old\nvar a = 1\n",
+				"// old", "// This variable holds the value"),
+			Entry("comment after a backtick in a block comment",
+				"package parser\n\n/* use ` quotes */\nfunc f() {\n\tx := 1\n\t_ = x\n}\n",
+				"\tx := 1\n", "\t// set x to one\n\tx := 1\n"),
+			Entry("comment after a quote in a block comment on the same line",
+				"package parser\n\nfunc f() {\n\t/* say \" */ x := 1\n\t_ = x\n}\n",
+				"x := 1", "x := 1 // set x"),
+			Entry(
+				"comment above a local var",
+				"package parser\n\nfunc f() {\n\t// old\n\tvar i int\n\t_ = i\n}\n",
+				"// old",
+				"// counter for loop",
+			),
+			Entry(
+				"comment above a local type",
+				"package parser\n\nfunc f() {\n\t// old\n\ttype t int\n\t_ = t(1)\n}\n",
+				"// old",
+				"// alias for ints",
+			),
+			Entry("comment above a return of a raw string",
+				"package parser\n\nfunc f() string {\n\tx := 1\n\t_ = x\n\treturn `abc`\n}\n",
+				"\t_ = x\n", "\t_ = x\n\t// build the query string\n"),
+			Entry("comment above a case of a raw string",
+				"package parser\n\nfunc f(s string) {\n\tswitch s {\n\tcase `x`:\n\t}\n}\n",
+				"\tswitch s {\n", "\tswitch s {\n\t// match the x literal\n"),
+			Entry("comment added past the doc context lookahead",
+				"package parser\n\n// old\n"+strings.Repeat("\n", 300)+"var a = 1\n",
+				"// old", "// holds the value"),
+		)
+
+		DescribeTable("flags a comment after a quote the scanner cannot follow",
+			func(name, source, oldString, newString string) {
+				path = filepath.Join(filepath.Dir(path), name)
+
+				writeGo(source)
+
+				ctx.ToolInput.FilePath = path
+				ctx.ToolInput.OldString = oldString
+				ctx.ToolInput.NewString = newString
+				Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
+			},
+			Entry("javascript regex literal", "app.js",
+				"const r = /\"/; const s = 1;\n", "const s = 1;", "const s = 1; // one"),
+			Entry("javascript block comment with an apostrophe", "app.js",
+				"/* don't */ const s = 1;\n", "const s = 1;", "const s = 1; // one"),
+			Entry("rust lifetime", "lib.rs",
+				"fn f() {\n    let v: Vec<&'a str> = vec![]; let y = 2;\n}\n",
+				"let y = 2;", "let y = 2; // set y"),
+		)
+
+		It("flags a comment above a local var in a written file", func() {
+			ctx.ToolName = hook.ToolTypeWrite
+			ctx.ToolInput.FilePath = path
+			ctx.ToolInput.Content = "package parser\n\nfunc f() {\n\t// counter for loop\n\tvar i int\n\t_ = i\n}\n"
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
+		})
+
+		DescribeTable("allows doc comments above indented declarations outside Go",
+			func(name, content string) {
+				ctx.ToolName = hook.ToolTypeWrite
+				ctx.ToolInput.FilePath = filepath.Join(filepath.Dir(path), name)
+				ctx.ToolInput.Content = content
+				Expect(sv.Validate(context.Background(), ctx).Passed).To(BeTrue())
+			},
+			Entry("rust associated const", "a.rs",
+				"impl S {\n    // Max size of buffer.\n    const MAX: usize = 1;\n}\n"),
+			Entry("rust associated type", "a.rs",
+				"trait T {\n    // Item produced.\n    type Item;\n}\n"),
+			Entry("typescript namespace type", "a.ts",
+				"namespace N {\n  // Alias for id.\n  type Id = string;\n}\n"),
+			Entry("python class type alias", "a.py",
+				"class A:\n    # Alias.\n    type X = int\n"),
+		)
+
+		It("flags a doc continuation fragment when the file cannot be read", func() {
+			ctx.ToolInput.FilePath = path
+			ctx.ToolInput.OldString = "// and executed later."
+			ctx.ToolInput.NewString = "// and run later on."
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
+		})
+
+		It("checks every occurrence replaced with replace_all", func() {
+			writeGo("package parser\n\n// old\nvar a = 1\n\n// old\n\nvar b = 2\n")
+
+			ctx.ToolInput.FilePath = path
+			ctx.ToolInput.OldString = "// old"
+			ctx.ToolInput.NewString = "// holds the value"
+			ctx.ToolInput.Additional = map[string]json.RawMessage{
+				"replace_all": json.RawMessage("true"),
+			}
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
+		})
+	})
+
 	DescribeTable(
 		"uses the comment marker of the file's language",
 		func(path, content string, passes bool) {
