@@ -886,9 +886,10 @@ func unsureName(arg string) bool {
 
 // callsSureFunc reports a command the top-level shell runs directly as a
 // function it is sure to have defined. A launcher (command, env, sudo,
-// xargs) or a path runs a program instead.
+// xargs) or a path runs a program instead, and in a loop a later pass may
+// run after the function was unset.
 func (w *astWalker) callsSureFunc(cmd Command, depth int) bool {
-	return depth == 0 && w.depth == 0 && w.parent == nil &&
+	return depth == 0 && w.depth == 0 && w.parent == nil && !w.inLoop &&
 		!strings.Contains(cmd.Invoked, "/") && w.sureFuncs[cmd.Invoked]
 }
 
@@ -961,7 +962,7 @@ func substitutePositional(body string, args []string) (string, bool) {
 
 		last = ref.end
 
-		if ref.context == positionalUnquoted {
+		if !ref.quoted() {
 			split = split || slices.ContainsFunc(values, func(v string) bool { return v != "" })
 		}
 	}
@@ -991,6 +992,8 @@ func positionalReplacement(ref positionalRef, values []string, set bool) string 
 		return doubleQuoteEscape(strings.Join(values, " "))
 	case positionalHeredoc:
 		return heredocEscape(strings.Join(values, " "))
+	case positionalEvalCode:
+		return "'" + quoteArgs(values) + "'"
 	default:
 		return quoteArgs(splitFields(values))
 	}

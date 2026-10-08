@@ -92,6 +92,13 @@ var _ = Describe("Calls to a function defined on the line", func() {
 			"push --force"),
 		Entry("all arguments", `t(){ git push "$@"; }; t origin main`, "push origin main"),
 		Entry("a heredoc script", "t(){ bash <<EOF\ngit $1\nEOF\n}; t push", "push"),
+		Entry("a heredoc before a later parameter",
+			"t(){ cat <<EOF | git \"$1\"\n$2\nEOF\n}; t push b", "push"),
+		Entry("single-quoted code for eval", `t(){ eval 'git $1'; }; t 'push --force'`,
+			"push --force"),
+		Entry("a quoted parameter in eval code", `t(){ eval 'git commit -m "$1"'; }; t 'fix: x'`,
+			"commit -m fix: x"),
+		Entry("single-quoted code for trap", `t(){ trap '$1' EXIT; }; t 'git push'`, "push"),
 	)
 
 	It("fails closed on a heredoc script given a substitution as text", func() {
@@ -139,6 +146,11 @@ var _ = Describe("Calls to a function defined on the line", func() {
 			`t(){ eval "$1"; }; case $x in a) t(){ :; };; esac; t "git push --force"`),
 		Entry("a redefinition in a conditional eval",
 			`t(){ eval "$1"; }; false && eval 't(){ :; }'; t "git push --force"`),
+		Entry("in a loop that unsets it",
+			`t(){ :; }; for i in 1 2; do t "git push --force"; unset -f t; done`),
+		Entry("in a while condition", `t(){ :; }; while t "git push --force"; do unset -f t; done`),
+		Entry("after sourcing a file", `t(){ :; }; . ./x.sh; t "git push --force"`),
+		Entry("after source", `t(){ :; }; source ./x.sh; t "git push --force"`),
 		Entry("through command", `t(){ :; }; command t "git push --force"`),
 		Entry("through env", `t(){ :; }; env t "git push --force"`),
 		Entry("inside bash -c", `t(){ :; }; bash -c 't "git push --force"'`),

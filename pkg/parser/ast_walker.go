@@ -976,6 +976,11 @@ func (w *astWalker) trackShellState(cmd Command) {
 		w.state.pathChanged = true
 	case unsetBuiltin, "unfunction", "unhash":
 		w.forgetSureFuncs(cmd)
+	case sourceBuiltin, dotBuiltin:
+		// What the file defines or unsets is followed only when it can be read.
+		for p := w; p != nil; p = p.parent {
+			clear(p.sureFuncs)
+		}
 	case "shopt":
 		if shoptChangesSourcePath(cmd.Args) {
 			w.state.pathChanged = true

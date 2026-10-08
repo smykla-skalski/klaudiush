@@ -1,6 +1,8 @@
 package parser
 
 import (
+	"cmp"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -12,7 +14,8 @@ import (
 // unquoted ($1, split and globbed), a double-quoted string holding only the
 // parameter ("$1"), a parameter inside a longer double-quoted string
 // ("[$1]"), a parameter in the operand of an expansion inside double quotes
-// ("${x:-$1}"), or the body of an unquoted heredoc.
+// ("${x:-$1}"), the body of an unquoted heredoc, or single-quoted code that
+// eval or trap runs later, where the function's parameters still apply.
 type positionalContext int
 
 const (
@@ -21,7 +24,11 @@ const (
 	positionalQuotedPart
 	positionalQuotedOperand
 	positionalHeredoc
+	positionalEvalCode
 )
+
+// evalCodeParam matches a positional parameter in code eval or trap runs.
+var evalCodeParam = regexp.MustCompile(`\$(?:\{([@*1-9])\}|([@*1-9]))`)
 
 // positionalRef is one positional parameter a function body expands. start
 // and end are the byte range replaced by the argument: the parameter, or the
@@ -34,7 +41,7 @@ type positionalRef struct {
 
 // quoted reports whether the value is kept as one word, unsplit and unglobbed.
 func (r positionalRef) quoted() bool {
-	return r.context != positionalUnquoted
+	return r.context != positionalUnquoted && r.context != positionalEvalCode
 }
 
 // positionalRefs returns the positional parameters ($1-$9, $@, $*) a
@@ -69,8 +76,15 @@ func positionalRefs(body string) ([]positionalRef, bool) {
 			return true
 		}
 
-		if exp, ok := node.(*syntax.ParamExp); ok && plainPositional(exp) {
-			refs = append(refs, positionalRefAt(exp, stack, heredocs))
+		switch n := node.(type) {
+		case *syntax.ParamExp:
+			if plainPositional(n) {
+				refs = append(refs, positionalRefAt(n, stack, heredocs))
+			}
+		case *syntax.SglQuoted:
+			if evalCode(stack) {
+				refs = append(refs, evalCodeRefs(n)...)
+			}
 		}
 
 		stack = append(stack, node)
@@ -78,7 +92,67 @@ func positionalRefs(body string) ([]positionalRef, bool) {
 		return true
 	})
 
+	// A heredoc body comes after the line that opens it but is walked with
+	// its redirect.
+	slices.SortFunc(refs, func(a, b positionalRef) int { return cmp.Compare(a.start, b.start) })
+
 	return refs, true
+}
+
+// evalCode reports a single-quoted argument of eval or trap, whose text is
+// run later as code in the function, with its positional parameters.
+func evalCode(stack []syntax.Node) bool {
+	word, ok := lastNode(stack).(*syntax.Word)
+	if !ok {
+		return false
+	}
+
+	call, ok := lastNode(stack[:len(stack)-1]).(*syntax.CallExpr)
+	if !ok || len(call.Args) == 0 || call.Args[0] == word {
+		return false
+	}
+
+	name := call.Args[0].Lit()
+
+	return name == evalBuiltin || name == trapBuiltin
+}
+
+// lastNode returns the innermost node of stack, or nil.
+func lastNode(stack []syntax.Node) syntax.Node {
+	if len(stack) == 0 {
+		return nil
+	}
+
+	return stack[len(stack)-1]
+}
+
+// evalCodeRefs returns the positional parameters in single-quoted code.
+func evalCodeRefs(quoted *syntax.SglQuoted) []positionalRef {
+	if quoted.Dollar {
+		return nil
+	}
+
+	base := int(quoted.Pos().Offset()) + 1
+
+	var refs []positionalRef
+
+	for _, m := range evalCodeParam.FindAllStringSubmatchIndex(quoted.Value, -1) {
+		group := 2
+		if m[group] < 0 {
+			group = 4
+		}
+
+		param := quoted.Value[m[group]:m[group+1]]
+
+		refs = append(refs, positionalRef{
+			param:   param,
+			start:   base + m[0],
+			end:     base + m[1],
+			context: positionalEvalCode,
+		})
+	}
+
+	return refs
 }
 
 // plainPositional reports a bare $1-$9, $@ or $* (braced or not) with no
