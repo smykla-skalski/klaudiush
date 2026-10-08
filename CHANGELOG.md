@@ -5,6 +5,19 @@ All notable changes to klaudiush will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.44.2](https://github.com/smykla-skalski/klaudiush/compare/v1.44.1...v1.44.2) (2026-10-08)
+
+### Bug Fixes
+
+* **doctor:** disable rules in their own config ([#834](https://github.com/smykla-skalski/klaudiush/issues/834)) ([9a27ecd](https://github.com/smykla-skalski/klaudiush/commit/9a27ecdd7b9e96488f13a435e9a3aae1e68e2c37))
+* **git:** ignore paths in attribution check ([#814](https://github.com/smykla-skalski/klaudiush/issues/814)) ([977e94d](https://github.com/smykla-skalski/klaudiush/commit/977e94df7b6ac936577c3dfce2d4223c4ed3d628))
+* **parser:** distrust scripts edited after capture ([#825](https://github.com/smykla-skalski/klaudiush/issues/825)) ([af011f3](https://github.com/smykla-skalski/klaudiush/commit/af011f325695d308a0003f1a9a0ee915a1288c24))
+* **parser:** read code strings as data ([#817](https://github.com/smykla-skalski/klaudiush/issues/817)) ([66c3d92](https://github.com/smykla-skalski/klaudiush/commit/66c3d92ff838690f536f7c53881ac52b0e677f37))
+* **parser:** read printf formats in loops ([#836](https://github.com/smykla-skalski/klaudiush/issues/836)) ([d6082d2](https://github.com/smykla-skalski/klaudiush/commit/d6082d2e6ea09e36ba84e93830ca41924550a529))
+* **parser:** read stdin program after lone dash ([#833](https://github.com/smykla-skalski/klaudiush/issues/833)) ([ebabeac](https://github.com/smykla-skalski/klaudiush/commit/ebabeac4f6b2ef46e93c10399d8826ba3b7503aa))
+* **parser:** resolve same-line function calls ([#816](https://github.com/smykla-skalski/klaudiush/issues/816)) ([4e4c2b1](https://github.com/smykla-skalski/klaudiush/commit/4e4c2b178aaec6d688bc3840e732a7447433bdeb))
+* **validator:** read file for FILE011 Go edits ([#824](https://github.com/smykla-skalski/klaudiush/issues/824)) ([8d7ef5c](https://github.com/smykla-skalski/klaudiush/commit/8d7ef5c0c49e1585ea343b2280dee35519eaa08a))
+
 ## [1.44.1](https://github.com/smykla-skalski/klaudiush/compare/v1.44.0...v1.44.1) (2026-10-08)
 
 ### Bug Fixes
