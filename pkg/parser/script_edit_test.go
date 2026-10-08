@@ -1,6 +1,10 @@
 package parser_test
 
 import (
+	"fmt"
+	"strings"
+	"time"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -47,6 +51,17 @@ var _ = Describe("A script captured from a write and edited before it runs", fun
 		Entry("find running a tool", "find . -name '*.py' -exec sometool {} +\n"),
 		Entry("xargs running a tool", "ls | xargs sometool\n"),
 		Entry("a flag value naming it", "sometool --file=w.py\n"),
+		Entry("python reading its program from a heredoc",
+			"python3 - <<'E'\nopen('w.py', 'w').write('x')\nE\n"),
+		Entry("python reading its program from a pipe",
+			"echo \"open('w.py', 'w').write('x')\" | python3\n"),
+		Entry("python reading its program from a here-string",
+			"python3 <<< \"open('w.py', 'w').write('x')\"\n"),
+		Entry("sort writing its output over it", "sort -o w.py\n"),
+		Entry("an archive extracted", "unzip -o a.zip\n"),
+		Entry("a tarball extracted", "tar xf a.tar\n"),
+		Entry("a sync", "rsync -a src/x dst\n"),
+		Entry("patch reading a file", "patch -p1 -i p.diff\n"),
 	)
 
 	DescribeTable("reads the captured content when nothing may edit it",
@@ -66,7 +81,31 @@ var _ = Describe("A script captured from a write and edited before it runs", fun
 		Entry("awk printing a file", "awk '{print}' data.txt\n"),
 		Entry("another script written on the line",
 			"cat > v.py <<'EOF'\nprint('v')\nEOF\npython3 v.py\n"),
+		Entry("a test run", "pytest\n"),
+		Entry("system status", "df -h\nps\n"),
+		Entry("a download", "curl -s https://example.com/\n"),
+		Entry("find listing files", "find src -name '*.go'\n"),
+		Entry("inline code dumping JSON", "python3 -c 'import json; print(json.dumps({}))'\n"),
+		Entry("a new branch", "git checkout -b feat\n"),
 	)
+
+	It("parses many scripts written and run in turn quickly", func() {
+		var command strings.Builder
+
+		for i := range 24 {
+			fmt.Fprintf(&command, "cat > v%d.py <<'EOF'\nprint(%d)\nEOF\n", i, i)
+		}
+
+		for i := range 24 {
+			fmt.Fprintf(&command, "python3 v%d.py\n", i)
+		}
+
+		start := time.Now()
+		result := parse(command.String())
+
+		Expect(time.Since(start)).To(BeNumerically("<", 2*time.Second))
+		Expect(result.Truncated).To(BeFalse(), "opacities: %v", result.Opacities)
+	})
 
 	It("does not count an interpreter run before the write", func() {
 		result := parse("python3 -c 'print(1)'\n" + writtenScript(""))

@@ -14,13 +14,18 @@ const DetailScriptEdited = "a command after it is written on the line may edit i
 	"so what runs may differ from the content klaudiush saw"
 
 // readOnlyPrograms leave the content of the files they name as it is:
-// readers, filters, checksums and metadata changes. A redirect on one of
-// them is a write klaudiush tracks on its own.
+// readers, filters, checksums, system status and metadata changes. A
+// redirect on one of them is a write klaudiush tracks on its own.
 var readOnlyPrograms = nameSet(`cat head tail less more wc ls stat file grep egrep fgrep
 	rg diff cmp test [ md5sum md5 shasum sha1sum sha256sum chmod chown chgrp touch echo
-	printf realpath readlink basename dirname du true false pwd cd mkdir sort uniq jq tr
-	cut column nl xxd od hexdump sleep date which uname whoami id hostname printenv tput
-	clear seq base64`)
+	printf realpath readlink basename dirname du true false pwd cd mkdir jq tr cut column
+	nl od hexdump sleep date which uname whoami id hostname printenv tput clear seq base64
+	df ps free nproc uptime curl wget`)
+
+// editPrograms change files they do not name: builds, archives, patches and
+// syncs.
+var editPrograms = nameSet(`make gmake bmake just task ninja unzip tar bsdtar cpio 7z rsync
+	patch install`)
 
 // readOnlyGit are the git subcommands that leave work tree files as they
 // are. Any other may rewrite them (checkout, restore, apply, stash, reset).
@@ -31,12 +36,12 @@ var readOnlyGit = nameSet(`add diff status log show ls-files blame commit fetch 
 // node -e, ruby -e, perl -e) or name a module it runs (python -m).
 var codeFlags = nameSet("-c -e -E --eval -p --print -m -r")
 
-// fileEdits matches program source that may change files: writes, renames,
-// removals, permission changes, output redirection or starting another
-// program, which may do any of these.
+// fileEdits matches program source that may change files: writes, dumps,
+// renames, removals, permission changes, output redirection or starting
+// another program, which may do any of these.
 var fileEdits = regexp.MustCompile(
-	`(?i)write|open\s*\(|dump|rename|os\.replace|copy|move|unlink|remove|truncate|` +
-		`chmod|rmtree|system|popen|subprocess|exec|spawn|>`,
+	`(?i)write|open\s*\(|dump\s*\(|rename|os\.replace|copy|move|unlink|os\.remove|` +
+		`truncate|chmod|rmtree|shutil|system|popen|subprocess|exec|spawn|>`,
 )
 
 // lastLineWriteSeq returns the execution position of the last write
@@ -82,12 +87,13 @@ func (w *astWalker) editedAfter(cmd Command, target string, seq int) bool {
 }
 
 // mayEdit reports whether cmd may change target without klaudiush seeing
-// the write. Shells, launchers and builtins are left out: the commands they
-// run are recorded and judged on their own. An interpreter counts when its
-// program may change files; git when its subcommand may rewrite the work
-// tree; any other program outside readOnlyPrograms when it takes no
-// operands (make) or one may stand for target: the file itself, a
-// directory, a glob or a word klaudiush cannot resolve.
+// the write. Shells, launchers, builtins and functions and aliases defined
+// on the line are left out: the commands they run are recorded and judged
+// on their own. An interpreter counts when its program may change files;
+// git when its subcommand may rewrite the work tree; editPrograms always;
+// any other program outside readOnlyPrograms when an operand may stand for
+// target: the file itself, a directory, a glob or a word klaudiush cannot
+// resolve.
 func (w *astWalker) mayEdit(cmd Command, target string) bool {
 	name := commandName(cmd.Name)
 
@@ -99,30 +105,52 @@ func (w *astWalker) mayEdit(cmd Command, target string) bool {
 	_, function := w.funcs[cmd.Name]
 	_, alias := w.aliases[cmd.Name]
 
-	if readOnlyPrograms[name] || shells[name] || shellBuiltins[name] || launcher ||
-		function || alias {
+	switch {
+	case readOnlyPrograms[name] || shells[name] || shellBuiltins[name] || launcher ||
+		function || alias:
 		return false
+	case editPrograms[name]:
+		return true
+	case name == gitProgram:
+		return gitEdits(cmd)
+	case name == "find":
+		return slices.ContainsFunc(cmd.Args, func(arg string) bool {
+			return arg == "-delete" || strings.HasPrefix(arg, "-fprint")
+		})
 	}
 
-	if name == gitProgram {
-		gitCmd, err := ParseGitCommand(cmd)
-
-		return err != nil || !readOnlyGit[gitCmd.Subcommand]
-	}
-
-	operands := slices.DeleteFunc(slices.Clone(cmd.Args), func(arg string) bool {
-		return strings.HasPrefix(arg, "-") && !strings.Contains(arg, "=")
-	})
-
-	return len(operands) == 0 || slices.ContainsFunc(cmd.Args, func(arg string) bool {
+	return slices.ContainsFunc(cmd.Args, func(arg string) bool {
 		return w.mayName(arg, target)
 	})
 }
 
+// gitEdits reports whether a git command may rewrite work tree files. A
+// new branch (checkout -b, switch -c) leaves them as they are.
+func gitEdits(cmd Command) bool {
+	gitCmd, err := ParseGitCommand(cmd)
+	if err != nil {
+		return true
+	}
+
+	switch gitCmd.Subcommand {
+	case "checkout":
+		return !gitCmd.HasFlag("-b") && !gitCmd.HasFlag("-B")
+	case "switch":
+		return !gitCmd.HasFlag("-c") && !gitCmd.HasFlag("-C")
+	default:
+		return !readOnlyGit[gitCmd.Subcommand]
+	}
+}
+
 // mayName reports whether an argument may name target: it is the file
 // (alone or as a flag value), a directory above it, a glob or a word
-// klaudiush cannot resolve (a variable left after expansion).
+// klaudiush cannot resolve (a variable left after expansion). A URL names
+// no local file.
 func (w *astWalker) mayName(arg, target string) bool {
+	if strings.Contains(arg, "://") {
+		return false
+	}
+
 	if strings.Contains(arg, "$") {
 		arg = w.expandName(arg)
 	}
@@ -143,9 +171,12 @@ func (w *astWalker) mayName(arg, target string) bool {
 }
 
 // interpreterEdits reports whether an interpreter run may change target:
-// its inline program, or the script it runs, may change files or names
-// target. Running target itself, whose content klaudiush has, does not
-// count, nor does a module (python -m) or inline code that only reads.
+// its inline program, its program on stdin or the script it runs may change
+// files or names target. Running target itself, whose content klaudiush
+// has, does not count, nor does a module (python -m) or inline code that
+// only reads. A script is read from its capture on the line or from disk,
+// never through scriptSource, which would judge earlier edits again for
+// every script and grow with each one.
 func (w *astWalker) interpreterEdits(cmd Command, spec interpreter, target string) bool {
 	operands := make([]string, 0, len(cmd.Args))
 	inline := spec.codeFirst
@@ -155,26 +186,32 @@ func (w *astWalker) interpreterEdits(cmd Command, spec interpreter, target strin
 			inline = true
 		}
 
-		if !strings.HasPrefix(arg, "-") {
+		if !strings.HasPrefix(arg, "-") || arg == "-" {
 			operands = append(operands, arg)
 		}
 	}
 
-	if inline || len(operands) == 0 {
+	if inline {
 		return codeEdits(strings.Join(cmd.Args, " "), target)
 	}
 
-	script := w.trackedPath(cmd.WorkingDirectory, w.expandName(operands[0]))
-	if filepath.Clean(script) == target {
+	if len(operands) == 0 || operands[0] == "-" || operands[0] == devStdin {
+		return cmd.Stdin == "" || codeEdits(cmd.Stdin, target)
+	}
+
+	script := filepath.Clean(w.trackedPath(cmd.WorkingDirectory, w.expandName(operands[0])))
+	if script == target {
 		return false
 	}
 
-	text, status, _ := w.scriptSource(script, cmd)
-	if status != ScriptText {
-		return true
+	text, found, captured := w.lastLineWrite(script)
+	if found {
+		return !captured || codeEdits(text, target)
 	}
 
-	return codeEdits(text, target)
+	text, status := w.resolver.ReadScript(script)
+
+	return status != ScriptText || codeEdits(text, target)
 }
 
 // codeEdits reports whether program source may change files or names
