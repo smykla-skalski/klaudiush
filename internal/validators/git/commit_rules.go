@@ -837,17 +837,19 @@ var legitimateAIReferences = []string{
 }
 
 // pathWordPattern matches a filesystem path word: absolute, home-relative,
-// dot-relative or under a dot directory such as .claude/, standing alone or
-// as a flag value, redirect target or code span. Checks run line by line, so
-// an assistant name in a temp dir or agent worktree path would otherwise pair
-// with an ordinary word such as "written" on the same line. A link keeps its
-// scheme or host in front of the slash, and a word opening with "//" stops at
-// the first slash, so links never match. Unicode spaces end a path, so a
-// footer behind a non-breaking space is not swallowed with it.
+// variable-rooted, dot-relative or under a dot directory such as .claude/,
+// standing alone or as a flag value, redirect target or code span. Checks run
+// line by line, so an assistant name in a temp dir or agent worktree path
+// would otherwise pair with an ordinary word such as "written" on the same
+// line. A path takes only the ASCII characters paths are spelled with, so it
+// ends at punctuation, emoji, invisible characters and Unicode spaces and never
+// swallows a footer glued to it. A link keeps its scheme or host in front of
+// the slash, and a word opening with "//" stops at the first slash, so links
+// never match.
 var pathWordPattern = regexp.MustCompile(
 	`(^|[\s\p{Z}"'\x60=;&|()<>])` +
 		`(?:~|\$\{?\w+\}?|\.\.?|\.[\w-]+)?` +
-		`/(?:[^/\s\p{Z}"'\x60;&|()<>][^\s\p{Z}"'\x60;&|()<>]*)?`,
+		`/(?:[\w.+%@~-][\w.+%@~/-]*)?`,
 )
 
 // withoutPaths removes the filesystem path words from text, keeping the
@@ -862,9 +864,17 @@ func withoutPaths(text string) string {
 // credit marker ("generated", "co-authored by", the robot emoji) or a link to
 // an assistant product, which is what every generated footer carries.
 func containsAIAttribution(message string) bool {
-	lower := withoutPaths(confusableLetters.Replace(
+	lower := confusableLetters.Replace(
 		strings.ReplaceAll(strings.ToLower(message), `\n`, "\n"),
-	))
+	)
+
+	// A session link is attribution wherever it sits, even spelled like a
+	// path, so it is matched before path words are dropped.
+	if aiSessionLinkPattern.MatchString(lower) {
+		return true
+	}
+
+	lower = withoutPaths(lower)
 
 	// Every form of attribution names an assistant, so text that names none -
 	// the overwhelmingly common case, and now up to a megabyte of body file -
