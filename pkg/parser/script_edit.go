@@ -282,7 +282,7 @@ func (w *astWalker) mayName(arg, target string) (names, dir bool) {
 	}
 
 	return false, clean == "." || clean == parentDir || strings.HasSuffix(arg, "/") ||
-		strings.HasSuffix(clean, "...")
+		strings.HasSuffix(clean, "...") || isBelow(target, clean)
 }
 
 // interpreterEdits reports whether an interpreter run may change target:

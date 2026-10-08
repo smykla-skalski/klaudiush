@@ -144,6 +144,12 @@ var _ = Describe("A script captured from a write and edited before it runs", fun
 		Expect(result.Truncated).To(BeFalse(), "opacities: %v", result.Opacities)
 	})
 
+	It("counts a formatter given the parent directory by path", func() {
+		result := parse("cat > d/w.py <<'EOF'\nprint(1)\nEOF\nblack d\npython3 d/w.py")
+		Expect(result.Opacities).To(ContainElement(HaveField("Detail", parser.DetailScriptEdited)),
+			"opacities: %v", result.Opacities)
+	})
+
 	It("does not count an interpreter run before the write", func() {
 		result := parse("python3 -c 'print(1)'\n" + writtenScript(""))
 		Expect(result.Truncated).To(BeFalse(), "opacities: %v", result.Opacities)
