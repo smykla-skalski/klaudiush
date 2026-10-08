@@ -339,9 +339,8 @@ func (w *astWalker) noteStdinRedirects(stmt *syntax.Stmt) {
 
 	// The call's own redirect replaces what a pipe fed it, so piped text
 	// recorded as its stdin is not what it reads.
-	if call != nil && !literalText(redirs[len(redirs)-1]) {
-		delete(w.stdinByCall, call)
-		delete(w.stdinTextByCall, call)
+	if _, text := w.stdinByCall[call]; text && call != nil && !literalText(redirs[len(redirs)-1]) {
+		w.setOverridden(call)
 	}
 
 	switch last := redirs[len(redirs)-1]; {
