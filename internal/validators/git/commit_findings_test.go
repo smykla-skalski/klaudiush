@@ -53,6 +53,21 @@ var _ = Describe("CommitValidator findings with AI attribution", func() {
 		return locations
 	}
 
+	It("ignores commit text handed to a function defined on the line", func() {
+		fakeGit := gitpkg.NewFakeRunner()
+		fakeGit.StagedFiles = []string{"file.txt"}
+
+		v := git.NewCommitValidator(logger.NewNoOpLogger(), fakeGit, nil, nil)
+		result := v.Validate(context.Background(), &hook.Context{
+			EventType: hook.EventTypePreToolUse,
+			ToolName:  hook.ToolTypeBash,
+			ToolInput: hook.ToolInput{Command: `t(){ printf '%s' "$1" > /tmp/c.txt; }; ` +
+				`t "git commit -m 'feat(api): x` + "\n\n" + `Generated with Claude Code'"`},
+		})
+
+		Expect(result.Passed).To(BeTrue())
+	})
+
 	It("keeps every message finding next to the attribution", func() {
 		codes := validate("git commit -sS -m 'feat(ci): " + strings.Repeat("x", 60) +
 			"\n\nFixes #12\n\nGenerated with Claude Code'")
