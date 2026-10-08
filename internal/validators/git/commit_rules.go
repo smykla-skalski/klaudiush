@@ -838,11 +838,17 @@ var legitimateAIReferences = []string{
 
 // pathWordPattern matches a filesystem path word: absolute, home-relative,
 // dot-relative or under a dot directory such as .claude/, standing alone or
-// as a flag value. Checks run line by line, so an assistant name in a temp dir
-// or agent worktree path would otherwise pair with an ordinary word such as
-// "written" on the same line. A link keeps its scheme or host in front of the
-// slash, so it never matches.
-var pathWordPattern = regexp.MustCompile(`(^|[\s"'=;&|(])(?:~|\.\.?|\.[\w-]+)?/[^\s"';&|()]*`)
+// as a flag value, redirect target or code span. Checks run line by line, so
+// an assistant name in a temp dir or agent worktree path would otherwise pair
+// with an ordinary word such as "written" on the same line. A link keeps its
+// scheme or host in front of the slash, and a word opening with "//" stops at
+// the first slash, so links never match. Unicode spaces end a path, so a
+// footer behind a non-breaking space is not swallowed with it.
+var pathWordPattern = regexp.MustCompile(
+	`(^|[\s\p{Z}"'\x60=;&|()<>])` +
+		`(?:~|\$\{?\w+\}?|\.\.?|\.[\w-]+)?` +
+		`/(?:[^/\s\p{Z}"'\x60;&|()<>][^\s\p{Z}"'\x60;&|()<>]*)?`,
+)
 
 // withoutPaths removes the filesystem path words from text, keeping the
 // character before each so the surrounding words stay apart.
