@@ -9,8 +9,14 @@ import (
 
 var _ = Describe("Startup variables a loop may set", func() {
 	resolver := fakeResolver{
-		env:   map[string]string{"HOME": "/home/u"},
-		files: map[string]string{"/abs/run.sh": "echo hi"},
+		env: map[string]string{"HOME": "/home/u"},
+		files: map[string]string{
+			"/abs/run.sh": "echo hi",
+			"/abs/gen.sh": "G='[x]\\n%s'\nmk() { for s in $1; do printf \"$G\\n\" \"$s\"; done; }\n" +
+				"mk 'a b' > /tmp/o\n/abs/run.sh",
+			"/abs/gen-v.sh": "G=-vBASH_ENV\nmk() { for s in $1; do printf \"$G\" \"$s\"; done; }\n" +
+				"mk /abs/run.sh\n/abs/run.sh",
+		},
 	}
 
 	parse := func(command string) *parser.ParseResult {
@@ -77,6 +83,22 @@ var _ = Describe("Startup variables a loop may set", func() {
 		Entry("command -v lookup", `for i in 1 2; do command -v printf "$i"; gh x; done`),
 		Entry("command -pV lookup", `for i in 1 2; do command -pV read "$i"; gh x; done`),
 		Entry("printf without %n", `for i in 1 2; do printf '%s %d\n' "$i" 3; gh x; done`),
+		Entry(
+			"printf format from a variable the loop never sets",
+			`G=x; for s in a b; do printf "$G" "$s"; done; bash /abs/run.sh`,
+		),
+		Entry(
+			"printf format from a variable the loop never sets, before a script",
+			`G='%s\n'; for s in a b; do bash /abs/run.sh; printf "$G\n" "$s"; done`,
+		),
+		Entry(
+			"printf format from a variable in a function looping over $1",
+			`G=x; mk() { for s in $1; do printf "$G" "$s"; done; }; mk a:b; bash /abs/run.sh`,
+		),
+		Entry(
+			"printf format from a variable a script assigns, looped in its function",
+			`bash /abs/gen.sh`,
+		),
 		Entry(
 			"read with computed option values",
 			`for i in 1 2; do read -rt "$t" -n "$n" -N "$n" -d "$d" -u "$fd" -i "$i" -e x; gh x; done`,
@@ -166,6 +188,86 @@ var _ = Describe("Startup variables a loop may set", func() {
 		Entry(
 			"printf with a computed format and arguments",
 			`for i in 1 2; do gh x; printf "$f" "$i"; done`,
+		),
+		Entry(
+			"printf format variable the loop assigns later",
+			`V=-vBASH_ENV; G=x; for s in /abs/run.sh; do printf "$G" "$s"; G="$V"; done; bash -c true`,
+		),
+		Entry(
+			"printf format variable the loop reads into",
+			`V=-vBASH_ENV; G=x; for s in /abs/run.sh; do printf "$G" "$s"; read -r G; done; bash -c true`,
+		),
+		Entry(
+			"printf format variable a called function assigns",
+			`V=-vBASH_ENV; G=x; f() { G="$V"; }; for s in /abs/run.sh; do printf "$G" "$s"; f; done; bash -c true`,
+		),
+		Entry(
+			"printf format variable after source in the loop",
+			`G=x; for s in /abs/run.sh; do printf "$G" "$s"; . /abs/run.sh; done; bash -c true`,
+		),
+		Entry(
+			"printf format variable after a computed command word",
+			`V=-vBASH_ENV; G=x; c=eval; for s in /abs/run.sh; do printf "$G" "$s"; $c G="$V"; done; bash -c true`,
+		),
+		Entry(
+			"printf format variable after arithmetic on a value",
+			`V=-vBASH_ENV; G=x; a='G=1'; for s in /abs/run.sh; do printf "$G" "$s"; [[ $a -eq 1 ]]; done; bash -c true`,
+		),
+		Entry(
+			"printf format variable assigned through a nameref",
+			`V=-vBASH_ENV; G=x; declare -n r=G; for s in /abs/run.sh; do printf "$G" "$s"; r="$V"; done; bash -c true`,
+		),
+		Entry(
+			"printf format variable holding -v",
+			`G=-vBASH_ENV; for s in /abs/run.sh; do printf "$G" "$s"; done; bash -c true`,
+		),
+		Entry(
+			"printf format variable a script assigns -v, looped in its function",
+			`bash /abs/gen-v.sh`,
+		),
+		Entry(
+			"printf format variable set by a glued printf -v",
+			`V=-vBASH_ENV; G=x; for s in /abs/run.sh; do printf "$G" "$s"; printf -vG %s "$V"; done; bash -c true`,
+		),
+		Entry(
+			"printf format variable read into through quote pieces",
+			`V=-vBASH_ENV; FMT=x; for s in /abs/run.sh; do printf "$FMT" "$s"; read FM""T <<< "$V"; done; bash -c true`,
+		),
+		Entry(
+			"printf format variable read into through an ANSI-C escape",
+			`V=-vBASH_ENV; FMT=x; for s in /abs/run.sh; do printf "$FMT" "$s"; read $'FM\x54' <<< "$V"; done; bash -c true`,
+		),
+		Entry(
+			"printf format variable set by printf -v through quote pieces",
+			`V=-vBASH_ENV; FMT=x; for s in /abs/run.sh; do printf "$FMT" "$s"; printf -v FM""T %s "$V"; done; bash -c true`,
+		),
+		Entry(
+			"printf format variable set by mapfile through an escape",
+			`V=-vBASH_ENV; FMT=x; for s in /abs/run.sh; do printf "$FMT" "$s"; mapfile FM\T <<< "$V"; done; bash -c true`,
+		),
+		Entry(
+			"printf format variable set by a not-found handler",
+			`V=-vBASH_ENV; G=x; command_not_found_handle() { G="$V"; }; for s in /abs/run.sh; do printf "$G" "$s"; nonexist; done; bash -c true`,
+		),
+		Entry(
+			"printf format variable set by a zsh not-found handler",
+			`V=-vBASH_ENV; G=x; command_not_found_handler() { G="$V"; }; for s in /abs/run.sh; do printf "$G" "$s"; nonexist; done; bash -c true`,
+		),
+		Entry(
+			"printf format variable reassigned by an outer loop",
+			`V=-vBASH_ENV; G=x; mk() { for s in $1; do printf "$G" "$s"; done; }; for t in 1 2; do mk /abs/run.sh; G=$V; done; bash -c true`,
+		),
+		Entry(
+			"printf format variable assigned by the trace prompt",
+			`G=; PS4='${G:=-vBASH_ENV}'; set -x; for s in /abs/run.sh; do printf "$G" "$s"; done; bash -c true`,
+		),
+		Entry(
+			"printf format variable after a trace prompt set in the loop",
+			`V='${G:=-vBASH_ENV}'; G=x; for s in /abs/run.sh; do PS4=$V; set -x; printf "$G" "$s"; done; bash -c true`,
+		),
+		Entry(
+			"printf format variable changed earlier in the statement",
+			`G=x; G=-vBASH_ENV && for s in /abs/run.sh; do printf "$G" "$s"; done; bash -c true`,
 		),
 		Entry(
 			"read with a computed name after a prompt",
@@ -306,7 +408,24 @@ var _ = Describe("Startup variables a loop may set", func() {
 		Entry("alias for read", `alias r=read; for i in 1 2; do gh x; r "$i"; done`),
 		Entry("alias ending in a blank", `alias s='sudo '; for i in 1 2; do gh x; s ls; done`),
 	)
-	DescribeTable("treats quoted read and mapfile option values as no target",
+
+	DescribeTable(
+		"marks every startup variable after a write it cannot name",
+		func(command, name string) {
+			Expect(parse(command).Opacities).To(ContainElement(And(
+				HaveField("Cause", parser.OpacityStartupFile),
+				HaveField("Operation", name),
+			)), command)
+		},
+		Entry(
+			"ENV for an interactive sh",
+			`for i in 1 2; do sh -i -c true; . /abs/run.sh; done`,
+			"ENV",
+		),
+	)
+
+	DescribeTable(
+		"treats quoted read and mapfile option values as no target",
 		func(command string, blocked bool) {
 			Expect(parse(command).Truncated).To(Equal(blocked), command)
 		},
@@ -323,5 +442,23 @@ var _ = Describe("Startup variables a loop may set", func() {
 		Entry("format variable may hold %n for computed arguments",
 			`printf "Hi $U %s\n" "$(date)"; bash /abs/run.sh`, true),
 		Entry("literal format without %n", `printf 'Hi %s\n' "$(date)"; bash /abs/run.sh`, false),
+		Entry(
+			"format variable holding -v",
+			`G=-vBASH_ENV; printf "$G" /abs/run.sh; bash -c true`,
+			true,
+		),
+		Entry("format variable holding the -v option alone",
+			`G=-v; printf "$G" BASH_ENV /abs/run.sh; bash -c true`, true),
+		Entry("unquoted format variable splitting into -v and a name",
+			`G='-v BASH_ENV'; printf $G /abs/run.sh; bash -c true`, true),
+		Entry(
+			"unknown format variable before arguments",
+			`printf "$F" /abs/run.sh; bash -c true`,
+			true,
+		),
+		Entry("unknown format variable alone", `printf "$F"; bash /abs/run.sh`, false),
+		Entry("known format variable", `G='%s\n'; printf "$G" x; bash /abs/run.sh`, false),
+		Entry("script assigning -v to a format variable",
+			"bash -c 'G=-vBASH_ENV; printf \"$G\" /abs/run.sh; bash -c true'", true),
 	)
 })

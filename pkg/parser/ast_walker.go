@@ -46,12 +46,19 @@ type astWalker struct {
 	chained      []string
 	certain      map[*syntax.Stmt]certainty
 	loopCalls    map[*syntax.CallExpr]bool
-	inLoop       bool
-	outerLoop    bool
-	distrust     bool
-	lenient      bool
-	scriptRun    scriptRun
-	launchSeq    int
+	// loopScopes holds, per call in a loop, the variables no pass of the
+	// loop changes; loopStable is the set of the call being walked.
+	loopScopes map[*syntax.CallExpr]map[string]string
+	loopStable map[string]string
+	// shellAssigned names the variables assigned in the shell this walker
+	// runs in, past the last new shell, whose values that shell has.
+	shellAssigned map[string]bool
+	inLoop        bool
+	outerLoop     bool
+	distrust      bool
+	lenient       bool
+	scriptRun     scriptRun
+	launchSeq     int
 	// depth counts the launchers, scripts and aliases that led here.
 	depth int
 	// resolver answers what the command text cannot: environment, script
@@ -747,6 +754,7 @@ func printfEscape(c byte) (byte, bool) {
 // extractCommand extracts a command from a CallExpr node.
 func (w *astWalker) extractCommand(call *syntax.CallExpr) {
 	w.inLoop = w.outerLoop || w.loopCalls[call]
+	w.loopStable = w.loopScopes[call]
 
 	// The shell expands arguments before a prefix assignment takes effect.
 	var argTexts map[string]ShellText
@@ -909,7 +917,7 @@ func (w *astWalker) walkNested(script nestedScript, cmd Command, depth int) {
 	)
 
 	if script.splitArgs && (untrusted || w.state.untrusted) {
-		w.opaque(OpacityUnresolvedArgs, w.shownWord(script.name), "")
+		w.opaque(OpacityUnresolvedArgs, w.shownWord(script.name), DetailArgsSplit)
 	}
 }
 
@@ -1202,6 +1210,12 @@ func (w *astWalker) assign(name, value string) {
 
 	w.assignments[name] = value
 	w.scope = nil
+
+	if w.shellAssigned == nil {
+		w.shellAssigned = make(map[string]bool)
+	}
+
+	w.shellAssigned[name] = true
 
 	delete(w.unknownVars, name)
 	delete(w.startupUnset, name)

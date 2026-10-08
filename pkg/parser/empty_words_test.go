@@ -145,11 +145,14 @@ var _ = Describe("Empty words", func() {
 			result, err := p.Parse(command)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.Truncated).To(BeTrue())
-			Expect(result.Opacities).To(ContainElement(
+			Expect(result.Opacities).To(ContainElement(And(
 				HaveField("Cause", parser.OpacityUnresolvedArgs),
-			))
+				HaveField("Detail", parser.DetailArgsSplit),
+			)))
 		},
 		Entry("IFS set in the body", `f(){ IFS=,; $1; }; f 'git,push,--force'`),
+		Entry("printf with an unknown format in a loop over $1",
+			`f(){ for s in $1; do printf "$F" "$s"; done; }; f a:b`),
 		Entry("IFS set before the call", `IFS=,; f(){ $1; }; f 'git,push,--force'`),
 		Entry("IFS set by a called function", `g(){ IFS=,; }; f(){ g; $1; }; f 'git,push'`),
 		Entry("IFS read in the body", `f(){ read -r IFS; $1; }; f 'git,push'`),
