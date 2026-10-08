@@ -215,7 +215,7 @@ func withoutPathArguments(command string, parsed *parser.ParseResult) string {
 		}
 
 		for i, arg := range cmd.Args {
-			if i > 0 && slices.Contains(textValueFlags, cmd.Args[i-1]) {
+			if i > 0 && isTextValueFlag(cmd.Args[i-1]) {
 				continue
 			}
 
@@ -228,17 +228,77 @@ func withoutPathArguments(command string, parsed *parser.ParseResult) string {
 	return command
 }
 
+// shortTextFlagCluster matches a cluster of short flags ending in one that
+// takes text, such as "-sm" or "-am".
+var shortTextFlagCluster = regexp.MustCompile(`^-[a-zA-Z]*[mtb]$`)
+
+// isTextValueFlag reports whether the argument after flag is free text.
+func isTextValueFlag(flag string) bool {
+	return slices.Contains(textValueFlags, flag) || shortTextFlagCluster.MatchString(flag)
+}
+
 // withoutSoleOccurrence removes word from the command when it appears there
-// exactly once, ignoring case. A word that also appears elsewhere, such as
-// inside a message, is kept everywhere: removing every copy would let a no-op
-// argument ("; : w/claude") erase the same text from the message.
+// exactly once, ignoring case, and stands as a word of its own. A word that
+// also appears elsewhere, such as inside a message, is kept everywhere:
+// removing every copy would let a no-op argument ("; : w/claude") erase the
+// same text from the message. A word inside a command substitution or a
+// quoted string holding more than the word is part of some other text, so it
+// is kept too.
 func withoutSoleOccurrence(command, word string) string {
 	spans := regexp.MustCompile(`(?i)`+regexp.QuoteMeta(word)).FindAllStringIndex(command, -1)
-	if len(spans) != 1 {
+	if len(spans) != 1 || !standsAlone(command, spans[0][0], spans[0][1]) {
 		return command
 	}
 
 	return command[:spans[0][0]] + command[spans[0][1]:]
+}
+
+// standsAlone reports whether command[start:end] is a shell word of its own:
+// outside any command substitution, and either unquoted or the whole content
+// of its quotes. It errs toward false, which only keeps text in the check.
+func standsAlone(command string, start, end int) bool {
+	var (
+		quote      byte
+		quoteStart int
+		depth      int
+		backtick   bool
+	)
+
+	for i := 0; i < start; i++ {
+		c := command[i]
+
+		switch {
+		case quote == '\'':
+			if c == '\'' {
+				quote = 0
+			}
+		case c == '\\':
+			i++
+		case c == '`':
+			backtick = !backtick
+		case c == '$' && i+1 < len(command) && command[i+1] == '(':
+			depth++
+			i++
+		case c == ')' && depth > 0:
+			depth--
+		case quote == '"':
+			if c == '"' {
+				quote = 0
+			}
+		case c == '"' || c == '\'':
+			quote, quoteStart = c, i
+		}
+	}
+
+	if depth > 0 || backtick {
+		return false
+	}
+
+	if quote == 0 {
+		return true
+	}
+
+	return quoteStart == start-1 && end < len(command) && command[end] == quote
 }
 
 // otherMessageSubcommands are the git subcommands that write a commit message
