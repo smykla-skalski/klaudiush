@@ -620,7 +620,7 @@ type = "block"
 		Expect(projectRules()[0].IsRuleEnabled()).To(BeFalse())
 		Expect(readFile(globalPath)).To(Equal(validGlobal))
 		Expect(warnings.String()).To(ContainSubstring(`"global-valid-one"`))
-		Expect(warnings.String()).To(ContainSubstring("are now off too"))
+		Expect(warnings.String()).To(ContainSubstring("still override"))
 	})
 
 	It("counts only project rules in the interactive confirmation", func() {

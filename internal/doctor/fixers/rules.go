@@ -186,7 +186,8 @@ func (f *RulesFixer) warnGlobalRules(
 }
 
 // warnShadowedGlobalRules warns when a disabled project rule overrides a
-// global rule of the same name, since that also turns the global rule off.
+// global rule of the same name: the global rule stays replaced by it, so it
+// does not apply until the project rule is fixed or removed.
 func (f *RulesFixer) warnShadowedGlobalRules(
 	projectRules []config.RuleConfig,
 	rulesToDisable map[int]bool,
@@ -210,7 +211,8 @@ func (f *RulesFixer) warnShadowedGlobalRules(
 	slices.Sort(shadowed)
 
 	f.warnf(
-		"disabled project rule(s) %s override the same-named rule(s) in global config %s, which are now off too",
+		"disabled project rule(s) %s still override the same-named rule(s) in global config %s; "+
+			"fix or remove them to apply the global rule(s)",
 		strings.Join(shadowed, ", "),
 		globalPath,
 	)
