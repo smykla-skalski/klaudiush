@@ -1213,6 +1213,10 @@ func (w *astWalker) scriptSource(path string, cmd Command) (string, ScriptStatus
 			return "", ScriptOpaque, DetailScriptWritten
 		}
 
+		if w.editedAfter(cmd, target, w.lastLineWriteSeq(target)) {
+			return "", ScriptOpaque, DetailScriptEdited
+		}
+
 		return text, ScriptText, ""
 	}
 
