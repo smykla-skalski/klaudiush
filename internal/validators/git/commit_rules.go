@@ -898,14 +898,31 @@ func withoutPaths(text string) string {
 }
 
 // closesRoot reports whether a path match starts right after a quoted or
-// substituted root, as in "$TMPDIR"/x or $(pwd)/x: its boundary closes that
-// root rather than opening a word, so the path is not led by a bare name.
+// substituted root, as in "$TMPDIR"/x, ${TMPDIR}/x or $(pwd)/x: its boundary
+// closes that root rather than opening a word, so the path is not led by a
+// bare name. A closer that ends prose, as in (Pro)/x or a quoted name before /x, is not one.
 func closesRoot(text string, start int, boundary string) bool {
+	before := text[:start]
+
 	switch boundary {
-	case ")", "}":
-		return true
+	case ")":
+		open := strings.LastIndex(before, "$(")
+
+		return open >= 0 && strings.Count(before[open:], "(") == strings.Count(before[open:], ")")+1
+	case "}":
+		open := strings.LastIndex(before, "${")
+
+		return open >= 0 && !strings.ContainsAny(before[open:], " \t\n")
 	case `"`, "'":
-		return start > 0 && !unicode.IsSpace(rune(text[start-1])) && text[start-1] != '='
+		open := strings.LastIndex(before, boundary)
+		if open < 0 {
+			return false
+		}
+
+		content := before[open+1:]
+
+		return (strings.HasPrefix(content, "$") || strings.HasPrefix(content, "~")) &&
+			!strings.ContainsAny(content, " \t\n")
 	default:
 		return false
 	}
@@ -1032,13 +1049,23 @@ func containsAIAttribution(message string) bool {
 	return false
 }
 
-// coAuthorLineNamesAssistant reports a co-author line naming an assistant
-// anywhere, even inside a path: a co-author trailer never cites a path, so
-// nothing on it is dropped as one.
+// coAuthorLineNamesAssistant reports a co-author trailer naming an assistant,
+// even inside a path: a co-author trailer never cites a path, so nothing in
+// it is dropped as one. Only the trailer's own value counts, up to the quote
+// that ends its argument, so a path elsewhere on a command line is not read
+// as part of it.
 func coAuthorLineNamesAssistant(lower string) bool {
 	for line := range strings.SplitSeq(lower, "\n") {
-		if strings.Contains(line, "co-authored") &&
-			containsAIAssistantName(stripLegitimateAIReferences(line)) {
+		_, value, found := strings.Cut(line, "co-authored")
+		if !found {
+			continue
+		}
+
+		if end := strings.IndexAny(value, `"'`); end >= 0 {
+			value = value[:end]
+		}
+
+		if containsAIAssistantName(stripLegitimateAIReferences(value)) {
 			return true
 		}
 	}
