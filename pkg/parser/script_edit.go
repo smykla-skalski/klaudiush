@@ -34,6 +34,29 @@ var formatterPrograms = nameSet(`black isort autoflake autopep8 yapf prettier go
 // writeFlags make a linter or formatter rewrite the files it checks.
 var writeFlags = nameSet("-w --write --fix -i --inplace fmt format fix")
 
+// filterWrites maps the filters that only read their files to the flag
+// that makes them write one (sed -i, sort -o, awk -i inplace).
+var filterWrites = func() map[string]string {
+	flags := make(map[string]string)
+
+	for pair := range strings.FieldsSeq("sed=-i sort=-o awk=inplace") {
+		program, flag, _ := strings.Cut(pair, "=")
+		flags[program] = flag
+	}
+
+	return flags
+}()
+
+// checkFlags keep a formatter or linter to reporting (black --check,
+// gofmt -l, tofu fmt -check).
+var checkFlags = nameSet("--check -check -l -d --diff --dry-run --list-different")
+
+// checkerPrograms read the files they are given and report on them: linters,
+// type checkers, test runners and compilers.
+var checkerPrograms = nameSet(`ruff flake8 pylint mypy pyright pyflakes bandit pytest
+	py_compile compileall shellcheck yamllint ansible-lint actionlint tflint tofu terraform
+	golangci-lint eslint tsc go cargo node-check markdownlint black prettier`)
+
 // readOnlyGit are the git subcommands that leave work tree files as they
 // are. Any other may rewrite them (checkout, restore, apply, stash, reset).
 var readOnlyGit = nameSet(`add diff status log show ls-files blame commit fetch push
@@ -128,19 +151,30 @@ func (w *astWalker) mayEdit(cmd Command, target string) bool {
 }
 
 // operandsEdit reports whether a program named name, given args, may change
-// target: an operand names it, matches it as a glob or cannot be resolved,
-// or the program rewrites a directory above it (a formatter, or a write
-// flag such as -w, --fix or --in-place). A build, test or lint tool given a
-// directory reads it.
+// target. A linter, checker or filter (checkerPrograms, sed, awk, sort)
+// reads what it names unless it writes: a formatter outside check mode, a
+// write flag (-w, --fix, --in-place, fmt, sed -i, sort -o, awk inplace).
+// Any other program counts when an operand names target, matches it as a
+// glob or cannot be resolved, or when it writes and an operand is a
+// directory above target.
 func (w *astWalker) operandsEdit(name string, args []string, target string) bool {
-	rewrites := formatterPrograms[name] || slices.ContainsFunc(args, func(arg string) bool {
-		return writeFlags[arg] || strings.HasPrefix(arg, "--in-place")
-	})
+	filterFlag, filter := filterWrites[name]
+	checking := slices.ContainsFunc(args, func(arg string) bool { return checkFlags[arg] })
+	writes := !checking &&
+		(formatterPrograms[name] || slices.ContainsFunc(args, func(arg string) bool {
+			return writeFlags[arg] || strings.HasPrefix(arg, "--in-place") ||
+				filter && strings.Contains(arg, filterFlag)
+		}))
+	reader := checkerPrograms[name] || formatterPrograms[name] || filter
+
+	if reader && !writes {
+		return false
+	}
 
 	return slices.ContainsFunc(args, func(arg string) bool {
 		names, dir := w.mayName(arg, target)
 
-		return names || dir && rewrites
+		return names || dir && writes
 	})
 }
 
@@ -222,6 +256,11 @@ func (w *astWalker) interpreterEdits(cmd Command, spec interpreter, target strin
 
 	if module, ok := moduleArgs(cmd.Args); ok {
 		return w.operandsEdit(module[0], module[1:], target)
+	}
+
+	if spec.codeFirst && len(operands) > 0 {
+		return codeEdits(operands[0], target) ||
+			w.operandsEdit(commandName(cmd.Name), cmd.Args, target)
 	}
 
 	if inline {
