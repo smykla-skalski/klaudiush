@@ -242,20 +242,8 @@ func unescape(s string) string {
 
 // launched returns what cmd runs besides itself.
 func launched(cmd Command) launch {
-	if l, ok := launchedBy(cmd); ok {
+	if l, ok := knownLaunch(cmd); ok {
 		return l
-	}
-
-	if spec, ok := launchers[cmd.Name]; ok {
-		return launcherLaunch(cmd, spec)
-	}
-
-	if spec, ok := interpreters[cmd.Name]; ok {
-		return interpreterLaunch(cmd, spec)
-	}
-
-	if dataCommands[cmd.Name] {
-		return launch{}
 	}
 
 	l := scanLaunch(cmd)
@@ -269,6 +257,34 @@ func launched(cmd Command) launch {
 	}
 
 	return l
+}
+
+// functionLaunch returns what a call to a function defined on the line runs
+// besides its body. The body is followed with the call's arguments, so they
+// are not scanned for a command line the way an unknown program's are.
+func functionLaunch(cmd Command) launch {
+	l, _ := knownLaunch(cmd)
+
+	return l
+}
+
+// knownLaunch returns what a program klaudiush knows runs: git, gh, shells,
+// launchers, interpreters and the commands that only handle data. It
+// reports false for any other program.
+func knownLaunch(cmd Command) (launch, bool) {
+	if l, ok := launchedBy(cmd); ok {
+		return l, true
+	}
+
+	if spec, ok := launchers[cmd.Name]; ok {
+		return launcherLaunch(cmd, spec), true
+	}
+
+	if spec, ok := interpreters[cmd.Name]; ok {
+		return interpreterLaunch(cmd, spec), true
+	}
+
+	return launch{}, dataCommands[cmd.Name]
 }
 
 // launchedBy handles the programs with their own way of running commands.

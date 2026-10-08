@@ -37,8 +37,6 @@ const (
 var (
 	// gitAliasName matches a name git accepts as an alias.
 	gitAliasName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
-	// positionalParam matches the positional parameters a function body uses.
-	positionalParam = regexp.MustCompile(`"?\$(?:\{([@*1-9])\}|([@*1-9]))"?`)
 	// unsupportedPositional matches positional forms substitutePositional
 	// does not handle: slices, defaults, two-digit indexes and shift.
 	unsupportedPositional = regexp.MustCompile(
@@ -71,6 +69,7 @@ func newAstWalker(resolver Resolver) *astWalker {
 		resolver:        resolver,
 		aliases:         make(map[string]string),
 		funcs:           make(map[string]string),
+		sureFuncs:       make(map[string]bool),
 		scriptFiles:     make(map[string]string),
 		startupUnset:    make(map[string]bool),
 		state: &parseState{
@@ -838,6 +837,62 @@ func (w *astWalker) defineFunc(fn *syntax.FuncDecl) {
 	w.funcs[fn.Name.Value] = body.String()
 }
 
+// noteSureFunc records a function the top-level shell defines whenever the
+// line runs: not in a branch, loop, pipeline or background job, any of which
+// may leave a program of that name to run instead. Any other definition,
+// including one in a script this line runs, may leave the earlier body in
+// place while the walk follows the new one, so the name is no longer sure.
+func (w *astWalker) noteSureFunc(stmt *syntax.Stmt) {
+	fn, ok := stmt.Cmd.(*syntax.FuncDecl)
+	if !ok || fn.Name == nil {
+		return
+	}
+
+	name := fn.Name.Value
+
+	if c, ok := w.certain[stmt]; ok && !c.never && !c.bounded && fn.Body != nil &&
+		w.depth == 0 && w.parent == nil {
+		w.sureFuncs[name] = true
+
+		return
+	}
+
+	for p := w; p != nil; p = p.parent {
+		delete(p.sureFuncs, name)
+	}
+}
+
+// forgetSureFuncs drops the functions an unset, unfunction or unhash may
+// remove, here and in the scripts that ran this one. A name that is not
+// literal may remove any of them.
+func (w *astWalker) forgetSureFuncs(cmd Command) {
+	for p := w; p != nil; p = p.parent {
+		if cmd.Dynamic || slices.ContainsFunc(cmd.Args, unsureName) {
+			clear(p.sureFuncs)
+
+			continue
+		}
+
+		for _, name := range cmd.Args {
+			delete(p.sureFuncs, name)
+		}
+	}
+}
+
+// unsureName reports an argument whose value may name another function.
+func unsureName(arg string) bool {
+	return strings.ContainsAny(arg, "$`*?[{")
+}
+
+// callsSureFunc reports a command the top-level shell runs directly as a
+// function it is sure to have defined. A launcher (command, env, sudo,
+// xargs) or a path runs a program instead, and in a loop a later pass may
+// run after the function was unset.
+func (w *astWalker) callsSureFunc(cmd Command, depth int) bool {
+	return depth == 0 && w.depth == 0 && w.parent == nil && !w.inLoop &&
+		!strings.Contains(cmd.Invoked, "/") && w.sureFuncs[cmd.Invoked]
+}
+
 // definitionScripts returns what calling a same-line alias or function runs.
 func (w *astWalker) definitionScripts(cmd Command) []nestedScript {
 	// A definition that calls itself was already followed once.
@@ -882,38 +937,66 @@ func (w *astWalker) definitionScripts(cmd Command) []nestedScript {
 // substitutePositional puts a call's arguments in place of the positional
 // parameters a function body uses. An unquoted reference splits its value
 // into words and an empty one leaves none, so f() { $1 git push; }; f ""
-// runs git push. It also reports whether an unquoted reference split a
-// value, which only holds while IFS keeps its default.
+// runs git push. A reference inside a longer double-quoted string closes
+// the quotes around the quoted value, so the string stays one word. It also
+// reports whether an unquoted reference split a value, which only holds
+// while IFS keeps its default. A body that does not parse is returned as it
+// is, for the walk to report.
 func substitutePositional(body string, args []string) (string, bool) {
+	refs, ok := positionalRefs(body)
+	if !ok {
+		return body, false
+	}
+
 	split := false
 
-	text := positionalParam.ReplaceAllStringFunc(body, func(ref string) string {
-		param := strings.Trim(ref, `"${}`)
-		quoted := strings.HasPrefix(ref, `"`) || strings.HasSuffix(ref, `"`)
+	var text strings.Builder
 
-		var values []string
+	last := 0
 
-		switch n := int(param[0] - '0'); {
-		case param == "@" || param == "*":
-			values = args
-		case n <= len(args):
-			values = args[n-1 : n]
-		case quoted:
+	for _, ref := range refs {
+		values, set := positionalValues(ref.param, args)
+
+		text.WriteString(body[last:ref.start])
+		text.WriteString(positionalReplacement(ref, values, set))
+
+		last = ref.end
+
+		if !ref.quoted() {
+			split = split || slices.ContainsFunc(values, func(v string) bool { return v != "" })
+		}
+	}
+
+	text.WriteString(body[last:])
+
+	return text.String(), split
+}
+
+// positionalReplacement is the text that stands for ref given the values it
+// expands to.
+func positionalReplacement(ref positionalRef, values []string, set bool) string {
+	switch ref.context {
+	case positionalQuotedWord:
+		if !set {
 			return "''"
-		default:
+		}
+
+		return quoteArgs(values)
+	case positionalQuotedPart:
+		if len(values) == 0 {
 			return ""
 		}
 
-		if quoted {
-			return quoteArgs(values)
-		}
-
-		split = split || slices.ContainsFunc(values, func(v string) bool { return v != "" })
-
+		return `"` + quoteArgs(values) + `"`
+	case positionalQuotedOperand:
+		return doubleQuoteEscape(strings.Join(values, " "))
+	case positionalHeredoc:
+		return heredocEscape(strings.Join(values, " "))
+	case positionalEvalCode:
+		return "'" + quoteArgs(values) + "'"
+	default:
 		return quoteArgs(splitFields(values))
-	})
-
-	return text, split
+	}
 }
 
 // splitFields splits values into the words an unquoted expansion gives.

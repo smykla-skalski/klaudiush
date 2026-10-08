@@ -508,14 +508,19 @@ func (w *astWalker) resolveEval(cmd Command) (string, bool) {
 // (a line it cannot know is already opaque and is not walked), and a
 // container runner runs the program its exec names, its --entrypoint and
 // the program after its image, and parallel runs its command lines.
-func (w *astWalker) launchedFrom(cmd, followed Command) launch {
-	l := launched(cmd)
+func (w *astWalker) launchedFrom(cmd, followed Command, function bool) launch {
+	launches := launched
+	if function {
+		launches = functionLaunch
+	}
+
+	l := launches(cmd)
 	if shells[cmd.Name] {
 		l = w.shellStreamLaunch(followed, l)
 	}
 
 	if slices.ContainsFunc(followed.Args, marked) {
-		l.commands = launched(followed).commands
+		l.commands = launches(followed).commands
 	}
 
 	if cmds, replace := w.containerExecCommands(followed); replace {

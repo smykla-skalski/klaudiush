@@ -3,7 +3,9 @@ package git
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/smykla-skalski/klaudiush/internal/validator"
@@ -836,6 +838,167 @@ var legitimateAIReferences = []string{
 	"klaudiush",
 }
 
+// Path words are built from these pieces. A path takes only the ASCII
+// characters paths are spelled with, so it ends at punctuation, emoji,
+// invisible characters and Unicode spaces and never swallows a footer glued to
+// it. An escaped space ("My\ Dir") may only sit in a directory, never in the
+// last segment, so a footer behind "\ " is not taken as part of a path.
+const (
+	pathBoundary = `(^|[\s\p{Z}"'\x60=;&|()<>@])`
+	pathChar     = `[\w.+%@~-]`
+	pathDirs     = `(?:` + pathChar + `+(?:\\ ` + pathChar + `+)*/+)*`
+	pathTail     = `(?:` + pathChar + `+)?`
+)
+
+// anchoredPathPattern matches a path word rooted at "/": absolute,
+// home-relative, variable-rooted (including "${VAR:-/tmp}"), dot-relative,
+// under a dot directory such as .claude/, a file:// URL, or glued to a short
+// flag as in "-C/path". It may stand alone or follow "=", "@", a redirect or a
+// code span. A word opening with "//" stops at the first slash and a link keeps
+// its scheme or host in front of the slash, so links never match.
+var anchoredPathPattern = regexp.MustCompile(
+	pathBoundary +
+		`(?:-[a-zA-Z])?` +
+		`(?:(?:file://|~[\w-]*|\$\{[^}\s]*\}|\$\w+|\.\.?|\.[\w-]+)/+|/)` +
+		pathDirs + pathTail,
+)
+
+// withoutPaths removes the anchored filesystem path words from lowercased
+// text, keeping the character before each so the surrounding words stay apart.
+// Checks run line by line, so an assistant name in a temp dir or agent
+// worktree path would otherwise pair with an ordinary word such as "written"
+// on the same line. A word whose first directory is an assistant's own name
+// ("/claude", "./claude/opus") reads as the name, not a path, so it is kept.
+// Relative paths are ambiguous in prose ("w/Claude", "Cursor/Copilot"), so
+// only withoutPathArguments drops them, and only where the parsed command uses
+// them as arguments.
+func withoutPaths(text string) string {
+	var out strings.Builder
+
+	last := 0
+
+	for _, span := range anchoredPathPattern.FindAllStringIndex(text, -1) {
+		boundary, word := splitBoundary(text[span[0]:span[1]])
+		out.WriteString(text[last:span[0]])
+
+		last = span[1]
+
+		if namesAssistantFirst(word) && !closesRoot(text, span[0], boundary) {
+			out.WriteString(text[span[0]:span[1]])
+
+			continue
+		}
+
+		out.WriteString(boundary + markersIn(word))
+	}
+
+	out.WriteString(text[last:])
+
+	return out.String()
+}
+
+// closesRoot reports whether a path match starts right after a quoted or
+// substituted root, as in "$TMPDIR"/x, ${TMPDIR}/x or $(pwd)/x: its boundary
+// closes that root rather than opening a word, so the path is not led by a
+// bare name. A closer that ends prose, as in (Pro)/x or a quoted name before /x, is not one.
+func closesRoot(text string, start int, boundary string) bool {
+	before := text[:start]
+
+	switch boundary {
+	case ")":
+		open := strings.LastIndex(before, "$(")
+
+		return open >= 0 && strings.Count(before[open:], "(") == strings.Count(before[open:], ")")+1
+	case "}":
+		open := strings.LastIndex(before, "${")
+
+		return open >= 0 && !strings.ContainsAny(before[open:], " \t\n")
+	case `"`, "'":
+		open := strings.LastIndex(before, boundary)
+		if open < 0 {
+			return false
+		}
+
+		content := before[open+1:]
+
+		return (strings.HasPrefix(content, "$") || strings.HasPrefix(content, "~")) &&
+			!strings.ContainsAny(content, " \t\n")
+	default:
+		return false
+	}
+}
+
+// namesAssistantFirst reports whether a path word rooted at "/", "./", "../"
+// or a glued short flag opens with an assistant name, version or product
+// suffix removed ("claude", "claude-code", "codex-cli"). A word rooted at "~",
+// a variable or a dot directory names a real directory there, as in
+// $TMPDIR/claude-502, so it never counts.
+func namesAssistantFirst(word string) bool {
+	word = strings.TrimPrefix(word, "file://")
+
+	slash := strings.Index(word, "/")
+	if slash < 0 || !nameLedRoots[word[:slash]] && !shortFlagRoot.MatchString(word[:slash]) {
+		return false
+	}
+
+	for segment := range strings.SplitSeq(word[slash+1:], "/") {
+		if segment == "" || segment == "." || segment == ".." {
+			continue
+		}
+
+		segment = strings.TrimSuffix(strings.TrimRight(segment, "-.0123456789"), "-code")
+
+		return slices.Contains(aiAssistantNames, strings.TrimSuffix(segment, "-cli"))
+	}
+
+	return false
+}
+
+// nameLedRoots are the prefixes before the first slash that leave the next
+// segment free to be a bare name rather than a directory under a known root.
+var nameLedRoots = map[string]bool{"": true, ".": true, "..": true}
+
+// shortFlagRoot matches a short flag glued to a path, as in "-C/name".
+var shortFlagRoot = regexp.MustCompile(`^-[a-z]$`)
+
+// markersIn returns the attribution markers in the last segment of a removed
+// path word, space-separated, so a footer glued to a path ("/x" + "Generated
+// by ...") keeps its marker while the path, and any name in it, goes. Earlier
+// segments are directories, whose names are not credit.
+func markersIn(word string) string {
+	tail := word[strings.LastIndex(word, "/")+1:]
+
+	var found []string
+
+	for _, marker := range aiAttributionMarkers {
+		if strings.Contains(tail, marker) {
+			found = append(found, marker)
+		}
+	}
+
+	if len(found) == 0 {
+		return ""
+	}
+
+	return " " + strings.Join(found, " ") + " "
+}
+
+// splitBoundary separates the leading boundary character a path match keeps
+// from the path word itself.
+func splitBoundary(match string) (boundary, word string) {
+	r, size := utf8.DecodeRuneInString(match)
+	if r == utf8.RuneError || size == 0 {
+		return "", match
+	}
+
+	if strings.ContainsRune(`"'=;&|()<>@`+"`", r) || unicode.IsSpace(r) ||
+		unicode.Is(unicode.Z, r) {
+		return match[:size], match[size:]
+	}
+
+	return "", match
+}
+
 // containsAIAttribution reports whether a message credits an AI assistant. It
 // works line by line: a bare mention is not attribution - "we should try Claude
 // Code" is a sentence about a tool - so an assistant name counts only next to a
@@ -845,6 +1008,14 @@ func containsAIAttribution(message string) bool {
 	lower := confusableLetters.Replace(
 		strings.ReplaceAll(strings.ToLower(message), `\n`, "\n"),
 	)
+
+	// A session link is attribution wherever it sits, even spelled like a
+	// path, so it is matched before path words are dropped.
+	if aiSessionLinkPattern.MatchString(lower) || coAuthorLineNamesAssistant(lower) {
+		return true
+	}
+
+	lower = withoutPaths(lower)
 
 	// Every form of attribution names an assistant, so text that names none -
 	// the overwhelmingly common case, and now up to a megabyte of body file -
@@ -871,6 +1042,30 @@ func containsAIAttribution(message string) bool {
 	for chunk := range strings.SplitSeq(argumentQuotes.Replace(lower), "\n") {
 		chunk = stripLegitimateAIReferences(strings.TrimSpace(chunk))
 		if containsAIAssistantName(chunk) && aiOnlyLinkPattern.MatchString(chunk) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// coAuthorLineNamesAssistant reports a co-author trailer naming an assistant,
+// even inside a path: a co-author trailer never cites a path, so nothing in
+// it is dropped as one. Only the trailer's own value counts, up to the quote
+// that ends its argument, so a path elsewhere on a command line is not read
+// as part of it.
+func coAuthorLineNamesAssistant(lower string) bool {
+	for line := range strings.SplitSeq(lower, "\n") {
+		_, value, found := strings.Cut(line, "co-authored")
+		if !found {
+			continue
+		}
+
+		if end := strings.IndexAny(value, `"'`); end >= 0 {
+			value = value[:end]
+		}
+
+		if containsAIAssistantName(stripLegitimateAIReferences(value)) {
 			return true
 		}
 	}

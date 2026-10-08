@@ -303,7 +303,7 @@ func (v *PRValidator) Validate(ctx context.Context, hookCtx *hook.Context) *vali
 	if v.shouldBlockAIAttribution() {
 		apiBody := v.readBodyFiles(apiBodyFileRegex, fullCmd, dirs, false)
 		if attrResult := v.checkAIAttribution(
-			fullCmd + "\n" + bodyFile + "\n" + apiBody,
+			withoutPathArguments(fullCmd, result) + "\n" + bodyFile + "\n" + apiBody,
 		); attrResult != nil {
 			return attrResult
 		}
