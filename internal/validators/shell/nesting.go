@@ -680,6 +680,9 @@ func unreadableScriptRepair(detail string) string {
 	case parser.DetailScriptUnplacedWrite:
 		return "Run the command that changes files (unzip, patch, git reset --hard, " +
 			"git stash) in a separate command before running the script"
+	case parser.DetailScriptEdited:
+		return "Run the command that edits the script in a separate command before " +
+			"running it, or write the final content directly"
 	default:
 		return "Run the script's commands directly, or keep the script a readable " +
 			"regular file within the size limit"
