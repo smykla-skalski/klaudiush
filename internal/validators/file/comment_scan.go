@@ -549,7 +549,8 @@ func (s commentScan) lineStart(state stringState) stringState {
 // declaration it documents. Only languages with triple-quoted strings carry
 // the file's string state; elsewhere block comments are not tracked, so a
 // backtick inside one would open a string that hides every later comment,
-// and the line starts in code. CRLF line endings are matched as LF. An Edit with no
+// and the line starts in code with the text before the fragment made opaque.
+// CRLF line endings are matched as LF. An Edit with no
 // old_string joins added lines from several patch hunks whose boundaries are
 // lost, so triple-quoted state is not carried between its lines.
 func newCommentScan(hookCtx *hook.Context) commentScan {
@@ -600,10 +601,28 @@ func newCommentScan(hookCtx *hook.Context) commentScan {
 	if !scan.syntax.followsFileStrings() {
 		for i := range scan.leads {
 			scan.leads[i].state = stateCode
+			scan.leads[i].prefix = opaquePrefix(scan.leads[i].prefix)
 		}
 	}
 
 	return scan
+}
+
+// codeStandIn replaces the file text before an Edit on its line in languages
+// whose strings are not followed, keeping only that code precedes the
+// fragment.
+const codeStandIn = "_ "
+
+// opaquePrefix returns prefix when it is blank and codeStandIn otherwise.
+// Quotes in an untracked block comment, regex literal or Rust lifetime would
+// open a string that hides a comment the fragment adds, while a fragment
+// after code must still not count as a standalone comment.
+func opaquePrefix(prefix string) string {
+	if strings.TrimSpace(prefix) == "" {
+		return prefix
+	}
+
+	return codeStandIn
 }
 
 // pythonShebang matches a first line that runs the file with Python, or

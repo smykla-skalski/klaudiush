@@ -115,13 +115,14 @@ var nonStrictBasenames = map[string]bool{
 // A leading comment block directly above such a line is its documentation and
 // is allowed even when it opens with a verb. A tagged struct field counts: code
 // generators publish those comments as API documentation, so removing them
-// removes the description from the generated schema.
+// removes the description from the generated schema. A type, const or var
+// counts only at the start of the line: indented, it is a local declaration
+// inside a function body, where a comment is an inline one.
 var aiDocDecl = regexp.MustCompile(
-	`^\s*(` +
+	`^(type\s+(\(|[A-Za-z_])|(const|var)\s+(\(|[A-Za-z_]))` + // Go type, const, var
+		`|^\s*(` +
 		`package\s+[A-Za-z_]` + // Go package doc
 		`|func\s+(\([^)]*\)\s*)?[A-Za-z_]` + // Go func or method
-		`|type\s+(\(|[A-Za-z_])` + // Go type or block
-		`|(const|var)\s+(\(|[A-Za-z_])` + // Go const/var or block
 		`|export\b` + // JS/TS export
 		`|(async\s+)?(def|class)\s+[A-Za-z_]` + // Python def/class
 		`|[A-Za-z_][\w.]*(\s+[\w*\[\]./]+)?\s+\x60` + // Go struct field with a tag

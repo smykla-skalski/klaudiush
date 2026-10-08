@@ -700,7 +700,8 @@ var _ = Describe("AICommentValidator multi-line string literals", func() {
 				"// and executed later.\n", "// and executed later.\n// Keys are lowercase.\n"),
 		)
 
-		DescribeTable("flags what comments in a fragment",
+		DescribeTable(
+			"flags what comments in a fragment",
 			func(source, oldString, newString string) {
 				writeGo(source)
 
@@ -723,10 +724,52 @@ var _ = Describe("AICommentValidator multi-line string literals", func() {
 			Entry("comment after a backtick in a block comment",
 				"package parser\n\n/* use ` quotes */\nfunc f() {\n\tx := 1\n\t_ = x\n}\n",
 				"\tx := 1\n", "\t// set x to one\n\tx := 1\n"),
+			Entry("comment after a quote in a block comment on the same line",
+				"package parser\n\nfunc f() {\n\t/* say \" */ x := 1\n\t_ = x\n}\n",
+				"x := 1", "x := 1 // set x"),
+			Entry(
+				"comment above a local var",
+				"package parser\n\nfunc f() {\n\t// old\n\tvar i int\n\t_ = i\n}\n",
+				"// old",
+				"// counter for loop",
+			),
+			Entry(
+				"comment above a local type",
+				"package parser\n\nfunc f() {\n\t// old\n\ttype t int\n\t_ = t(1)\n}\n",
+				"// old",
+				"// alias for ints",
+			),
 			Entry("comment added past the doc context lookahead",
 				"package parser\n\n// old\n"+strings.Repeat("\n", 300)+"var a = 1\n",
 				"// old", "// holds the value"),
 		)
+
+		DescribeTable("flags a comment after a quote the scanner cannot follow",
+			func(name, source, oldString, newString string) {
+				path = filepath.Join(filepath.Dir(path), name)
+
+				writeGo(source)
+
+				ctx.ToolInput.FilePath = path
+				ctx.ToolInput.OldString = oldString
+				ctx.ToolInput.NewString = newString
+				Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
+			},
+			Entry("javascript regex literal", "app.js",
+				"const r = /\"/; const s = 1;\n", "const s = 1;", "const s = 1; // one"),
+			Entry("javascript block comment with an apostrophe", "app.js",
+				"/* don't */ const s = 1;\n", "const s = 1;", "const s = 1; // one"),
+			Entry("rust lifetime", "lib.rs",
+				"fn f() {\n    let v: Vec<&'a str> = vec![]; let y = 2;\n}\n",
+				"let y = 2;", "let y = 2; // set y"),
+		)
+
+		It("flags a comment above a local var in a written file", func() {
+			ctx.ToolName = hook.ToolTypeWrite
+			ctx.ToolInput.FilePath = path
+			ctx.ToolInput.Content = "package parser\n\nfunc f() {\n\t// counter for loop\n\tvar i int\n\t_ = i\n}\n"
+			Expect(sv.Validate(context.Background(), ctx).Passed).To(BeFalse())
+		})
 
 		It("flags a doc continuation fragment when the file cannot be read", func() {
 			ctx.ToolInput.FilePath = path
