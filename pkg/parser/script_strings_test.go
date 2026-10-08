@@ -84,6 +84,14 @@ var _ = Describe("Plain strings in interpreter code", func() {
 		Entry("a node string", "node /s/tool.js"),
 		Entry("an asyncio entry point",
 			"python3 -c 'import asyncio\nasync def m():\n    print(\"git zz\")\nasyncio.run(m())'"),
+		Entry("a compiled regexp", `python3 -c 'import re; p = re.compile("x"); y = "git zz"'`),
+		Entry("output written to stdout",
+			`python3 -c 'import sys; sys.stdout.write("x"); y = "git zz"'`),
+		Entry("an environment variable read",
+			`python3 -c 'import os; h = os.environ.get("HOME"); y = "git zz"'`),
+		Entry("the interpreter path", `python3 -c 'import sys; print(sys.executable, "git zz")'`),
+		Entry("a shellcheck label", `python3 -c 'tools = ["shellcheck", "git zz"]; print(tools)'`),
+		Entry("an HTTP client", `python3 -c 'import requests; y = "git zz"'`),
 	)
 
 	DescribeTable(
@@ -161,6 +169,21 @@ var _ = Describe("Plain strings in interpreter code", func() {
 			`python3 -c 'import operator, os; operator.attrgetter("sys" + "tem")(os)("git zz")'`),
 		Entry("a computed node global",
 			`node -e 'globalThis["req" + "uire"]("./h").run("git zz")'`),
+		Entry("subprocess.run handed to partial",
+			`python3 -c 'import functools, subprocess; `+
+				`functools.partial(subprocess.run, ["bash"], input="git zz")()'`),
+		Entry("subprocess.run handed to a thread",
+			`python3 -c 'import asyncio, subprocess; `+
+				`asyncio.run(asyncio.to_thread(subprocess.run, ["bash"], input="git zz"))'`),
+		Entry("subprocess.run under an assigned name",
+			`python3 -c 'import subprocess; r = subprocess.run; r(["bash"], input="git zz")'`),
+		Entry("a spawn function imported by name",
+			`python3 -c 'from subprocess import run; f = run; f(["sh"], input="git zz")'`),
+		Entry("tee writing stdin to a file",
+			`python3 -c 'import subprocess; subprocess.run(["tee", "/tmp/h"], input="git zz")'`),
+		Entry("stdout redirected into a file",
+			`python3 -c 'import subprocess; `+
+				`subprocess.run(["/bin/echo"], input="git zz", stdout=open("/tmp/h", "w"))'`),
 	)
 
 	DescribeTable("still records git the code really runs",

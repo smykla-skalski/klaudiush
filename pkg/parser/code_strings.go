@@ -20,17 +20,26 @@ const (
 // stringRunners matches code that may run a string as a command line, or
 // hand one to something that does: a shell call (os.system, popen,
 // shell=True, exec, spawn, getstatusoutput), code run from a string (eval,
-// compile, Function), a string split into an argv (split), a name looked up
-// at run time (getattr, globalThis[...], sys.modules), a file written (and
-// so maybe run later) or an environment variable git or a shell may run
-// (GIT_EDITOR, BASH_ENV). It is matched case-insensitively and deliberately
-// loose: a false match only keeps reading every string.
+// compile, Function), a name looked up at run time (getattr,
+// globalThis[...], sys.modules), a file written (and so maybe run later) or
+// an environment variable git or a shell may run (GIT_EDITOR, BASH_ENV). It
+// is matched case-insensitively, after benignCalls are removed, and
+// deliberately loose: a false match only keeps reading every string.
 var stringRunners = regexp.MustCompile(
-	`(?i)system|popen|shell|exec|eval|spawn|split|getattr|compile|runpy|` +
+	`(?i)system|popen|\bshell\b|_shell|shell_|exec|eval|spawn|getattr|(?:^|[^\w.])compile\s*\(|runpy|` +
 		`getstatusoutput|startfile|\bfunction\s*\(|\bcommand\s*\(|` +
 		`write|chmod|symlink|appendfile|copyfile|\bdump\s*\(|o_wronly|o_rdwr|o_creat|o_append|` +
+		`\bopen\s*\([^)]*,\s*(?:mode\s*=\s*)?["'][^"']*[wax+]|` +
 		`environ|\benv\b|globalthis|\bglobal\s*\[|mainmodule|process\.binding|dlopen|` +
 		`sys\.modules|attrgetter|methodcaller|__getattribute__`,
+)
+
+// benignCalls drops reads and writes stringRunners would otherwise match
+// that cannot run anything: printing to the process's own streams, naming
+// the running interpreter and reading an environment variable.
+var benignCalls = strings.NewReplacer(
+	"sys.stdout.write", "", "sys.stderr.write", "", "process.stdout.write", "",
+	"process.stderr.write", "", "sys.executable", "", "environ.get(", "(",
 )
 
 // jsRunners matches JavaScript that reaches a program or a module without
@@ -46,7 +55,7 @@ var jsRunners = regexp.MustCompile(
 var stdinPrograms = nameSet(`su flock env watch ssh tmux screen parallel xargs busybox
 	script expect at batch crontab ed ex vi vim nvim sqlite3 psql mysql gdb lldb sed
 	docker podman nerdctl kubectl make runuser sg newgrp pkexec chroot nsenter unshare
-	systemd-run xterm`)
+	systemd-run xterm tee dd cat cp install`)
 
 // commandStringFlag matches an argv item that hands a wrapper, shell or
 // interpreter its command line (-c, -lc, -e, --eval, --command), whatever
@@ -71,6 +80,17 @@ var subprocessAttrs = nameSet(`run call check_call check_output Popen PIPE DEVNU
 
 // importAlias matches an import that renames what it imports.
 var importAlias = regexp.MustCompile(`\bimport\b[^\n;]*\bas\s`)
+
+// spawnFuncs are the subprocess functions that start a program. One used as
+// a value (partial(subprocess.run, ...), r = subprocess.run) is called where
+// spawnRunsStrings cannot see its argv.
+var spawnFuncs = nameSet("run call check_call check_output Popen")
+
+// spawnImport matches a spawn function imported by name, which may then be
+// passed around under that bare name.
+var spawnImport = regexp.MustCompile(
+	`\bfrom\s+subprocess\s+import\b[^\n;]*\b(?:run|call|check_call|check_output|Popen)\b`,
+)
 
 // pythonImport matches a Python import statement, capturing the modules.
 var pythonImport = regexp.MustCompile(
@@ -97,7 +117,8 @@ var pythonModules = nameSet(`__future__ abc argparse array ast asyncio base64 bi
 	keyword locale logging lzma math mimetypes numbers operator os pathlib platform pprint
 	queue random re secrets shutil signal sqlite3 stat statistics string struct subprocess
 	sys sysconfig tarfile tempfile textwrap threading time tomllib traceback types typing
-	unicodedata unittest urllib uuid warnings weakref xml zipfile zlib zoneinfo`)
+	unicodedata unittest urllib uuid warnings weakref xml zipfile zlib zoneinfo
+	requests pytest yaml toml tomli`)
 
 // jsModules are the Node built-in modules with the same property.
 // child_process is left out: a computed member (cp["ex" + "ec"]) reaches its
@@ -116,7 +137,8 @@ func stringsRun(code string, lang codeLang) bool {
 		_, code, _ = strings.Cut(code, "\n")
 	}
 
-	if lang == langOther || codeUnsafe(code) || stringRunners.MatchString(code) {
+	if lang == langOther || codeUnsafe(code) ||
+		stringRunners.MatchString(benignCalls.Replace(code)) {
 		return true
 	}
 
@@ -139,13 +161,16 @@ func subprocessHidden(code string) bool {
 		return false
 	}
 
-	if importAlias.MatchString(code) {
+	if importAlias.MatchString(code) || spawnImport.MatchString(code) {
 		return true
 	}
 
 	for _, m := range subprocessUse.FindAllStringSubmatchIndex(code, -1) {
 		if m[2] >= 0 {
-			if !subprocessAttrs[code[m[2]:m[3]]] {
+			attr := code[m[2]:m[3]]
+			if !subprocessAttrs[attr] ||
+				spawnFuncs[attr] &&
+					!strings.HasPrefix(strings.TrimLeft(code[m[3]:], regexSpace), "(") {
 				return true
 			}
 
