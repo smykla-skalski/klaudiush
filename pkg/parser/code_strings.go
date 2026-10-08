@@ -29,8 +29,8 @@ const (
 var stringRunners = regexp.MustCompile(
 	`(?i)system|popen|\bshell\b|_shell|shell_|exec|eval|spawn|getattr|(?:^|[^\w.])compile\s*\(|runpy|` +
 		`getstatusoutput|startfile|\bfunction\s*\(|\bcommand\s*\(|` +
-		`write|chmod|symlink|appendfile|copyfile|\bdump\s*\(|o_wronly|o_rdwr|o_creat|o_append|` +
-		`\bopen\s*\([^)]*,\s*(?:mode\s*=\s*)?["'][^"']*[wax+]|` +
+		`write|chmod|symlink|appendfile|copyfile|dump\s*\(|o_wronly|o_rdwr|o_creat|o_append|` +
+		`\bopen\s*\([^)]*,\s*(?:mode\s*=\s*)?["'][^"']*[wax+]|\.open\s*\(\s*["'][wax+][bt+]*["']|` +
 		`environ|\benv\b|globalthis|\bglobal\s*\[|mainmodule|process\.binding|dlopen|` +
 		`sys\.modules|attrgetter|methodcaller|__getattribute__|filehandler|inplace|filename\s*=`,
 )
@@ -56,7 +56,9 @@ var jsRunners = regexp.MustCompile(
 var stdinPrograms = nameSet(`su flock env watch ssh tmux screen parallel xargs busybox
 	script expect at batch crontab ed ex vi vim nvim sqlite3 psql mysql gdb lldb sed
 	docker podman nerdctl kubectl make runuser sg newgrp pkexec chroot nsenter unshare
-	systemd-run xterm tee dd cat cp install gmake bmake just task`)
+	systemd-run xterm tee dd cat cp install gmake bmake just task pdksh rc es
+	ion oc fakeroot limactl orb multipass vagrant lxc incus ctr mosh bwrap firejail proot
+	setpriv capsh`)
 
 // commandStringFlag matches an argv item that hands a wrapper, shell or
 // interpreter its command line (-c, -lc, -e, --eval, --command), whatever
@@ -209,8 +211,9 @@ func spawnRunsStrings(code string) bool {
 }
 
 // argvItems returns the quoted items of the list or tuple literal that opens
-// rest, when its first item is a quoted program name. A comment in the list
-// may hide an item or unbalance its quotes, so it reads as unknown.
+// rest, when its first item is a quoted program name. A comment or an
+// escape in the list may hide an item or unbalance its quotes, so it reads
+// as unknown.
 func argvItems(rest string) ([]string, bool) {
 	if rest == "" || rest[0] != '[' && rest[0] != '(' {
 		return nil, false
@@ -222,7 +225,7 @@ func argvItems(rest string) ([]string, bool) {
 	}
 
 	region := rest[1:listEnd(rest)]
-	if strings.Contains(region, "#") {
+	if strings.ContainsAny(region, `#\\`) {
 		return nil, false
 	}
 

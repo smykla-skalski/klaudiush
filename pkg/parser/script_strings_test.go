@@ -31,6 +31,22 @@ for name, cmd in cases:
     print(f"{codes} <= {name}")
 `
 
+// heredocGen writes gen.py, a script holding f-string git commands, with a
+// heredoc whose loop body is body.
+func heredocGen(body string) string {
+	return "cat > gen.py <<'EOF'\n" +
+		"import subprocess\n" +
+		"M = 'x'\n" +
+		"C = 'y'\n" +
+		"cases = [\n" +
+		"    (1, True, f'git commit -sS -m \"{M}\"'),\n" +
+		"    (2, False, f'git checkout -b feat/{C}-x'),\n" +
+		"]\n" +
+		"for ac, block, cmd in cases:\n" +
+		"    " + body + "\n" +
+		"EOF"
+}
+
 var _ = Describe("Plain strings in interpreter code", func() {
 	resolver := fakeResolver{
 		files: map[string]string{
@@ -196,6 +212,48 @@ var _ = Describe("Plain strings in interpreter code", func() {
 		Entry("a comment inside the argv",
 			"python3 -c 'import subprocess\nsubprocess.run([\"/bin/echo\",  # x\n"+
 				"    \"bash\"], input=\"git zz\")'"),
+		Entry(
+			"an escaped quote inside the argv",
+			`python3 -c 'import subprocess; subprocess.run(["/opt/w", "a\"b", "bash"], input="git zz")'`,
+		),
+		Entry(
+			"a yaml dump into a path opened for writing",
+			`python3 -c 'import yaml, pathlib; yaml.safe_dump("git zz", pathlib.Path("/s/x").open("w"))'`,
+		),
+		Entry("a remote shell fed on stdin",
+			`python3 -c 'import subprocess; subprocess.run(["oc", "rsh", "pod"], input="git zz")'`),
+	)
+
+	DescribeTable(
+		"reads a heredoc-written script like one on disk",
+		func(command string) {
+			result := parse(command)
+			Expect(result.Truncated).To(BeFalse(), "truncated %q: %v", command, result.Opacities)
+			Expect(result.GitOperations).To(BeEmpty(), "git found in %q", command)
+		},
+		Entry(
+			"a script that prints f-string commands",
+			heredocGen("print(cmd)")+"\npython3 gen.py",
+		),
+		Entry("the heredoc write alone", heredocGen("print(cmd)")),
+	)
+
+	DescribeTable(
+		"still records git a heredoc really runs",
+		func(command, subcommand string) {
+			Expect(hasGit(parse(command), subcommand, "")).
+				To(BeTrue(), "no git %s in %q", subcommand, command)
+		},
+		Entry("a written script that runs its strings",
+			heredocGen("subprocess.run(cmd, shell=True)")+"\npython3 gen.py", "checkout"),
+		Entry("bash reading a heredoc", "bash <<'EOF'\ngit push --force origin main\nEOF", "push"),
+		Entry(
+			"sh -s reading a heredoc",
+			"sh -s <<'EOF'\ngit push --force origin main\nEOF",
+			"push",
+		),
+		Entry("python reading a heredoc that calls os.system",
+			"python3 - <<'EOF'\nimport os\nos.system('git push --force origin main')\nEOF", "push"),
 	)
 
 	DescribeTable("still records git the code really runs",
