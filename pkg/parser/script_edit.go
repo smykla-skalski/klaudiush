@@ -22,17 +22,15 @@ var readOnlyPrograms = nameSet(`cat head tail less more wc ls stat file grep egr
 	nl od hexdump sleep date which uname whoami id hostname printenv tput clear seq base64
 	df ps free nproc uptime curl wget`)
 
-// editPrograms change files they do not name: builds, archives, patches and
-// syncs.
-var editPrograms = nameSet(`make gmake bmake just task ninja unzip tar bsdtar cpio 7z rsync
-	patch install`)
+// editPrograms change files they do not name: archives, patches and syncs.
+var editPrograms = nameSet("unzip tar bsdtar cpio 7z rsync patch install")
 
 // formatterPrograms rewrite the files under a directory they are given.
 var formatterPrograms = nameSet(`black isort autoflake autopep8 yapf prettier gofmt goimports
 	gofumpt rustfmt clang-format shfmt`)
 
 // writeFlags make a linter or formatter rewrite the files it checks.
-var writeFlags = nameSet("-w --write --fix -i --inplace fmt format fix")
+var writeFlags = nameSet("-w --write --fix --inplace fmt format fix")
 
 // filterWrites maps the filters that only read their files to the flag
 // that makes them write one: a short option letter (sed -i, sed -Ei, sort -o)
@@ -198,11 +196,22 @@ func (w *astWalker) operandsEdit(name string, args []string, target string) bool
 		return false
 	}
 
+	if writes && !slices.ContainsFunc(args, pathLike) {
+		return true
+	}
+
 	return slices.ContainsFunc(args, func(arg string) bool {
 		names, dir := w.mayName(arg, target)
 
 		return names || dir && writes
 	})
+}
+
+// pathLike reports whether an operand looks like a path rather than a
+// subcommand or option: a writer given none works on the current directory
+// (ruff check --fix, go fmt, make fmt).
+func pathLike(arg string) bool {
+	return !strings.HasPrefix(arg, "-") && strings.ContainsAny(arg, "/.*?[$")
 }
 
 // gitEdits reports whether a git command may rewrite work tree files. A
