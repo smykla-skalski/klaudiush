@@ -155,10 +155,11 @@ func (w *astWalker) editedAfter(cmd Command, target string, seq int) bool {
 
 // mayEdit reports whether cmd may change target without klaudiush seeing
 // the write. Shells, launchers, builtins and functions and aliases defined
-// on the line are left out: the commands they run are recorded and judged
-// on their own. An interpreter counts when its program may change files;
-// git when its subcommand may rewrite the work tree; editPrograms always;
-// any other program outside readOnlyPrograms as operandsEdit says.
+// on the line are left out: the commands and writes they run are recorded
+// and judged on their own. An interpreter counts when its program may
+// change files; git when its subcommand may rewrite the work tree;
+// editPrograms when they write (see archiveWrites); any other program
+// outside readOnlyPrograms as operandsEdit says.
 func (w *astWalker) mayEdit(cmd Command, target string) bool {
 	name := commandName(cmd.Name)
 
@@ -171,11 +172,10 @@ func (w *astWalker) mayEdit(cmd Command, target string) bool {
 	_, alias := w.aliases[cmd.Name]
 
 	switch {
-	case readOnlyPrograms[name] || shells[name] || shellBuiltins[name] || launcher ||
-		function || alias:
+	case readOnlyPrograms[name] || shells[name] || shellBuiltins[name] || launcher || function || alias:
 		return false
 	case editPrograms[name]:
-		return true
+		return archiveWrites(name, cmd.Args)
 	case name == gitProgram:
 		return gitEdits(cmd)
 	case name == "find":
@@ -195,6 +195,10 @@ func (w *astWalker) mayEdit(cmd Command, target string) bool {
 // glob or cannot be resolved, or when it writes and an operand is a
 // directory above target.
 func (w *astWalker) operandsEdit(name string, args []string, target string) bool {
+	if name == "sed" {
+		args = withoutSedScript(args)
+	}
+
 	filterFlag, filter := filterWrites[name]
 	checking := slices.ContainsFunc(args, func(arg string) bool {
 		return checkFlags[arg] || listFlags[name] == arg
@@ -357,6 +361,49 @@ func (w *astWalker) inlineEdits(args, operands []string, target string) bool {
 
 		return names || dir
 	})
+}
+
+// unzipLists make unzip list or test an archive instead of extracting it.
+var unzipLists = nameSet("-l -t -v -Z")
+
+// sedScriptFlags hand sed its script as an option value, so no operand is
+// the script.
+var sedScriptFlags = nameSet("-e -f --expression --file")
+
+// withoutSedScript drops the script sed takes as its first operand (s/a/b/),
+// which is an expression, not a file it edits.
+func withoutSedScript(args []string) []string {
+	if slices.ContainsFunc(args, func(arg string) bool {
+		flag, _, _ := strings.Cut(arg, "=")
+
+		return sedScriptFlags[flag]
+	}) {
+		return args
+	}
+
+	i := slices.IndexFunc(args, func(arg string) bool { return !strings.HasPrefix(arg, "-") })
+	if i < 0 {
+		return args
+	}
+
+	return slices.Delete(slices.Clone(args), i, i+1)
+}
+
+// archiveWrites reports whether an editPrograms run may write files: an
+// archive tool that only lists or tests (tar t, unzip -l) does not.
+func archiveWrites(name string, args []string) bool {
+	switch name {
+	case "tar", "bsdtar":
+		return slices.ContainsFunc(args, func(arg string) bool {
+			return arg == "--extract" || arg == "--get" ||
+				!strings.HasPrefix(arg, "--") && strings.ContainsRune(strings.TrimPrefix(arg, "-"), 'x') &&
+					strings.Trim(arg, "-cxtvzjJfpPoOk") == ""
+		})
+	case "unzip":
+		return !slices.ContainsFunc(args, func(arg string) bool { return unzipLists[arg] })
+	default:
+		return true
+	}
 }
 
 // moduleArgs returns the module an interpreter runs with -m and the
