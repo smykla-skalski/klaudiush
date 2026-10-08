@@ -254,6 +254,18 @@ var _ = Describe("Startup variables a loop may set", func() {
 			`V=-vBASH_ENV; G=x; command_not_found_handler() { G="$V"; }; for s in /abs/run.sh; do printf "$G" "$s"; nonexist; done; bash -c true`,
 		),
 		Entry(
+			"printf format variable reassigned by an outer loop",
+			`V=-vBASH_ENV; G=x; mk() { for s in $1; do printf "$G" "$s"; done; }; for t in 1 2; do mk /abs/run.sh; G=$V; done; bash -c true`,
+		),
+		Entry(
+			"printf format variable assigned by the trace prompt",
+			`G=; PS4='${G:=-vBASH_ENV}'; set -x; for s in /abs/run.sh; do printf "$G" "$s"; done; bash -c true`,
+		),
+		Entry(
+			"printf format variable after a trace prompt set in the loop",
+			`V='${G:=-vBASH_ENV}'; G=x; for s in /abs/run.sh; do PS4=$V; set -x; printf "$G" "$s"; done; bash -c true`,
+		),
+		Entry(
 			"printf format variable changed earlier in the statement",
 			`G=x; G=-vBASH_ENV && for s in /abs/run.sh; do printf "$G" "$s"; done; bash -c true`,
 		),

@@ -133,14 +133,16 @@ var identifier = regexp.MustCompile(`[A-Za-z_][A-Za-z0-9_]*`)
 // with.
 func (w *astWalker) loopScope(loop syntax.Node) map[string]string {
 	if w.state.untrusted || w.state.namesUnknown || w.state.arithmetic ||
-		len(w.assignments) == 0 || w.definesNotFoundHandler() {
+		len(
+			w.assignments,
+		) == 0 || w.outerLoop || w.definesNotFoundHandler() || w.setsTracePrompt() {
 		return nil
 	}
 
 	scan := loopScan{w: w, mentioned: make(map[string]bool), seen: make(map[string]bool)}
 	scan.node(loop)
 
-	if scan.unknown {
+	if scan.unknown || scan.mentioned[tracePrompt] {
 		return nil
 	}
 
@@ -429,4 +431,15 @@ func staticText(word *syntax.Word) string {
 	}
 
 	return text.String()
+}
+
+// tracePrompt is expanded before every traced command, so with set -x its
+// value can assign variables (PS4='${G:=x}') without the loop naming them.
+const tracePrompt = "PS4"
+
+// setsTracePrompt reports a trace prompt set or changed on the line.
+func (w *astWalker) setsTracePrompt() bool {
+	_, set := w.assignments[tracePrompt]
+
+	return set || w.unknownVars[tracePrompt] || w.state.dynamicVars[tracePrompt]
 }
