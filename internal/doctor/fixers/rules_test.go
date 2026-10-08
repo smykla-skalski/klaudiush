@@ -1,16 +1,20 @@
 package fixers
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"go.uber.org/mock/gomock"
 
+	internalconfig "github.com/smykla-skalski/klaudiush/internal/config"
 	"github.com/smykla-skalski/klaudiush/internal/doctor"
 	"github.com/smykla-skalski/klaudiush/internal/prompt"
+	"github.com/smykla-skalski/klaudiush/pkg/config"
 )
 
 var _ = Describe("RulesFixer", func() {
@@ -383,6 +387,260 @@ type = "block"
 				Expect(firstIdx).To(Equal(lastIdx))
 			})
 		})
+	})
+})
+
+var _ = Describe("RulesFixer with global and project rules", func() {
+	var (
+		ctrl        *gomock.Controller
+		mockPrompt  *prompt.MockPrompter
+		ctx         context.Context
+		projectPath string
+		globalPath  string
+		warnings    *bytes.Buffer
+	)
+
+	newFixer := func() *RulesFixer {
+		fixer := NewRulesFixer(mockPrompt)
+		fixer.warnOut = warnings
+
+		return fixer
+	}
+
+	writeFile := func(path, content string) {
+		Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
+		Expect(os.WriteFile(path, []byte(content), 0o600)).To(Succeed())
+	}
+
+	readFile := func(path string) string {
+		content, err := os.ReadFile(path)
+		Expect(err).NotTo(HaveOccurred())
+
+		return string(content)
+	}
+
+	projectRules := func() []config.RuleConfig {
+		loader, err := internalconfig.NewKoanfLoader()
+		Expect(err).NotTo(HaveOccurred())
+
+		cfg, _, err := loader.LoadProjectConfigOnly()
+		Expect(err).NotTo(HaveOccurred())
+		Expect(cfg).NotTo(BeNil())
+		Expect(cfg.Rules).NotTo(BeNil())
+
+		return cfg.Rules.Rules
+	}
+
+	const validGlobal = `
+[[rules.rules]]
+name = "global-valid-one"
+[rules.rules.match]
+validator_type = "git.push"
+[rules.rules.action]
+type = "block"
+
+[[rules.rules]]
+name = "global-valid-two"
+[rules.rules.match]
+validator_type = "git.commit"
+[rules.rules.action]
+type = "warn"
+`
+
+	const invalidGlobal = `
+[[rules.rules]]
+name = "global-invalid"
+[rules.rules.action]
+type = "block"
+`
+
+	BeforeEach(func() {
+		ctrl = gomock.NewController(GinkgoT())
+		mockPrompt = prompt.NewMockPrompter(ctrl)
+		ctx = context.Background()
+		warnings = &bytes.Buffer{}
+
+		tempDir := GinkgoT().TempDir()
+		home := filepath.Join(tempDir, "home")
+		Expect(os.MkdirAll(home, 0o755)).To(Succeed())
+
+		GinkgoT().Setenv("HOME", home)
+		GinkgoT().Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+		GinkgoT().Setenv("XDG_DATA_HOME", filepath.Join(home, ".local", "share"))
+		GinkgoT().Setenv("XDG_STATE_HOME", filepath.Join(home, ".local", "state"))
+		GinkgoT().Setenv("XDG_CACHE_HOME", filepath.Join(home, ".cache"))
+
+		globalPath = filepath.Join(home, ".config", "klaudiush", "config.toml")
+
+		workDir := filepath.Join(tempDir, "project")
+		projectPath = filepath.Join(workDir, ".klaudiush", "config.toml")
+		Expect(os.MkdirAll(workDir, 0o755)).To(Succeed())
+
+		originalWd, err := os.Getwd()
+		Expect(err).NotTo(HaveOccurred())
+		Expect(os.Chdir(workDir)).To(Succeed())
+		DeferCleanup(os.Chdir, originalWd)
+	})
+
+	AfterEach(func() {
+		ctrl.Finish()
+	})
+
+	It("disables the invalid project rule and leaves the global file unchanged", func() {
+		writeFile(globalPath, validGlobal)
+		writeFile(projectPath, `
+[[rules.rules]]
+name = "project-valid"
+[rules.rules.match]
+validator_type = "git.push"
+[rules.rules.action]
+type = "block"
+
+[[rules.rules]]
+name = "project-invalid"
+[rules.rules.action]
+type = "block"
+`)
+
+		Expect(newFixer().Fix(ctx, false)).To(Succeed())
+
+		Expect(readFile(globalPath)).To(Equal(validGlobal))
+
+		rules := projectRules()
+		Expect(rules).To(HaveLen(2))
+		Expect(rules[0].Name).To(Equal("project-valid"))
+		Expect(rules[0].IsRuleEnabled()).To(BeTrue())
+		Expect(rules[1].Name).To(Equal("project-invalid"))
+		Expect(rules[1].IsRuleEnabled()).To(BeFalse())
+		Expect(rules[1].Description).To(Equal(disabledNote))
+		Expect(warnings.String()).To(BeEmpty())
+	})
+
+	It("does not disable a valid project rule because of an invalid global rule", func() {
+		writeFile(globalPath, invalidGlobal)
+
+		projectContent := `
+[[rules.rules]]
+name = "project-valid"
+[rules.rules.match]
+validator_type = "git.push"
+[rules.rules.action]
+type = "block"
+`
+		writeFile(projectPath, projectContent)
+
+		Expect(newFixer().Fix(ctx, false)).To(Succeed())
+		Expect(warnings.String()).To(ContainSubstring(globalPath))
+		Expect(warnings.String()).To(ContainSubstring(`"global-invalid"`))
+		Expect(warnings.String()).To(ContainSubstring("were not modified"))
+
+		Expect(readFile(projectPath)).To(Equal(projectContent))
+		Expect(readFile(globalPath)).To(Equal(invalidGlobal))
+	})
+
+	It("fixes the project rule and still reports the invalid global rule", func() {
+		writeFile(globalPath, invalidGlobal)
+		writeFile(projectPath, `
+[[rules.rules]]
+name = "project-invalid"
+[rules.rules.action]
+type = "block"
+`)
+
+		Expect(newFixer().Fix(ctx, false)).To(Succeed())
+		Expect(warnings.String()).To(ContainSubstring(`"global-invalid"`))
+
+		rules := projectRules()
+		Expect(rules).To(HaveLen(1))
+		Expect(rules[0].IsRuleEnabled()).To(BeFalse())
+		Expect(readFile(globalPath)).To(Equal(invalidGlobal))
+	})
+
+	It("accepts an invalid global rule overridden by a project rule", func() {
+		writeFile(globalPath, invalidGlobal)
+
+		projectContent := `
+[[rules.rules]]
+name = "global-invalid"
+enabled = false
+`
+		writeFile(projectPath, projectContent)
+
+		Expect(newFixer().Fix(ctx, false)).To(Succeed())
+
+		Expect(readFile(projectPath)).To(Equal(projectContent))
+		Expect(readFile(globalPath)).To(Equal(invalidGlobal))
+		Expect(warnings.String()).To(BeEmpty())
+	})
+
+	It("warns about the invalid global rule when the user declines", func() {
+		writeFile(globalPath, invalidGlobal)
+
+		projectContent := `
+[[rules.rules]]
+name = "project-invalid"
+[rules.rules.action]
+type = "block"
+`
+		writeFile(projectPath, projectContent)
+
+		mockPrompt.EXPECT().Confirm(gomock.Any(), true).Return(false, nil)
+
+		Expect(newFixer().Fix(ctx, true)).To(Succeed())
+		Expect(readFile(projectPath)).To(Equal(projectContent))
+		Expect(warnings.String()).To(ContainSubstring(`"global-invalid"`))
+	})
+
+	It("still fixes the project rule when the global config cannot be loaded", func() {
+		globalContent := "[[rules.rules]\nname = \"broken\n"
+		writeFile(globalPath, globalContent)
+		writeFile(projectPath, `
+[[rules.rules]]
+name = "project-invalid"
+[rules.rules.action]
+type = "block"
+`)
+
+		Expect(newFixer().Fix(ctx, false)).To(Succeed())
+		Expect(projectRules()[0].IsRuleEnabled()).To(BeFalse())
+		Expect(readFile(globalPath)).To(Equal(globalContent))
+		Expect(warnings.String()).To(ContainSubstring("not checked for invalid rules"))
+	})
+
+	It("warns when a disabled project rule overrides a global rule", func() {
+		writeFile(globalPath, validGlobal)
+		writeFile(projectPath, `
+[[rules.rules]]
+name = "global-valid-one"
+[rules.rules.action]
+type = "block"
+`)
+
+		Expect(newFixer().Fix(ctx, false)).To(Succeed())
+		Expect(projectRules()[0].IsRuleEnabled()).To(BeFalse())
+		Expect(readFile(globalPath)).To(Equal(validGlobal))
+		Expect(warnings.String()).To(ContainSubstring(`"global-valid-one"`))
+		Expect(warnings.String()).To(ContainSubstring("still override"))
+	})
+
+	It("counts only project rules in the interactive confirmation", func() {
+		writeFile(globalPath, validGlobal)
+		writeFile(projectPath, `
+[[rules.rules]]
+name = "project-invalid"
+[rules.rules.action]
+type = "block"
+`)
+
+		mockPrompt.EXPECT().
+			Confirm(gomock.Cond(func(msg string) bool {
+				return strings.Contains(msg, "Disable 1 invalid rule(s)")
+			}), true).
+			Return(true, nil)
+
+		Expect(newFixer().Fix(ctx, true)).To(Succeed())
+		Expect(projectRules()[0].IsRuleEnabled()).To(BeFalse())
+		Expect(readFile(globalPath)).To(Equal(validGlobal))
 	})
 })
 
