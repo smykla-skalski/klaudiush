@@ -18,11 +18,14 @@ exec klaudiush --hook-type PreToolUse
 stdout 'Validation unavailable HOOK001'
 stdout 'did not answer in time'
 ! stdout 'permissionDecision'
+exists $WORK/.klaudiush/plugins/slow.sh.ran
+rm $WORK/.klaudiush/plugins/slow.sh.ran
 
 stdin $WORK/ls.json
 exec klaudiush --hook-type PreToolUse --failure-mode=block
 stdout '"permissionDecision":"deny"'
 stdout 'did not answer in time'
+exists $WORK/.klaudiush/plugins/slow.sh.ran
 
 -- ls.json --
 {"tool_name": "Bash", "tool_input": {"command": "ls"}}
@@ -48,4 +51,5 @@ case "$1" in
   --version) echo 1; exit 0 ;;
 esac
 cat >/dev/null
+: > "$0.ran"
 exec sleep 30
