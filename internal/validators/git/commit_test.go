@@ -972,6 +972,21 @@ EOF
 					false,
 				),
 				Entry(
+					"a wrapped commit trailer value still blocks",
+					`sudo git commit -sS -a -m "feat(a): x" --trailer Generated-by-Claude/Code`,
+					true,
+				),
+				Entry(
+					"an env-wrapped commit trailer value still blocks",
+					`env A=1 git commit -sS -a -m "feat(a): x" --trailer Generated-by-Claude/Code`,
+					true,
+				),
+				Entry(
+					"a wrapped branch created with -b",
+					`sudo git checkout -b feat/claude-x && git commit -sS -a -m "fix(a): keep body as written"`,
+					false,
+				),
+				Entry(
 					"a quoted relative path argument",
 					`cd "src/claude" && git commit -sS -a -m "fix(a): keep body as written"`,
 					false,

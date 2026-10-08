@@ -153,11 +153,11 @@ func (v *BranchValidator) Validate(ctx context.Context, hookCtx *hook.Context) *
 // validateGitCommand validates a git command based on its subcommand.
 func (v *BranchValidator) validateGitCommand(gitCmd *parser.GitCommand) *validator.Result {
 	switch gitCmd.Subcommand {
-	case "checkout":
+	case checkoutSubcommand:
 		return v.validateCheckout(gitCmd)
-	case "branch":
+	case branchSubcommand:
 		return v.validateBranch(gitCmd)
-	case "switch":
+	case switchSubcommand:
 		return v.validateSwitch(gitCmd)
 	default:
 		return nil
@@ -240,9 +240,9 @@ func (*BranchValidator) createSpaceError() *validator.Result {
 // quoted spaces within a single argument.
 func (*BranchValidator) extractBranchName(gitCmd *parser.GitCommand) string {
 	switch gitCmd.Subcommand {
-	case "checkout", "switch":
+	case checkoutSubcommand, switchSubcommand:
 		return gitCmd.ExtractBranchName()
-	case "branch":
+	case branchSubcommand:
 		if len(gitCmd.Args) > 0 {
 			return gitCmd.Args[0]
 		}

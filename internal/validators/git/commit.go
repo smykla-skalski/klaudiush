@@ -21,6 +21,11 @@ const (
 	gitCommand       = "git"
 	commitSubcommand = "commit"
 	addSubcommand    = "add"
+
+	checkoutSubcommand = "checkout"
+	switchSubcommand   = "switch"
+	branchSubcommand   = "branch"
+	worktreeSubcommand = "worktree"
 )
 
 var (
@@ -214,10 +219,10 @@ func withoutPathArguments(command string, parsed *parser.ParseResult) string {
 			continue
 		}
 
-		writes := writesMessage(cmd)
+		branches := namesBranches(cmd)
 
 		for i, arg := range cmd.Args {
-			if i > 0 && isTextValueFlag(cmd.Args[i-1], writes) {
+			if i > 0 && isTextValueFlag(cmd.Args[i-1], branches) {
 				continue
 			}
 
@@ -234,32 +239,40 @@ func withoutPathArguments(command string, parsed *parser.ParseResult) string {
 // takes text, such as "-sm" or "-am".
 var shortTextFlagCluster = regexp.MustCompile(`^-[a-zA-Z]*[mtb]$`)
 
-// isTextValueFlag reports whether the argument after flag is free text. Only
-// a command that writes a message takes text after -t, -b or a flag cluster;
-// elsewhere those carry a branch or other name ("git checkout -b feat/x").
-func isTextValueFlag(flag string, writes bool) bool {
+// isTextValueFlag reports whether the argument after flag is free text. A
+// git subcommand that names branches reads -b and -t as a branch ("git
+// checkout -b feat/x"), so there only -m and --message mark text; every other
+// command, wrapped or not, keeps -t, -b and flag clusters as text.
+func isTextValueFlag(flag string, branches bool) bool {
 	if slices.Contains(commitMessageFlags, flag) {
 		return true
 	}
 
-	return writes &&
+	return !branches &&
 		(slices.Contains(textValueFlags, flag) || shortTextFlagCluster.MatchString(flag))
 }
 
-// writesMessage reports whether a command writes a commit, tag or pull
-// request message: gh, or git with a message-writing subcommand.
-func writesMessage(cmd parser.Command) bool {
-	switch cmd.Name {
-	case "gh":
-		return true
-	case gitCommand:
-		return slices.ContainsFunc(cmd.Args, func(arg string) bool {
-			return arg == commitSubcommand || arg == "notes" ||
-				slices.Contains(otherMessageSubcommands, arg)
-		})
-	default:
-		return false
+// branchSubcommands are the git subcommands whose -b and -t take a branch.
+var branchSubcommands = []string{
+	checkoutSubcommand, switchSubcommand, worktreeSubcommand, branchSubcommand,
+}
+
+// namesBranches reports whether a command runs a git subcommand that takes a
+// branch after -b or -t and writes no message.
+func namesBranches(cmd parser.Command) bool {
+	hasBranch, writes := false, false
+
+	for _, arg := range cmd.Args {
+		switch {
+		case slices.Contains(branchSubcommands, arg):
+			hasBranch = true
+		case arg == commitSubcommand || arg == "notes" ||
+			slices.Contains(otherMessageSubcommands, arg):
+			writes = true
+		}
 	}
+
+	return hasBranch && !writes
 }
 
 // withoutSoleOccurrence removes word from the command when it appears there
