@@ -128,10 +128,14 @@ var aiDocDecl = regexp.MustCompile(
 		`)`,
 )
 
-// aiGoLocalDecl matches an indented Go type, const or var line. Go declares
-// those keywords indented only inside a function body, where a comment above
-// them is an inline one, not documentation.
-var aiGoLocalDecl = regexp.MustCompile(`^\s+(type|const|var)\s`)
+// aiGoStatement matches an indented Go line opening with a keyword. Go
+// writes those indented only inside a function body, where a comment above
+// them is an inline one, not documentation; a raw string after one such as
+// "return" would otherwise read as a tagged struct field.
+var aiGoStatement = regexp.MustCompile(
+	`^\s+(type|const|var|return|case|default|go|defer|goto|break|continue|` +
+		`fallthrough|select|switch|if|for|else)\b`,
+)
 
 // isShebangOrDocMarker reports whether the comment body (marker stripped, not
 // trimmed) is a shebang (#!), a Rust doc comment (///) or a Rust inner doc
@@ -451,7 +455,7 @@ func precedesDocDecl(lines []string, i int, goSource bool) bool {
 			continue
 		}
 
-		if goSource && aiGoLocalDecl.MatchString(lines[j]) {
+		if goSource && aiGoStatement.MatchString(lines[j]) {
 			return false
 		}
 
