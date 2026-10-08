@@ -883,19 +883,36 @@ func withoutPaths(text string) string {
 	})
 }
 
-// namesAssistantFirst reports whether the first segment after a path word's
-// leading slash is an assistant name, version or product suffix removed
-// ("claude", "claude-code", "codex-cli").
+// namesAssistantFirst reports whether a path word rooted at "/", "./", "../"
+// or a glued short flag opens with an assistant name, version or product
+// suffix removed ("claude", "claude-code", "codex-cli"). A word rooted at "~",
+// a variable or a dot directory names a real directory there, as in
+// $TMPDIR/claude-502, so it never counts.
 func namesAssistantFirst(word string) bool {
-	_, rest, _ := strings.Cut(word, "/")
-	first, _, _ := strings.Cut(rest, "/")
-	first = strings.TrimSuffix(
-		strings.TrimSuffix(strings.TrimRight(first, "-.0123456789"), "-code"),
-		"-cli",
-	)
+	slash := strings.Index(word, "/")
+	if slash < 0 || !nameLedRoots[word[:slash]] && !shortFlagRoot.MatchString(word[:slash]) {
+		return false
+	}
 
-	return slices.Contains(aiAssistantNames, first)
+	for segment := range strings.SplitSeq(word[slash+1:], "/") {
+		if segment == "" || segment == "." || segment == ".." {
+			continue
+		}
+
+		segment = strings.TrimSuffix(strings.TrimRight(segment, "-.0123456789"), "-code")
+
+		return slices.Contains(aiAssistantNames, strings.TrimSuffix(segment, "-cli"))
+	}
+
+	return false
 }
+
+// nameLedRoots are the prefixes before the first slash that leave the next
+// segment free to be a bare name rather than a directory under a known root.
+var nameLedRoots = map[string]bool{"": true, ".": true, "..": true}
+
+// shortFlagRoot matches a short flag glued to a path, as in "-C/name".
+var shortFlagRoot = regexp.MustCompile(`^-[a-z]$`)
 
 // markersIn returns the attribution markers in the last segment of a removed
 // path word, space-separated, so a footer glued to a path ("/x" + "Generated
