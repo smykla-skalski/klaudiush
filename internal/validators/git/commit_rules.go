@@ -846,7 +846,7 @@ var legitimateAIReferences = []string{
 const (
 	pathBoundary = `(^|[\s\p{Z}"'\x60=;&|()<>@])`
 	pathChar     = `[\w.+%@~-]`
-	pathDirs     = `(?:` + pathChar + `+(?:\\ ` + pathChar + `+)*/)*`
+	pathDirs     = `(?:` + pathChar + `+(?:\\ ` + pathChar + `+)*/+)*`
 	pathTail     = `(?:` + pathChar + `+)?`
 )
 
@@ -859,8 +859,8 @@ const (
 var anchoredPathPattern = regexp.MustCompile(
 	pathBoundary +
 		`(?:-[a-zA-Z])?` +
-		`(?:file://|~|\$\{[^}\s]*\}|\$\w+|\.\.?|\.[\w-]+)?` +
-		`/` + pathDirs + pathTail,
+		`(?:(?:file://|~[\w-]*|\$\{[^}\s]*\}|\$\w+|\.\.?|\.[\w-]+)/+|/)` +
+		pathDirs + pathTail,
 )
 
 // withoutPaths removes the anchored filesystem path words from lowercased
@@ -873,14 +873,42 @@ var anchoredPathPattern = regexp.MustCompile(
 // only withoutPathArguments drops them, and only where the parsed command uses
 // them as arguments.
 func withoutPaths(text string) string {
-	return anchoredPathPattern.ReplaceAllStringFunc(text, func(match string) string {
-		boundary, word := splitBoundary(match)
-		if namesAssistantFirst(word) {
-			return match
+	var out strings.Builder
+
+	last := 0
+
+	for _, span := range anchoredPathPattern.FindAllStringIndex(text, -1) {
+		boundary, word := splitBoundary(text[span[0]:span[1]])
+		out.WriteString(text[last:span[0]])
+
+		last = span[1]
+
+		if namesAssistantFirst(word) && !closesRoot(text, span[0], boundary) {
+			out.WriteString(text[span[0]:span[1]])
+
+			continue
 		}
 
-		return boundary + markersIn(word)
-	})
+		out.WriteString(boundary + markersIn(word))
+	}
+
+	out.WriteString(text[last:])
+
+	return out.String()
+}
+
+// closesRoot reports whether a path match starts right after a quoted or
+// substituted root, as in "$TMPDIR"/x or $(pwd)/x: its boundary closes that
+// root rather than opening a word, so the path is not led by a bare name.
+func closesRoot(text string, start int, boundary string) bool {
+	switch boundary {
+	case ")", "}":
+		return true
+	case `"`, "'":
+		return start > 0 && !unicode.IsSpace(rune(text[start-1])) && text[start-1] != '='
+	default:
+		return false
+	}
 }
 
 // namesAssistantFirst reports whether a path word rooted at "/", "./", "../"
@@ -889,6 +917,8 @@ func withoutPaths(text string) string {
 // a variable or a dot directory names a real directory there, as in
 // $TMPDIR/claude-502, so it never counts.
 func namesAssistantFirst(word string) bool {
+	word = strings.TrimPrefix(word, "file://")
+
 	slash := strings.Index(word, "/")
 	if slash < 0 || !nameLedRoots[word[:slash]] && !shortFlagRoot.MatchString(word[:slash]) {
 		return false
@@ -964,7 +994,7 @@ func containsAIAttribution(message string) bool {
 
 	// A session link is attribution wherever it sits, even spelled like a
 	// path, so it is matched before path words are dropped.
-	if aiSessionLinkPattern.MatchString(lower) {
+	if aiSessionLinkPattern.MatchString(lower) || coAuthorLineNamesAssistant(lower) {
 		return true
 	}
 
@@ -995,6 +1025,20 @@ func containsAIAttribution(message string) bool {
 	for chunk := range strings.SplitSeq(argumentQuotes.Replace(lower), "\n") {
 		chunk = stripLegitimateAIReferences(strings.TrimSpace(chunk))
 		if containsAIAssistantName(chunk) && aiOnlyLinkPattern.MatchString(chunk) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// coAuthorLineNamesAssistant reports a co-author line naming an assistant
+// anywhere, even inside a path: a co-author trailer never cites a path, so
+// nothing on it is dropped as one.
+func coAuthorLineNamesAssistant(lower string) bool {
+	for line := range strings.SplitSeq(lower, "\n") {
+		if strings.Contains(line, "co-authored") &&
+			containsAIAssistantName(stripLegitimateAIReferences(line)) {
 			return true
 		}
 	}
