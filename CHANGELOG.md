@@ -5,6 +5,13 @@ All notable changes to klaudiush will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.44.5](https://github.com/smykla-skalski/klaudiush/compare/v1.44.4...v1.44.5) (2026-10-13)
+
+### Bug Fixes
+
+* **deps:** update module github.com/go-git/go-git/v6 to v6.0.0-beta.1 ([#851](https://github.com/smykla-skalski/klaudiush/issues/851)) ([7852e4f](https://github.com/smykla-skalski/klaudiush/commit/7852e4fc9129afb5d9c28385063f79e9970b3212))
+* **deps:** update module github.com/knadh/koanf/providers/env/v2 to v2.0.2 ([#853](https://github.com/smykla-skalski/klaudiush/issues/853)) ([6f46f3f](https://github.com/smykla-skalski/klaudiush/commit/6f46f3f10efb8c8a60cfe5b3751c9bc92692616d))
+
 ## [1.44.4](https://github.com/smykla-skalski/klaudiush/compare/v1.44.3...v1.44.4) (2026-10-11)
 
 ### Bug Fixes
