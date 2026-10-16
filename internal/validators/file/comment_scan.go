@@ -63,21 +63,23 @@ type langSyntax struct {
 	closeOnRun bool
 	python     bool
 	markdown   bool
+	lua        bool
 }
 
 // pythonSyntax is the syntax of Python sources, scanned by scanPython.
 var pythonSyntax = langSyntax{comment: commentHash, python: true}
 
-// langSyntaxByExt maps file extensions of languages with triple-quoted
+// langSyntaxByExt maps languages with dedicated scanners or triple-quoted
 // multi-line strings to their syntax. Elsewhere `"""` is an empty string plus
 // a quote. closeOnRun closes a triple-quoted string on the last three quotes
 // of a longer run, as TOML does. Only languages with no block comments and no
-// use of "#" outside comments and strings are listed: a block comment holding
+// use of "#" outside comments and strings use triple kinds: a block comment holding
 // `"""` would otherwise open a string that hides every later comment.
 var langSyntaxByExt = map[string]langSyntax{
 	".py":  pythonSyntax,
 	".pyi": pythonSyntax,
 	".pyw": pythonSyntax,
+	".lua": {lua: true},
 	".toml": {
 		double:     tripleEscaped,
 		single:     tripleRaw,
@@ -131,11 +133,11 @@ func langSyntaxForPath(path string) langSyntax {
 	return langSyntaxByExt[ext]
 }
 
-// followsFileStrings reports whether the language has triple-quoted strings
-// or fenced code blocks, whose state at an Edit's position is read from the
+// followsFileStrings reports whether the language has tracked multi-line
+// strings or fenced code blocks, whose state at an Edit's position is read from the
 // file on disk.
 func (s langSyntax) followsFileStrings() bool {
-	return s.python || s.markdown || s.double != tripleNone || s.single != tripleNone
+	return s.python || s.markdown || s.lua || s.double != tripleNone || s.single != tripleNone
 }
 
 // hasTripleQuote reports whether line holds three q bytes starting at i.
@@ -239,6 +241,12 @@ func scanSegment(
 	state stringState,
 	syntax langSyntax,
 ) (idx int, endState stringState, unspaced bool) {
+	if syntax.lua {
+		idx, endState = scanLua(line, state)
+
+		return idx, endState, false
+	}
+
 	if syntax.python {
 		return scanPython(line, state)
 	}
