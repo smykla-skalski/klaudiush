@@ -289,6 +289,42 @@ EOF
 				Expect(gitCmd.HasFlag("-m")).To(BeTrue())
 				Expect(gitCmd.ExtractBranchName()).To(Equal("renamed-branch"))
 			})
+
+			DescribeTable("keeps the upstream ref out of the positional arguments",
+				func(args []string, flag, upstream string, positional []string) {
+					gitCmd, err := parser.ParseGitCommand(parser.Command{Name: "git", Args: args})
+					Expect(err).NotTo(HaveOccurred())
+					Expect(gitCmd.HasFlag(flag)).To(BeTrue())
+					Expect(gitCmd.GetFlagValue(flag)).To(Equal(upstream))
+					Expect(gitCmd.Args).To(Equal(positional))
+				},
+				Entry("-u",
+					[]string{"branch", "-u", "origin/main"}, "-u", "origin/main", []string{}),
+				Entry("--set-upstream-to with separate value",
+					[]string{"branch", "--set-upstream-to", "origin/main"},
+					"--set-upstream-to", "origin/main", []string{}),
+				Entry("--set-upstream-to=",
+					[]string{"branch", "--set-upstream-to=origin/main"},
+					"--set-upstream-to", "origin/main", []string{}),
+				Entry("-u with a branch operand",
+					[]string{"branch", "-u", "origin/main", "feat/x"},
+					"-u", "origin/main", []string{"feat/x"}),
+				Entry("-u combined with another flag",
+					[]string{"branch", "-vu", "origin/main"}, "-u", "origin/main", []string{}),
+				Entry("-u glued to its value",
+					[]string{"branch", "-uorigin/main"}, "-u", "origin/main", []string{}),
+				Entry("-u after git -C",
+					[]string{"-C", "/repo", "branch", "-u", "origin/main"},
+					"-u", "origin/main", []string{}),
+			)
+
+			It("returns no branch name for an upstream change", func() {
+				cmd := parser.Command{Name: "git", Args: []string{"branch", "-u", "origin/main"}}
+
+				gitCmd, err := parser.ParseGitCommand(cmd)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(gitCmd.ExtractBranchName()).To(BeEmpty())
+			})
 		})
 
 		Context("with git switch command", func() {

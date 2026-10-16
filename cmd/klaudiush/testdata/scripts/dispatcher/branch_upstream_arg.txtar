@@ -1,0 +1,120 @@
+exec git init --initial-branch=main
+exec git config user.email "test@test.com"
+exec git config user.name "Test User"
+
+stdin rename-then-upstream.json
+exec klaudiush --hook-type PreToolUse
+! stdout 'deny'
+! stdout 'GIT020'
+
+stdin set-upstream-to.json
+exec klaudiush --hook-type PreToolUse
+! stdout 'deny'
+! stdout 'GIT020'
+
+stdin set-upstream-to-separate.json
+exec klaudiush --hook-type PreToolUse
+! stdout 'deny'
+! stdout 'GIT020'
+
+stdin upstream-with-git-dir.json
+exec klaudiush --hook-type PreToolUse
+! stdout 'deny'
+! stdout 'GIT020'
+
+stdin delete-remote-ref.json
+exec klaudiush --hook-type PreToolUse
+! stdout 'deny'
+! stdout 'GIT020'
+
+stdin checkout-invalid-type.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'GIT020'
+
+stdin switch-invalid-type.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'GIT020'
+
+stdin branch-invalid-type.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'GIT020'
+
+stdin branch-invalid-type-before-upstream.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'GIT020'
+
+-- rename-then-upstream.json --
+{
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "git branch -m feat/issue-63-launchd && git branch -u origin/main"
+  }
+}
+
+-- set-upstream-to.json --
+{
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "git branch --set-upstream-to=origin/main"
+  }
+}
+
+-- set-upstream-to-separate.json --
+{
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "git status; git branch --set-upstream-to origin/main | cat"
+  }
+}
+
+-- upstream-with-git-dir.json --
+{
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "git -C /tmp/repo -c core.pager=cat branch -u origin/main"
+  }
+}
+
+-- delete-remote-ref.json --
+{
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "git branch -d origin/old"
+  }
+}
+
+-- checkout-invalid-type.json --
+{
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "git checkout -b feature/x"
+  }
+}
+
+-- switch-invalid-type.json --
+{
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "git switch -c badtype/x"
+  }
+}
+
+-- branch-invalid-type.json --
+{
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "git branch newname"
+  }
+}
+
+-- branch-invalid-type-before-upstream.json --
+{
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "git branch badtype/x && git branch -u origin/main"
+  }
+}
