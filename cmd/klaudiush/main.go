@@ -589,8 +589,10 @@ func collectNotices(
 
 	var notices []string
 
-	if msg := bypassNotice(policy, hookCtx, log); msg != "" {
-		notices = append(notices, msg)
+	if cfg.Output.IsBypassReminderEnabled() {
+		if msg := bypassNotice(policy, hookCtx, log); msg != "" {
+			notices = append(notices, msg)
+		}
 	}
 
 	if msg := checkForUpdates(cfg, log); msg != "" {

@@ -216,5 +216,7 @@ enabled = true
 user_messages = true
 # Block and warning details (error code, fix hint, reference, disable hint)
 validation_messages = true
+# Reminder shown when validation runs without approval prompts
+bypass_reminder = true
 # Ask the agent to tell you in one short, plain sentence what was blocked
 agent_summary = true
