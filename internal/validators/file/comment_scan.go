@@ -307,9 +307,10 @@ const minFenceLen = 3
 // scanMarkdown is scanSegment for Markdown. A state other than stateCode is
 // the fence of the code block the line sits in. Fenced lines hold documentation
 // examples, and "#" starts a heading or is prose, so neither is a comment; the
-// only marker left is "//" in prose, outside code spans.
+// only marker left is "//" in prose, outside code spans. Blockquote markers
+// before a fence are skipped.
 func scanMarkdown(line string, state stringState) (int, stringState) {
-	trimmed := strings.TrimLeft(line, " \t")
+	trimmed := strings.TrimLeft(line, " \t>")
 
 	if state != stateCode {
 		if closesFence(trimmed, string(state)) {
