@@ -5,6 +5,16 @@ All notable changes to klaudiush will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.44.8](https://github.com/smykla-skalski/klaudiush/compare/v1.44.7...v1.44.8) (2026-10-16)
+
+### Bug Fixes
+
+* **deps:** update module charm.land/bubbletea/v2 to v2.1.0 ([#878](https://github.com/smykla-skalski/klaudiush/issues/878)) ([e8b1970](https://github.com/smykla-skalski/klaudiush/commit/e8b19703262161d1f2165959c955c5d02de9bc19))
+* **deps:** update module github.com/charmbracelet/x/ansi to v0.11.9 ([#877](https://github.com/smykla-skalski/klaudiush/issues/877)) ([d58ad56](https://github.com/smykla-skalski/klaudiush/commit/d58ad5634012b1ff09fca1e94b89ee834454359f))
+* **validators:** match git in command position ([#883](https://github.com/smykla-skalski/klaudiush/issues/883)) ([6ab952d](https://github.com/smykla-skalski/klaudiush/commit/6ab952dee28120c7f6e04b0718b47488cd944190))
+* **validators:** skip Markdown headings ([#881](https://github.com/smykla-skalski/klaudiush/issues/881)) ([fce15c7](https://github.com/smykla-skalski/klaudiush/commit/fce15c71c21d9ef504adcb49f191637dc27973df))
+* **validators:** skip upstream args in GIT020 ([#882](https://github.com/smykla-skalski/klaudiush/issues/882)) ([db1c90f](https://github.com/smykla-skalski/klaudiush/commit/db1c90fdc518d4ccf1a8a2e5a4ae668086df1032))
+
 ## [1.44.7](https://github.com/smykla-skalski/klaudiush/compare/v1.44.6...v1.44.7) (2026-10-16)
 
 ### Bug Fixes
