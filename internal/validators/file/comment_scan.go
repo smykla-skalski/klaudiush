@@ -62,6 +62,7 @@ type langSyntax struct {
 	comment    commentStyle
 	closeOnRun bool
 	python     bool
+	markdown   bool
 }
 
 // pythonSyntax is the syntax of Python sources, scanned by scanPython.
@@ -84,6 +85,13 @@ var langSyntaxByExt = map[string]langSyntax{
 		closeOnRun: true,
 	},
 }
+
+// markdownSyntax is the syntax of Markdown documents, scanned by
+// scanMarkdown. "#" opens a heading there, never a comment.
+var markdownSyntax = langSyntax{comment: commentSlash, markdown: true}
+
+// markdownExts lists the extensions read as Markdown.
+var markdownExts = map[string]bool{".md": true, ".markdown": true, ".mdx": true}
 
 // slashCommentSyntax is the syntax of languages whose only line comment is
 // "//" and that have no triple-quoted strings the scanner follows.
@@ -112,6 +120,10 @@ var slashCommentExts = map[string]bool{
 // langSyntaxForPath returns the comment and string syntax for path.
 func langSyntaxForPath(path string) langSyntax {
 	ext := strings.ToLower(filepath.Ext(path))
+	if markdownExts[ext] {
+		return markdownSyntax
+	}
+
 	if slashCommentExts[ext] {
 		return slashCommentSyntax
 	}
@@ -119,10 +131,11 @@ func langSyntaxForPath(path string) langSyntax {
 	return langSyntaxByExt[ext]
 }
 
-// followsFileStrings reports whether the language has triple-quoted strings,
-// whose state at an Edit's position is read from the file on disk.
+// followsFileStrings reports whether the language has triple-quoted strings
+// or fenced code blocks, whose state at an Edit's position is read from the
+// file on disk.
 func (s langSyntax) followsFileStrings() bool {
-	return s.python || s.double != tripleNone || s.single != tripleNone
+	return s.python || s.markdown || s.double != tripleNone || s.single != tripleNone
 }
 
 // hasTripleQuote reports whether line holds three q bytes starting at i.
@@ -230,6 +243,12 @@ func scanSegment(
 		return scanPython(line, state)
 	}
 
+	if syntax.markdown {
+		idx, endState = scanMarkdown(line, state)
+
+		return idx, endState, false
+	}
+
 	var quote byte
 
 	for i := 0; i < len(line); i++ {
@@ -280,6 +299,106 @@ func hashComment(line string, i int, state stringState) (int, stringState, bool)
 	}
 
 	return -1, state, true
+}
+
+// minFenceLen is the shortest run of backticks or tildes that fences code.
+const minFenceLen = 3
+
+// scanMarkdown is scanSegment for Markdown. A state other than stateCode is
+// the fence of the code block the line sits in. Fenced lines hold documentation
+// examples, and "#" starts a heading or is prose, so neither is a comment; the
+// only marker left is "//" in prose, outside code spans.
+func scanMarkdown(line string, state stringState) (int, stringState) {
+	trimmed := strings.TrimLeft(line, " \t")
+
+	if state != stateCode {
+		if closesFence(trimmed, string(state)) {
+			return -1, stateCode
+		}
+
+		return -1, state
+	}
+
+	if fence := opensFence(trimmed); fence != "" {
+		return -1, stringState(fence)
+	}
+
+	for i := 0; i < len(line); i++ {
+		switch {
+		case line[i] == '`':
+			i = skipCodeSpan(line, i)
+		case isCommentMarker(line, i, commentSlash):
+			return i, state
+		}
+	}
+
+	return -1, state
+}
+
+// opensFence returns the fence a trimmed line opens, or "" when it opens
+// none. The info string of a backtick fence cannot hold a backtick.
+func opensFence(trimmed string) string {
+	if trimmed == "" || (trimmed[0] != '`' && trimmed[0] != '~') {
+		return ""
+	}
+
+	run := fenceRun(trimmed)
+	if len(run) < minFenceLen || (run[0] == '`' && strings.Contains(trimmed[len(run):], "`")) {
+		return ""
+	}
+
+	return run
+}
+
+// closesFence reports whether a trimmed line closes fence: a run of the same
+// character at least as long, and nothing else but spaces.
+func closesFence(trimmed, fence string) bool {
+	run := fenceRun(trimmed)
+
+	return run != "" && run[0] == fence[0] && len(run) >= len(fence) &&
+		strings.TrimSpace(trimmed[len(run):]) == ""
+}
+
+// fenceRun returns the run of identical backticks or tildes at the start of s.
+func fenceRun(s string) string {
+	if s == "" || (s[0] != '`' && s[0] != '~') {
+		return ""
+	}
+
+	n := 1
+	for n < len(s) && s[n] == s[0] {
+		n++
+	}
+
+	return s[:n]
+}
+
+// skipCodeSpan returns the index of the last byte of the code span that opens
+// at line[i], or of its opening run when the span is never closed.
+func skipCodeSpan(line string, i int) int {
+	open := 1
+	for i+open < len(line) && line[i+open] == '`' {
+		open++
+	}
+
+	for j := i + open; j < len(line); j++ {
+		if line[j] != '`' {
+			continue
+		}
+
+		closing := 1
+		for j+closing < len(line) && line[j+closing] == '`' {
+			closing++
+		}
+
+		if closing == open {
+			return j + closing - 1
+		}
+
+		j += closing - 1
+	}
+
+	return i + open - 1
 }
 
 // Python frames. A string frame is pyFrame plus pyDouble, pyTriple,
