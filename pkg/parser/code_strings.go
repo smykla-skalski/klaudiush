@@ -180,9 +180,10 @@ func stringsUse(code string, lang codeLang) stringUse {
 		return stringsMayRun
 	}
 
-	// A program started beside a write may run the file it wrote.
+	// A program started beside a write may run the file it wrote, and git
+	// runs a hook the code writes.
 	if fileWriters.MatchString(benign) {
-		if strings.Contains(code, "subprocess") {
+		if strings.Contains(code, "subprocess") || strings.Contains(strings.ToLower(code), "hook") {
 			return stringsMayRun
 		}
 

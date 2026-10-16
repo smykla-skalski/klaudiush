@@ -135,5 +135,8 @@ var _ = Describe("Git validators on real hook payloads", func() {
 		Entry("a push in bash -c", "sh -c 'git push origin main'", "GIT026"),
 		Entry("a push after cd", "cd . && git push origin main", "GIT026"),
 		Entry("a push through sudo", "sudo git push origin main", "GIT026"),
+		Entry("a push with -C", "git -C . push origin main", "GIT026"),
+		Entry("a push through env", "env GIT_X=1 git push origin main", "GIT026"),
+		Entry("a push through xargs", "echo origin | xargs git push", "GIT026"),
 	)
 })

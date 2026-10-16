@@ -181,6 +181,8 @@ type parseState struct {
 
 	namesUnknown bool
 	arithmetic   bool
+	// unitCalls caches the commands of each shell text by othersRun.
+	unitCalls map[string][]unitCall
 }
 
 // spend takes one unit of work, reporting false once the budget is gone.

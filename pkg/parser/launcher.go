@@ -981,8 +981,40 @@ var argRunners = nameSet(`ssh mosh sshpass torsocks tmux screen byobu zellij par
 	setpriv capsh sandbox-exec nsjail arch taskset numactl chrt cpulimit strace ltrace
 	valgrind perf hyperfine op doppler aws-vault vault envchain dotenv dotenvx env-cmd
 	sops chamber infisical teller gtimeout gnice gnohup gstdbuf genv gxargs gsudo bundle
+	noglob nocorrect retry faketime taskpolicy lockf xcrun gum fd fdfind entr watchexec
+	nodemon distrobox toolbox apptainer singularity minikube steam-run rtk ts repeat
+	pueue foreman honcho nvm aqua devenv telepresence chpst envdir envconsul dtruss
+	launchctl dagger pee
 	bundler rbenv pyenv nodenv jenv goenv rvm chruby-exec ssh-agent gpg-agent
 	dbus-run-session xvfb-run proxychains proxychains4 tsocks`)
+
+// packageRunners run the package named by their first operand, handing it the
+// rest as arguments (npx cowsay git push); only a tracked first operand
+// (npx git push) or an option that names the command (npx -c 'git push')
+// runs one of the words.
+var packageRunners = nameSet("npx pnpx bunx uvx pipx")
+
+// packageCommandOptions name the command a package runner runs, or the
+// package that provides it.
+var packageCommandOptions = nameSet("-c --call -p --package --from")
+
+// packageRunnerRuns reports whether a package runner's arguments name a
+// command to run.
+func packageRunnerRuns(args []string) bool {
+	for _, arg := range args {
+		name, _, _ := strings.Cut(arg, "=")
+		if packageCommandOptions[name] {
+			return true
+		}
+	}
+
+	operands := skipOptions(args)
+	if len(operands) > 0 && operands[0] == "run" {
+		operands = operands[1:]
+	}
+
+	return len(operands) > 0 && launchesTracked(operands[0], operands[1:])
+}
 
 // dataSubcommands are the subcommands of an argument runner whose operands
 // belong to a task or script instead of naming a command to run: mise run
@@ -997,6 +1029,10 @@ var dataSubcommands = map[string]map[string]bool{
 // runsArguments reports whether cmd may run a command named among its
 // arguments, so scanLaunch has to look for one.
 func runsArguments(cmd Command) bool {
+	if packageRunners[cmd.Name] {
+		return packageRunnerRuns(cmd.Args)
+	}
+
 	if !argRunners[cmd.Name] && !mayRunContainers(cmd.Name) && !cmd.unplacedProgram {
 		return false
 	}
