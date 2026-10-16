@@ -20,6 +20,8 @@ const (
 	flagLowerC = "-c"
 )
 
+const flagSetUpstream = "-u"
+
 // Subcommands whose flag/argument handling needs special-casing.
 const (
 	subcmdCheckout = "checkout"
@@ -113,6 +115,11 @@ var (
 // positional argument rather than the first.
 var branchRenameCopyFlags = []string{"-m", "-M", "--move", flagLowerC, flagUpperC, "--copy"}
 
+// branchUpstreamFlags set the upstream of a "git branch" and consume the
+// upstream ref that follows ("-u origin/main", "--set-upstream-to origin/main"),
+// which names an existing ref rather than a new branch.
+var branchUpstreamFlags = []string{flagSetUpstream, "--set-upstream-to"}
+
 // branchCreationFlagsFor returns the branch-creation flags for subcommand, or nil
 // when it has none.
 func branchCreationFlagsFor(subcommand string) []string {
@@ -141,6 +148,10 @@ func flagTakesValue(flag, subcommand string) bool {
 		// old and new names are positional.
 		if slices.Contains(branchRenameCopyFlags, flag) {
 			return false
+		}
+
+		if slices.Contains(branchUpstreamFlags, flag) {
+			return true
 		}
 	case subcmdCommit:
 		if slices.Contains(commitReuseFlags, flag) || slices.Contains(commitSourceFlags, flag) {

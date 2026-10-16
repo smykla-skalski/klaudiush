@@ -476,6 +476,124 @@ var _ = Describe("BranchValidator", func() {
 		})
 	})
 
+	Describe("existing refs that are not new branch names", func() {
+		DescribeTable("passes when the argument names an existing ref",
+			func(command string) {
+				ctx.ToolInput.Command = command
+				result := v.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue(), result.Message)
+			},
+			Entry("reported command: rename then set upstream",
+				"git branch -m feat/issue-63-launchd && git branch -u origin/main"),
+			Entry("-u", "git branch -u origin/main"),
+			Entry("--set-upstream-to=", "git branch --set-upstream-to=origin/main"),
+			Entry("--set-upstream-to with separate value",
+				"git branch --set-upstream-to origin/main"),
+			Entry("-u with branch operand", "git branch -u origin/main fix/something"),
+			Entry("-u glued to its value", "git branch -uorigin/main"),
+			Entry("-u combined with another short flag", "git branch -vu origin/main"),
+			Entry("--unset-upstream", "git branch --unset-upstream"),
+			Entry("--unset-upstream with branch operand",
+				"git branch --unset-upstream fix/something"),
+			Entry("-d with a remote-style ref", "git branch -d origin/old"),
+			Entry("-D with an unconventional name", "git branch -D Old_Branch"),
+			Entry("--delete with several names", "git branch --delete origin/a origin/b"),
+			Entry("-d with -r", "git branch -dr origin/old"),
+			Entry("--list with a pattern", "git branch --list 'origin/*'"),
+			Entry("-l with a pattern", "git branch -l 'origin/*'"),
+			Entry("-v", "git branch -v"),
+			Entry("-a", "git branch -a"),
+			Entry("-r", "git branch -r"),
+			Entry("--contains with a commit", "git branch --contains origin/main"),
+			Entry("--merged with a ref", "git branch --merged origin/main"),
+			Entry("--no-merged with a ref", "git branch --no-merged origin/main"),
+			Entry("--points-at with a ref", "git branch --points-at origin/main"),
+			Entry("--show-current", "git branch --show-current"),
+			Entry("--edit-description", "git branch --edit-description"),
+			Entry("after &&", "git fetch origin && git branch -u origin/main"),
+			Entry("before &&", "git branch -u origin/main && git status"),
+			Entry("after ;", "git status; git branch -u origin/main"),
+			Entry("before a pipe", "git branch -u origin/main | cat"),
+			Entry("after a cd", "cd /repo && git branch -u origin/main"),
+			Entry("with git -C", "git -C /repo branch -u origin/main"),
+			Entry("with git -C and -c before the subcommand",
+				"git -C /repo -c core.pager=cat branch --set-upstream-to=origin/main"),
+			Entry("with --no-pager before the subcommand",
+				"git --no-pager branch -u origin/main"),
+			Entry("with --git-dir before the subcommand",
+				"git --git-dir /repo/.git branch --set-upstream-to origin/main"),
+			Entry("in a bash -c script", `bash -c "git branch -u origin/main"`),
+		)
+
+		DescribeTable("still blocks new names next to such commands",
+			func(command string) {
+				ctx.ToolInput.Command = command
+				result := v.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeFalse())
+			},
+			Entry("creation before set-upstream",
+				"git branch badtype/x && git branch -u origin/main"),
+			Entry("creation after set-upstream",
+				"git branch -u origin/main && git branch badtype/x"),
+			Entry("creation after a pipe",
+				"git branch -u origin/main | cat; git checkout -b badtype/x"),
+		)
+	})
+
+	Describe("branch creation forms", func() {
+		DescribeTable("blocks an invalid new name",
+			func(command, message string) {
+				ctx.ToolInput.Command = command
+				result := v.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeFalse())
+				Expect(result.Message).To(ContainSubstring(message))
+			},
+			Entry("checkout -b", "git checkout -b feature/x", "Invalid branch type"),
+			Entry("checkout --branch", "git checkout --branch feature/x", "Invalid branch type"),
+			Entry("switch -c", "git switch -c badtype/x", "Invalid branch type"),
+			Entry("switch --create", "git switch --create badtype/x", "Invalid branch type"),
+			Entry("switch -C", "git switch -C badtype/x", "Invalid branch type"),
+			Entry("branch name only", "git branch newname", "type/description"),
+			Entry("branch name with invalid type", "git branch badtype/x", "Invalid branch type"),
+			Entry("branch name with start point",
+				"git branch badtype/x origin/main", "Invalid branch type"),
+			Entry("branch with -f", "git branch -f badtype/x origin/main", "Invalid branch type"),
+			Entry("branch with --force",
+				"git branch --force badtype/x origin/main", "Invalid branch type"),
+			Entry("branch with --track",
+				"git branch --track badtype/x origin/main", "Invalid branch type"),
+			Entry("branch with --track=direct",
+				"git branch --track=direct badtype/x origin/main", "Invalid branch type"),
+			Entry("branch with -t", "git branch -t badtype/x origin/main", "Invalid branch type"),
+			Entry("branch with --no-track",
+				"git branch --no-track badtype/x origin/main", "Invalid branch type"),
+			Entry("branch with -q", "git branch -q badtype/x", "Invalid branch type"),
+			Entry("branch with git -C", "git -C /repo branch badtype/x", "Invalid branch type"),
+			Entry("checkout with git -C and -c",
+				"git -C /repo -c core.pager=cat checkout -b badtype/x", "Invalid branch type"),
+			Entry("branch with --no-pager",
+				"git --no-pager branch badtype/x", "Invalid branch type"),
+			Entry("branch after &&",
+				"git fetch origin && git branch badtype/x", "Invalid branch type"),
+			Entry("branch after ;", "git status; git branch badtype/x", "Invalid branch type"),
+			Entry("branch with uppercase", "git branch Feat/x", "lowercase"),
+		)
+
+		DescribeTable("passes a valid new name",
+			func(command string) {
+				ctx.ToolInput.Command = command
+				result := v.Validate(context.Background(), ctx)
+				Expect(result.Passed).To(BeTrue(), result.Message)
+			},
+			Entry("checkout -b", "git checkout -b feat/x"),
+			Entry("switch -c", "git switch -c fix/x origin/main"),
+			Entry("branch with start point", "git branch feat/x origin/main"),
+			Entry("branch with --track", "git branch --track feat/x origin/main"),
+			Entry("branch with -f", "git branch -f feat/x HEAD~1"),
+			Entry("branch with git -C", "git -C /repo branch feat/x"),
+		)
+	})
+
 	Describe("chained commands", func() {
 		It("should validate branch in chained command", func() {
 			ctx.ToolInput.Command = "git fetch upstream && git checkout -b feat/new-feature"

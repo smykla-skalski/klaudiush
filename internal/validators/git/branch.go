@@ -78,6 +78,15 @@ var (
 	}
 )
 
+// branchExistingRefFlags put git branch in upstream or description mode, where
+// the arguments are existing refs (an upstream like origin/main, or the branch
+// to configure), never a new branch name.
+var branchExistingRefFlags = []string{
+	"-u", "--set-upstream-to",
+	"--unset-upstream",
+	"--edit-description",
+}
+
 // getProtectedBranches returns the list of protected branches
 func (v *BranchValidator) getProtectedBranches() []string {
 	if v.config != nil && len(v.config.ProtectedBranches) > 0 {
@@ -175,9 +184,13 @@ func (v *BranchValidator) validateCheckout(gitCmd *parser.GitCommand) *validator
 }
 
 // validateBranch validates git branch commands that create new branches.
-// Skips validation for delete operations and query/list operations.
+// Skips validation for delete, upstream and query/list operations.
 func (v *BranchValidator) validateBranch(gitCmd *parser.GitCommand) *validator.Result {
 	if hasAnyFlag(gitCmd, branchDeleteFlags) {
+		return nil
+	}
+
+	if hasAnyFlag(gitCmd, branchExistingRefFlags) {
 		return nil
 	}
 
