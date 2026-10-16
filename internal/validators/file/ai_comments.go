@@ -19,30 +19,36 @@ import (
 // filler. Idiomatic doc comments open with the identifier name and useful
 // comments open with a reason ("why"), so neither trips these patterns; only
 // the "verb-first narration of what the next line does" style does.
-var defaultAICommentPatterns = []string{
-	// A comment opening (optionally after "the"/"a") with a verb whose only
-	// job is to describe the mechanics of the following statement.
-	`(?i)((^\s*|\s)(//|#)|--(?:\[=*\[)?)\s*(the\s+|a\s+|an\s+)?` +
-		`(initiali[sz]|set|reset|get|loop|iterate|check|return|` +
-		`creat|mak|build|construct|instantiat|` +
-		`call|invok|execut|run|increment|decrement|` +
-		`add|append|prepend|insert|push|` +
-		`remov|delet|clear|pop|drop|updat|modif|chang|` +
-		`handl|process|pars|format|convert|encod|decod|` +
-		`serializ|deserializ|marshal|unmarshal|comput|calculat|` +
-		`assign|declar|defin|configur|register|setup|` +
-		`open|clos|read|writ|load|sav|stor|fetch|send|receiv|` +
-		`wait|start|stop|begin|print|log|output|emit|dispatch|` +
-		`render|draw|filter|sort|find|search|count|` +
-		`validat|verif|ensur|sanitiz|normaliz|` +
-		`copy|mov|renam|split|join|trim|replac|compar|` +
-		`toggl|enabl|disabl|mark|lock|bind|connect)` +
-		`(e|es|ed|d|s|ing|ping|ting|ning|ling|ging|ies|ied|y)?\b`,
-	// "This function/method/... does/is/handles/..." restatements.
-	`(?i)((^\s*|\s)(//|#)|--(?:\[=*\[)?)\s*this\s+(function|method|class|struct|interface|type|` +
-		`variable|field|constant|value|helper|wrapper|package)\s+` +
-		`(does|is|are|will|handles?|returns?|sets?|gets?|` +
-		`represents?|holds?|stores?|contains?|provides?)\b`,
+var defaultAICommentPatterns = aiCommentPatterns(`(^\s*|\s)(//|#)`)
+
+var luaAICommentPatterns = aiCommentPatterns(`--(?:\[=*\[)?`)
+
+func aiCommentPatterns(marker string) []string {
+	return []string{
+		// A comment opening (optionally after "the"/"a") with a verb whose only
+		// job is to describe the mechanics of the following statement.
+		`(?i)` + marker + `\s*(the\s+|a\s+|an\s+)?` +
+			`(initiali[sz]|set|reset|get|loop|iterate|check|return|` +
+			`creat|mak|build|construct|instantiat|` +
+			`call|invok|execut|run|increment|decrement|` +
+			`add|append|prepend|insert|push|` +
+			`remov|delet|clear|pop|drop|updat|modif|chang|` +
+			`handl|process|pars|format|convert|encod|decod|` +
+			`serializ|deserializ|marshal|unmarshal|comput|calculat|` +
+			`assign|declar|defin|configur|register|setup|` +
+			`open|clos|read|writ|load|sav|stor|fetch|send|receiv|` +
+			`wait|start|stop|begin|print|log|output|emit|dispatch|` +
+			`render|draw|filter|sort|find|search|count|` +
+			`validat|verif|ensur|sanitiz|normaliz|` +
+			`copy|mov|renam|split|join|trim|replac|compar|` +
+			`toggl|enabl|disabl|mark|lock|bind|connect)` +
+			`(e|es|ed|d|s|ing|ping|ting|ning|ling|ging|ies|ied|y)?\b`,
+		// "This function/method/... does/is/handles/..." restatements.
+		`(?i)` + marker + `\s*this\s+(function|method|class|struct|interface|type|` +
+			`variable|field|constant|value|helper|wrapper|package)\s+` +
+			`(does|is|are|will|handles?|returns?|sets?|gets?|` +
+			`represents?|holds?|stores?|contains?|provides?)\b`,
+	}
 }
 
 // aiGenericDocComment matches doc comments that avoid the declaration name and
@@ -166,8 +172,9 @@ func commentBody(line string, idx int) string {
 // mode it blocks only comments matching the configured patterns.
 type AICommentValidator struct {
 	validator.BaseValidator
-	config   *config.AICommentValidatorConfig
-	patterns []*regexp.Regexp
+	config      *config.AICommentValidatorConfig
+	patterns    []*regexp.Regexp
+	luaPatterns []*regexp.Regexp
 }
 
 // NewAICommentValidator creates a new AICommentValidator.
@@ -182,6 +189,11 @@ func NewAICommentValidator(
 	}
 
 	v.patterns = compilePatterns(log, "AI comment", v.getPatterns())
+
+	v.luaPatterns = v.patterns
+	if cfg == nil || len(cfg.Patterns) == 0 {
+		v.luaPatterns = compilePatterns(log, "Lua AI comment", luaAICommentPatterns)
+	}
 
 	return v
 }
@@ -218,12 +230,19 @@ func (v *AICommentValidator) Validate(
 
 	cov := fileCoverage(hookCtx, false)
 
+	scan := newCommentScan(hookCtx)
+
+	patterns := v.patterns
+	if scan.syntax.lua {
+		patterns = v.luaPatterns
+	}
+
 	violations := findAICommentViolations(
 		content,
-		v.patterns,
+		patterns,
 		strict,
 		allowTestPhaseMarkers,
-		newCommentScan(hookCtx),
+		scan,
 	)
 	if len(violations) == 0 {
 		return cov.mark(validator.Pass())

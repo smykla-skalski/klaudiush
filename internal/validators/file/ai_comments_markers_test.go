@@ -149,6 +149,26 @@ var _ = Describe("AICommentValidator in languages where # is code", func() {
 			Expect(result.Passed).To(BeTrue(), result.Message)
 		},
 		Entry("c define", "/repo/src/main.c", "#define SET_LIMIT 10"),
+		Entry(
+			"python prose containing Lua syntax",
+			"/repo/app.py",
+			"# Preserve CLI syntax: -- Set value",
+		),
+		Entry(
+			"shell prose containing Lua syntax",
+			"/repo/app.sh",
+			"# Preserve CLI syntax: -- Set value",
+		),
+		Entry(
+			"TOML prose containing Lua syntax",
+			"/repo/app.toml",
+			"# Preserve CLI syntax: -- Set value",
+		),
+		Entry(
+			"JavaScript prose containing Lua syntax",
+			"/repo/app.js",
+			"// Preserve CLI syntax: -- Set value",
+		),
 		Entry("c define with a why comment", "/repo/src/main.c",
 			"#define CAP 10 // matches the kernel limit"),
 		Entry("typescript private members named after verbs", "/repo/src/counter.ts",
