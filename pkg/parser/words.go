@@ -522,6 +522,10 @@ func (w *astWalker) launchedFrom(cmd, followed Command, function bool) launch {
 	launches := launched
 	if function {
 		launches = functionLaunch
+	} else if w.defined(cmd.Invoked) {
+		// A function or alias the line may not have defined leaves a program
+		// of that name to run, which can run what it is handed.
+		cmd.unplacedProgram = true
 	}
 
 	l := launches(cmd)

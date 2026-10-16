@@ -88,6 +88,10 @@ type Command struct {
 	lookedUpDir   string
 	unconditional bool
 	isolated      bool
+	// unplacedProgram marks a command a runner reached by scanning its
+	// arguments, without telling which word is the program (a container or
+	// pod name sits before it), so its own arguments are scanned for one.
+	unplacedProgram bool
 }
 
 // wordQuoting records how the words that rendered to one argument were

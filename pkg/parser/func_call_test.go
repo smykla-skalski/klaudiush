@@ -117,10 +117,7 @@ var _ = Describe("Calls to a function defined on the line", func() {
 		Entry("a definition in an if", `if x; then t(){ :; }; fi; t "git push --force"`),
 		Entry("a definition in a loop", `for i in 1; do t(){ :; }; done; t "git push --force"`),
 		Entry("a definition in a pipeline", `t(){ :; } | cat; t "git push --force"`),
-		Entry("a definition in a subshell", `( t(){ :; } ); t "git push --force"`),
 		Entry("a definition in the background", `t(){ :; } & t "git push --force"`),
-		Entry("a definition in a command substitution",
-			`x=$(t(){ :; }); t "git push --force"`),
 		Entry("after unset -f", `t(){ :; }; unset -f t; t "git push --force"`),
 		Entry("after unset", `t(){ :; }; unset t; t "git push --force"`),
 		Entry("after an unset of an unknown name", `t(){ :; }; unset "$n"; t "git push --force"`),
@@ -158,6 +155,17 @@ var _ = Describe("Calls to a function defined on the line", func() {
 		Entry("through command", `t(){ :; }; command t "git push --force"`),
 		Entry("through env", `t(){ :; }; env t "git push --force"`),
 		Entry("inside bash -c", `t(){ :; }; bash -c 't "git push --force"'`),
+	)
+
+	DescribeTable(
+		"reads the arguments of a name the shell never defined as data",
+		func(command string) {
+			Expect(gitLines(parse(command))).To(BeEmpty(), command)
+		},
+		Entry("a definition in a subshell", `( t(){ :; } ); t "git push --force"`),
+		Entry("a definition in a command substitution",
+			`x=$(t(){ :; }); t "git push --force"`),
+		Entry("a name never defined", `t "git push --force"`),
 	)
 
 	DescribeTable("keeps the quoting of the function body",

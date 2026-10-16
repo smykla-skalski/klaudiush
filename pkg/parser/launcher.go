@@ -264,7 +264,10 @@ func launched(cmd Command) launch {
 		return l
 	}
 
-	l := scanLaunch(cmd)
+	var l launch
+	if runsArguments(cmd) {
+		l = scanLaunch(cmd)
+	}
 
 	// A program given by path may be a script whose commands would otherwise
 	// run unseen.
@@ -962,6 +965,87 @@ func findExecCommands(cmd Command) []Command {
 	return cmds
 }
 
+// argRunners are the programs, besides launchers, shells and interpreters,
+// that run a command named among their own arguments: remote and multiplexed
+// shells, container and VM runners, tool and environment managers, sandboxes,
+// secret injectors and command wrappers. A git or gh word among the arguments
+// of any other program is data (zakwas propose add-permission deny 'git
+// push'), however it is spelled, so the arguments of other programs are not
+// scanned for a command line.
+var argRunners = nameSet(`ssh mosh sshpass torsocks tmux screen byobu zellij parallel
+	script expect gdb lldb sg newgrp runuser pkexec chroot nsenter unshare systemd-run
+	xterm ansible pdsh pssh clush rlwrap ifne mise rtx asdf direnv devbox flox nix
+	nix-shell nix-develop npm pnpm yarn bun uv poetry pdm rye hatch
+	conda mamba micromamba pixi volta fnm kubectl oc gcloud limactl lima orb colima
+	multipass vagrant lxc incus ctr wsl devcontainer act fakeroot bwrap firejail proot
+	setpriv capsh sandbox-exec nsjail arch taskset numactl chrt cpulimit strace ltrace
+	valgrind perf hyperfine op doppler aws-vault vault envchain dotenv dotenvx env-cmd
+	sops chamber infisical teller gtimeout gnice gnohup gstdbuf genv gxargs gsudo bundle
+	noglob nocorrect retry faketime taskpolicy lockf xcrun gum fd fdfind entr watchexec
+	nodemon distrobox toolbox apptainer singularity minikube steam-run rtk ts repeat
+	pueue foreman honcho nvm aqua devenv telepresence chpst envdir envconsul dtruss
+	launchctl dagger pee
+	bundler rbenv pyenv nodenv jenv goenv rvm chruby-exec ssh-agent gpg-agent
+	dbus-run-session xvfb-run proxychains proxychains4 tsocks`)
+
+// packageRunners run the package named by their first operand, handing it the
+// rest as arguments (npx cowsay git push); only a tracked first operand
+// (npx git push) or an option that names the command (npx -c 'git push')
+// runs one of the words.
+var packageRunners = nameSet("npx pnpx bunx uvx pipx")
+
+// packageCommandOptions name the command a package runner runs, or the
+// package that provides it.
+var packageCommandOptions = nameSet("-c --call -p --package --from")
+
+// packageRunnerRuns reports whether a package runner's arguments name a
+// command to run.
+func packageRunnerRuns(args []string) bool {
+	for _, arg := range args {
+		name, _, _ := strings.Cut(arg, "=")
+		if packageCommandOptions[name] {
+			return true
+		}
+	}
+
+	operands := skipOptions(args)
+	if len(operands) > 0 && operands[0] == "run" {
+		operands = operands[1:]
+	}
+
+	return len(operands) > 0 && launchesTracked(operands[0], operands[1:])
+}
+
+// dataSubcommands are the subcommands of an argument runner whose operands
+// belong to a task or script instead of naming a command to run: mise run
+// test -- git push hands "git push" to the task.
+var dataSubcommands = map[string]map[string]bool{
+	"mise": nameSet("run r tasks"),
+	"npm":  nameSet("run run-script test"),
+	"pnpm": nameSet("run test"),
+	"yarn": nameSet("run test"),
+}
+
+// runsArguments reports whether cmd may run a command named among its
+// arguments, so scanLaunch has to look for one.
+func runsArguments(cmd Command) bool {
+	if packageRunners[cmd.Name] {
+		return packageRunnerRuns(cmd.Args)
+	}
+
+	if !argRunners[cmd.Name] && !mayRunContainers(cmd.Name) && !cmd.unplacedProgram {
+		return false
+	}
+
+	if skipped := dataSubcommands[cmd.Name]; skipped != nil {
+		if rest := skipOptions(cmd.Args); len(rest) > 0 && skipped[rest[0]] {
+			return false
+		}
+	}
+
+	return true
+}
+
 // maxScannedRunners bounds the container runner names scanLaunch checks,
 // each a pass over the rest of the arguments. Past it the next one is
 // followed as a command, where the work budget applies.
@@ -989,8 +1073,11 @@ func scanLaunch(cmd Command) launch {
 
 		if runners > maxScannedRunners || launchesTracked(arg, rest) ||
 			(i > 0 && runsScriptPath(cmd.Args[i-1], arg)) {
+			child := childCommand(cmd, arg, rest)
+			child.unplacedProgram = true
+
 			return launch{commands: append(
-				[]Command{childCommand(cmd, arg, rest)},
+				[]Command{child},
 				afterDirectoryOperand(cmd, arg, rest)...,
 			)}
 		}
@@ -1244,5 +1331,6 @@ func childCommand(parent Command, name string, args []string) Command {
 		stdinText:        parent.stdinText,
 		quoting:          parent.quoting,
 		isolated:         parent.isolated,
+		unplacedProgram:  parent.unplacedProgram,
 	}
 }
