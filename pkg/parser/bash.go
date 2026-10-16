@@ -83,6 +83,7 @@ func (p *BashParser) Parse(command string) (*ParseResult, error) {
 
 	// Walk the AST to extract commands and file operations
 	walker := newAstWalker(p.resolver)
+	walker.unit = command
 
 	for _, stmt := range file.Stmts {
 		walker.walkStmt(stmt)

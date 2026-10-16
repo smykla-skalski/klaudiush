@@ -21,6 +21,10 @@ type astWalker struct {
 	// command output, so it is unknown until the command runs.
 	dynamicWrites    int
 	dynamicWriteLocs []Location
+	// unit is the shell text this walker walks, and launchedAt the place in
+	// its parent's unit of the command that ran it.
+	unit       string
+	launchedAt Location
 	// parent is the walker of the script that runs this one. What it recorded
 	// earlier on the line (writes, git config) is in place when this runs.
 	parent     *astWalker

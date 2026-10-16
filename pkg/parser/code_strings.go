@@ -21,18 +21,24 @@ const (
 // hand one to something that does: a shell call (os.system, popen,
 // shell=True, exec, spawn, getstatusoutput), code run from a string (eval,
 // compile, Function), a name looked up at run time (getattr,
-// globalThis[...], sys.modules), a file written and maybe run later (write,
-// FileHandler, inplace) or an environment variable git or a shell may run
-// (GIT_EDITOR, BASH_ENV). It is matched case-insensitively, after
+// globalThis[...], sys.modules) or an environment variable git or a shell
+// may run (GIT_EDITOR, BASH_ENV). It is matched case-insensitively, after
 // benignCalls are removed, and deliberately loose: a false match only keeps
 // reading every string.
 var stringRunners = regexp.MustCompile(
 	`(?i)system|popen|\bshell\b|_shell|shell_|exec|eval|spawn|getattr|(?:^|[^\w.])compile\s*\(|runpy|` +
 		`getstatusoutput|startfile|\bfunction\s*\(|\bcommand\s*\(|` +
-		`write|chmod|symlink|appendfile|copyfile|dump\s*\(|o_wronly|o_rdwr|o_creat|o_append|` +
-		`\bopen\s*\([^)]*,\s*(?:mode\s*=\s*)?["'][^"']*[wax+]|\.open\s*\(\s*["'][wax+][bt+]*["']|` +
 		`environ|\benv\b|globalthis|\bglobal\s*\[|mainmodule|process\.binding|dlopen|` +
-		`sys\.modules|attrgetter|methodcaller|__getattribute__|filehandler|inplace|filename\s*=`,
+		`sys\.modules|attrgetter|methodcaller|__getattribute__`,
+)
+
+// fileWriters matches code that writes a file (write, dump, open for
+// writing, a log file handler, in-place editing). A string it writes runs
+// only if something runs the file afterwards.
+var fileWriters = regexp.MustCompile(
+	`(?i)write|chmod|symlink|appendfile|copyfile|dump\s*\(|o_wronly|o_rdwr|o_creat|o_append|` +
+		`\bopen\s*\([^)]*,\s*(?:mode\s*=\s*)?["'][^"']*[wax+]|\.open\s*\(\s*["'][wax+][bt+]*["']|` +
+		`filehandler|inplace|filename\s*=`,
 )
 
 // benignCalls drops reads and writes stringRunners would otherwise match
@@ -129,31 +135,61 @@ var pythonModules = nameSet(`__future__ abc argparse array ast asyncio base64 bi
 var jsModules = nameSet(`assert buffer crypto events fs fs/promises os path
 	process readline stream string_decoder timers url util zlib`)
 
-// stringsRun reports whether Python or JavaScript source may run one of its
-// plain strings as a command line: it calls something stringRunners
-// matches, starts a program klaudiush cannot name or one that runs
-// commands it is handed, or loads a module klaudiush does not know, whose
-// functions may run what they are handed. Otherwise its strings are data
-// (labels, messages, payloads) and only argv lists can start a command.
-func stringsRun(code string, lang codeLang) bool {
+// stringUse says what Python or JavaScript source may do with its plain
+// strings.
+type stringUse int
+
+const (
+	// stringsAreData: labels, messages and payloads. Only argv lists can
+	// start a command.
+	stringsAreData stringUse = iota
+	// stringsAreWritten: the code writes files but starts no program, so a
+	// string it writes runs only if another command runs that file.
+	stringsAreWritten
+	// stringsMayRun: the code may run a plain string as a command line.
+	stringsMayRun
+)
+
+// stringsUse reports what Python or JavaScript source may do with its plain
+// strings: it calls something stringRunners matches, starts a program
+// klaudiush cannot name or one that runs commands it is handed, or loads a
+// module klaudiush does not know, whose functions may run what they are
+// handed (stringsMayRun). Code that only writes files (stringsAreWritten)
+// makes them command lines when the line runs something else after it.
+// Otherwise its strings are data and only argv lists can start a command.
+func stringsUse(code string, lang codeLang) stringUse {
 	if strings.HasPrefix(code, "#!") {
 		_, code, _ = strings.Cut(code, "\n")
 	}
 
-	if lang == langOther || codeUnsafe(code) ||
-		stringRunners.MatchString(benignCalls.Replace(code)) {
-		return true
+	benign := benignCalls.Replace(code)
+
+	if lang == langOther || codeUnsafe(code) || stringRunners.MatchString(benign) {
+		return stringsMayRun
 	}
 
 	if lang == langJavaScript && jsRunners.MatchString(code) {
-		return true
+		return stringsMayRun
 	}
 
 	if lang == langPython && (subprocessHidden(code) || spawnRunsStrings(code)) {
-		return true
+		return stringsMayRun
 	}
 
-	return unknownModule(code, lang)
+	if unknownModule(code, lang) {
+		return stringsMayRun
+	}
+
+	// A program started beside a write may run the file it wrote.
+	if fileWriters.MatchString(benign) {
+		if strings.Contains(code, "subprocess") {
+			return stringsMayRun
+		}
+
+		return stringsAreWritten
+	}
+
+	return stringsAreData
 }
 
 // subprocessHidden reports whether Python source uses the subprocess module

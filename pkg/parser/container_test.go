@@ -103,8 +103,8 @@ var _ = Describe("Container --entrypoint", func() {
 			"OPTS=--rm; docker run $OPTS --entrypoint git img push --force"),
 		Entry("a quoted variable with spaces as an option value",
 			`V="A=1 B"; docker run -e "$V" --entrypoint git img push --force`),
-		Entry("an unknown runner with a line variable",
-			`X="--entrypoint git"; foo docker run $X img push --force`),
+		Entry("a runner with a line variable",
+			`X="--entrypoint git"; mise exec -- docker run $X img push --force`),
 		Entry("a quoted single compose word",
 			`docker compose run --entrypoint "'python3'" svc -c `+
 				`"__import__('os').system('git push --force')"`),

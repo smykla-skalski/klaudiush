@@ -83,7 +83,7 @@ var _ = Describe("Container exec", func() {
 		Entry("a shell in the container", `docker exec c sh -c 'git push'`, "git push"),
 		Entry("nested exec", "docker exec c docker exec d git push", "git push"),
 		Entry("under sudo", "sudo docker exec c git push", "git push"),
-		Entry("under an unknown runner", "foo docker exec c git push", "git push"),
+		Entry("under a runner", "mise exec -- docker exec c git push", "git push"),
 		Entry("inside a script line", `tmux new 'docker exec c git push'`, "git push"),
 		Entry("a container from the line", "C=web; docker exec $C git push", "git push"),
 		Entry("a container from the environment", `docker exec "$CTR" git push`, "git push"),
@@ -117,7 +117,7 @@ var _ = Describe("Container exec", func() {
 		Entry("a container named git after a valued option",
 			"docker exec -u root git echo push", "echo"),
 		Entry("a container named exec", "docker exec 'exec' echo git push", "echo"),
-		Entry("under an unknown runner", "foo docker exec c echo git push", "echo"),
+		Entry("under a runner", "mise exec -- docker exec c echo git push", "echo"),
 		Entry("a container from the line", "C=web; docker exec $C echo git push", "echo"),
 	)
 

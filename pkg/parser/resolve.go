@@ -1115,11 +1115,21 @@ func (w *astWalker) followFile(
 // print and log calls cannot pipe their own output into a program, and only
 // when nothing on the line routes output to another command. For the same
 // reason a plain string there is a command line only when the code can run
-// one (see stringsRun): a label or a fragment passed to str.replace is data.
+// one (see stringsUse): a label or a fragment passed to str.replace is data.
 func (w *astWalker) followCode(cmd Command, code string, depth int, sw scriptWalk) {
 	lang := codeLanguage(cmd, code)
 	proseAllowed := !w.state.outputRouted && lang != langOther
-	plain := !proseAllowed || stringsRun(code, lang)
+	plain := !proseAllowed
+
+	if !plain {
+		switch stringsUse(code, lang) {
+		case stringsMayRun:
+			plain = true
+		case stringsAreWritten:
+			plain = w.othersRun(cmd)
+		case stringsAreData:
+		}
+	}
 
 	for _, line := range commandLines(code, plain) {
 		lineWalk := sw
@@ -1278,6 +1288,8 @@ func (w *astWalker) walkScript(script string, parent Command, depth int, sw scri
 		child.restoreDirectory(w.directoryState())
 	}
 
+	child.unit = script
+	child.launchedAt = parent.Location
 	child.literal = sw.literal
 	child.prose = sw.prose
 	child.distrust = w.distrust || !sameShell

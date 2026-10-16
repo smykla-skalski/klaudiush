@@ -151,8 +151,6 @@ var _ = Describe("Plain strings in interpreter code", func() {
 		Entry("a script written and run",
 			`python3 -c 'import pathlib, subprocess; pathlib.Path("/tmp/h").`+
 				`write_text("git zz"); subprocess.run(["/tmp/h"])'`),
-		Entry("a JSON dump into a file",
-			`python3 -c 'import json; json.dump("git zz", open("/tmp/h", "a"))'`),
 		Entry("an editor variable git runs",
 			`python3 -c 'import os, subprocess; os.environ["GIT_EDITOR"] = "git zz"; `+
 				`subprocess.run(["git", "commit"])'`),
@@ -205,8 +203,6 @@ var _ = Describe("Plain strings in interpreter code", func() {
 			`python3 -c 'import subprocess; subprocess.run(["hyperfine", "git zz"])'`),
 		Entry("a python-shebang file run by bash", "bash /s/shebang.py"),
 		Entry("a python-shebang file sourced", "source /s/shebang.py"),
-		Entry("a log file handler",
-			`python3 -c 'import logging; logging.FileHandler("/tmp/h"); logging.info("git zz")'`),
 		Entry("a make clone fed on stdin",
 			`python3 -c 'import subprocess; subprocess.run(["gmake", "-f", "-"], input="git zz")'`),
 		Entry("a comment inside the argv",
@@ -215,10 +211,6 @@ var _ = Describe("Plain strings in interpreter code", func() {
 		Entry(
 			"an escaped quote inside the argv",
 			`python3 -c 'import subprocess; subprocess.run(["/opt/w", "a\"b", "bash"], input="git zz")'`,
-		),
-		Entry(
-			"a yaml dump into a path opened for writing",
-			`python3 -c 'import yaml, pathlib; yaml.safe_dump("git zz", pathlib.Path("/s/x").open("w"))'`,
 		),
 		Entry(
 			"a command string a git subcommand runs",
@@ -232,6 +224,61 @@ var _ = Describe("Plain strings in interpreter code", func() {
 		),
 		Entry("a remote shell fed on stdin",
 			`python3 -c 'import subprocess; subprocess.run(["oc", "rsh", "pod"], input="git zz")'`),
+	)
+
+	DescribeTable(
+		"reads a string the code only writes to a file as data",
+		func(command string) {
+			result := parse(command)
+			Expect(result.Truncated).To(BeFalse(), "truncated %q: %v", command, result.Opacities)
+			Expect(result.GitOperations).To(BeEmpty(), "git found in %q", command)
+		},
+		Entry("a JSON dump into a file",
+			`python3 -c 'import json; json.dump("git zz", open("/tmp/h", "a"))'`),
+		Entry("a log file handler",
+			`python3 -c 'import logging; logging.FileHandler("/tmp/h"); logging.info("git zz")'`),
+		Entry(
+			"a yaml dump into a path opened for writing",
+			`python3 -c 'import yaml, pathlib; yaml.safe_dump("git zz", pathlib.Path("/s/x").open("w"))'`,
+		),
+		Entry("a text file written with pathlib",
+			"python3 - <<'PY'\nfrom pathlib import Path\n"+
+				"Path('fixture.txt').write_text('git -C repo commit -qm fresh\\n')\nPY"),
+		Entry("a file written with open",
+			`python3 -c 'open("notes.txt", "w").write("git commit -m x")'`),
+		Entry("a file written by node",
+			"node - <<'JS'\nrequire('fs').writeFileSync('f.txt', 'git commit -m x')\nJS"),
+		Entry("followed by commands that run no file",
+			`python3 -c 'open("n.txt", "w").write("git commit -m x")' && cat n.txt && ls -l`),
+		Entry("behind a launcher",
+			`sudo python3 -c 'open("n.txt", "w").write("git commit -m x")'`),
+		Entry("inside bash -c",
+			`bash -c 'python3 -c "open(\"n.txt\", \"w\").write(\"git commit -m x\")"'`),
+	)
+
+	DescribeTable(
+		"still reads a string the code writes when another command may run the file",
+		func(command string) {
+			Expect(parse(command).Truncated).To(BeTrue(), "not truncated: %q", command)
+		},
+		Entry("a JSON dump, then the file run",
+			`python3 -c 'import json; json.dump("git zz", open("/tmp/h", "a"))' && bash /tmp/h`),
+		Entry("a write, then the file run by path",
+			`python3 -c 'open("/tmp/h", "w").write("git zz")'; /tmp/h`),
+		Entry("a write, then the file sourced",
+			`python3 -c 'open("/tmp/h", "w").write("git zz")'; source /tmp/h`),
+		Entry("a write, then another interpreter",
+			`python3 -c 'open("/tmp/h.py", "w").write("git zz")'; python3 /tmp/h.py`),
+		Entry("a write, then a runner that may run it",
+			`python3 -c 'open("/tmp/h", "w").write("git zz")'; mise exec -- /tmp/h`),
+		Entry("a write, then a program from a variable",
+			`python3 -c 'open("/tmp/h", "w").write("git zz")'; "$RUNNER" /tmp/h`),
+		Entry("a write inside bash -c, then the file run outside",
+			`bash -c 'python3 -c "open(\"/tmp/h\", \"w\").write(\"git zz\")"' && bash /tmp/h`),
+		Entry(
+			"a write beside a spawned program",
+			`python3 -c 'import subprocess; open("/tmp/h", "w").write("git zz"); subprocess.run(["/tmp/h"])'`,
+		),
 	)
 
 	DescribeTable(
