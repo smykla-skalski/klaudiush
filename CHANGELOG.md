@@ -5,6 +5,12 @@ All notable changes to klaudiush will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.44.9](https://github.com/smykla-skalski/klaudiush/compare/v1.44.8...v1.44.9) (2026-10-16)
+
+### Bug Fixes
+
+* **validators:** recognize Lua comment syntax ([#886](https://github.com/smykla-skalski/klaudiush/issues/886)) ([9f87c93](https://github.com/smykla-skalski/klaudiush/commit/9f87c939e6cc8d77c4088ee0c28572d9de06aa68))
+
 ## [1.44.8](https://github.com/smykla-skalski/klaudiush/compare/v1.44.7...v1.44.8) (2026-10-16)
 
 ### Bug Fixes
