@@ -26,7 +26,7 @@ require (
 	github.com/knadh/koanf/v2 v2.3.8
 	github.com/mattn/go-runewidth v0.0.31
 	github.com/olekukonko/tablewriter v1.1.5
-	github.com/onsi/ginkgo/v2 v2.33.0
+	github.com/onsi/ginkgo/v2 v2.33.1
 	github.com/onsi/gomega v1.44.0
 	github.com/pelletier/go-toml/v2 v2.4.3
 	github.com/pmezard/go-difflib v1.0.0
