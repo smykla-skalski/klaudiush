@@ -198,12 +198,12 @@ func runBypassNotify(_ *cobra.Command, args []string) error {
 	fmt.Printf("Bypass reminder %s.\n", onOffLabel(notify))
 	fmt.Printf("\nWritten to %s config.\n", scopeName(bypassGlobal))
 
-	merged, err := mergedBypassConfig()
+	merged, err := mergedConfig()
 	if err != nil {
 		return err
 	}
 
-	fmt.Printf("Effective now: reminder %s\n", onOffLabel(merged.IsNotifyEnabled()))
+	fmt.Printf("Effective now: reminder %s\n", onOffLabel(effectiveReminderEnabled(merged)))
 
 	return nil
 }
@@ -223,6 +223,16 @@ func reportEffectiveValidation() error {
 
 // mergedBypassConfig loads the bypass settings with full precedence applied.
 func mergedBypassConfig() (*config.BypassPermissionsConfig, error) {
+	cfg, err := mergedConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	return cfg.BypassPermissions, nil
+}
+
+// mergedConfig loads every setting with full precedence applied.
+func mergedConfig() (*config.Config, error) {
 	loader, err := internalconfig.NewKoanfLoader()
 	if err != nil {
 		return nil, errors.Wrap(err, "creating config loader")
@@ -233,7 +243,7 @@ func mergedBypassConfig() (*config.BypassPermissionsConfig, error) {
 		return nil, errors.Wrap(err, "loading merged config")
 	}
 
-	return cfg.BypassPermissions, nil
+	return cfg, nil
 }
 
 func runBypassStatus(_ *cobra.Command, _ []string) error {
@@ -301,20 +311,27 @@ func displayBypassScope(scope string, cfg *config.BypassPermissionsConfig) {
 
 // displayBypassEffective renders the merged setting the hook actually applies.
 func displayBypassEffective() error {
-	bypassCfg, err := mergedBypassConfig()
+	cfg, err := mergedConfig()
 	if err != nil {
 		return err
 	}
+
+	bypassCfg := cfg.BypassPermissions
 
 	fmt.Println("")
 	fmt.Println("Effective")
 	fmt.Println("=========")
 	fmt.Println("")
 	fmt.Printf("  Validation: %s\n", validationLabel(bypassCfg))
-	fmt.Printf("  Reminder: %s\n", onOffLabel(bypassCfg.IsNotifyEnabled()))
+	fmt.Printf("  Reminder: %s\n", onOffLabel(effectiveReminderEnabled(cfg)))
 	fmt.Printf("  Bypass modes: %s\n", strings.Join(effectiveModes(bypassCfg), ", "))
 
 	return nil
+}
+
+// effectiveReminderEnabled reports whether both reminder controls allow output.
+func effectiveReminderEnabled(cfg *config.Config) bool {
+	return cfg.Output.IsBypassReminderEnabled() && cfg.BypassPermissions.IsNotifyEnabled()
 }
 
 // validationLabel describes what happens in the configured permission modes.
