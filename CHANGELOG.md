@@ -5,6 +5,12 @@ All notable changes to klaudiush will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.44.10](https://github.com/smykla-skalski/klaudiush/compare/v1.44.9...v1.44.10) (2026-10-18)
+
+### Bug Fixes
+
+* **deps:** update ginkgo to v2.33.1 ([#891](https://github.com/smykla-skalski/klaudiush/issues/891)) ([b2064bc](https://github.com/smykla-skalski/klaudiush/commit/b2064bc85e0c6f8086cb1b26efce408e60dded41))
+
 ## [1.44.9](https://github.com/smykla-skalski/klaudiush/compare/v1.44.8...v1.44.9) (2026-10-16)
 
 ### Bug Fixes
