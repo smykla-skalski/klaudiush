@@ -5,6 +5,13 @@ All notable changes to klaudiush will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.44.11](https://github.com/smykla-skalski/klaudiush/compare/v1.44.10...v1.44.11) (2026-10-19)
+
+### Bug Fixes
+
+* **deps:** update module github.com/bmatcuk/doublestar/v4 to v4.10.3 ([#895](https://github.com/smykla-skalski/klaudiush/issues/895)) ([d8b1a9a](https://github.com/smykla-skalski/klaudiush/commit/d8b1a9aa9374cbb253689779d5de3bbaf03c5f3f))
+* **deps:** update module golang.org/x/term to v0.47.0 ([#887](https://github.com/smykla-skalski/klaudiush/issues/887)) ([1f52771](https://github.com/smykla-skalski/klaudiush/commit/1f52771c4825531fdb265c32054986ed60fb81f4))
+
 ## [1.44.10](https://github.com/smykla-skalski/klaudiush/compare/v1.44.9...v1.44.10) (2026-10-18)
 
 ### Bug Fixes
