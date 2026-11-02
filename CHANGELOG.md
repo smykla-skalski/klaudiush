@@ -5,6 +5,12 @@ All notable changes to klaudiush will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.44.14](https://github.com/smykla-skalski/klaudiush/compare/v1.44.13...v1.44.14) (2026-11-02)
+
+### Bug Fixes
+
+* **deps:** update module github.com/bmatcuk/doublestar/v4 to v4.10.4 ([#934](https://github.com/smykla-skalski/klaudiush/issues/934)) ([8b76484](https://github.com/smykla-skalski/klaudiush/commit/8b76484a81b755a6bc55b387b409068d3801abd6))
+
 ## [1.44.13](https://github.com/smykla-skalski/klaudiush/compare/v1.44.12...v1.44.13) (2026-10-26)
 
 ### Bug Fixes
