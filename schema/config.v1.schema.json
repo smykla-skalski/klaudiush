@@ -1192,6 +1192,9 @@
         "validation_messages": {
           "type": "boolean"
         },
+        "bypass_reminder": {
+          "type": "boolean"
+        },
         "agent_summary": {
           "type": "boolean"
         }

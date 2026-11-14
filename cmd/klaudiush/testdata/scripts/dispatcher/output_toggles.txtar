@@ -33,6 +33,18 @@ stdout '"permissionDecision":"deny"'
 ! stdout 'systemMessage'
 stdout 'plain-language sentence what klaudiush blocked'
 
+# bypass_reminder off: validation details stay, reminder goes away
+cp reminder-off.toml .klaudiush/config.toml
+stdin session-d.json
+exec klaudiush --hook-type PreToolUse
+stdout '"permissionDecision":"deny"'
+stdout 'Wrong for your workflow'
+! stdout 'klaudiush still validates with approval prompts off'
+stdout 'plain-language sentence what klaudiush blocked'
+exec klaudiush bypass status
+stdout 'Effective'
+stdout 'Reminder: off'
+
 # agent_summary off: no instruction
 cp summary-off.toml .klaudiush/config.toml
 stdin session-a.json
@@ -59,6 +71,10 @@ validation_messages = false
 -- user-off.toml --
 [output]
 user_messages = false
+
+-- reminder-off.toml --
+[output]
+bypass_reminder = false
 
 -- summary-off.toml --
 [output]
@@ -108,6 +124,16 @@ message = "no sessions today"
 -- session-c.json --
 {
   "session_id": "sess-output-c",
+  "permission_mode": "bypassPermissions",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "git commit -S -m 'feat(api): add user endpoint'"
+  }
+}
+
+-- session-d.json --
+{
+  "session_id": "sess-output-d",
   "permission_mode": "bypassPermissions",
   "tool_name": "Bash",
   "tool_input": {
