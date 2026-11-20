@@ -5,6 +5,12 @@ All notable changes to klaudiush will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.44.19](https://github.com/smykla-skalski/klaudiush/compare/v1.44.18...v1.44.19) (2026-11-20)
+
+### Bug Fixes
+
+* **deps:** update module golang.org/x/term to v0.48.0 ([#961](https://github.com/smykla-skalski/klaudiush/issues/961)) ([1d8c678](https://github.com/smykla-skalski/klaudiush/commit/1d8c67822a5270fcbf8e4940a1a9040d8a6f6a30))
+
 ## [1.44.18](https://github.com/smykla-skalski/klaudiush/compare/v1.44.17...v1.44.18) (2026-11-18)
 
 ### Bug Fixes
