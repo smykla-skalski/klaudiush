@@ -8,6 +8,7 @@ package config
 //	[output]
 //	user_messages = true
 //	validation_messages = true
+//	bypass_reminder = true
 //	agent_summary = true
 type OutputConfig struct {
 	// UserMessages is the master switch for everything klaudiush shows the user
@@ -18,6 +19,11 @@ type OutputConfig struct {
 	// ValidationMessages controls the block and warning details shown to the user.
 	// Default: true
 	ValidationMessages *bool `json:"validation_messages,omitempty" koanf:"validation_messages" toml:"validation_messages,omitempty"`
+
+	// BypassReminder controls the reminder shown while klaudiush validates a
+	// session that runs without approval prompts.
+	// Default: true
+	BypassReminder *bool `json:"bypass_reminder,omitempty" koanf:"bypass_reminder" toml:"bypass_reminder,omitempty"`
 
 	// AgentSummary asks the agent to tell the user in one plain sentence what
 	// klaudiush blocked and why.
@@ -46,6 +52,20 @@ func (o *OutputConfig) IsValidationMessagesEnabled() bool {
 	}
 
 	return *o.ValidationMessages
+}
+
+// IsBypassReminderEnabled reports whether the bypass reminder is shown to the
+// user. The UserMessages master switch overrides it. Defaults to true.
+func (o *OutputConfig) IsBypassReminderEnabled() bool {
+	if !o.IsUserMessagesEnabled() {
+		return false
+	}
+
+	if o == nil || o.BypassReminder == nil {
+		return true
+	}
+
+	return *o.BypassReminder
 }
 
 // IsAgentSummaryEnabled reports whether the agent is asked to summarize blocks

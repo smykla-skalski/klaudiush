@@ -15,6 +15,7 @@ var _ = Describe("OutputConfig", func() {
 		var cfg *config.OutputConfig
 		Expect(cfg.IsUserMessagesEnabled()).To(BeTrue())
 		Expect(cfg.IsValidationMessagesEnabled()).To(BeTrue())
+		Expect(cfg.IsBypassReminderEnabled()).To(BeTrue())
 		Expect(cfg.IsAgentSummaryEnabled()).To(BeTrue())
 	})
 
@@ -22,6 +23,7 @@ var _ = Describe("OutputConfig", func() {
 		cfg := &config.OutputConfig{}
 		Expect(cfg.IsUserMessagesEnabled()).To(BeTrue())
 		Expect(cfg.IsValidationMessagesEnabled()).To(BeTrue())
+		Expect(cfg.IsBypassReminderEnabled()).To(BeTrue())
 		Expect(cfg.IsAgentSummaryEnabled()).To(BeTrue())
 	})
 
@@ -38,6 +40,21 @@ var _ = Describe("OutputConfig", func() {
 		}
 		Expect(cfg.IsUserMessagesEnabled()).To(BeFalse())
 		Expect(cfg.IsValidationMessagesEnabled()).To(BeFalse())
+	})
+
+	It("hides the bypass reminder when disabled", func() {
+		cfg := &config.OutputConfig{BypassReminder: &falseValue}
+		Expect(cfg.IsUserMessagesEnabled()).To(BeTrue())
+		Expect(cfg.IsBypassReminderEnabled()).To(BeFalse())
+	})
+
+	It("hides the bypass reminder when the master switch is off", func() {
+		cfg := &config.OutputConfig{
+			UserMessages:   &falseValue,
+			BypassReminder: &trueValue,
+		}
+		Expect(cfg.IsUserMessagesEnabled()).To(BeFalse())
+		Expect(cfg.IsBypassReminderEnabled()).To(BeFalse())
 	})
 
 	It("keeps the agent summary independent of the master switch", func() {
