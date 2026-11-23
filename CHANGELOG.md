@@ -5,6 +5,12 @@ All notable changes to klaudiush will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.44.20](https://github.com/smykla-skalski/klaudiush/compare/v1.44.19...v1.44.20) (2026-11-23)
+
+### Bug Fixes
+
+* **deps:** update module charm.land/lipgloss/v2 to v2.1.1 ([#975](https://github.com/smykla-skalski/klaudiush/issues/975)) ([b9e9c55](https://github.com/smykla-skalski/klaudiush/commit/b9e9c559f7023b4475d7b71beade9257ca228a94))
+
 ## [1.44.19](https://github.com/smykla-skalski/klaudiush/compare/v1.44.18...v1.44.19) (2026-11-20)
 
 ### Bug Fixes
