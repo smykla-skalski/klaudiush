@@ -5,6 +5,13 @@ All notable changes to klaudiush will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.44.21](https://github.com/smykla-skalski/klaudiush/compare/v1.44.20...v1.44.21) (2026-11-27)
+
+### Bug Fixes
+
+* **deps:** update module charm.land/bubbletea/v2 to v2.1.2 ([#981](https://github.com/smykla-skalski/klaudiush/issues/981)) ([dd81f9f](https://github.com/smykla-skalski/klaudiush/commit/dd81f9f8761dc5a27a5b4a560c0986e4390d0995))
+* **deps:** update module github.com/charmbracelet/x/ansi to v0.11.10 ([#983](https://github.com/smykla-skalski/klaudiush/issues/983)) ([144e297](https://github.com/smykla-skalski/klaudiush/commit/144e297c66c37e2bc8744f75a611e6c000f75502))
+
 ## [1.44.20](https://github.com/smykla-skalski/klaudiush/compare/v1.44.19...v1.44.20) (2026-11-23)
 
 ### Bug Fixes
