@@ -86,6 +86,13 @@ klaudiush bypass notify off
 klaudiush bypass notify on
 ```
 
+The general output controls can also hide this reminder:
+
+```toml
+[output]
+bypass_reminder = false
+```
+
 ## Configuration
 
 ```toml
@@ -166,7 +173,7 @@ It shows once per session. Delete the state file to see it again:
 rm ~/.local/state/klaudiush/bypass_notice.json
 ```
 
-It is also suppressed when `notify = false`, when validation is being skipped, and when the payload carries no `permission_mode`.
+It is also suppressed when `notify = false`, when `output.bypass_reminder = false`, when validation is being skipped, and when the payload carries no `permission_mode`.
 
 ### I want validation off entirely, not just in bypass modes
 
